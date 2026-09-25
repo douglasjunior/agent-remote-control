@@ -8,11 +8,13 @@ import {
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import type { ActiveTurn } from '../models/active-turn.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
+import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
   type DelegationResult,
   DelegationDetectorService,
@@ -34,27 +36,40 @@ export class ExecuteAgentTurnUseCase {
     @Inject(IWorkspacePort)
     private readonly workspacePort: IWorkspacePort,
     private readonly delegationDetector: DelegationDetectorService,
+    private readonly conversationRuntime: ConversationRuntimeService,
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
-    const { session, isFirstTurn } = await this.resolveSession(request);
+    const session = await this.resolveSession(request);
 
+    return this.conversationRuntime.run(
+      session.sessionId,
+      (agentPort, turn) => this.runTurn(session, agentPort, turn, request),
+      request.onQueued,
+    );
+  }
+
+  private async runTurn(
+    session: SessionContext,
+    ceoPort: IAgentPort,
+    turn: ActiveTurn,
+    request: TurnRequest,
+  ): Promise<TurnResult> {
     this.logger.log(
       `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
     );
 
-    let prompt = isFirstTurn
-      ? this.withSystemPrompt(request.agentRole, request.prompt)
-      : request.prompt;
+    let prompt = request.prompt;
 
     try {
       for (let round = 1; round <= this.MAX_DELEGATION_ROUNDS; round++) {
         const response = await this.runAgentTurn(
-          session.agentPort,
+          ceoPort,
           request.workspacePath,
           request.agentRole,
           prompt,
           request,
+          turn,
         );
 
         const decision = this.delegationDetector.detect(response);
@@ -71,7 +86,7 @@ export class ExecuteAgentTurnUseCase {
           };
         }
 
-        prompt = await this.delegate(session, decision.delegation, request, round);
+        prompt = await this.delegate(session, decision.delegation, request, round, turn);
       }
 
       return {
@@ -88,7 +103,7 @@ export class ExecuteAgentTurnUseCase {
         this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${session.sessionId}`);
         return {
           sessionId: session.sessionId,
-          response: session.agentPort.lastAgentMessage || '',
+          response: ceoPort.lastAgentMessage || '',
           status: 'cancelled',
         };
       }
@@ -98,40 +113,32 @@ export class ExecuteAgentTurnUseCase {
 
       return {
         sessionId: session.sessionId,
-        response: session.agentPort.lastAgentMessage || '',
+        response: ceoPort.lastAgentMessage || '',
         status: 'failed',
         errorMessage,
       };
     }
   }
 
-  private async resolveSession(
-    request: TurnRequest,
-  ): Promise<{ session: SessionContext; isFirstTurn: boolean }> {
+  private async resolveSession(request: TurnRequest): Promise<SessionContext> {
     const existing = await this.sessionStore.findSession(request.channelId, request.threadId);
     const now = new Date();
 
-    let session: SessionContext;
-    if (existing) {
-      session = { ...existing, activeAgentPort: existing.agentPort, updatedAt: now };
-    } else {
-      const agentPort = this.agentPortFactory.create();
-      session = {
+    const session: SessionContext = existing
+      ? { ...existing, updatedAt: now }
+      : {
         sessionId: randomUUID(),
         channelId: request.channelId,
         threadId: request.threadId,
         userId: request.userId,
         workspacePath: request.workspacePath,
         agentRole: request.agentRole,
-        agentPort,
-        activeAgentPort: agentPort,
         createdAt: now,
         updatedAt: now,
       };
-    }
 
     await this.sessionStore.saveSession(session);
-    return { session, isFirstTurn: !existing };
+    return session;
   }
 
   private async delegate(
@@ -139,6 +146,7 @@ export class ExecuteAgentTurnUseCase {
     { delegateToRole, projectName, taskSpec }: DelegationResult,
     request: TurnRequest,
     round: number,
+    turn: ActiveTurn,
   ): Promise<string> {
     const cwd = projectName
       ? this.workspacePort.resolveRepositoryPath(projectName)
@@ -148,19 +156,18 @@ export class ExecuteAgentTurnUseCase {
     this.logger.log(
       `[Delegation] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Cwd=${cwd}`,
     );
-    await this.sessionStore.saveSession({ ...session, activeAgentPort: delegatePort });
 
     try {
       const response = await this.runAgentTurn(
         delegatePort,
         cwd,
         delegateToRole,
-        this.withSystemPrompt(delegateToRole, taskSpec),
+        taskSpec,
         request,
+        turn,
       );
       return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
-      await this.sessionStore.saveSession(session);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
@@ -172,16 +179,23 @@ export class ExecuteAgentTurnUseCase {
     role: string,
     prompt: string,
     request: TurnRequest,
+    turn: ActiveTurn,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
 
-    try {
-      await agentPort.connect();
+    turn.activate(agentPort);
 
+    try {
+      turn.throwIfCancelled();
+      await agentPort.connect();
+      turn.throwIfCancelled();
+
+      let fullPrompt = prompt;
       if (!agentPort.currentSessionId) {
         await this.workspacePort.ensureDirectory(workspacePath);
         await agentPort.createSession(workspacePath);
+        fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${prompt}`;
       }
 
       const defaultModel = this.agentRegistry.getDefaultModel(role);
@@ -193,7 +207,8 @@ export class ExecuteAgentTurnUseCase {
         unsubscribeActivity = agentPort.onActivity(request.onActivity);
       }
 
-      for await (const update of agentPort.prompt(prompt)) {
+      turn.throwIfCancelled();
+      for await (const update of agentPort.prompt(fullPrompt)) {
         const chunk = this.extractTextChunk(update);
         if (chunk) {
           accumulatedChunks += chunk;
@@ -205,10 +220,6 @@ export class ExecuteAgentTurnUseCase {
     } finally {
       unsubscribeActivity?.();
     }
-  }
-
-  private withSystemPrompt(role: string, prompt: string): string {
-    return `${this.agentRegistry.getSystemPrompt(role)}\n\n${prompt}`;
   }
 
   private extractTextChunk({ update }: AgentUpdate): string | undefined {

@@ -176,9 +176,9 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
           extension.respond());
       }
 
-      this.connection = app.connect(stream);
+      const connection = app.connect(stream);
 
-      const initializeResponse = await this.connection.agent.request(
+      const initializeResponse = await connection.agent.request(
         'initialize',
         {
           protocolVersion: PROTOCOL_VERSION,
@@ -188,8 +188,11 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
       this.steeringSupported = this.readSteeringSupport(initializeResponse);
       this.logger.debug(`steering_support_detected: ${this.steeringSupported}`);
+      this.connection = connection;
     } catch (err) {
-      throw this.buildTransportError(err, 'connect');
+      const error = this.buildTransportError(err, 'connect');
+      this.releaseTransport();
+      throw error;
     }
 
     await this.discoverConfigOptions(this.connection);
@@ -285,11 +288,6 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     if (!this.activeSession)
       throw new Error('No active session. Call createSession() first.');
 
-    if (this.cancelPending) {
-      this.cancelPending = false;
-      throw new PromptCancelledError();
-    }
-
     this.stderrBuffer = '';
     this.lastAgentMessage = '';
     this._lastRoundUsage = undefined;
@@ -372,18 +370,18 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   }
 
   async cancel(): Promise<void> {
-    if (!this.connection || !this.currentSessionId) {
+    if (!this.connection || !this.currentSessionId || !this.forcePromptCompletion) {
       return;
     }
 
     this.cancelPending = true;
 
-    if (this.forcePromptCompletion && !this.cancelTimeoutHandle) {
-      this.cancelTimeoutHandle = setTimeout(
-        () => this.escalateCancel(),
-        CANCEL_ESCALATION_MS,
-      );
-    }
+
+    this.cancelTimeoutHandle ??= setTimeout(
+      () => this.escalateCancel(),
+      CANCEL_ESCALATION_MS,
+    );
+
 
     await this.sendCancelNotification(this.currentSessionId);
   }
@@ -504,7 +502,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     this.activeSession = null;
     this.currentSessionId = undefined;
     this.cachedConfigOptions = [];
+    this.releaseTransport();
+  }
 
+  private releaseTransport(): void {
     if (this.subprocess?.stderr && this.stderrListener) {
       this.subprocess.stderr.off('data', this.stderrListener);
     }

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
+import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -9,69 +11,58 @@ import { CancelAgentTurnUseCase } from './cancel-agent-turn.use-case.js';
 
 describe('CancelAgentTurnUseCase', () => {
   let useCase: CancelAgentTurnUseCase;
-  let stubAgentPort: StubAgentPort;
+  let agentPort: StubAgentPort;
   let sessionStore: InMemorySessionStoreAdapter;
+  let runtime: ConversationRuntimeService;
 
-  beforeEach(() => {
-    stubAgentPort = new StubAgentPort();
+  beforeEach(async () => {
+    agentPort = new StubAgentPort();
     sessionStore = new InMemorySessionStoreAdapter();
-    useCase = new CancelAgentTurnUseCase(sessionStore);
-  });
-
-  it('should cancel the active agent port when session is found', async () => {
+    const factory: IAgentPortFactory = { create: () => agentPort };
+    runtime = new ConversationRuntimeService(factory, sessionStore, 60_000);
+    useCase = new CancelAgentTurnUseCase(sessionStore, runtime);
     await sessionStore.saveSession(
-      buildSessionContext({ channelId: 'ch-cancel-1', agentPort: stubAgentPort }),
+      buildSessionContext({ sessionId: 'sess-1', channelId: 'ch-1', threadId: 'th-1' }),
     );
-
-    await useCase.execute('ch-cancel-1');
-
-    expect(stubAgentPort.cancelCalls).toBe(1);
   });
 
-  it('should cancel the active agent port when session with threadId is found', async () => {
-    await sessionStore.saveSession(
-      buildSessionContext({
-        channelId: 'ch-cancel-2',
-        threadId: 'th-cancel-2',
-        agentPort: stubAgentPort,
-      }),
-    );
+  const runBlockingTurn = (): { finish: () => void; done: Promise<void> } => {
+    let finish: () => void = () => undefined;
+    const done = runtime.run('sess-1', () => new Promise<void>((resolve) => {
+      finish = resolve;
+    }));
+    return { finish: () => finish(), done };
+  };
 
-    await useCase.execute('ch-cancel-2', 'th-cancel-2');
+  it('should cancel the turn in progress and report it', async () => {
+    const turn = runBlockingTurn();
+    await Promise.resolve();
 
-    expect(stubAgentPort.cancelCalls).toBe(1);
+    await expect(useCase.execute('ch-1', 'th-1')).resolves.toBe(true);
+
+    expect(agentPort.cancelCalls).toBe(1);
+    turn.finish();
+    await turn.done;
   });
 
-  it('should cancel the delegate port while a delegation is active', async () => {
-    const delegatePort = new StubAgentPort();
-    await sessionStore.saveSession(
-      buildSessionContext({
-        channelId: 'ch-cancel-3',
-        agentPort: stubAgentPort,
-        activeAgentPort: delegatePort,
-      }),
-    );
-
-    await useCase.execute('ch-cancel-3');
-
-    expect(delegatePort.cancelCalls).toBe(1);
-    expect(stubAgentPort.cancelCalls).toBe(0);
+  it('should report false when the session has no turn in progress', async () => {
+    await expect(useCase.execute('ch-1', 'th-1')).resolves.toBe(false);
+    expect(agentPort.cancelCalls).toBe(0);
   });
 
-  it('should do nothing when session is not found', async () => {
-    await useCase.execute('ch-unknown');
-
-    expect(stubAgentPort.cancelCalls).toBe(0);
+  it('should report false when session is not found', async () => {
+    await expect(useCase.execute('ch-unknown')).resolves.toBe(false);
   });
 
   it('should rethrow when the agent fails to cancel', async () => {
-    stubAgentPort.cancel = async () => {
+    agentPort.cancel = async () => {
       throw new Error('cancel failed');
     };
-    await sessionStore.saveSession(
-      buildSessionContext({ channelId: 'ch-cancel-5', agentPort: stubAgentPort }),
-    );
+    const turn = runBlockingTurn();
+    await Promise.resolve();
 
-    await expect(useCase.execute('ch-cancel-5')).rejects.toThrow('cancel failed');
+    await expect(useCase.execute('ch-1', 'th-1')).rejects.toThrow('cancel failed');
+    turn.finish();
+    await turn.done;
   });
 });

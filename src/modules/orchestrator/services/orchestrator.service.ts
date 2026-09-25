@@ -17,7 +17,7 @@ export class OrchestratorService {
     return this.executeAgentTurnUseCase.execute(request);
   }
 
-  async cancelTurn(channelId: string, threadId?: string): Promise<void> {
+  async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
     return this.cancelAgentTurnUseCase.execute(channelId, threadId);
   }
 }

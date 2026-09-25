@@ -6,6 +6,7 @@ import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { InMemorySessionStoreAdapter } from './adapters/in-memory-session-store.adapter.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
+import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
 import { OrchestratorService } from './services/orchestrator.service.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
@@ -19,6 +20,7 @@ import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case
       provide: ISessionStorePort,
       useClass: InMemorySessionStoreAdapter,
     },
+    ConversationRuntimeService,
     DelegationDetectorService,
     ExecuteAgentTurnUseCase,
     CancelAgentTurnUseCase,

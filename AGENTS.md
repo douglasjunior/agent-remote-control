@@ -19,12 +19,27 @@ agent-remote-control/
 │   └── specs/                      # Especificações, planos e tarefas (fluxo spec-driven)
 ├── src/                            # Código-fonte da aplicação NestJS
 │   ├── modules/                    # Módulos verticais segregados por domínio
-│   │   └── <nome>/                 # Ex.: agent, discord, session
+│   │   ├── agent/                  # Integração ACP: porta IAgentPort, fábrica, adapters, bridges e demux
+│   │   ├── agent-definitions/      # Catálogo de agentes (CEO, DEVELOPER), prompts e registry
+│   │   ├── discord/                # Bot do Discord: handlers, formatters e utils de progresso
+│   │   ├── orchestrator/           # Turnos, fila por conversa, delegação e cancelamento
+│   │   └── workspace/              # Diretório de workspaces, manifest e habilidades (abilities)
+│   │
+│   │   Pastas internas de um módulo (cada módulo usa apenas as que precisa):
+│   │       ├── abilities/          # Blocos de instruções reutilizáveis injetados em prompts
 │   │       ├── adapters/           # Adaptadores secundários/tecnológicos (*.adapter.ts)
+│   │       ├── bridges/            # Processos ponte entre protocolos (ex.: ACP ↔ agy)
+│   │       ├── constants/          # Constantes de domínio
+│   │       ├── demux/              # Decomposição de streams em eventos tipados
+│   │       ├── formatters/         # Formatação de saída para o canal
 │   │       ├── handlers/           # Adaptadores primários/driving (Discord events/commands)
+│   │       ├── models/             # Tipos e modelos de domínio (*.model.ts, *.type.ts)
 │   │       ├── ports/              # Interfaces e Symbols de injeção (*.port.ts)
-│   │       ├── services/           # Serviços concretos de apoio utilitário (*.service.ts)
+│   │       ├── prompts/            # System prompts dos agentes (*.prompt.ts)
+│   │       ├── services/           # Serviços concretos de apoio (*.service.ts)
+│   │       ├── testing/            # Stubs, fakes e fixtures compartilhados pelos testes
 │   │       ├── use-cases/          # Regras de negócio e orquestração (*.use-case.ts)
+│   │       ├── utils/              # Utilitários sem estado de domínio (*.util.ts)
 │   │       └── <nome>.module.ts    # Configuração do módulo e amarração de DI NestJS
 │   ├── app.controller.ts           # Controller raiz de diagnóstico/healthcheck
 │   ├── app.module.ts               # Módulo raiz da aplicação

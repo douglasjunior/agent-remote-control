@@ -3,6 +3,9 @@ import { Injectable } from '@nestjs/common';
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 
 
+const FENCE_PATTERN = /^```\w*/;
+const CLOSE_FENCE = '\n```';
+
 @Injectable()
 export class DiscordActivityFormatter {
   formatActivity(activity: AgentActivity): string | null {
@@ -42,120 +45,47 @@ export class DiscordActivityFormatter {
       return [content];
     }
 
-    const lines = content.split('\n');
     const chunks: string[] = [];
-    let currentChunk = '';
-    let inCodeBlock = false;
-    let codeBlockLang = '';
+    let lines: string[] = [];
+    let length = 0;
+    let openFence: string | null = null;
 
-    const updateFenceState = (line: string): void => {
-      const match = line.match(/^```(\w*)/);
-      if (!match) {
-        return;
-      }
-      if (!inCodeBlock) {
-        inCodeBlock = true;
-        codeBlockLang = match[1] ?? '';
-      } else {
-        inCodeBlock = false;
-        codeBlockLang = '';
+    const append = (line: string): void => {
+      length += (lines.length > 0 ? 1 : 0) + line.length;
+      lines.push(line);
+    };
+    const room = (reserve: number): number =>
+      maxLength - length - (lines.length > 0 ? 1 : 0) - reserve;
+    const flush = (): void => {
+      chunks.push(lines.join('\n') + (openFence ? CLOSE_FENCE : ''));
+      lines = [];
+      length = 0;
+      if (openFence) {
+        append(openFence);
       }
     };
 
-    for (const line of lines) {
-      const isFenceLine = /^```(\w*)/.test(line);
-      const closeFenceOverhead = inCodeBlock && !isFenceLine ? 4 : 0;
-      const candidateLength =
-        (currentChunk.length > 0 ? currentChunk.length + 1 : 0)
-        + line.length
-        + closeFenceOverhead;
+    for (const line of content.split('\n')) {
+      const fence = line.match(FENCE_PATTERN)?.[0];
+      const nextFence: string | null = fence ? (openFence ? null : fence) : openFence;
+      const reserve = nextFence ? CLOSE_FENCE.length : 0;
 
-      if (candidateLength <= maxLength) {
-        currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;
-        updateFenceState(line);
-        continue;
+      if (line.length > room(reserve) && lines.length > 0) {
+        flush();
       }
 
-      if (currentChunk.length > 0) {
-        if (inCodeBlock) {
-          chunks.push(`${currentChunk}\n\`\`\``);
-          currentChunk = `\`\`\`${codeBlockLang}`;
-        } else {
-          chunks.push(currentChunk);
-          currentChunk = '';
-        }
+      let rest = line;
+      while (rest.length > room(reserve)) {
+        const capacity = Math.max(1, room(openFence ? CLOSE_FENCE.length : 0));
+        append(rest.slice(0, capacity));
+        rest = rest.slice(capacity);
+        flush();
       }
-
-      const availableLength =
-        maxLength
-        - (currentChunk.length > 0 ? currentChunk.length + 1 : 0)
-        - (inCodeBlock ? 4 : 0);
-
-      if (line.length <= availableLength) {
-        currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;
-        updateFenceState(line);
-        continue;
-      }
-
-      const lineSlices = this.sliceLongLine(
-        line,
-        maxLength,
-        inCodeBlock,
-        codeBlockLang,
-      );
-
-      for (let i = 0; i < lineSlices.length; i++) {
-        const slice = lineSlices[i]!;
-        const isLastSlice = i === lineSlices.length - 1;
-
-        if (isLastSlice && slice.length < maxLength) {
-          currentChunk = slice;
-        } else {
-          chunks.push(slice);
-        }
-      }
+      append(rest);
+      openFence = nextFence;
     }
 
-    if (currentChunk.length > 0) {
-      if (inCodeBlock) {
-        chunks.push(`${currentChunk}\n\`\`\``);
-      } else {
-        chunks.push(currentChunk);
-      }
-    }
-
+    chunks.push(lines.join('\n') + (openFence ? CLOSE_FENCE : ''));
     return chunks;
-  }
-
-  private sliceLongLine(
-    line: string,
-    maxLength: number,
-    inCodeBlock: boolean,
-    lang: string,
-  ): string[] {
-    const slices: string[] = [];
-
-    if (!inCodeBlock) {
-      let offset = 0;
-      while (offset < line.length) {
-        slices.push(line.slice(offset, offset + maxLength));
-        offset += maxLength;
-      }
-      return slices;
-    }
-
-    const openFence = `\`\`\`${lang}\n`;
-    const closeFence = '\n```';
-    const payloadCapacity = maxLength - openFence.length - closeFence.length;
-    const safeCapacity = payloadCapacity > 0 ? payloadCapacity : maxLength;
-
-    let offset = 0;
-    while (offset < line.length) {
-      const chunkText = line.slice(offset, offset + safeCapacity);
-      slices.push(`${openFence}${chunkText}${closeFence}`);
-      offset += safeCapacity;
-    }
-
-    return slices;
   }
 }

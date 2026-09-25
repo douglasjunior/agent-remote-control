@@ -16,13 +16,15 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
   cancelledChannelId?: string;
   cancelledThreadId?: string;
   throwError = false;
+  hasActiveTurn = true;
 
-  async cancelTurn(channelId: string, threadId?: string): Promise<void> {
+  async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
     if (this.throwError) {
       throw new Error('Cancel turn failed');
     }
     this.cancelledChannelId = channelId;
     this.cancelledThreadId = threadId;
+    return this.hasActiveTurn;
   }
 }
 
@@ -147,6 +149,27 @@ describe('DiscordInteractionHandler', () => {
 
     expect(orchestratorService.cancelledChannelId).toBe('thread-777');
     expect(orchestratorService.cancelledThreadId).toBe('thread-777');
+  });
+
+  it('should tell the user when there is no turn in progress to cancel', async () => {
+    orchestratorService.hasActiveTurn = false;
+    const interaction = {
+      isChatInputCommand: vi.fn().mockReturnValue(true),
+      commandName: 'cancel',
+      channelId: 'channel-123',
+      channel: { isThread: vi.fn().mockReturnValue(false) },
+      deferred: false,
+      replied: false,
+      reply: vi.fn().mockResolvedValue(undefined),
+      followUp: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ChatInputCommandInteraction;
+
+    await handler.handleInteraction(interaction);
+
+    expect(interaction.reply).toHaveBeenCalledWith({
+      content: 'ℹ️ Não há nenhum turno em andamento para cancelar.',
+      ephemeral: true,
+    });
   });
 
   it('should use followUp if interaction is already deferred or replied', async () => {

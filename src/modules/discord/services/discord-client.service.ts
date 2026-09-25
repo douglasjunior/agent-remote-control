@@ -14,8 +14,7 @@ import {
 
 
 @Injectable()
-export class DiscordClientService
-implements OnApplicationBootstrap, OnApplicationShutdown {
+export class DiscordClientService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(DiscordClientService.name);
   private readonly client: Client;
 

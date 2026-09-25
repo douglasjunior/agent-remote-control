@@ -55,14 +55,15 @@ export class DiscordInteractionHandler implements OnModuleInit {
         `[Slash Command] /cancel received from @${username} (${userId}) in channel=${channelId}, thread=${threadId ?? 'none'}`,
       );
 
-      await this.orchestratorService.cancelTurn(channelId, threadId);
+      const cancelled = await this.orchestratorService.cancelTurn(channelId, threadId);
 
       this.logger.log(
-        `[Slash Command] /cancel signal dispatched for channel=${channelId}`,
+        `[Slash Command] /cancel handled for channel=${channelId} (cancelled=${cancelled})`,
       );
 
-      const replyContent =
-        '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.';
+      const replyContent = cancelled
+        ? '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.'
+        : 'ℹ️ Não há nenhum turno em andamento para cancelar.';
 
       if (interaction.deferred || interaction.replied) {
         await interaction.followUp({ content: replyContent, ephemeral: true });
