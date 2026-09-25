@@ -420,14 +420,15 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   describe('agent session recovery', () => {
     const persistedSession = () =>
-      sessionStore.saveSession(buildSessionContext({ sessionId: 'sess-1', agentSessionId: 'conv-old' }));
+      sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }] }));
+    const storedAgentSessions = async () => (await sessionStore.findSession('ch-1'))?.agentSessions;
 
     it('should persist the agent session id created for a new conversation', async () => {
       stubAgentPort.mockResponses = ['Hi.'];
 
       await useCase.execute(turnRequest());
 
-      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('session-1');
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'session-1' }]);
     });
 
     it('should resume the persisted agent session without resending the system prompt', async () => {
@@ -440,7 +441,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual(['Continue']);
-      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('conv-old');
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'conv-old' }]);
     });
 
     it('should create a new session and store its id when the load fails', async () => {
@@ -452,18 +453,75 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
       expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\nContinue']);
-      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('session-1');
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'session-1' }]);
     });
 
-    it('should never resume or persist delegate sessions', async () => {
-      await persistedSession();
+    it('should persist the delegate session id alongside the CEO session id', async () => {
       stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
 
       expect(delegateStubPort.loadSessionCalls).toHaveLength(0);
-      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('conv-old');
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', sessionId: 'session-1' },
+        { role: 'DEVELOPER', sessionId: 'session-1' },
+      ]);
+    });
+
+    it('should resume the stored delegate session without resending the system prompt', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'DEVELOPER', sessionId: 'dev-old' }],
+      }));
+      stubAgentPort.mockResponses = ['Fix it.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Fixed.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'dev-old' }]);
+      expect(delegateStubPort.createSessionCalls).toHaveLength(0);
+      expect(delegateStubPort.promptCalls).toEqual(['Fix it.']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', sessionId: 'conv-old' },
+        { role: 'DEVELOPER', sessionId: 'dev-old' },
+      ]);
+    });
+
+    it('should resume the delegate session created in an earlier round of the same turn', async () => {
+      stubAgentPort.mockResponses = [
+        'Build it.\n[DELEGATE:DEVELOPER:my-app]',
+        'Now test it.\n[DELEGATE:DEVELOPER:my-app]',
+        'Ok.\n[DONE]',
+      ];
+      delegateStubPort.mockResponses = ['Built.', 'Tested.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+      expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'session-1' }]);
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nBuild it.', 'Now test it.']);
+    });
+
+    it('should replace only the delegate role session when its load fails', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [
+          { role: 'CEO', sessionId: 'conv-old' },
+          { role: 'DEVELOPER', sessionId: 'dev-old' },
+          { role: 'REVIEWER', sessionId: 'rev-old' },
+        ],
+      }));
+      delegateStubPort.loadSessionResult = false;
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nGo.']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', sessionId: 'conv-old' },
+        { role: 'REVIEWER', sessionId: 'rev-old' },
+        { role: 'DEVELOPER', sessionId: 'session-1' },
+      ]);
     });
 
     it('should disconnect the CEO agent when the turn fails', async () => {

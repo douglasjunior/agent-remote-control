@@ -9,7 +9,8 @@ import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 const SESSIONS_FILENAME = 'sessions.json';
 
-type StoredSession = Omit<SessionContext, 'createdAt' | 'updatedAt'> & {
+type StoredSession = Omit<SessionContext, 'agentSessions' | 'createdAt' | 'updatedAt'> & {
+  readonly agentSessions?: SessionContext['agentSessions'];
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -65,6 +66,7 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
       for (const item of items) {
         sessions.set(item.sessionId, {
           ...item,
+          agentSessions: item.agentSessions ?? [],
           createdAt: new Date(item.createdAt),
           updatedAt: new Date(item.updatedAt),
         });

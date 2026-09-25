@@ -132,6 +132,7 @@ export class ExecuteAgentTurnUseCase {
         userId: request.userId,
         workspacePath: request.workspacePath,
         agentRole: request.agentRole,
+        agentSessions: [],
         createdAt: now,
         updatedAt: now,
       };
@@ -222,6 +223,7 @@ export class ExecuteAgentTurnUseCase {
         taskSpec,
         request,
         turn,
+        session,
       );
       return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
@@ -237,7 +239,7 @@ export class ExecuteAgentTurnUseCase {
     prompt: string,
     request: TurnRequest,
     turn: ActiveTurn,
-    session?: SessionContext,
+    session: SessionContext,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
@@ -251,18 +253,17 @@ export class ExecuteAgentTurnUseCase {
 
       let fullPrompt = prompt;
       if (!agentPort.currentSessionId) {
-        const resumed = await this.resumeAgentSession(
-          agentPort,
-          workspacePath,
-          session?.agentSessionId,
-        );
+        const latest = await this.findLatestSession(session);
+        const storedSessionId = latest.agentSessions.find(agentSession => agentSession.role === role)?.sessionId;
+        const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
           await agentPort.createSession(workspacePath);
           fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${prompt}`;
         }
-        if (session) {
-          await this.bindAgentSession(session, agentPort.currentSessionId);
+        const { currentSessionId } = agentPort;
+        if (currentSessionId && currentSessionId !== storedSessionId) {
+          await this.bindAgentSession(latest, role, currentSessionId);
         }
       }
 
@@ -292,26 +293,28 @@ export class ExecuteAgentTurnUseCase {
   private async resumeAgentSession(
     agentPort: IAgentPort,
     workspacePath: string,
-    agentSessionId: string | undefined,
+    sessionId: string | undefined,
   ): Promise<boolean> {
-    if (!agentSessionId) {
+    if (!sessionId) {
       return false;
     }
-    const loaded = await agentPort.loadSession(workspacePath, agentSessionId);
+    const loaded = await agentPort.loadSession(workspacePath, sessionId);
     this.logger.log(
-      `[Agent Session ${loaded ? 'Resumed' : 'Not Resumed'}] AgentSession=${agentSessionId}`,
+      `[Agent Session ${loaded ? 'Resumed' : 'Not Resumed'}] AgentSession=${sessionId}`,
     );
     return loaded;
   }
 
-  private async bindAgentSession(
-    session: SessionContext,
-    agentSessionId: string | undefined,
-  ): Promise<void> {
-    if (!agentSessionId || agentSessionId === session.agentSessionId) {
-      return;
-    }
-    await this.sessionStore.saveSession({ ...session, agentSessionId, updatedAt: new Date() });
+  private async findLatestSession(session: SessionContext): Promise<SessionContext> {
+    return await this.sessionStore.findSession(session.channelId, session.threadId) ?? session;
+  }
+
+  private async bindAgentSession(session: SessionContext, role: string, sessionId: string): Promise<void> {
+    await this.sessionStore.saveSession({
+      ...session,
+      agentSessions: [...session.agentSessions.filter(agentSession => agentSession.role !== role), { role, sessionId }],
+      updatedAt: new Date(),
+    });
   }
 
   private async applyAgentConfig(agentPort: IAgentPort, role: string): Promise<void> {

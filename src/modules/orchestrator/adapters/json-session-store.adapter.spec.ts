@@ -28,7 +28,7 @@ describe('JsonSessionStoreAdapter', () => {
   });
 
   it('should persist sessions and rehydrate dates in a new instance', async () => {
-    const session = buildSessionContext({ agentSessionId: 'conv-1' });
+    const session = buildSessionContext({ agentSessions: [{ role: 'CEO', sessionId: 'conv-1' }] });
     await new JsonSessionStoreAdapter(dataDir).saveSession(session);
 
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
@@ -51,11 +51,11 @@ describe('JsonSessionStoreAdapter', () => {
   it('should replace a session saved again with the same id', async () => {
     const store = new JsonSessionStoreAdapter(dataDir);
     await store.saveSession(buildSessionContext());
-    await store.saveSession(buildSessionContext({ agentSessionId: 'conv-2' }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', sessionId: 'conv-2' }] }));
 
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
 
-    expect(reloaded?.agentSessionId).toBe('conv-2');
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', sessionId: 'conv-2' }]);
   });
 
   it('should keep every session saved concurrently', async () => {
@@ -78,9 +78,27 @@ describe('JsonSessionStoreAdapter', () => {
     await expect(store.saveSession(buildSessionContext())).rejects.toThrow();
 
     rmSync(dataDir);
-    await store.saveSession(buildSessionContext({ agentSessionId: 'conv-1' }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', sessionId: 'conv-1' }] }));
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
-    expect(reloaded?.agentSessionId).toBe('conv-1');
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', sessionId: 'conv-1' }]);
+  });
+
+  it('should load sessions stored without agent sessions with an empty list', async () => {
+    writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify([
+      {
+        sessionId: 'sess-1',
+        channelId: 'ch-1',
+        userId: 'user-1',
+        workspacePath: '/mock/workspace',
+        agentRole: 'CEO',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]));
+
+    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('ch-1');
+
+    expect(reloaded?.agentSessions).toEqual([]);
   });
 
   it('should treat an invalid file as empty', async () => {
