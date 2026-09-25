@@ -468,4 +468,120 @@ describe('DiscordMessageHandler', () => {
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
   });
+
+  it('should process direct message (DM) without requiring mention or thread', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const dmChannel = {
+      isDMBased: vi.fn().mockReturnValue(true),
+      isThread: vi.fn().mockReturnValue(false),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-dm-1' },
+      channelId: 'dm-channel-1',
+      cleanContent: 'Create a new feature',
+      content: 'Create a new feature',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: dmChannel,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(orchestratorService.lastRequest).toMatchObject({
+      channelId: 'dm-channel-1',
+      threadId: undefined,
+      userId: 'user-dm-1',
+      prompt: 'Create a new feature',
+      agentRole: 'CEO',
+    });
+    expect(dmChannel.send).toHaveBeenCalledWith('Hello from agent!');
+  });
+
+  it('should reply with greeting when direct message has empty prompt', async () => {
+    const dmChannel = {
+      isDMBased: vi.fn().mockReturnValue(true),
+      isThread: vi.fn().mockReturnValue(false),
+      send: vi.fn().mockResolvedValue({}),
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-dm-1' },
+      channelId: 'dm-channel-1',
+      content: '   ',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: dmChannel,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(dmChannel.send).toHaveBeenCalledWith(
+      'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+    );
+    expect(orchestratorService.lastRequest).toBeUndefined();
+  });
+
+  it('should send error to DM channel when processing direct message fails', async () => {
+    const dmChannel = {
+      isDMBased: vi.fn().mockReturnValue(true),
+      isThread: vi.fn().mockReturnValue(false),
+      send: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Internal failure'))
+        .mockResolvedValueOnce({}),
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-dm-1' },
+      channelId: 'dm-channel-1',
+      content: 'Help me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: dmChannel,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(dmChannel.send).toHaveBeenCalledWith(
+      '❌ **Ocorreu um erro ao processar sua solicitação:** Internal failure',
+    );
+  });
+
+  it('should swallow error if sending error notification to targetChannel fails', async () => {
+    const dmChannel = {
+      isDMBased: vi.fn().mockReturnValue(true),
+      isThread: vi.fn().mockReturnValue(false),
+      send: vi
+        .fn()
+        .mockRejectedValue(new Error('Network failure on send error notification')),
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-dm-1' },
+      channelId: 'dm-channel-1',
+      content: 'Help me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: dmChannel,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+  });
+
+  it('should ignore direct message if channel does not support send', async () => {
+    const dmChannelWithoutSend = {
+      isDMBased: vi.fn().mockReturnValue(true),
+      isThread: vi.fn().mockReturnValue(false),
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-dm-1' },
+      channelId: 'dm-channel-1',
+      content: 'Hello',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: dmChannelWithoutSend,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(orchestratorService.lastRequest).toBeUndefined();
+  });
 });

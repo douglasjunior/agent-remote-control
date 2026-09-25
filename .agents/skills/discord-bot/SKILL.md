@@ -30,15 +30,24 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   - `GatewayIntentBits.Guilds`: resolução de servidores e canais;
   - `GatewayIntentBits.GuildMessages`: recepção de mensagens em canais de texto e threads;
   - `GatewayIntentBits.MessageContent`: leitura do conteúdo textual das mensagens (Privileged Intent no Discord Developer Portal);
-  - `GatewayIntentBits.DirectMessages`: suporte futuro a comandos em mensagens diretas.
+  - `GatewayIntentBits.DirectMessages`: recepção de mensagens diretas e privadas (DM).
+- **Partials obrigatórios**:
+  - `Partials.Channel` e `Partials.Message`: garantem recepção de eventos em canais de DM não cacheados previamente.
+- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra o comando `/cancel` globalmente no aplicativo e na guilda especificada em `DISCORD_GUILD_ID` (quando fornecida).
 - **Tolerância a ausência de token**: Se a variável `DISCORD_BOT_TOKEN` não estiver definida
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.
   A aplicação deve inicializar normalmente em ambientes de CI e testes unitários.
 - **Encerramento limpo**: No hook `onApplicationShutdown`, invoque `client.destroy()` para
   fechar conexões de WebSocket ativas com a API do Discord.
 
-## Isolamento Conversacional com Threads
+## Modos de Interação Conversacional
 
+### 1. Mensagens Diretas / Particular (DM)
+- Mensagens originadas em DM (`message.channel.isDMBased()`) são processadas diretamente sem necessidade de menção `@Bot`.
+- Não cria threads (o Discord não suporta threads em DMs); utiliza o próprio canal da DM para exibir progresso e enviar respostas.
+- Mapeia `channelId = message.channelId` e `threadId = undefined` para o orquestrador.
+
+### 2. Canais de Servidor com Isolamento em Threads
 Para manter os canais limpos e conversas simultâneas estritamente isoladas:
 
 1. **Filtro de mensagens**: Mensagens originadas de bots (`message.author.bot`) devem ser

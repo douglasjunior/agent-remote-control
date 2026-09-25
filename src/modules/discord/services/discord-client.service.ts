@@ -5,7 +5,12 @@ import {
   type OnApplicationShutdown,
   Optional,
 } from '@nestjs/common';
-import { Client, type ClientEvents, GatewayIntentBits } from 'discord.js';
+import {
+  Client,
+  type ClientEvents,
+  GatewayIntentBits,
+  Partials,
+} from 'discord.js';
 
 
 @Injectable()
@@ -24,6 +29,7 @@ implements OnApplicationBootstrap, OnApplicationShutdown {
           GatewayIntentBits.MessageContent,
           GatewayIntentBits.DirectMessages,
         ],
+        partials: [Partials.Channel, Partials.Message],
       });
   }
 
@@ -50,9 +56,40 @@ implements OnApplicationBootstrap, OnApplicationShutdown {
     try {
       await this.client.login(token);
       this.logger.log('Discord client logged in successfully');
+      await this.registerSlashCommands();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to login Discord client: ${message}`);
+    }
+  }
+
+  private async registerSlashCommands(): Promise<void> {
+    try {
+      const commands = [
+        {
+          name: 'cancel',
+          description: 'Cancela o turno ativo do agente de IA',
+        },
+      ];
+
+      const guildId = process.env.DISCORD_GUILD_ID;
+      if (guildId) {
+        const guild =
+          this.client.guilds.cache.get(guildId)
+          ?? (await this.client.guilds.fetch(guildId).catch(() => null));
+        if (guild) {
+          await guild.commands.set(commands);
+          this.logger.log(`Slash commands registered for guild ${guildId}`);
+        }
+      }
+
+      if (this.client.application) {
+        await this.client.application.commands.set(commands);
+        this.logger.log('Global slash commands registered successfully');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Failed to register slash commands: ${message}`);
     }
   }
 

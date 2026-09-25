@@ -36,25 +36,43 @@ export class DiscordMessageHandler implements OnModuleInit {
       return;
     }
 
-    const isThread = message.channel.isThread();
+    const isDirectMessage =
+      typeof message.channel?.isDMBased === 'function'
+      && message.channel.isDMBased();
+    const isThread =
+      typeof message.channel?.isThread === 'function'
+      && message.channel.isThread();
     const isBotMentioned = message.mentions.has(clientUser);
     const isManagedThread =
       isThread && (message.channel.ownerId === clientUser.id || isBotMentioned);
 
-    if (!isManagedThread && !isBotMentioned) {
+    if (!isDirectMessage && !isManagedThread && !isBotMentioned) {
       return;
     }
 
+    let targetChannel: { send: (content: any) => Promise<any> } | null = null;
     let thread: ThreadChannel | null = null;
 
     try {
       let channelId: string;
-      let threadId: string;
+      let threadId: string | undefined;
 
-      if (isThread) {
+      if (isDirectMessage) {
+        if (
+          !('send' in message.channel)
+          || typeof message.channel.send !== 'function'
+        ) {
+          return;
+        }
+        channelId = message.channelId;
+        threadId = undefined;
+        targetChannel =
+          message.channel as unknown as { send: (content: any) => Promise<any> };
+      } else if (isThread) {
         thread = message.channel as ThreadChannel;
         channelId = thread.parentId ?? thread.id;
         threadId = thread.id;
+        targetChannel = thread;
       } else {
         const threadTitle =
           message.cleanContent.slice(0, 50).trim() || 'Agent Session';
@@ -64,17 +82,20 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
         channelId = message.channelId;
         threadId = thread.id;
+        targetChannel = thread;
       }
 
-      const prompt = this.cleanPrompt(message.content, clientUser.id);
+      const prompt = isDirectMessage
+        ? message.content.trim()
+        : this.cleanPrompt(message.content, clientUser.id);
       if (!prompt) {
-        await thread.send(
+        await targetChannel.send(
           'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
         );
         return;
       }
 
-      const progressMessage = await thread.send(
+      const progressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
       );
       const activities: string[] = [];
@@ -113,16 +134,18 @@ export class DiscordMessageHandler implements OnModuleInit {
       if (result.status === 'completed') {
         const chunks = this.activityFormatter.splitMessage(result.response);
         if (chunks.length === 0) {
-          await thread.send('✅ *Tarefa concluída sem mensagem de resposta.*');
+          await targetChannel.send(
+            '✅ *Tarefa concluída sem mensagem de resposta.*',
+          );
         } else {
           for (const chunk of chunks) {
-            await thread.send(chunk);
+            await targetChannel.send(chunk);
           }
         }
       } else if (result.status === 'cancelled') {
-        await thread.send('⚠️ **Turno cancelado pelo usuário.**');
+        await targetChannel.send('⚠️ **Turno cancelado pelo usuário.**');
       } else {
-        await thread.send(
+        await targetChannel.send(
           `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
         );
       }
@@ -130,10 +153,12 @@ export class DiscordMessageHandler implements OnModuleInit {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Error processing Discord message: ${errorMessage}`);
-      if (thread) {
-        await thread.send(
-          `❌ **Ocorreu um erro ao processar sua solicitação:** ${errorMessage}`,
-        );
+      if (targetChannel) {
+        await targetChannel
+          .send(
+            `❌ **Ocorreu um erro ao processar sua solicitação:** ${errorMessage}`,
+          )
+          .catch(() => undefined);
       }
     }
   }

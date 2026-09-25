@@ -58,12 +58,94 @@ describe('DiscordClientService', () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
-  it('should login with token if DISCORD_BOT_TOKEN is set', async () => {
+  it('should login with token and register slash commands if DISCORD_BOT_TOKEN is set', async () => {
+    const setGuildCommands = vi.fn().mockResolvedValue([]);
+    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const guildMock = { commands: { set: setGuildCommands } };
+
+    (mockClient as any).guilds = {
+      cache: new Map([['guild-123', guildMock]]),
+      fetch: vi.fn().mockResolvedValue(guildMock),
+    };
+    (mockClient as any).application = {
+      commands: { set: setAppCommands },
+    };
+
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+    process.env.DISCORD_GUILD_ID = 'guild-123';
 
     await service.onApplicationBootstrap();
 
     expect(loginMock).toHaveBeenCalledWith('test-bot-token');
+    expect(setGuildCommands).toHaveBeenCalledWith([{ name: 'cancel', description: 'Cancela o turno ativo do agente de IA' }]);
+    expect(setAppCommands).toHaveBeenCalledWith([{ name: 'cancel', description: 'Cancela o turno ativo do agente de IA' }]);
+
+    delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should fetch guild if not cached when registering slash commands', async () => {
+    const setGuildCommands = vi.fn().mockResolvedValue([]);
+    const guildMock = { commands: { set: setGuildCommands } };
+    const fetchMock = vi.fn().mockResolvedValue(guildMock);
+
+    (mockClient as any).guilds = {
+      cache: new Map(),
+      fetch: fetchMock,
+    };
+    (mockClient as any).application = {
+      commands: { set: vi.fn() },
+    };
+
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+    process.env.DISCORD_GUILD_ID = 'guild-456';
+
+    await service.onApplicationBootstrap();
+
+    expect(fetchMock).toHaveBeenCalledWith('guild-456');
+    expect(setGuildCommands).toHaveBeenCalled();
+
+    delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should handle guild fetch rejection gracefully when registering slash commands', async () => {
+    (mockClient as any).guilds = {
+      cache: new Map(),
+      fetch: vi.fn().mockRejectedValue(new Error('Guild not found')),
+    };
+    (mockClient as any).application = {
+      commands: { set: vi.fn() },
+    };
+
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+    process.env.DISCORD_GUILD_ID = 'guild-missing';
+
+    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+
+    delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should catch and log error if registerSlashCommands throws', async () => {
+    (mockClient as any).application = {
+      commands: {
+        set: vi.fn().mockRejectedValueOnce(new Error('Missing Access')),
+      },
+    };
+
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+
+    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+  });
+
+  it('should catch and log raw string error if registerSlashCommands throws', async () => {
+    (mockClient as any).application = {
+      commands: {
+        set: vi.fn().mockRejectedValueOnce('raw slash error'),
+      },
+    };
+
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+
+    await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
   });
 
   it('should handle and log login errors gracefully without throwing', async () => {
