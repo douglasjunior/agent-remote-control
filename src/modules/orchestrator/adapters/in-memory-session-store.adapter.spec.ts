@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SessionContext } from '../models/session-context.model.js';
+import { buildSessionContext } from '../testing/session-context.fixture.js';
 
 import { InMemorySessionStoreAdapter } from './in-memory-session-store.adapter.js';
 
@@ -18,14 +19,14 @@ describe('InMemorySessionStoreAdapter', () => {
   });
 
   it('should save and find session by channelId without threadId', async () => {
-    const session: SessionContext = {
+    const session: SessionContext = buildSessionContext({
       sessionId: 'sess-1',
       channelId: 'ch-1',
       userId: 'usr-1',
       workspacePath: '/path/workspace',
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
-    };
+    });
 
     await store.saveSession(session);
     const found = await store.findSession('ch-1');
@@ -34,7 +35,7 @@ describe('InMemorySessionStoreAdapter', () => {
   });
 
   it('should save and find session by channelId and threadId', async () => {
-    const session: SessionContext = {
+    const session: SessionContext = buildSessionContext({
       sessionId: 'sess-2',
       channelId: 'ch-1',
       threadId: 'th-1',
@@ -42,7 +43,7 @@ describe('InMemorySessionStoreAdapter', () => {
       workspacePath: '/path/workspace',
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
-    };
+    });
 
     await store.saveSession(session);
     const found = await store.findSession('ch-1', 'th-1');
@@ -51,7 +52,7 @@ describe('InMemorySessionStoreAdapter', () => {
   });
 
   it('should not match session if threadId differs', async () => {
-    const session: SessionContext = {
+    const session: SessionContext = buildSessionContext({
       sessionId: 'sess-3',
       channelId: 'ch-1',
       threadId: 'th-1',
@@ -59,7 +60,7 @@ describe('InMemorySessionStoreAdapter', () => {
       workspacePath: '/path/workspace',
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
+    });
 
     await store.saveSession(session);
 
@@ -71,14 +72,14 @@ describe('InMemorySessionStoreAdapter', () => {
   });
 
   it('should update existing session when saved with same sessionId', async () => {
-    const initial: SessionContext = {
+    const initial: SessionContext = buildSessionContext({
       sessionId: 'sess-4',
       channelId: 'ch-1',
       userId: 'usr-1',
       workspacePath: '/path/old',
       createdAt: new Date('2026-01-01T00:00:00Z'),
       updatedAt: new Date('2026-01-01T00:00:00Z'),
-    };
+    });
 
     await store.saveSession(initial);
 
@@ -96,14 +97,14 @@ describe('InMemorySessionStoreAdapter', () => {
   });
 
   it('should remove session by sessionId', async () => {
-    const session: SessionContext = {
+    const session: SessionContext = buildSessionContext({
       sessionId: 'sess-5',
       channelId: 'ch-2',
       userId: 'usr-2',
       workspacePath: '/path/workspace',
       createdAt: new Date(),
       updatedAt: new Date(),
-    };
+    });
 
     await store.saveSession(session);
     await store.removeSession('sess-5');

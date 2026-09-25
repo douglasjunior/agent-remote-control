@@ -17,6 +17,7 @@ export class StubAgentPort implements IAgentPort {
   createSessionCalls: string[] = [];
   promptCalls: string[] = [];
   cancelCalls = 0;
+  closeSessionCalls = 0;
   steeringPrompts: string[] = [];
   configCalls: AgentConfig[] = [];
   usageToReturn: AgentUsage | undefined = undefined;
@@ -25,6 +26,9 @@ export class StubAgentPort implements IAgentPort {
   errorToThrowOnConnect: Error | null = null;
   errorToThrowOnCreateSession: Error | null = null;
   activityListeners: ((activity: AgentActivity) => void)[] = [];
+
+  mockResponses: string[] = [];
+  promptErrorToThrow: Error | null = null;
 
   async connect(): Promise<void> {
     this.connectCalls++;
@@ -44,11 +48,20 @@ export class StubAgentPort implements IAgentPort {
 
   async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.promptCalls.push(text);
+    if (this.promptErrorToThrow) {
+      throw this.promptErrorToThrow;
+    }
     if (this.errorToThrowOnPrompt) {
       throw this.errorToThrowOnPrompt;
     }
-    for (const update of this.updatesToYield) {
-      yield update;
+    const response = this.mockResponses.shift();
+    if (response) {
+      this.lastAgentMessage = response;
+      yield { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: response } } } as any;
+    } else {
+      for (const update of this.updatesToYield) {
+        yield update;
+      }
     }
   }
 
@@ -77,6 +90,7 @@ export class StubAgentPort implements IAgentPort {
   }
 
   async closeSession(): Promise<void> {
+    this.closeSessionCalls++;
     this.currentSessionId = undefined;
   }
 

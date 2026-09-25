@@ -22,11 +22,19 @@ description: >
 A porta `IAgentPort` reside em `src/modules/agent/ports/agent.port.ts` e desacopla
 o núcleo da aplicação dos detalhes técnicos de comunicação com agentes de IA.
 
-A injeção de dependência é realizada exclusivamente via Symbol `IAgentPort`:
+Cada instância de `IAgentPort` representa um subprocesso de agente com uma única sessão
+ACP. Consumidores obtêm instâncias pela fábrica `IAgentPortFactory`
+(`src/modules/agent/ports/agent-port-factory.port.ts`), registrada no `AgentModule` com
+`AntigravityPortFactoryAdapter`:
 
 ```ts
-@Inject(IAgentPort) private readonly agent: IAgentPort
+@Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory
+
+const agentPort = this.agentPortFactory.create();
 ```
+
+O `AgentModule` exporta apenas a fábrica. Um `IAgentPort` singleton faria todas as
+conversas compartilharem a mesma sessão ACP e o mesmo `cwd`.
 
 ### Métodos Obrigatórios
 
@@ -80,7 +88,7 @@ O `AntigravityAdapter` herda de `AbstractAcpAdapter` e provê:
 
 ## Regras Prescritivas
 
-- **Proibido instanciar adaptadores diretamente em casos de uso**: injete sempre a porta através de `@Inject(IAgentPort)`.
+- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias sempre via `@Inject(IAgentPortFactory)` e `create()`.
 - **Proibido acoplar o núcleo ao SDK do ACP**: os tipos e estruturas de dados do `@agentclientprotocol/sdk` devem permanecer restritos aos adaptadores e bridges. Casos de uso manipulam exclusivamente os tipos declarados em `agent.port.ts`.
 - **Isolamento de I/O em adaptadores concretos**: qualquer chamada ao sistema de arquivos ou spawning de processos dentro de adaptadores deve utilizar `IFileSystemPort` e `IProcessRunnerPort`.
 - **Limpeza de recursos obrigatória**: sempre garanta a execução de `closeSession()` ou `disconnect()` em blocos `finally` ou no descarte de recursos de orquestração.

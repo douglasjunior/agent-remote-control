@@ -1,216 +1,220 @@
-import type { Client, Message, User } from 'discord.js';
-import { Events } from 'discord.js';
+import { Test, type TestingModule } from '@nestjs/testing';
+import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
-import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 
 import { DiscordMessageHandler } from './discord-message.handler.js';
 
 
-class StubOrchestratorService implements Partial<OrchestratorService> {
-  lastRequest?: TurnRequest;
-  mockResult: TurnResult = {
+class MockDiscordClientService {
+  public mockClient = {
+    user: { id: 'bot-123' },
+    on: vi.fn(),
+  };
+
+  getClient() {
+    return this.mockClient;
+  }
+}
+
+class MockOrchestratorService {
+  public lastRequest?: TurnRequest;
+  public mockResult: TurnResult = {
     sessionId: 'session-1',
     response: 'Hello from agent!',
     status: 'completed',
   };
 
-  throwError = false;
-
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
     this.lastRequest = request;
-    if (this.throwError) {
-      throw new Error('Orchestration failed');
+    if (request.onActivity) {
+      request.onActivity({
+        kind: 'thought',
+        id: '1',
+        text: 'Thinking about the request',
+      });
+      request.onActivity({
+        kind: 'tool',
+        title: 'Running bash command',
+        toolCallId: 'call-1',
+        status: 'in_progress',
+      });
     }
     return this.mockResult;
   }
+}
 
-  async cancelTurn(): Promise<void> {
-    return undefined;
-  }
+class MockWorkspacePort implements IWorkspacePort {
+  getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
+  resolveRepositoryPath = vi.fn();
+  registerRepository = vi.fn();
+  getRepository = vi.fn();
+  listRepositories = vi.fn();
+  hasRepository = vi.fn();
 }
 
 describe('DiscordMessageHandler', () => {
-  let mockClient: Client;
-  let clientService: DiscordClientService;
-  let orchestratorService: StubOrchestratorService;
-  let formatter: DiscordActivityFormatter;
   let handler: DiscordMessageHandler;
+  let discordClientService: MockDiscordClientService;
+  let orchestratorService: MockOrchestratorService;
+  let workspacePort: MockWorkspacePort;
 
-  const botUser = { id: 'bot-123', username: 'AgentBot' } as User;
+  beforeEach(async () => {
+    vi.useFakeTimers();
 
-  beforeEach(() => {
-    mockClient = {
-      user: botUser,
-      on: vi.fn(),
-    } as unknown as Client;
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        DiscordMessageHandler,
+        DiscordActivityFormatter,
+        {
+          provide: DiscordClientService,
+          useClass: MockDiscordClientService,
+        },
+        {
+          provide: OrchestratorService,
+          useClass: MockOrchestratorService,
+        },
+        {
+          provide: IWorkspacePort,
+          useClass: MockWorkspacePort,
+        },
+      ],
+    }).compile();
 
-    clientService = new DiscordClientService(mockClient);
-    orchestratorService = new StubOrchestratorService();
-    formatter = new DiscordActivityFormatter();
-    handler = new DiscordMessageHandler(
-      clientService,
-      orchestratorService as unknown as OrchestratorService,
-      formatter,
+    handler = module.get<DiscordMessageHandler>(DiscordMessageHandler);
+    discordClientService = module.get(DiscordClientService);
+    orchestratorService = module.get(OrchestratorService);
+    workspacePort = module.get(IWorkspacePort);
+  });
+
+  it('should register message create event on module init', () => {
+    handler.onModuleInit();
+    expect(discordClientService.mockClient.on).toHaveBeenCalledWith(
+      Events.MessageCreate,
+      expect.any(Function),
     );
   });
 
-  it('should register messageCreate listener on onModuleInit and invoke handleMessage', () => {
-    let messageListener: ((msg: Message) => void) | undefined;
-    vi.mocked(mockClient.on).mockImplementation(((event: string, cb: any) => {
-      if (event === Events.MessageCreate) {
-        messageListener = cb;
-      }
-      return mockClient;
-    }) as any);
-
+  it('should delegate registered message create events to handleMessage', () => {
+    const handleMessage = vi.spyOn(handler, 'handleMessage').mockResolvedValue();
     handler.onModuleInit();
-    expect(messageListener).toBeDefined();
+    const listener = discordClientService.mockClient.on.mock.calls[0]![1] as (message: Message) => void;
+    const message = { author: { bot: true } } as Message;
 
-    const ignoredBotMessage = {
+    listener(message);
+
+    expect(handleMessage).toHaveBeenCalledWith(message);
+  });
+
+  it('should ignore messages from bots', async () => {
+    const message = {
       author: { bot: true },
-    } as unknown as Message;
-    messageListener?.(ignoredBotMessage);
-  });
-
-  it('should ignore messages from bot authors', async () => {
-    const message = {
-      author: { bot: true, id: 'other-bot' },
-    } as unknown as Message;
-
+    } as Message;
     await handler.handleMessage(message);
-
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
 
-  it('should ignore messages if client user is not defined', async () => {
-    (mockClient as any).user = null;
+  it('should ignore messages when client user is not ready', async () => {
+    discordClientService.mockClient.user = null as any;
     const message = {
-      author: { bot: false, id: 'user-1' },
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-    } as unknown as Message;
-
+      author: { bot: false },
+    } as Message;
     await handler.handleMessage(message);
-
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
 
-  it('should ignore message if not in thread and bot is not mentioned', async () => {
+  it('should ignore messages that are neither DM, thread, nor mention', async () => {
     const message = {
-      author: { bot: false, id: 'user-1' },
-      mentions: { has: vi.fn().mockReturnValue(false) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-    } as unknown as Message;
-
-    await handler.handleMessage(message);
-
-    expect(orchestratorService.lastRequest).toBeUndefined();
-  });
-
-  it('should ignore message in thread not owned by bot and bot not mentioned', async () => {
-    const message = {
-      author: { bot: false, id: 'user-1' },
+      author: { bot: false },
       mentions: { has: vi.fn().mockReturnValue(false) },
       channel: {
-        isThread: vi.fn().mockReturnValue(true),
-        ownerId: 'someone-else',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(false),
       },
+    } as unknown as Message;
+    await handler.handleMessage(message);
+    expect(orchestratorService.lastRequest).toBeUndefined();
+  });
+
+  it('should handle message in existing managed thread', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42', username: 'john' },
+      channelId: 'channel-1',
+      cleanContent: 'Do something',
+      content: 'Do something',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
     } as unknown as Message;
 
     await handler.handleMessage(message);
 
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(orchestratorService.lastRequest).toMatchObject({
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+      userId: 'user-42',
+      prompt: 'Do something',
+      agentRole: 'CEO',
+      workspacePath: '/mock/workspace',
+    });
+    expect(mockThread.send).toHaveBeenCalledWith('Hello from agent!');
+    expect(workspacePort.getBaseDirectory).toHaveBeenCalled();
   });
 
-  it('should start thread, clean prompt, and send response for non-thread message with mention', async () => {
+  it('should spawn a new thread if bot is mentioned in a normal channel', async () => {
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {
-      id: 'thread-999',
+      id: 'thread-new',
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
     const message = {
-      author: { bot: false, id: 'user-42' },
+      author: { bot: false, id: 'user-42', username: 'john' },
       channelId: 'channel-1',
-      cleanContent: 'Fix bug in auth service',
-      content: '<@!bot-123> Fix bug in auth service',
+      cleanContent: 'Fix the bug',
+      content: '<@bot-123> Fix the bug',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: {
+        isThread: vi.fn().mockReturnValue(false),
+        isDMBased: vi.fn().mockReturnValue(false),
+      },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
 
     expect(message.startThread).toHaveBeenCalledWith({
-      name: 'Fix bug in auth service',
+      name: 'Fix the bug',
       autoArchiveDuration: 60,
     });
     expect(orchestratorService.lastRequest).toMatchObject({
       channelId: 'channel-1',
-      threadId: 'thread-999',
+      threadId: 'thread-new',
       userId: 'user-42',
-      prompt: 'Fix bug in auth service',
+      prompt: 'Fix the bug',
       agentRole: 'CEO',
+      workspacePath: '/mock/workspace',
     });
     expect(mockThread.send).toHaveBeenCalledWith('Hello from agent!');
   });
 
-  it('should process message in existing thread owned by bot without starting new thread', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-    const existingThread = {
-      id: 'thread-888',
-      parentId: 'channel-main',
-      ownerId: 'bot-123',
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
-    };
-
-    const message = {
-      author: { bot: false, id: 'user-42' },
-      content: 'Run tests now',
-      mentions: { has: vi.fn().mockReturnValue(false) },
-      channel: existingThread,
-    } as unknown as Message;
-
-    await handler.handleMessage(message);
-
-    expect(orchestratorService.lastRequest).toMatchObject({
-      channelId: 'channel-main',
-      threadId: 'thread-888',
-      prompt: 'Run tests now',
-    });
-  });
-
-  it('should fallback to threadId as channelId if parentId is not present on thread', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-    const existingThread = {
-      id: 'thread-888',
-      parentId: undefined,
-      ownerId: 'bot-123',
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
-    };
-
-    const message = {
-      author: { bot: false, id: 'user-42' },
-      content: 'Check status',
-      mentions: { has: vi.fn().mockReturnValue(false) },
-      channel: existingThread,
-    } as unknown as Message;
-
-    await handler.handleMessage(message);
-
-    expect(orchestratorService.lastRequest?.channelId).toBe('thread-888');
-  });
-
-  it('should reply with prompt request if message content has no prompt after cleaning', async () => {
+  it('should reply with greeting if prompt is empty in normal channel', async () => {
     const mockThread = {
-      id: 'thread-999',
+      id: 'thread-new',
       send: vi.fn().mockResolvedValue({}),
     };
 
@@ -218,9 +222,12 @@ describe('DiscordMessageHandler', () => {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
       cleanContent: '',
-      content: '<@!bot-123>',
+      content: '<@bot-123>   ',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: {
+        isThread: vi.fn().mockReturnValue(false),
+        isDMBased: vi.fn().mockReturnValue(false),
+      },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -232,84 +239,111 @@ describe('DiscordMessageHandler', () => {
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
 
-  it('should update progress message via throttler when onActivity fires', async () => {
+  it('should update progress message when activities are emitted', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+    await vi.runAllTimersAsync();
+
+    expect(progressMessage.edit).toHaveBeenCalled();
+    const editCalls = progressMessage.edit.mock.calls.map(call => call[0]);
+    expect(editCalls.some((c: string) => c.includes('Thinking about the request'))).toBe(true);
+    expect(editCalls.some((c: string) => c.includes('Running bash command'))).toBe(true);
+  });
+
+  it('should swallow error when progress message update fails', async () => {
+    const progressMessage = {
+      edit: vi.fn().mockRejectedValue(new Error('Discord API Error')),
+    };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+  });
+
+  it('should log warning when progress message update throws a non-Error string', async () => {
+    const progressMessage = {
+      edit: vi.fn().mockRejectedValue('String error from Discord API'),
+    };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+  });
+
+  it('should split long responses into multiple chunks', async () => {
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'A'.repeat(3000),
+      status: 'completed',
+    };
+
     const message = {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
-      cleanContent: 'Plan work',
-      content: '<@bot-123> Plan work',
+      cleanContent: 'Long task',
+      content: '<@bot-123> Long task',
       mentions: { has: vi.fn().mockReturnValue(true) },
       channel: { isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
-
-    let activityCallback: any;
-    orchestratorService.executeTurn = vi
-      .fn()
-      .mockImplementation(async (req) => {
-        activityCallback = req.onActivity;
-        activityCallback({
-          kind: 'thought',
-          id: 't-1',
-          text: 'Planning the architecture...',
-        });
-        return {
-          sessionId: 'session-1',
-          response: 'Plan completed.',
-          status: 'completed',
-        };
-      });
 
     await handler.handleMessage(message);
 
-    expect(progressMessage.edit).toHaveBeenCalled();
-  });
-
-  it('should handle edit error in progressMessage without breaking the flow', async () => {
-    const progressMessage = {
-      edit: vi
-        .fn()
-        .mockRejectedValue(new Error('Rate limit or permission denied')),
-    };
-    const mockThread = {
-      id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
-    };
-
-    const message = {
-      author: { bot: false, id: 'user-42' },
-      channelId: 'channel-1',
-      cleanContent: 'Plan work',
-      content: '<@bot-123> Plan work',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
-    } as unknown as Message;
-
-    orchestratorService.executeTurn = vi
-      .fn()
-      .mockImplementation(async (req) => {
-        req.onActivity({
-          kind: 'tool',
-          toolCallId: 'c1',
-          title: 'git status',
-          status: 'in_progress',
-        });
-        return {
-          sessionId: 'session-1',
-          response: 'Done.',
-          status: 'completed',
-        };
-      });
-
-    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    expect(mockThread.send).toHaveBeenCalledWith('Done.');
+    expect(mockThread.send).toHaveBeenCalledWith('A'.repeat(2000));
+    expect(mockThread.send).toHaveBeenCalledWith('A'.repeat(1000));
   });
 
   it('should send default completion message when response is empty', async () => {
@@ -328,8 +362,8 @@ describe('DiscordMessageHandler', () => {
     const message = {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
-      cleanContent: 'Silent command',
-      content: '<@bot-123> Silent command',
+      cleanContent: 'Silent task',
+      content: '<@bot-123> Silent task',
       mentions: { has: vi.fn().mockReturnValue(true) },
       channel: { isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),

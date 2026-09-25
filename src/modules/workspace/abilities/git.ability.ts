@@ -4,7 +4,23 @@ Repositories are cloned and maintained inside the workspace directory.
 
 When interacting with Git repositories, follow these rules:
 
-1. Commit Message Convention:
+1. Cloning via SSH:
+   - Always clone and add remotes using the SSH URL form, never HTTPS. SSH key authentication works without interactive credential prompts.
+   - Convert HTTPS URLs before cloning, preserving the path:
+     - GitHub: https://github.com/<org>/<repo>.git -> git@github.com:<org>/<repo>.git
+     - GitLab: https://gitlab.com/<group>/<repo>.git -> git@gitlab.com:<group>/<repo>.git
+     - Azure DevOps: https://dev.azure.com/<org>/<project>/_git/<repo> -> git@ssh.dev.azure.com:v3/<org>/<project>/<repo>
+   - Run clones with GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" so the first connection to a host does not block waiting for host key confirmation.
+
+2. SSH Key Setup:
+   - Before the first clone, check whether $HOME/.ssh/id_rsa.pub exists.
+   - If $HOME/.ssh/id_rsa exists but the .pub file does not, regenerate the public key with: ssh-keygen -y -f "$HOME/.ssh/id_rsa" > "$HOME/.ssh/id_rsa.pub"
+   - If neither exists, create $HOME/.ssh with mode 700 and generate an RSA key pair without passphrase: ssh-keygen -t rsa -b 4096 -N "" -C "agent-remote-control" -f "$HOME/.ssh/id_rsa"
+   - Never overwrite, move, or delete an existing key.
+   - Whenever a key pair was generated, or a clone fails with "Permission denied (publickey)", stop the clone and include in your response the full content of $HOME/.ssh/id_rsa.pub inside a code block, asking the user to register it as an SSH key in their Git provider (GitHub, Azure DevOps, GitLab, etc.) and to confirm when done.
+   - Never print, copy, or transmit the private key ($HOME/.ssh/id_rsa).
+
+3. Commit Message Convention:
    - Strictly follow the Conventional Commits format in Portuguese (pt-BR):
      <tipo>: <assunto>
    - Valid types: feat, fix, docs, style, refactor, test, chore.
@@ -13,7 +29,7 @@ When interacting with Git repositories, follow these rules:
    - Do not put a period at the end of the subject.
    - When detailed context is needed, separate the body from the subject with a single blank line.
 
-2. Safety and Verification Rules:
+4. Safety and Verification Rules:
    - Never use force push (e.g., git push --force, -f).
    - Inspect git status and git diff before staging or committing changes.
    - Never commit sensitive information, credentials, private keys, or .env files.

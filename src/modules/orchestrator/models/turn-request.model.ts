@@ -7,7 +7,7 @@ export type TurnRequest = {
   userId: string;
   prompt: string;
   workspacePath: string;
-  agentRole?: string;
+  agentRole: string;
   onActivity?: (activity: AgentActivity) => void;
   onTextChunk?: (chunk: string) => void;
 };
