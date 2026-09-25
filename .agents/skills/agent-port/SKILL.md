@@ -1,11 +1,12 @@
 ---
 name: agent-port
 description: >
-  Padrão de integração com agentes de IA via Agent Client Protocol (ACP) e arquitetura
-  Ports & Adapters. Define o contrato IAgentPort, ciclo de vida da sessão (connect,
-  createSession, prompt, cancel, closeSession), demux de streaming, suporte a steering
-  e adaptadores ACP concretos como AntigravityAdapter. Use ao implementar, estender ou
-  consumir agentes de IA, bridges ACP, manipulação de processos e demux de streams.
+  Padrão de integração com agentes de IA via Agent Client Protocol (ACP) e Ports &
+  Adapters. Define o contrato IAgentPort, o ciclo de vida da sessão (connect,
+  createSession, loadSession, prompt, cancel, closeSession), a retomada via session/load,
+  a detecção de transporte perdido, a escada de cancelamento com e sem steering, o demux
+  de streaming e o AntigravityAdapter. Use ao implementar, estender ou consumir agentes,
+  bridges ACP, processos e streams.
 ---
 
 # Porta do Agente e Integração ACP
@@ -33,62 +34,98 @@ ACP. Consumidores obtêm instâncias pela fábrica `IAgentPortFactory`
 const agentPort = this.agentPortFactory.create();
 ```
 
-O `AgentModule` exporta apenas a fábrica. Um `IAgentPort` singleton faria todas as
-conversas compartilharem a mesma sessão ACP e o mesmo `cwd`.
+O `AgentModule` exporta a fábrica e as portas de infraestrutura `IProcessRunnerPort` e
+`IFileSystemPort`. Um `IAgentPort` singleton faria todas as conversas compartilharem a
+mesma sessão ACP e o mesmo `cwd`.
 
-### Métodos Obrigatórios
+### Propriedades
 
-- `connect(): Promise<void>`: inicializa o transporte com o agente, executa a descoberta de capacidades e opções de configuração iniciais. É idempotente. Se o handshake falhar, o subprocesso é encerrado e o estado limpo, permitindo nova tentativa.
-- `createSession(cwd: string): Promise<void>`: cria uma sessão de trabalho vinculada ao diretório informado (`cwd`).
-- `prompt(text: string): AsyncGenerator<AgentUpdate>`: envia um turno de instrução ao agente, processando os updates de streaming e gerando blocos consolidados.
-- `sendSteeringPrompt(text: string): void`: envia um redirecionamento em tempo real sem interromper o turno atual. Utiliza o protocolo nativo de steering quando suportado, ou prompt direto como fallback.
-- `cancel(): Promise<void>`: interrompe o prompt em andamento através de escada de escalação temporizada. Sem prompt em andamento é no-op, para que um cancelamento tardio não aborte o turno seguinte.
-- `closeSession(): Promise<void>`: encerra a sessão ativa no agente, preservando a conexão base para novas sessões.
-- `disconnect(): Promise<void>`: finaliza a conexão de transporte e encerra o subprocesso do agente.
-- `getAvailableModels(): AgentModelList | null`: lista os modelos publicados pelo agente e o modelo atualmente ativo.
-- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortList | null>`: inspeciona os níveis de esforço/raciocínio disponíveis para o modelo através de sessão de sondagem isolada.
-- `setConfig(config: AgentConfig): Promise<void>`: atualiza o modelo ou nível de raciocínio da sessão ativa.
-- `getLastRoundUsage(): Promise<AgentUsage | undefined>`: obtém o consumo de tokens reportado no último turno ou via fallback.
-- `getLastAgentMessage(): string | undefined`: retorna a última resposta textual consolidada gerada pelo agente.
-- `onActivity(listener: (activity: AgentActivity) => void): () => void`: registra observador para o feed de atividades ao vivo (pensamentos, chamadas de ferramenta e cancelamento).
+- `agentName: string`: identificador do agente concreto (ex.: `'agy'`), exibido no rodapé das respostas.
+- `lastAgentMessage: string`: última resposta textual consolidada do turno.
+- `currentSessionId?: string`: ID da sessão ACP ativa. Fica `undefined` sem sessão, inclusive depois de transporte perdido ou cancelamento forçado.
 
-## Ciclo de Vida da Sessão e Escalação de Cancelamento
+### Métodos
 
-A interação com qualquer agente ACP respeita a sequência linear:
+- `connect(): Promise<void>`: inicializa o transporte, lê as capacidades (`agentCapabilities.loadSession` e `_meta.steering.supported`) e descobre as opções de configuração. É idempotente. Se o handshake falhar, o subprocesso é encerrado e o estado limpo, permitindo nova tentativa.
+- `createSession(cwd: string): Promise<void>`: cria uma sessão (`session/new`) vinculada ao diretório informado.
+- `loadSession(cwd: string, sessionId: string): Promise<boolean>`: retoma uma sessão existente via `session/load`. Retorna `false`, sem lançar, quando o agente não anuncia `loadSession` ou quando o load falha; retorna `true` com `currentSessionId` definido.
+- `prompt(text: string): AsyncGenerator<AgentUpdate>`: envia um turno e entrega o bloco final consolidado.
+- `sendSteeringPrompt(text: string): void`: redireciona o turno em andamento. Usa `_session/steering` quando suportado, ou `session/prompt` como fallback.
+- `cancel(): Promise<void>`: interrompe o prompt em andamento pela escada de cancelamento. Sem prompt em andamento é no-op, para que um cancelamento tardio não aborte o turno seguinte.
+- `closeSession(): Promise<void>`: encerra a sessão ativa, preservando a conexão.
+- `disconnect(): Promise<void>`: descarta a sessão, encerra o subprocesso e limpa as opções em cache.
+- `getAvailableModels(): AgentModelState | null`: modelos publicados e o modelo ativo.
+- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: níveis de effort do modelo, lidos numa sessão de sondagem isolada.
+- `setConfig(config: AgentConfig): Promise<void>`: aplica modelo e/ou effort à sessão ativa e guarda como preferência para as próximas sessões.
+- `getLastRoundUsage(): Promise<AgentUsage | undefined>`: consumo de tokens do último turno ou via fallback.
+- `onActivity(listener): () => void`: observa o feed ao vivo (pensamentos, ferramentas e cancelamento).
+
+### Tipos sem SDK
+
+`AgentUpdate` é `{ kind: 'text'; text: string }` e `AgentToolStatus` é
+`'pending' | 'in_progress' | 'completed' | 'failed'`. Nenhum tipo do
+`@agentclientprotocol/sdk` aparece na porta; o SDK só é importado em
+`src/modules/agent/{adapters,bridges,demux,testing}`.
+
+## Ciclo de Vida da Sessão
 
 ```text
-connect() ──> createSession(cwd) ──> prompt(text) ──> closeSession() ──> disconnect()
-                                       │       ▲
-                                       └── cancel()
+connect() ──> loadSession(cwd, id) ──false──> createSession(cwd) ──> prompt(text) ──> closeSession() ──> disconnect()
+                     │                                                 │      ▲
+                     └──────────────────true───────────────────────────┘      └── cancel()
 ```
 
-O método `cancel()` aciona uma escada de três degraus:
+### Retomada com `session/load`
 
-1. **Notificação imediata**: emite `session/cancel` via JSON-RPC / ACP e inicia janela de tolerância de 5 segundos.
-2. **Escalação com abort prompt**: se o agente não responder em 5 segundos, injeta prompt de abort instruindo parada imediata de agentes e subagentes, iniciando nova janela de 15 segundos.
-3. **Cancelamento forçado**: se a tolerância expirar, força a rejeição local do turno pendente com `PromptCancelledError` e reenvia `session/cancel`.
+O SDK só monta `ActiveSession` para `session/new`. A sessão carregada usa o
+`ResumedSession` (`adapters/resumed-session.ts`), que implementa o mesmo `SessionHandle`
+(`sessionId`, `prompt`, `nextUpdate`, `dispose`): recebe os updates pelo handler global de
+`session/update` e envia o prompt direto por `session/prompt`. O handle só é criado depois
+da resposta do `session/load`, o que descarta o histórico reenviado pelo agente antes dela.
+
+Depois de criar ou carregar a sessão, o adapter aplica as `configOptions` retornadas, os
+`sessionConfigPresets()` e a preferência de `setConfig`.
+
+### Transporte perdido
+
+O `connect()` registra `exit` e `error` no subprocesso. Quando um deles dispara, o adapter
+loga `agent_process_exited`, descarta a sessão e o transporte e zera `currentSessionId`; um
+prompt em andamento falha com erro de transporte. O `disconnect()` remove esses listeners
+antes de encerrar o processo, então o próprio encerramento não é tratado como queda. O
+próximo `connect()` sobe um processo novo.
+
+### Escada de cancelamento
+
+1. **Notificação imediata**: envia `session/cancel` e abre janela de 5 segundos.
+2. **Escalação**: com steering, injeta o prompt de abort (`CANCEL_ABORT_PROMPT_TEXT`) por `_session/steering`; sem steering, reenvia `session/cancel`, porque um `session/prompt` concorrente seria rejeitado pelo agente ocupado. Abre janela de 15 segundos.
+3. **Cancelamento forçado**: rejeita localmente o turno com `PromptCancelledError` e descarta a sessão e o transporte. O turno seguinte reconecta e retoma a sessão com `loadSession`.
 
 ## Demux de Streaming e Atividades
 
-O `AgentStreamDemux` decompõe as notificações brutas do ACP em eventos tipados de negócio:
+O `AgentStreamDemux` decompõe as notificações brutas do ACP em eventos tipados:
 
-- `agent_thought_chunk`: agrupado em atividades `{ kind: 'thought', id, text }` emitidas para listeners registrados em `onActivity`.
-- `tool_call` e `tool_call_update`: emitidos como atividades `{ kind: 'tool', toolCallId, title, status }`.
-- `agent_message_chunk`: acumulado no buffer de turno e entregue como bloco final unificado no fechamento do gerador `prompt()`. Respostas vazias ou contendo apenas espaços não geram blocos textuais.
+- `agent_thought_chunk`: atividades `{ kind: 'thought', id, text }`.
+- `tool_call` e `tool_call_update`: atividades `{ kind: 'tool', toolCallId, title, status }`.
+- `agent_message_chunk`: acumulado e entregue como bloco final `AgentUpdate` no fechamento do `prompt()`. Respostas vazias não geram bloco.
 
 ## Adaptadores ACP e Antigravity
 
-A classe base `AbstractAcpAdapter` implementa a orquestração do protocolo ACP, o gerenciamento de sessões e a integração com o demux.
+A classe base `AbstractAcpAdapter` implementa o protocolo ACP, as sessões e a integração
+com o demux.
 
-O `AntigravityAdapter` herda de `AbstractAcpAdapter` e provê:
+O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e provê:
 
-- Resolução do binário do bridge (`agy-acp-bridge.js` em distribuição compilada ou `agy-acp-bridge.ts` em tempo de execução de desenvolvimento).
-- Detecção e injeção da variável de ambiente `AGY_PATH` via `IFileSystemPort.resolveInPath('agy')` quando não previamente definida no ambiente.
-- Execução isolada do bridge como subprocesso via `IProcessRunnerPort.spawn`.
+- Resolução do binário do bridge (`agy-acp-bridge.js` compilado ou `agy-acp-bridge.ts` em desenvolvimento).
+- Injeção de `AGY_PATH` via `IFileSystemPort.resolveInPath('agy')` quando ausente do ambiente.
+- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`.
+
+O bridge `agy-acp-bridge.ts` anuncia `loadSession: true`. O `session/load` reinicia o `agy`
+com `--conversation <sessionId>` e adota esse ID; o histórico fica guardado no próprio agy e
+não é reenviado. O bridge expõe apenas a opção `model` (sem `thought_level`).
 
 ## Regras Prescritivas
 
-- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias sempre via `@Inject(IAgentPortFactory)` e `create()`.
-- **Proibido acoplar o núcleo ao SDK do ACP**: os tipos e estruturas de dados do `@agentclientprotocol/sdk` devem permanecer restritos aos adaptadores e bridges. Casos de uso manipulam exclusivamente os tipos declarados em `agent.port.ts`.
-- **Isolamento de I/O em adaptadores concretos**: qualquer chamada ao sistema de arquivos ou spawning de processos dentro de adaptadores deve utilizar `IFileSystemPort` e `IProcessRunnerPort`.
-- **Limpeza de recursos obrigatória**: sempre garanta a execução de `closeSession()` ou `disconnect()` em blocos `finally` ou no descarte de recursos de orquestração.
+- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias via `@Inject(IAgentPortFactory)` e `create()`.
+- **Proibido acoplar o núcleo ao SDK do ACP**: casos de uso manipulam exclusivamente os tipos de `agent.port.ts`.
+- **Isolamento de I/O em adaptadores concretos**: sistema de arquivos e processos passam por `IFileSystemPort` e `IProcessRunnerPort`.
+- **Limpeza de recursos obrigatória**: garanta `closeSession()` ou `disconnect()` em blocos `finally` ou no descarte de recursos de orquestração.

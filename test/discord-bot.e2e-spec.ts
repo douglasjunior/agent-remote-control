@@ -1,25 +1,32 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
 import { IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
 import {
   type AgentActivity,
+  type AgentEffortState,
+  type AgentModelState,
+  type AgentUpdate,
   type AgentUsage,
   type IAgentPort,
   PromptCancelledError,
 } from '../src/modules/agent/ports/agent.port.js';
+import { DiscordInteractionHandler } from '../src/modules/discord/handlers/discord-interaction.handler.js';
 import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-message.handler.js';
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
 
 
+const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ padrão';
+
 class E2EAgentFake implements Partial<IAgentPort> {
+  readonly agentName = 'agy';
   lastAgentMessage = 'Implementation completed successfully.';
   currentSessionId?: string;
   readonly sessionCwds: string[] = [];
@@ -34,6 +41,10 @@ class E2EAgentFake implements Partial<IAgentPort> {
     this.currentSessionId = 'e2e-session-123';
   }
 
+  async loadSession(): Promise<boolean> {
+    return false;
+  }
+
   async getLastRoundUsage(): Promise<AgentUsage> {
     return {
       totalTokens: 150,
@@ -42,17 +53,9 @@ class E2EAgentFake implements Partial<IAgentPort> {
     };
   }
 
-  async* prompt(text: string): AsyncGenerator<any> {
+  async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.prompts.push(text);
-    yield {
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: {
-          type: 'text',
-          text: 'Implementation completed successfully.',
-        },
-      },
-    };
+    yield { kind: 'text', text: 'Implementation completed successfully.' };
   }
 
   onActivity(listener: (activity: AgentActivity) => void): () => void {
@@ -88,11 +91,11 @@ class E2EAgentFake implements Partial<IAgentPort> {
     return undefined;
   }
 
-  getAvailableModels() {
+  getAvailableModels(): AgentModelState | null {
     return null;
   }
 
-  async getAvailableEffortsForModel() {
+  async getAvailableEffortsForModel(_modelId: string): Promise<AgentEffortState | null> {
     return null;
   }
 
@@ -106,15 +109,10 @@ class ScriptedAgentFake extends E2EAgentFake {
     super();
   }
 
-  override async* prompt(text: string): AsyncGenerator<any> {
+  override async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.prompts.push(text);
     this.lastAgentMessage = this.responses.shift() ?? '';
-    yield {
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: this.lastAgentMessage },
-      },
-    };
+    yield { kind: 'text', text: this.lastAgentMessage };
   }
 }
 
@@ -130,14 +128,14 @@ class BlockingAgentFake extends E2EAgentFake {
     });
   }
 
-  override async* prompt(text: string): AsyncGenerator<any> {
+  override async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.prompts.push(text);
     this.lastAgentMessage = '';
     await new Promise<void>((_resolve, reject) => {
       this.rejectPrompt = reject;
       this.markStarted();
     });
-    yield undefined;
+    yield { kind: 'text', text: '' };
   }
 
   override async cancel(): Promise<void> {
@@ -145,9 +143,89 @@ class BlockingAgentFake extends E2EAgentFake {
   }
 }
 
+class SelectableAgentFake extends E2EAgentFake {
+  override lastAgentMessage = 'Built it.';
+
+  override getAvailableModels(): AgentModelState {
+    return {
+      availableModels: [
+        { modelId: 'one', name: 'one', displayName: 'Model One' },
+        { modelId: 'two', name: 'two', displayName: 'Model Two' },
+      ],
+      currentModelId: 'one',
+    };
+  }
+
+  override async getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null> {
+    if (modelId !== 'two') {
+      return null;
+    }
+    return {
+      availableEfforts: [
+        { effortId: 'low', name: 'Low' },
+        { effortId: 'high', name: 'High' },
+      ],
+      currentEffortId: 'low',
+    };
+  }
+}
+
+function seedAgentSettings(dataDir: string): void {
+  writeFileSync(
+    join(dataDir, 'agent-settings.json'),
+    JSON.stringify({
+      modelId: 'fast',
+      modelName: 'Fast Model',
+      effortId: null,
+      effortName: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    }),
+  );
+}
+
+function buildThread(id: string, parentId: string, sent: string[]) {
+  return {
+    id,
+    parentId,
+    ownerId: 'bot-e2e-id',
+    isThread: vi.fn().mockReturnValue(true),
+    send: vi.fn().mockImplementation(async (content: string) => {
+      sent.push(content);
+      return { edit: vi.fn().mockResolvedValue(undefined) };
+    }),
+  };
+}
+
+function threadReply(thread: ReturnType<typeof buildThread>, content: string): Message {
+  return {
+    author: { bot: false, id: 'discord-user-777' },
+    channelId: thread.id,
+    cleanContent: content,
+    content,
+    mentions: { has: vi.fn().mockReturnValue(false) },
+    channel: thread,
+  } as unknown as Message;
+}
+
 describe('Discord Bot Driving Adapter (e2e)', () => {
   let workspaceDir: string;
+  let dataDir: string;
   const originalWorkspaceDir = process.env.WORKSPACE_DIR;
+  const originalDataDir = process.env.DATA_DIR;
+
+  beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'arc-e2e-data-'));
+    process.env.DATA_DIR = dataDir;
+  });
+
+  afterEach(() => {
+    if (originalDataDir === undefined) {
+      delete process.env.DATA_DIR;
+    } else {
+      process.env.DATA_DIR = originalDataDir;
+    }
+    rmSync(dataDir, { recursive: true, force: true });
+  });
 
   beforeAll(() => {
     workspaceDir = mkdtempSync(join(tmpdir(), 'arc-e2e-workspaces-'));
@@ -164,6 +242,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   });
 
   it('should process user message, emit activities, and post final response to thread', async () => {
+    seedAgentSettings(dataDir);
     const fakeAgent = new E2EAgentFake();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -227,7 +306,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     });
 
     expect(threadMessages).toContain('⏳ *Iniciando processamento...*');
-    expect(threadMessages).toContain('Implementation completed successfully.');
+    expect(threadMessages).toContain(`Implementation completed successfully.\n${FOOTER}`);
 
     expect(editMock).toHaveBeenCalled();
 
@@ -238,11 +317,14 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(storedSession).not.toBeNull();
     expect(storedSession?.userId).toBe('discord-user-777');
     expect(storedSession?.agentRole).toBe('CEO');
+    expect(storedSession?.agentSessionId).toBe('e2e-session-123');
+    expect(readFileSync(join(dataDir, 'sessions.json'), 'utf-8')).toContain('e2e-session-123');
 
     await app.close();
   });
 
   it('should cancel a turn in progress through the /cancel slash command', async () => {
+    seedAgentSettings(dataDir);
     const fakeAgent = new BlockingAgentFake();
     const cancelSpy = vi.spyOn(fakeAgent, 'cancel');
 
@@ -313,12 +395,13 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
         ephemeral: true,
       });
     });
-    expect(threadMessages).toContain('⚠️ **Turno cancelado pelo usuário.**');
+    expect(threadMessages).toContain(`⚠️ **Turno cancelado pelo usuário.**\n${FOOTER}`);
 
     await app.close();
   });
 
   it('should delegate from CEO to Developer inside the project workspace and report the final summary', async () => {
+    seedAgentSettings(dataDir);
     const ceo = new ScriptedAgentFake([
       'Implement the login screen.\n[DELEGATE:DEVELOPER:my-app]',
       'Login delivered.\n[DONE]',
@@ -374,7 +457,114 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(ceo.prompts[1]).toBe(
       '[AGENT_RESULT:DEVELOPER]\nLogin screen implemented.',
     );
-    expect(threadMessages).toContain('Login delivered.');
+    expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
+
+    await app.close();
+  });
+
+  it('should ask for model and effort on the first message and then run the pending prompt', async () => {
+    const agents: SelectableAgentFake[] = [];
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue({
+        create: () => {
+          const agent = new SelectableAgentFake();
+          agents.push(agent);
+          return agent;
+        },
+      })
+      .compile();
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler);
+    (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
+      id: 'bot-e2e-id',
+    };
+
+    const sent: string[] = [];
+    const thread = buildThread('thread-select', 'channel-select', sent);
+    await messageHandler.handleMessage({
+      author: { bot: false, id: 'discord-user-777' },
+      channelId: 'channel-select',
+      cleanContent: 'Build it',
+      content: '<@bot-e2e-id> Build it',
+      mentions: { has: vi.fn().mockImplementation((user: any) => user?.id === 'bot-e2e-id') },
+      channel: { isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(thread),
+    } as unknown as Message);
+
+    expect(sent.at(-1)).toBe(
+      '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+    );
+
+    await messageHandler.handleMessage(threadReply(thread, 'abc'));
+    expect(sent.at(-1)).toMatch(/^⚠️ Opção inválida\. Responda apenas com um número de 1 a 2\./);
+
+    await messageHandler.handleMessage(threadReply(thread, '2'));
+    expect(sent.at(-1)).toBe(
+      '⚡ **Escolha o effort para Model Two** respondendo com o número da opção:\n**1.** Low\n**2.** High',
+    );
+
+    await messageHandler.handleMessage(threadReply(thread, '1'));
+
+    expect(sent).toContain('✅ **Configuração salva**: 🧠 Model Two · ⚡ Low');
+    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (agy) · 🧠 Model Two · ⚡ Low');
+    expect(agents.some(agent => agent.prompts.some(prompt => prompt.endsWith('Build it')))).toBe(true);
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
+      modelId: 'two',
+      modelName: 'Model Two',
+      effortId: 'low',
+      effortName: 'Low',
+    });
+
+    await app.close();
+  });
+
+  it('should reopen the model selection through the /model slash command', async () => {
+    seedAgentSettings(dataDir);
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue({ create: () => new SelectableAgentFake() })
+      .compile();
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const interactionHandler = moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler);
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler);
+    (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
+      id: 'bot-e2e-id',
+    };
+
+    const editReply = vi.fn().mockResolvedValue(undefined);
+    const interaction = {
+      isChatInputCommand: vi.fn().mockReturnValue(true),
+      commandName: 'model',
+      channelId: 'thread-model',
+      channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'channel-model' },
+      user: { username: 'alice', id: 'discord-user-777' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply,
+    };
+    await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
+
+    expect(editReply).toHaveBeenCalledWith({
+      content: '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+    });
+
+    const sent: string[] = [];
+    await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
+
+    expect(sent).toEqual(['✅ **Configuração salva**: 🧠 Model One · ⚡ padrão']);
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
 
     await app.close();
   });

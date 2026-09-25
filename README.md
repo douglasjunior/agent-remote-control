@@ -106,6 +106,7 @@ Parâmetros suportados:
 | `DISCORD_CLIENT_ID` | ID do aplicativo do bot | Aba **Informações gerais** (*General Information*) > Campo **ID DO APLICATIVO** (*Application ID*) | *(Obrigatório)* |
 | `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
 | `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
+| `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o modelo/effort escolhidos) | Configuração local da máquina | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
 | `AGY_PATH` | Caminho para o executável `agy` | Executável no `PATH` global | `agy` |
 | `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
@@ -140,7 +141,7 @@ Para que o bot do Discord consiga autenticar, escutar mensagens, responder em ca
 2. Ative a opção **Modo de Desenvolvedor**.
 3. Feche as configurações.
 4. Na barra lateral esquerda do Discord, clique com o **botão direito** no ícone do seu servidor e selecione **Copiar ID do Servidor**.
-5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Isso permite o registro imediato do comando `/cancel` no servidor durante o desenvolvimento).*
+5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Com a variável definida, os comandos `/cancel` e `/model` são registrados só neste servidor, com efeito imediato; sem ela, o registro é global).*
 
 ### Passo 4: Convidar o Bot para o Servidor
 1. No Developer Portal, vá em **OAuth2 > URL Generator**.
@@ -172,8 +173,12 @@ O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu 
 - **Em Canais de Servidor**:
   - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
   - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
+- **Escolha de Modelo e Effort**:
+  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os modelos numerados. Responda com o número da opção e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
+  - Digite `/model` para trocar a escolha a qualquer momento. A configuração é global e vale para todas as conversas.
+  - Toda resposta termina com um rodapé indicando o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (agy) · 🧠 Gemini 3.8 Flash · ⚡ padrão`.
 - **Cancelamento de Turno**:
-  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução.
+  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução ou encerrar uma seleção de modelo em andamento.
 
 ---
 

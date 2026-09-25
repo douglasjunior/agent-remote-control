@@ -2,7 +2,6 @@ import {
   client,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type ActiveSession,
   type ClientApp,
   type ClientConnection,
   type ParamsParser,
@@ -30,6 +29,8 @@ import {
   type AgentUsage,
   type IAgentPort,
 } from '../ports/agent.port.js';
+
+import { ResumedSession, type SessionHandle } from './resumed-session.js';
 
 
 type SessionConfigOptionSelect = SessionConfigOption & { type: 'select' };
@@ -60,7 +61,7 @@ export const CANCEL_ABORT_PROMPT_TEXT =
 
 export abstract class AbstractAcpAdapter implements IAgentPort {
   private connection: ClientConnection | null = null;
-  private activeSession: ActiveSession | null = null;
+  private activeSession: SessionHandle | null = null;
   private subprocess: ChildProcess | null = null;
   currentSessionId: string | undefined = undefined;
   private readonly activityListeners = new Set<
@@ -72,6 +73,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
   private stderrBuffer = '';
   private stderrListener: ((chunk: Buffer) => void) | null = null;
+  private transportLostListener: ((reason: unknown) => void) | null = null;
   private cachedConfigOptions: SessionConfigOption[] = [];
   private preferredConfig: AgentConfig;
   protected readonly logger = new Logger(this.constructor.name);
@@ -83,6 +85,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private cancelTimeoutHandle: ReturnType<typeof setTimeout> | null = null;
   private cancelledSeq = 0;
   private steeringSupported = false;
+  private loadSessionSupported = false;
 
   constructor(preferredConfig: AgentConfig = {}) {
     this.preferredConfig = preferredConfig;
@@ -106,7 +109,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
   protected abstract spawnAgentProcess(): ChildProcess;
 
-  protected abstract readonly agentName: string;
+  abstract readonly agentName: string;
 
   protected mapModel(option: SessionConfigSelectOption): AgentModelInfo {
     return {
@@ -156,6 +159,12 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       };
       proc.stderr.on('data', this.stderrListener);
 
+      const transportLostListener = (reason: unknown) =>
+        this.handleTransportLost(reason);
+      this.transportLostListener = transportLostListener;
+      proc.once('exit', transportLostListener);
+      proc.once('error', transportLostListener);
+
       const input = Writable.toWeb(proc.stdin) as WritableStream<Uint8Array>;
       const output = Readable.toWeb(proc.stdout) as ReadableStream<Uint8Array>;
       const stream = ndJsonStream(input, output);
@@ -163,6 +172,9 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       let app: ClientApp = client()
         .onNotification('session/update', ({ params }) => {
           this.syncConfigOptions(params);
+          if (this.activeSession instanceof ResumedSession) {
+            this.activeSession.route(params);
+          }
         })
         .onRequest('session/request_permission', ({ params }) => ({
           outcome: {
@@ -187,7 +199,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       );
 
       this.steeringSupported = this.readSteeringSupport(initializeResponse);
-      this.logger.debug(`steering_support_detected: ${this.steeringSupported}`);
+      this.loadSessionSupported = this.readLoadSessionSupport(initializeResponse);
+      this.logger.debug(
+        `capabilities_detected: steering=${this.steeringSupported} loadSession=${this.loadSessionSupported}`,
+      );
       this.connection = connection;
     } catch (err) {
       const error = this.buildTransportError(err, 'connect');
@@ -204,6 +219,19 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
         { _meta?: { steering?: { supported?: unknown } } } | undefined
     )?._meta;
     return meta?.steering?.supported === true;
+  }
+
+  private readLoadSessionSupport(initializeResponse: unknown): boolean {
+    const capabilities = (
+      initializeResponse as
+        { agentCapabilities?: { loadSession?: unknown } } | undefined
+    )?.agentCapabilities;
+    return capabilities?.loadSession === true;
+  }
+
+  private handleTransportLost(reason: unknown): void {
+    this.logger.warn(`agent_process_exited: ${String(reason)}`);
+    this.discardSessionAndTransport();
   }
 
   private pickPermissionOption(options: readonly PermissionOption[]): string {
@@ -247,18 +275,61 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
     this.stderrBuffer = '';
 
+    let configOptions: SessionConfigOption[] | null | undefined;
     try {
       const session = await this.connection.agent
         .buildSession({ cwd, mcpServers: [] })
         .start();
       this.activeSession = session;
       this.currentSessionId = session.sessionId;
-      const { configOptions } = session.newSessionResponse;
-      if (configOptions) {
-        this.cachedConfigOptions = configOptions;
-      }
+      configOptions = session.newSessionResponse.configOptions;
     } catch (err) {
       throw this.buildTransportError(err, 'createSession');
+    }
+
+    await this.applySessionConfig(configOptions);
+  }
+
+  async loadSession(cwd: string, sessionId: string): Promise<boolean> {
+    if (!this.connection) {
+      throw new Error('Not connected. Call connect() first.');
+    }
+
+    if (!this.loadSessionSupported) {
+      this.logger.debug(`load_session_unsupported: ${sessionId}`);
+      return false;
+    }
+
+    this.stderrBuffer = '';
+
+    const connection = this.connection;
+    let configOptions: SessionConfigOption[] | null | undefined;
+    try {
+      const response = await connection.agent.request('session/load', {
+        sessionId,
+        cwd,
+        mcpServers: [],
+      });
+      this.activeSession?.dispose();
+      this.activeSession = new ResumedSession(sessionId, connection);
+      this.currentSessionId = sessionId;
+      configOptions = response.configOptions;
+    } catch (error) {
+      this.logger.warn(
+        `load_session_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return false;
+    }
+
+    await this.applySessionConfig(configOptions);
+    return true;
+  }
+
+  private async applySessionConfig(
+    configOptions: SessionConfigOption[] | null | undefined,
+  ): Promise<void> {
+    if (configOptions) {
+      this.cachedConfigOptions = configOptions;
     }
 
     for (const preset of this.sessionConfigPresets()) {
@@ -397,7 +468,11 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     const sessionId = this.currentSessionId;
     this.logger.warn(`cancel_escalation_abort: ${sessionId}`);
 
-    this.sendSteeringPrompt(CANCEL_ABORT_PROMPT_TEXT);
+    if (this.steeringSupported) {
+      this.sendSteeringPrompt(CANCEL_ABORT_PROMPT_TEXT);
+    } else {
+      void this.sendCancelNotification(sessionId);
+    }
 
     this.cancelTimeoutHandle = setTimeout(
       () => this.forceCancel(sessionId),
@@ -413,8 +488,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
     /* v8 ignore stop */
     this.logger.warn(`cancel_timeout_forced: ${sessionId}`);
-    void this.sendCancelNotification(sessionId);
     this.forcePromptCompletion();
+    this.discardSessionAndTransport();
   }
 
   private async sendCancelNotification(sessionId: string): Promise<void> {
@@ -498,10 +573,14 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   }
 
   async disconnect(): Promise<void> {
+    this.discardSessionAndTransport();
+    this.cachedConfigOptions = [];
+  }
+
+  private discardSessionAndTransport(): void {
     this.activeSession?.dispose();
     this.activeSession = null;
     this.currentSessionId = undefined;
-    this.cachedConfigOptions = [];
     this.releaseTransport();
   }
 
@@ -509,7 +588,12 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     if (this.subprocess?.stderr && this.stderrListener) {
       this.subprocess.stderr.off('data', this.stderrListener);
     }
+    if (this.subprocess && this.transportLostListener) {
+      this.subprocess.off('exit', this.transportLostListener);
+      this.subprocess.off('error', this.transportLostListener);
+    }
     this.stderrListener = null;
+    this.transportLostListener = null;
     this.stderrBuffer = '';
 
     this.subprocess?.kill();
@@ -681,13 +765,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
 
     this.lastAgentMessage = finalText.trim();
-    return {
-      sessionId: this.currentSessionId ?? '',
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: finalText },
-      },
-    };
+    return { kind: 'text', text: finalText };
   }
 
   protected buildTransportError(rawError: unknown, operation: string): Error {

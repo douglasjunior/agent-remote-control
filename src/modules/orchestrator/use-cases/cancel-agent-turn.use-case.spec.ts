@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
-import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -12,14 +12,14 @@ import { CancelAgentTurnUseCase } from './cancel-agent-turn.use-case.js';
 describe('CancelAgentTurnUseCase', () => {
   let useCase: CancelAgentTurnUseCase;
   let agentPort: StubAgentPort;
-  let sessionStore: InMemorySessionStoreAdapter;
+  let sessionStore: InMemorySessionStoreFake;
   let runtime: ConversationRuntimeService;
 
   beforeEach(async () => {
     agentPort = new StubAgentPort();
-    sessionStore = new InMemorySessionStoreAdapter();
+    sessionStore = new InMemorySessionStoreFake();
     const factory: IAgentPortFactory = { create: () => agentPort };
-    runtime = new ConversationRuntimeService(factory, sessionStore, 60_000);
+    runtime = new ConversationRuntimeService(factory, 60_000);
     useCase = new CancelAgentTurnUseCase(sessionStore, runtime);
     await sessionStore.saveSession(
       buildSessionContext({ sessionId: 'sess-1', channelId: 'ch-1', threadId: 'th-1' }),

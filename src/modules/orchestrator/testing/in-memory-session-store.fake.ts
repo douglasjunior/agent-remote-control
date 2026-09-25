@@ -1,11 +1,8 @@
-import { Injectable } from '@nestjs/common';
-
 import type { SessionContext } from '../models/session-context.model.js';
 import type { ISessionStorePort } from '../ports/session-store.port.js';
 
 
-@Injectable()
-export class InMemorySessionStoreAdapter implements ISessionStorePort {
+export class InMemorySessionStoreFake implements ISessionStorePort {
   private readonly sessions = new Map<string, SessionContext>();
 
   async findSession(
@@ -26,9 +23,5 @@ export class InMemorySessionStoreAdapter implements ISessionStorePort {
 
   async saveSession(session: SessionContext): Promise<void> {
     this.sessions.set(session.sessionId, session);
-  }
-
-  async removeSession(sessionId: string): Promise<void> {
-    this.sessions.delete(sessionId);
   }
 }

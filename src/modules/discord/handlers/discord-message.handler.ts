@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -11,6 +12,9 @@ import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 
 
 const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
+const DISCORD_MESSAGE_LIMIT = 2000;
+
+type SendableChannel = { send: (content: any) => Promise<any> };
 
 @Injectable()
 export class DiscordMessageHandler implements OnModuleInit {
@@ -55,18 +59,24 @@ export class DiscordMessageHandler implements OnModuleInit {
     const isManagedThread =
       isThread && (message.channel.ownerId === clientUser.id || isBotMentioned);
 
-    if (!isDirectMessage && !isManagedThread && !isBotMentioned) {
+    const isChannelSelectionAnswer =
+      !isDirectMessage
+      && !isManagedThread
+      && !isBotMentioned
+      && (await this.orchestratorService.hasActiveConfigSelection(message.channelId));
+
+    if (!isDirectMessage && !isManagedThread && !isBotMentioned && !isChannelSelectionAnswer) {
       return;
     }
 
-    let targetChannel: { send: (content: any) => Promise<any> } | null = null;
+    let targetChannel: SendableChannel | null = null;
     let thread: ThreadChannel | null = null;
 
     try {
       let channelId: string;
       let threadId: string | undefined;
 
-      if (isDirectMessage) {
+      if (isDirectMessage || isChannelSelectionAnswer) {
         if (
           !('send' in message.channel)
           || typeof message.channel.send !== 'function'
@@ -75,8 +85,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         }
         channelId = message.channelId;
         threadId = undefined;
-        targetChannel =
-          message.channel as unknown as { send: (content: any) => Promise<any> };
+        targetChannel = message.channel as unknown as SendableChannel;
       } else if (isThread) {
         thread = message.channel as ThreadChannel;
         channelId = thread.parentId ?? thread.id;
@@ -94,13 +103,13 @@ export class DiscordMessageHandler implements OnModuleInit {
         targetChannel = thread;
       }
 
-      const prompt = isDirectMessage
+      const rawPrompt = isDirectMessage || isChannelSelectionAnswer
         ? message.content.trim()
         : this.cleanPrompt(message.content, clientUser.id);
       const authorName = message.author?.username ?? 'user';
       const authorId = message.author?.id ?? 'unknown';
 
-      if (!prompt) {
+      if (!rawPrompt) {
         this.logger.log(
           `[Empty Prompt] Received empty message from @${authorName} in ${isDirectMessage ? 'DM' : 'Channel'} ${message.channelId}`,
         );
@@ -111,8 +120,31 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
 
       this.logger.log(
-        `[Message Received] From @${authorName} (${authorId}) in ${isDirectMessage ? 'DM' : 'Channel'} (${channelId}): "${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}"`,
+        `[Message Received] From @${authorName} (${authorId}) in ${isDirectMessage ? 'DM' : 'Channel'} (${channelId}): "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"`,
       );
+
+      const resolution = await this.orchestratorService.resolveInput({
+        channelId,
+        threadId,
+        prompt: rawPrompt,
+      });
+
+      if (resolution.kind === 'selection') {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));
+        return;
+      }
+      if (resolution.kind === 'invalid') {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatInvalidSelection(resolution.selection));
+        return;
+      }
+      if (resolution.kind === 'configured') {
+        await targetChannel.send(this.activityFormatter.formatConfigured(resolution.settings));
+        return;
+      }
+      if (resolution.configured) {
+        await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
+      }
+      const { prompt } = resolution;
 
       const progressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
@@ -172,33 +204,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       await throttler.flush();
       throttler.destroy();
 
-      if (result.status === 'completed') {
-        const chunks = this.activityFormatter.splitMessage(result.response);
-        this.logger.log(
-          `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars, Chunks: ${chunks.length}`,
-        );
-        if (chunks.length === 0) {
-          await targetChannel.send(
-            '✅ *Tarefa concluída sem mensagem de resposta.*',
-          );
-        } else {
-          for (const chunk of chunks) {
-            await targetChannel.send(chunk);
-          }
-        }
-      } else if (result.status === 'cancelled') {
-        this.logger.warn(
-          `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
-        );
-        await targetChannel.send('⚠️ **Turno cancelado pelo usuário.**');
-      } else {
-        this.logger.error(
-          `[Turn Failed] Turn execution failed for session ${result.sessionId}: ${result.errorMessage}`,
-        );
-        await targetChannel.send(
-          `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
-        );
-      }
+      await this.sendTurnResult(targetChannel, result);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -210,6 +216,52 @@ export class DiscordMessageHandler implements OnModuleInit {
           )
           .catch(() => undefined);
       }
+    }
+  }
+
+  private async sendTurnResult(targetChannel: SendableChannel, result: TurnResult): Promise<void> {
+    const footer = result.agentInfo
+      ? this.activityFormatter.formatAgentFooter(result.agentInfo)
+      : '';
+    const withFooter = (text: string): string => (footer ? `${text}\n${footer}` : text);
+
+    if (result.status === 'completed') {
+      const chunks = this.activityFormatter.splitMessage(
+        result.response,
+        footer ? DISCORD_MESSAGE_LIMIT - footer.length - 1 : DISCORD_MESSAGE_LIMIT,
+      );
+      this.logger.log(
+        `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars, Chunks: ${chunks.length}`,
+      );
+      if (chunks.length === 0) {
+        await targetChannel.send(withFooter('✅ *Tarefa concluída sem mensagem de resposta.*'));
+        return;
+      }
+      for (const [index, chunk] of chunks.entries()) {
+        await targetChannel.send(index === chunks.length - 1 ? withFooter(chunk) : chunk);
+      }
+      return;
+    }
+
+    if (result.status === 'cancelled') {
+      this.logger.warn(
+        `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
+      );
+      await targetChannel.send(withFooter('⚠️ **Turno cancelado pelo usuário.**'));
+      return;
+    }
+
+    this.logger.error(
+      `[Turn Failed] Turn execution failed for session ${result.sessionId}: ${result.errorMessage}`,
+    );
+    await targetChannel.send(
+      withFooter(`❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`),
+    );
+  }
+
+  private async sendChunks(targetChannel: SendableChannel, content: string): Promise<void> {
+    for (const chunk of this.activityFormatter.splitMessage(content)) {
+      await targetChannel.send(chunk);
     }
   }
 

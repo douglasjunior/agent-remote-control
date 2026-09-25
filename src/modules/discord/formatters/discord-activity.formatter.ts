@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 
 
 const FENCE_PATTERN = /^```\w*/;
 const CLOSE_FENCE = '\n```';
+const DEFAULT_LABEL = 'padrão';
 
 @Injectable()
 export class DiscordActivityFormatter {
@@ -34,6 +38,29 @@ export class DiscordActivityFormatter {
     }
 
     return null;
+  }
+
+  formatAgentFooter(info: TurnAgentInfo): string {
+    return `-# 🤖 ${info.roleName} (${info.agentName}) · 🧠 ${info.modelName ?? DEFAULT_LABEL} · ⚡ ${info.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  formatSelection(selection: AgentConfigSelection): string {
+    const header = selection.step === 'model'
+      ? '🧠 **Escolha o modelo do agente** respondendo com o número da opção:'
+      : `⚡ **Escolha o effort para ${selection.selectedModel?.name}** respondendo com o número da opção:`;
+    const options = selection.options.map(option =>
+      option.description
+        ? `**${option.index}.** ${option.label} — ${option.description}`
+        : `**${option.index}.** ${option.label}`);
+    return [header, ...options].join('\n');
+  }
+
+  formatInvalidSelection(selection: AgentConfigSelection): string {
+    return `⚠️ Opção inválida. Responda apenas com um número de 1 a ${selection.options.length}.\n\n${this.formatSelection(selection)}`;
+  }
+
+  formatConfigured(settings: AgentSettings): string {
+    return `✅ **Configuração salva**: 🧠 ${settings.modelName} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
   }
 
   splitMessage(content: string, maxLength = 2000): string[] {

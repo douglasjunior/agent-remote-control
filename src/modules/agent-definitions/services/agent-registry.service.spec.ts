@@ -70,6 +70,17 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('getDisplayName', () => {
+    it('should return the definition name for a registered role', () => {
+      expect(service.getDisplayName('ceo')).toBe('CEO');
+      expect(service.getDisplayName('DEVELOPER')).toBe('Developer Agent');
+    });
+
+    it('should fall back to the role for an unknown agent', () => {
+      expect(service.getDisplayName('AUDITOR')).toBe('AUDITOR');
+    });
+  });
+
   describe('getDefinition and getAllDefinitions', () => {
     it('should return definition by role name', () => {
       const def = service.getDefinition('DEVELOPER');

@@ -28,6 +28,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.defaultModel;
   }
 
+  getDisplayName(agentRole: string): string {
+    return this.getDefinition(agentRole)?.name ?? agentRole;
+  }
+
   getDefinition(roleOrId: string): AgentDefinition | undefined {
     return this.definitions.get(roleOrId.toUpperCase());
   }

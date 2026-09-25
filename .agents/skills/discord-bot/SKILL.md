@@ -1,12 +1,12 @@
 ---
 name: discord-bot
 description: >
-  Integração do Bot do Discord como adaptador primário de entrada para controle remoto
-  de agentes de IA. Governa o ciclo de vida do cliente Discord, intents de gateway,
-  isolamento de conversas em threads, streaming de pensamentos e ferramentas, controle
-  de taxa contra erro 429, particionamento de mensagens no limite de 2000 caracteres
-  e comando /cancel. Use ao trabalhar com mensagens, interações, formatação de
-  atividades ou eventos do Discord.
+  Bot do Discord como adaptador primário de entrada para agentes de IA. Governa os
+  comandos /model e /cancel, a seleção numerada de modelo/effort, o rodapé de agente
+  nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
+  threads por conversa, streaming de atividades, throttling contra 429 e particionamento
+  em 2000 caracteres. Use ao trabalhar com mensagens, interações, formatação ou eventos
+  do Discord.
 ---
 
 # Integração com Bot do Discord
@@ -35,7 +35,7 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   - `Partials.Channel` e `Partials.Message`: garantem recepção de eventos em canais de DM não cacheados previamente.
 - **Permissões do Bot (Permissions Integer)**:
   - O conjunto padrão de permissões de texto e canais totaliza o inteiro `380104727616` na calculadora de permissões do Discord.
-- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra o comando `/cancel` globalmente no aplicativo e na guilda especificada em `DISCORD_GUILD_ID` (quando fornecida).
+- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra `/cancel` e `/model`. Com `DISCORD_GUILD_ID` e a guilda encontrada, registra só na guilda e limpa os comandos globais (`application.commands.set([])`), porque o Discord exibiria cada comando duplicado. Sem a variável, ou com a guilda não encontrada, registra só globalmente.
 - **Tolerância a ausência de token**: Se a variável `DISCORD_BOT_TOKEN` não estiver definida
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.
   A aplicação deve inicializar normalmente em ambientes de CI e testes unitários.
@@ -70,9 +70,33 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
    - `threadId`: o ID da própria thread;
    - `userId`: o identificador do autor da mensagem;
    - `agentRole`: invariavelmente `'CEO'` para triagem e orquestração inicial.
-5. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
+5. **Resposta a seleção em canal comum**: sem menção e fora de thread, a mensagem só é aceita
+   se `hasActiveConfigSelection(channelId)` for verdadeiro (seleção aberta por `/model` no canal).
+   Nesse caso o bot responde no próprio canal, sem criar thread, com `threadId = undefined`.
+6. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
    orquestrador. Via `onQueued`, a mensagem de progresso exibe
    `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`.
+
+## Resolução da Entrada e Seleção de Modelo
+
+Antes de executar o turno, o handler chama `OrchestratorService.resolveInput({ channelId, threadId, prompt })`:
+
+- `selection`: envia `formatSelection` (lista numerada de modelos ou de efforts) e encerra;
+- `invalid`: envia `formatInvalidSelection` (faixa válida seguida da lista) e encerra;
+- `configured`: envia `formatConfigured` e encerra;
+- `execute`: se trouxer `configured`, envia a confirmação e executa o `prompt` resolvido (o prompt pendente da primeira mensagem).
+
+A seleção começa sozinha na primeira mensagem enquanto não houver configuração salva, e é
+reaberta com `/model`. O estado fica por conversa (canal + thread).
+
+## Rodapé das Respostas
+
+Todo desfecho de turno com `TurnResult.agentInfo` recebe o rodapé
+`formatAgentFooter(info)`: `-# 🤖 <papel> (<agente>) · 🧠 <modelo> · ⚡ <effort>`, com `padrão`
+quando o modelo ou o effort não são conhecidos.
+
+- **Concluído**: a resposta é particionada com `splitMessage(response, 2000 - footer.length - 1)` e o rodapé vai numa nova linha do último chunk; sem texto, vai na mensagem `✅ *Tarefa concluída sem mensagem de resposta.*`.
+- **Cancelado e falha**: o rodapé vai numa nova linha das mensagens de cancelamento e de erro.
 
 ## Streaming de Atividades e Formatação
 
@@ -124,6 +148,6 @@ são particionados por `DiscordActivityFormatter.splitMessage(content, maxLength
 
 Comandos de barra são interceptados por `DiscordInteractionHandler`:
 
-- **/cancel**: Localiza o canal e a thread da interação e aciona `OrchestratorService.cancelTurn(channelId, threadId)`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; sem turno, responde `ℹ️ Não há nenhum turno em andamento para cancelar.`
-- Respostas a interações de comando utilizam flags efêmeras (`ephemeral: true`) para não
-  poluir a timeline pública dos canais.
+- **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada, `🛑 **Seleção de modelo cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
+- **/model**: `deferReply()` público, `startConfigSelection(channelId, threadId)` e `editReply(formatSelection)`. Com `unavailable`, responde `ℹ️ O agente atual não expõe modelos para seleção.` A resposta é pública porque as opções são respondidas por mensagem na conversa.
+- **Respostas protegidas**: toda resposta passa por um único método que usa `editReply` quando a interação foi adiada, `followUp` quando já respondida e `reply` nos demais casos, e apenas loga falhas de envio. O listener de `InteractionCreate` encadeia `.catch(...)` com log, e `main.ts` registra `process.on('unhandledRejection')` como rede de segurança: uma rejeição sem tratamento derrubaria o processo.

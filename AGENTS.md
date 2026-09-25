@@ -17,6 +17,7 @@ agent-remote-control/
 │   ├── maps/                       # Mapas conceituais e de domínio
 │   ├── skills/                     # Catálogo de habilidades sob demanda (SKILL.md)
 │   └── specs/                      # Especificações, planos e tarefas (fluxo spec-driven)
+├── data/                           # Dados persistidos em runtime (DATA_DIR, fora do Git): sessões e configuração do agente
 ├── src/                            # Código-fonte da aplicação NestJS
 │   ├── modules/                    # Módulos verticais segregados por domínio
 │   │   ├── agent/                  # Integração ACP: porta IAgentPort, fábrica, adapters, bridges e demux
@@ -111,3 +112,4 @@ Todo texto mantido no repositório descreve o **estado atual**, escrito para que
 6. **Stubs e Fakes em vez de vi.mock interno**: Isole dependências internas de `src/` injetando stubs no construtor ou substituindo providers no `Test.createTestingModule`.
 7. **Passe de poda antes de encerrar**: Verifique comentários e textos introduzidos no diff e remova qualquer ruído antes de submeter.
 8. **Execução mandatória de checagem de tipos, lint e testes em toda modificação**: Toda e qualquer alteração de código no projeto exige a execução de `yarn ts`, `yarn lint` e `yarn test` (além de `yarn test:e2e` ao tocar em pontos de entrada). A formatação do código é de responsabilidade exclusiva do ESLint (`yarn format`). Nenhuma entrega pode ser concluída com erros de TypeScript, erros de lint ou falhas de testes.
+9. **Skills sincronizadas com o código**: Toda mudança em contrato de porta, assinatura pública, ciclo de vida ou regra descrita em uma skill atualiza a skill no mesmo commit. Antes de concluir, confronte as skills do módulo tocado com o `git diff`.
