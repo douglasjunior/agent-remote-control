@@ -5,6 +5,7 @@ export interface SessionContext {
   readonly userId: string;
   readonly workspacePath: string;
   readonly agentRole: string;
+  readonly agentSessionId?: string;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }

@@ -35,7 +35,7 @@ vi.mock('@agentclientprotocol/sdk', async () =>
   (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
 class TestAcpAdapter extends AbstractAcpAdapter {
-  protected readonly agentName = 'test';
+  readonly agentName = 'test';
 
   protected spawnAgentProcess(): ChildProcess {
     return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -43,7 +43,7 @@ class TestAcpAdapter extends AbstractAcpAdapter {
 }
 
 class PresetAcpAdapter extends AbstractAcpAdapter {
-  protected readonly agentName = 'preset';
+  readonly agentName = 'preset';
 
   protected spawnAgentProcess(): ChildProcess {
     return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -55,7 +55,7 @@ class PresetAcpAdapter extends AbstractAcpAdapter {
 }
 
 class ExtensionAcpAdapter extends AbstractAcpAdapter {
-  protected readonly agentName = 'extension';
+  readonly agentName = 'extension';
 
   protected spawnAgentProcess(): ChildProcess {
     return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -73,7 +73,7 @@ class ExtensionAcpAdapter extends AbstractAcpAdapter {
 }
 
 class FallbackAcpAdapter extends AbstractAcpAdapter {
-  protected readonly agentName = 'fallback';
+  readonly agentName = 'fallback';
   fallbackResult: AgentUsage | undefined = undefined;
   fallbackError: Error | undefined = undefined;
   readonly collectFallbackCalls: string[] = [];
@@ -203,7 +203,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should throw a transport error when the spawned process has no piped stdio streams', async () => {
       class NoStdioAdapter extends AbstractAcpAdapter {
-        protected readonly agentName = 'test';
+        readonly agentName = 'test';
 
         protected spawnAgentProcess(): ChildProcess {
           return {
@@ -1101,13 +1101,7 @@ describe('AbstractAcpAdapter', () => {
       });
 
       expect(received).toHaveLength(1);
-      expect(received[0]).toEqual({
-        sessionId: 'session-1',
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: 'Hello world!' },
-        },
-      });
+      expect(received[0]).toEqual({ kind: 'text', text: 'Hello world!' });
       expect(adapter.lastAgentMessage).toBe('Hello world!');
     });
 
@@ -1668,7 +1662,7 @@ describe('AbstractAcpAdapter', () => {
       await expect(adapter.cancel()).resolves.toBeUndefined();
     });
 
-    it('should send cancel notification and start escalation timer', async () => {
+    it('should resend session/cancel without an abort prompt when steering is unsupported', async () => {
       vi.useFakeTimers();
       const adapter = new TestAcpAdapter();
       await adapter.connect();
@@ -1693,17 +1687,83 @@ describe('AbstractAcpAdapter', () => {
         sessionId: 'session-1',
       });
 
-      // Escalate to abort steering
       await vi.advanceTimersByTimeAsync(5000);
-      expect(acpHarness.connectionInstance?.prompt).toHaveBeenCalledWith({
-        sessionId: 'session-1',
-        prompt: [{ type: 'text', text: CANCEL_ABORT_PROMPT_TEXT }],
-      });
+      expect(acpHarness.connectionInstance?.cancel).toHaveBeenCalledTimes(2);
+      expect(acpHarness.connectionInstance?.prompt).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [{ type: 'text', text: CANCEL_ABORT_PROMPT_TEXT }],
+        }),
+      );
 
-      // Force cancel after grace (15s)
       await vi.advanceTimersByTimeAsync(15000);
 
       await rejection;
+    });
+
+    it('should inject the abort prompt through steering when supported', async () => {
+      vi.useFakeTimers();
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockResolvedValue({
+          _meta: { steering: { supported: true } },
+        }),
+      };
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo');
+
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () => new Promise<void>(() => undefined),
+      );
+
+      const promptPromise = (async () => {
+        for await (const _ of adapter.prompt('hi')) {
+          // exhaust
+        }
+      })();
+      const rejection =
+        expect(promptPromise).rejects.toBeInstanceOf(PromptCancelledError);
+
+      await adapter.cancel();
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(acpHarness.connectionInstance?.steer).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: [{ type: 'text', text: CANCEL_ABORT_PROMPT_TEXT }],
+        }),
+      );
+      expect(acpHarness.connectionInstance?.cancel).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(15000);
+      await rejection;
+    });
+
+    it('should drop the session and the transport when the cancel is forced', async () => {
+      vi.useFakeTimers();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo');
+      const proc = acpHarness.spawnedProcs[0];
+
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () => new Promise<void>(() => undefined),
+      );
+      const promptPromise = (async () => {
+        for await (const _ of adapter.prompt('hi')) {
+          // exhaust
+        }
+      })();
+      const rejection =
+        expect(promptPromise).rejects.toBeInstanceOf(PromptCancelledError);
+
+      await adapter.cancel();
+      await vi.advanceTimersByTimeAsync(20000);
+      await rejection;
+
+      expect(proc?.kill).toHaveBeenCalled();
+      expect(adapter.currentSessionId).toBeUndefined();
+
+      await adapter.connect();
+      expect(acpHarness.spawnedProcs).toHaveLength(2);
     });
 
     it('should emit cancellation activity on cancel', async () => {
@@ -1764,6 +1824,207 @@ describe('AbstractAcpAdapter', () => {
       );
       warnSpy.mockRestore();
       await adapter.disconnect();
+    });
+  });
+
+  describe('transport lost', () => {
+    it.each(['exit', 'error'])(
+      'should reset the session when the agent process emits %s',
+      async (event) => {
+        const warnSpy = vi
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(vi.fn());
+        const adapter = new TestAcpAdapter();
+        await adapter.connect();
+        await adapter.createSession('/repo');
+        const proc = acpHarness.spawnedProcs[0];
+
+        proc?.emit(event, 1);
+
+        expect(adapter.currentSessionId).toBeUndefined();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('agent_process_exited'),
+        );
+        await adapter.connect();
+        expect(acpHarness.spawnedProcs).toHaveLength(2);
+        warnSpy.mockRestore();
+      },
+    );
+
+    it('should fail an in-flight prompt when the agent process exits', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo');
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () => new Promise<void>(() => undefined),
+      );
+
+      const promptPromise = (async () => {
+        for await (const _ of adapter.prompt('hi')) {
+          // exhaust
+        }
+      })();
+      const rejection = expect(promptPromise).rejects.toThrow(
+        'Erro retornado pelo agente (test)',
+      );
+      acpHarness.spawnedProcs[0]?.emit('exit', 1);
+
+      await rejection;
+    });
+
+    it('should ignore the exit caused by its own disconnect', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      const proc = acpHarness.spawnedProcs[0];
+
+      await adapter.disconnect();
+
+      expect(proc?.listenerCount('exit')).toBe(0);
+      expect(proc?.listenerCount('error')).toBe(0);
+    });
+  });
+
+  describe('loadSession', () => {
+    const loadCapable = () => {
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockResolvedValue({
+          agentCapabilities: { loadSession: true },
+        }),
+      };
+    };
+
+    it('should throw when called before connect()', async () => {
+      const adapter = new TestAcpAdapter();
+
+      await expect(adapter.loadSession('/repo', 'conv-1')).rejects.toThrow(
+        'Not connected',
+      );
+    });
+
+    it('should return false when the agent does not advertise loadSession', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+
+      const loaded = await adapter.loadSession('/repo', 'conv-1');
+
+      expect(loaded).toBe(false);
+      expect(acpHarness.connectionInstance?.loadSession).not.toHaveBeenCalled();
+      expect(adapter.currentSessionId).toBeUndefined();
+    });
+
+    it('should load the session, attach it and apply its config options', async () => {
+      loadCapable();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      acpHarness.connectionInstance?.loadSession.mockResolvedValueOnce({
+        configOptions: [
+          modelConfigOption({
+            currentValue: 'm1',
+            options: [{ value: 'm1', name: 'Model 1' }],
+          }),
+        ],
+      });
+
+      const loaded = await adapter.loadSession('/repo', 'conv-1');
+
+      expect(loaded).toBe(true);
+      expect(acpHarness.connectionInstance?.loadSession).toHaveBeenCalledWith({
+        sessionId: 'conv-1',
+        cwd: '/repo',
+        mcpServers: [],
+      });
+      expect(adapter.currentSessionId).toBe('conv-1');
+      expect(adapter.getAvailableModels()?.currentModelId).toBe('m1');
+
+      acpHarness.connectionInstance?.prompt.mockResolvedValueOnce({
+        stopReason: 'end_turn',
+      });
+      for await (const _ of adapter.prompt('hello')) {
+        // exhaust
+      }
+
+      expect(acpHarness.connectionInstance?.prompt).toHaveBeenCalledWith({
+        sessionId: 'conv-1',
+        prompt: [{ type: 'text', text: 'hello' }],
+      });
+    });
+
+    it('should drop the replayed history and stream live updates of the loaded session', async () => {
+      loadCapable();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      acpHarness.connectionInstance?.loadSession.mockImplementationOnce(async () => {
+        await acpHarness.lastClient?.sessionUpdate({
+          ...messageChunk('old history'),
+          sessionId: 'conv-1',
+        });
+        return {};
+      });
+      await adapter.loadSession('/repo', 'conv-1');
+
+      let resolvePrompt: (value: unknown) => void = () => undefined;
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () => new Promise((resolve) => {
+          resolvePrompt = resolve;
+        }),
+      );
+      const received: AgentUpdate[] = [];
+      const consumer = (async () => {
+        for await (const update of adapter.prompt('hello')) {
+          received.push(update);
+        }
+      })();
+      await acpHarness.lastClient?.sessionUpdate({ ...messageChunk('live'), sessionId: 'conv-1' });
+      resolvePrompt({ stopReason: 'end_turn' });
+      await consumer;
+
+      expect(received).toEqual([{ kind: 'text', text: 'live' }]);
+    });
+
+    it('should keep cached config options when the load response has none', async () => {
+      loadCapable();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+
+      await expect(adapter.loadSession('/repo', 'conv-1')).resolves.toBe(true);
+      expect(adapter.getAvailableModels()).toBeNull();
+    });
+
+    it('should return false and log when the agent rejects the load', async () => {
+      loadCapable();
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(vi.fn());
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      acpHarness.connectionInstance?.loadSession.mockRejectedValueOnce(
+        new Error('unknown conversation'),
+      );
+
+      const loaded = await adapter.loadSession('/repo', 'conv-1');
+
+      expect(loaded).toBe(false);
+      expect(adapter.currentSessionId).toBeUndefined();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('load_session_failed (conv-1): unknown conversation'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('should log a generic message when the load rejects with a non-Error', async () => {
+      loadCapable();
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(vi.fn());
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      acpHarness.connectionInstance?.loadSession.mockRejectedValueOnce('boom');
+
+      await expect(adapter.loadSession('/repo', 'conv-1')).resolves.toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unknown error'),
+      );
+      warnSpy.mockRestore();
     });
   });
 

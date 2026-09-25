@@ -11,7 +11,7 @@ import { AbstractAcpAdapter } from './abstract-acp.adapter.js';
 
 @Injectable()
 export class AntigravityAdapter extends AbstractAcpAdapter {
-  protected readonly agentName = 'agy';
+  readonly agentName = 'agy';
 
   constructor(
     @Inject(IFileSystemPort) private readonly fileSystem: IFileSystemPort,

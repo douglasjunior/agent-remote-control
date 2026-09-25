@@ -4,6 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscordClientService } from './discord-client.service.js';
 
 
+const COMMANDS = [
+  { name: 'cancel', description: 'Cancela o turno ativo do agente de IA' },
+  { name: 'model', description: 'Escolhe o modelo e o effort usados pelos agentes' },
+];
+
 describe('DiscordClientService', () => {
   let loginMock: ReturnType<typeof vi.fn>;
   let destroyMock: ReturnType<typeof vi.fn>;
@@ -58,7 +63,7 @@ describe('DiscordClientService', () => {
     expect(loginMock).not.toHaveBeenCalled();
   });
 
-  it('should login with token and register slash commands if DISCORD_BOT_TOKEN is set', async () => {
+  it('should register the commands only in the guild and clear the global ones', async () => {
     const setGuildCommands = vi.fn().mockResolvedValue([]);
     const setAppCommands = vi.fn().mockResolvedValue([]);
     const guildMock = { commands: { set: setGuildCommands } };
@@ -77,10 +82,36 @@ describe('DiscordClientService', () => {
     await service.onApplicationBootstrap();
 
     expect(loginMock).toHaveBeenCalledWith('test-bot-token');
-    expect(setGuildCommands).toHaveBeenCalledWith([{ name: 'cancel', description: 'Cancela o turno ativo do agente de IA' }]);
-    expect(setAppCommands).toHaveBeenCalledWith([{ name: 'cancel', description: 'Cancela o turno ativo do agente de IA' }]);
+    expect(setGuildCommands).toHaveBeenCalledWith(COMMANDS);
+    expect(setAppCommands).toHaveBeenCalledTimes(1);
+    expect(setAppCommands).toHaveBeenCalledWith([]);
 
     delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should register the guild commands even without an application', async () => {
+    const setGuildCommands = vi.fn().mockResolvedValue([]);
+    const guildMock = { commands: { set: setGuildCommands } };
+    (mockClient as any).guilds = { cache: new Map([['guild-123', guildMock]]), fetch: vi.fn() };
+    (mockClient as any).application = null;
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+    process.env.DISCORD_GUILD_ID = 'guild-123';
+
+    await service.onApplicationBootstrap();
+
+    expect(setGuildCommands).toHaveBeenCalledWith(COMMANDS);
+    delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should register the commands globally when no guild is configured', async () => {
+    const setAppCommands = vi.fn().mockResolvedValue([]);
+    (mockClient as any).application = { commands: { set: setAppCommands } };
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+
+    await service.onApplicationBootstrap();
+
+    expect(setAppCommands).toHaveBeenCalledTimes(1);
+    expect(setAppCommands).toHaveBeenCalledWith(COMMANDS);
   });
 
   it('should fetch guild if not cached when registering slash commands', async () => {
@@ -107,19 +138,21 @@ describe('DiscordClientService', () => {
     delete process.env.DISCORD_GUILD_ID;
   });
 
-  it('should handle guild fetch rejection gracefully when registering slash commands', async () => {
+  it('should fall back to global registration when the guild cannot be fetched', async () => {
+    const setAppCommands = vi.fn().mockResolvedValue([]);
     (mockClient as any).guilds = {
       cache: new Map(),
       fetch: vi.fn().mockRejectedValue(new Error('Guild not found')),
     };
     (mockClient as any).application = {
-      commands: { set: vi.fn() },
+      commands: { set: setAppCommands },
     };
 
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
     process.env.DISCORD_GUILD_ID = 'guild-missing';
 
     await expect(service.onApplicationBootstrap()).resolves.toBeUndefined();
+    expect(setAppCommands).toHaveBeenCalledWith(COMMANDS);
 
     delete process.env.DISCORD_GUILD_ID;
   });

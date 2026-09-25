@@ -2,8 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
-import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
-import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
@@ -13,7 +11,6 @@ const IDLE_MS = 1000;
 
 describe('ConversationRuntimeService', () => {
   let ports: StubAgentPort[];
-  let sessionStore: InMemorySessionStoreAdapter;
   let runtime: ConversationRuntimeService;
 
   beforeEach(() => {
@@ -26,8 +23,7 @@ describe('ConversationRuntimeService', () => {
         return port;
       },
     };
-    sessionStore = new InMemorySessionStoreAdapter();
-    runtime = new ConversationRuntimeService(factory, sessionStore, IDLE_MS);
+    runtime = new ConversationRuntimeService(factory, IDLE_MS);
   });
 
   afterEach(() => {
@@ -120,15 +116,13 @@ describe('ConversationRuntimeService', () => {
     await expect(runtime.cancel('unknown')).resolves.toBe(false);
   });
 
-  it('should expire an idle session, closing its agent and removing it from the store', async () => {
-    await sessionStore.saveSession(buildSessionContext({ sessionId: 'a' }));
+  it('should expire an idle session by closing its agent', async () => {
     await runtime.run('a', async () => undefined);
 
     await vi.advanceTimersByTimeAsync(IDLE_MS);
 
     expect(ports[0]!.closeSessionCalls).toBe(1);
     expect(ports[0]!.connected).toBe(false);
-    await expect(sessionStore.findSession('ch-1')).resolves.toBeNull();
 
     await runtime.run('a', async () => undefined);
     expect(ports).toHaveLength(2);
@@ -178,13 +172,13 @@ describe('ConversationRuntimeService', () => {
         return port;
       },
     };
-    const envRuntime = new ConversationRuntimeService(trackingFactory, sessionStore);
+    const envRuntime = new ConversationRuntimeService(trackingFactory);
     await envRuntime.run('a', async () => undefined);
     await vi.advanceTimersByTimeAsync(50);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
     delete process.env.SESSION_IDLE_TIMEOUT_MS;
-    const defaultRuntime = new ConversationRuntimeService(trackingFactory, sessionStore);
+    const defaultRuntime = new ConversationRuntimeService(trackingFactory);
     await defaultRuntime.run('b', async () => undefined);
     await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
     expect(created[1]!.closeSessionCalls).toBe(0);

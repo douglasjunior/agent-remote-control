@@ -16,6 +16,7 @@ type ConnectionMethodMock = Mock<(params?: unknown) => Promise<unknown>>;
 export type ConnectionMock = {
   initialize: ConnectionMethodMock;
   newSession: ConnectionMethodMock;
+  loadSession: ConnectionMethodMock;
   prompt: ConnectionMethodMock;
   steer: ConnectionMethodMock;
   cancel: ConnectionMethodMock;
@@ -202,6 +203,7 @@ export function acpSdkMockModule() {
     const instance: ConnectionMock = {
       initialize: vi.fn(async () => undefined),
       newSession: vi.fn(async () => ({ sessionId: 'session-1' })),
+      loadSession: vi.fn(async () => ({})),
       prompt: vi.fn(async () => undefined),
       steer: vi.fn(async () => ({ outcome: 'injected' })),
       cancel: vi.fn(async () => undefined),
@@ -284,6 +286,8 @@ export function acpSdkMockModule() {
                   return instance.initialize(params);
                 case 'session/new':
                   return instance.newSession(params);
+                case 'session/load':
+                  return instance.loadSession(params);
                 case 'session/prompt':
                   return instance.prompt(params);
                 case '_session/steering':

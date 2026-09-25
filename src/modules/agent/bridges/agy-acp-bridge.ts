@@ -90,6 +90,7 @@ export class AgyBridgeServer {
     return {
       protocolVersion: PROTOCOL_VERSION,
       agentCapabilities: {
+        loadSession: true,
         promptCapabilities: { image: false, embeddedContext: false },
         sessionCapabilities: { close: {} },
       },
@@ -108,6 +109,20 @@ export class AgyBridgeServer {
 
     return {
       sessionId,
+      configOptions: this.buildConfigOptions(models),
+    };
+  }
+
+  async loadSession(params: {
+    readonly cwd: string;
+    readonly sessionId: string;
+  }) {
+    this.currentCwd = params.cwd;
+    await this.startAgyProcess(params.cwd, params.sessionId);
+    this.currentSessionId = params.sessionId;
+    const models = await this.getModels();
+
+    return {
       configOptions: this.buildConfigOptions(models),
     };
   }
@@ -744,6 +759,8 @@ export function runAgyBridge() {
     .onRequest(methods.agent.initialize, () => server.initialize())
     .onRequest(methods.agent.session.new, ctx =>
       server.newSession(ctx.params))
+    .onRequest(methods.agent.session.load, ctx =>
+      server.loadSession(ctx.params))
     .onRequest(methods.agent.session.setConfigOption, ctx =>
       server.setConfigOption(ctx.params))
     .onRequest(methods.agent.session.prompt, ctx =>

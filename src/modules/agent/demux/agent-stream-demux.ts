@@ -1,10 +1,9 @@
 import type {
   SessionNotification,
   ToolCallContent,
-  ToolCallStatus,
 } from '@agentclientprotocol/sdk';
 
-import type { AgentActivity } from '../ports/agent.port.js';
+import type { AgentActivity, AgentToolStatus } from '../ports/agent.port.js';
 
 
 type ToolActivity = AgentActivity & { kind: 'tool' };
@@ -26,7 +25,7 @@ type MessageState = {
 export type ParsedToolCallFields = {
   readonly toolCallId: string;
   readonly title?: string;
-  readonly status?: ToolCallStatus;
+  readonly status?: AgentToolStatus;
   readonly content?: readonly ToolCallContent[] | null;
 };
 

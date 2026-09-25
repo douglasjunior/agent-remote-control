@@ -1,10 +1,6 @@
-import type {
-  SessionNotification,
-  ToolCallStatus,
-} from '@agentclientprotocol/sdk';
+export type AgentUpdate = { readonly kind: 'text'; readonly text: string };
 
-
-export type AgentUpdate = SessionNotification;
+export type AgentToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 
 export type AgentActivity =
   | {
@@ -20,7 +16,7 @@ export type AgentActivity =
     readonly kind: 'tool';
     readonly toolCallId: string;
     readonly title: string;
-    readonly status: ToolCallStatus;
+    readonly status: AgentToolStatus;
     readonly result?: string;
   };
 
@@ -69,11 +65,13 @@ export class PromptCancelledError extends Error {
 }
 
 export interface IAgentPort {
+  readonly agentName: string;
   readonly lastAgentMessage: string;
   readonly currentSessionId?: string;
   getLastRoundUsage(): Promise<AgentUsage | undefined>;
   connect(): Promise<void>;
   createSession(cwd: string): Promise<void>;
+  loadSession(cwd: string, sessionId: string): Promise<boolean>;
   prompt(text: string): AsyncGenerator<AgentUpdate>;
   cancel(): Promise<void>;
   sendSteeringPrompt(text: string): void;

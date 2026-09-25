@@ -69,6 +69,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           name: 'cancel',
           description: 'Cancela o turno ativo do agente de IA',
         },
+        {
+          name: 'model',
+          description: 'Escolhe o modelo e o effort usados pelos agentes',
+        },
       ];
 
       const guildId = process.env.DISCORD_GUILD_ID;
@@ -78,8 +82,11 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           ?? (await this.client.guilds.fetch(guildId).catch(() => null));
         if (guild) {
           await guild.commands.set(commands);
+          await this.client.application?.commands.set([]);
           this.logger.log(`Slash commands registered for guild ${guildId}`);
+          return;
         }
+        this.logger.warn(`Guild ${guildId} not found. Registering slash commands globally.`);
       }
 
       if (this.client.application) {

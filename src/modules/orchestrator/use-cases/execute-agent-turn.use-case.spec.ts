@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
-import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
+import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
+import { buildSessionContext } from '../testing/session-context.fixture.js';
+import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
@@ -16,6 +18,7 @@ import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
+  getDisplayName = vi.fn((role: string) => role);
 }
 
 class StubWorkspacePort implements IWorkspacePort {
@@ -29,17 +32,15 @@ class StubWorkspacePort implements IWorkspacePort {
 }
 
 function textChunk(text: string): AgentUpdate {
-  return {
-    sessionId: 's',
-    update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
-  };
+  return { kind: 'text', text };
 }
 
 describe('ExecuteAgentTurnUseCase', () => {
   let useCase: ExecuteAgentTurnUseCase;
   let stubAgentPort: StubAgentPort;
   let delegateStubPort: StubAgentPort;
-  let sessionStore: InMemorySessionStoreAdapter;
+  let sessionStore: InMemorySessionStoreFake;
+  let settingsStore: StubAgentSettingsStore;
   let agentRegistry: StubAgentRegistryPort;
   let workspacePort: StubWorkspacePort;
   let delegationDetector: DelegationDetectorService;
@@ -48,7 +49,8 @@ describe('ExecuteAgentTurnUseCase', () => {
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
     delegateStubPort = new StubAgentPort();
-    sessionStore = new InMemorySessionStoreAdapter();
+    sessionStore = new InMemorySessionStoreFake();
+    settingsStore = new StubAgentSettingsStore();
     agentRegistry = new StubAgentRegistryPort();
     workspacePort = new StubWorkspacePort();
     delegationDetector = new DelegationDetectorService();
@@ -61,12 +63,13 @@ describe('ExecuteAgentTurnUseCase', () => {
       },
     };
 
-    runtime = new ConversationRuntimeService(portFactory, sessionStore, 60_000);
+    runtime = new ConversationRuntimeService(portFactory, 60_000);
     useCase = new ExecuteAgentTurnUseCase(
       portFactory,
       sessionStore,
       agentRegistry,
       workspacePort,
+      settingsStore,
       delegationDetector,
       runtime,
     );
@@ -103,6 +106,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       sessionId: expect.any(String),
       response: 'All set.',
       status: 'completed',
+      agentInfo: { roleName: 'CEO', agentName: 'stub' },
     });
   });
 
@@ -274,7 +278,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     delegateStubPort.prompt = async function* (this: StubAgentPort) {
       this.emitActivity({ kind: 'thought', id: 't', text: 'thinking' });
       yield textChunk('first ');
-      yield { sessionId: 's', update: { sessionUpdate: 'tool_call', toolCallId: 't', title: 'ls' } };
+      yield textChunk('');
       yield textChunk('second');
     };
     const onActivity = vi.fn();
@@ -335,5 +339,146 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('raw failure');
+  });
+
+  describe('agent session recovery', () => {
+    const persistedSession = () =>
+      sessionStore.saveSession(buildSessionContext({ sessionId: 'sess-1', agentSessionId: 'conv-old' }));
+
+    it('should persist the agent session id created for a new conversation', async () => {
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('session-1');
+    });
+
+    it('should resume the persisted agent session without resending the system prompt', async () => {
+      await persistedSession();
+      stubAgentPort.mockResponses = ['Welcome back.'];
+
+      const result = await useCase.execute(turnRequest({ prompt: 'Continue' }));
+
+      expect(result.sessionId).toBe('sess-1');
+      expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
+      expect(stubAgentPort.createSessionCalls).toHaveLength(0);
+      expect(stubAgentPort.promptCalls).toEqual(['Continue']);
+      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('conv-old');
+    });
+
+    it('should create a new session and store its id when the load fails', async () => {
+      await persistedSession();
+      stubAgentPort.loadSessionResult = false;
+      stubAgentPort.mockResponses = ['Fresh start.'];
+
+      await useCase.execute(turnRequest({ prompt: 'Continue' }));
+
+      expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
+      expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\nContinue']);
+      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('session-1');
+    });
+
+    it('should never resume or persist delegate sessions', async () => {
+      await persistedSession();
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.loadSessionCalls).toHaveLength(0);
+      expect((await sessionStore.findSession('ch-1'))?.agentSessionId).toBe('conv-old');
+    });
+
+    it('should disconnect the CEO agent when the turn fails', async () => {
+      stubAgentPort.promptErrorToThrow = new Error('agent crashed');
+      stubAgentPort.currentSessionId = 'session-live';
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.connected).toBe(false);
+      expect(stubAgentPort.currentSessionId).toBeUndefined();
+    });
+
+    it('should keep the CEO agent connected when the turn is cancelled', async () => {
+      stubAgentPort.promptErrorToThrow = new PromptCancelledError();
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.connected).toBe(true);
+    });
+  });
+
+  describe('agent settings', () => {
+    const settings = {
+      modelId: 'm-fast',
+      modelName: 'Fast Model',
+      effortId: 'high',
+      effortName: 'High',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+
+    it('should apply the global settings to the CEO and to delegates', async () => {
+      settingsStore.settings = settings;
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.configCalls).toContainEqual({ modelId: 'm-fast', effortId: 'high' });
+      expect(delegateStubPort.configCalls).toEqual([{ modelId: 'm-fast', effortId: 'high' }]);
+      expect(agentRegistry.getDefaultModel).not.toHaveBeenCalled();
+    });
+
+    it('should omit the effort when the selected model has none', async () => {
+      settingsStore.settings = { ...settings, effortId: null, effortName: null };
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.configCalls).toEqual([{ modelId: 'm-fast', effortId: undefined }]);
+      expect(result.agentInfo).toEqual({
+        roleName: 'CEO',
+        agentName: 'stub',
+        modelName: 'Fast Model',
+        effortName: undefined,
+      });
+    });
+
+    it('should report the configured model and effort on every status', async () => {
+      settingsStore.settings = settings;
+      const expected = {
+        roleName: 'CEO',
+        agentName: 'stub',
+        modelName: 'Fast Model',
+        effortName: 'High',
+      };
+
+      stubAgentPort.mockResponses = ['Hi.'];
+      const completed = await useCase.execute(turnRequest({ threadId: 'a' }));
+      stubAgentPort.promptErrorToThrow = new PromptCancelledError();
+      const cancelled = await useCase.execute(turnRequest({ threadId: 'a' }));
+      stubAgentPort.promptErrorToThrow = new Error('boom');
+      const failed = await useCase.execute(turnRequest({ threadId: 'a' }));
+
+      expect(completed.agentInfo).toEqual(expected);
+      expect(cancelled.agentInfo).toEqual(expected);
+      expect(failed.agentInfo).toEqual(expected);
+    });
+
+    it('should report the agent current model when there are no settings', async () => {
+      stubAgentPort.modelsToReturn = {
+        availableModels: [
+          { modelId: 'm1', name: 'm1', displayName: 'Model One' },
+          { modelId: 'm2', name: 'm2', displayName: 'Model Two' },
+        ],
+        currentModelId: 'm2',
+      };
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.agentInfo?.modelName).toBe('Model Two');
+      expect(result.agentInfo?.effortName).toBeUndefined();
+    });
   });
 });

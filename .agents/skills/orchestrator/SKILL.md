@@ -1,13 +1,12 @@
 ---
 name: orchestrator
 description: >
-  Padrão de orquestração agnóstico a canais para controle de agentes de IA.
-  Governa o ciclo de vida de turnos (ExecuteAgentTurnUseCase, CancelAgentTurnUseCase),
-  o loop de delegação do CEO com marcadores [DELEGATE]/[DONE]/[AGENT_RESULT],
-  sessões ACP isoladas por conversa via IAgentPortFactory, estruturas TurnRequest e
-  TurnResult, armazenamento de contexto com ISessionStorePort, resolução de persona com
-  IAgentRegistryPort e streaming reativo. Use ao implementar fluxos de turnos,
-  delegação entre agentes, cancelamento, novas interfaces de canal ou persistência de sessões.
+  Orquestração agnóstica a canais para agentes de IA: turnos, delegação do CEO com
+  [DELEGATE]/[DONE]/[AGENT_RESULT], retomada de sessão ACP persistida (agentSessionId,
+  DATA_DIR), seleção global de modelo/effort, rodapé com TurnResult.agentInfo,
+  cancelamento, fila por conversa e ISessionStorePort. Use ao implementar turnos,
+  delegação, cancelamento, persistência de sessões e configurações, seleção de modelo
+  ou novas interfaces de canal.
 ---
 
 # Orquestrador de Agentes Agnóstico a Canais
@@ -43,6 +42,7 @@ apenas dados serializáveis; o estado de execução (agentes vivos, fila, turno 
 - `userId`: identificador do usuário autor da sessão;
 - `workspacePath`: caminho absoluto do diretório de trabalho do projeto;
 - `agentRole`: papel raiz da conversa (ex.: `'CEO'`);
+- `agentSessionId`: ID opcional da sessão ACP do CEO, usado para retomá-la com `loadSession`;
 - `createdAt` e `updatedAt`: marcos temporais de ciclo de vida.
 
 ### `TurnRequest` (`turn-request.model.ts`)
@@ -75,7 +75,20 @@ Estrutura imutável com o desfecho do turno:
 - `response`: resposta textual final consolidada;
 - `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, ou `'failed'` se abortado por erro;
 - `usage`: dados opcionais de consumo de tokens (`AgentUsage`);
-- `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha.
+- `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha;
+- `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada.
+
+### `AgentSettings` (`agent-settings.model.ts`)
+
+Configuração global de modelo e effort: `modelId`, `modelName`, `effortId`, `effortName` e
+`updatedAt`. `effortId === null` indica modelo sem níveis de effort.
+
+### `AgentConfigSelection` (`agent-config-selection.model.ts`)
+
+Estado da seleção em andamento numa conversa: `channelId`, `threadId?`, `step`
+(`'model' | 'effort'`), `options` numeradas (`SelectionOption`: `index`, `id`, `label`,
+`description?`), `selectedModel?` e `pendingPrompt?`. Os desfechos dos use cases de seleção
+estão em `agent-config-outcome.model.ts`.
 
 ## Portas do Orquestrador
 
@@ -87,10 +100,28 @@ Responsável pela persistência e consulta do estado das sessões:
 
 - `findSession(channelId: string, threadId?: string): Promise<SessionContext | null>`
 - `saveSession(session: SessionContext): Promise<void>`
-- `removeSession(sessionId: string): Promise<void>`
 - Symbol homônimo: `export const ISessionStorePort = Symbol('ISessionStorePort');`
 
-A implementação em memória padrão é fornecida por `InMemorySessionStoreAdapter`.
+A implementação é o `JsonSessionStoreAdapter`, que grava `DATA_DIR/sessions.json`. Os specs
+usam o `InMemorySessionStoreFake` de `testing/`.
+
+### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
+
+`load(): Promise<AgentSettings | null>` e `save(settings): Promise<void>`. Implementado por
+`JsonAgentSettingsStoreAdapter` em `DATA_DIR/agent-settings.json`.
+
+### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
+
+`find(channelId, threadId?)`, `save(selection)` e `remove(channelId, threadId?): Promise<boolean>`,
+com chave `channelId:threadId`. Implementado em memória por
+`InMemoryAgentConfigSelectionStoreAdapter`: uma seleção interrompida por reinício é descartada.
+
+### Persistência em `DATA_DIR`
+
+`resolveDataDirectory()` (`utils/data-directory.util.ts`) resolve, nesta ordem, o diretório
+passado ao construtor, `process.env.DATA_DIR` e `./data`. Os adapters JSON carregam o arquivo
+uma única vez, mantêm o conteúdo em memória, tratam arquivo ausente ou inválido como vazio e
+serializam as escritas.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
 
@@ -98,6 +129,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 
 - `getSystemPrompt(agentRole: string): string`
 - `getDefaultModel(agentRole: string): string | undefined`
+- `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
@@ -111,7 +143,7 @@ Mantém em memória o estado de execução de cada sessão (`sessionId`):
 - **Agente da conversa**: um `IAgentPort` criado pela `IAgentPortFactory` na primeira execução e reutilizado nos turnos seguintes;
 - **Fila de turnos**: `run(sessionId, work, onQueued)` executa os turnos de uma mesma sessão um de cada vez, na ordem de chegada. Um turno que chega com outro em andamento chama `onQueued`. Uma falha não interrompe a fila;
 - **Turno ativo**: `cancel(sessionId)` cancela o `ActiveTurn` em execução e devolve `false` quando não há turno em andamento. Turnos na fila não são afetados;
-- **Expiração por ociosidade**: sem turnos por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra o agente (`closeSession` + `disconnect`) e remove a sessão do `ISessionStorePort`. A mensagem seguinte da conversa inicia uma sessão nova;
+- **Expiração por ociosidade**: sem turnos por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra o agente (`closeSession` + `disconnect`). A `SessionContext` e o `agentSessionId` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
 - **Shutdown**: `onApplicationShutdown` desconecta todos os agentes. Requer `app.enableShutdownHooks()` no bootstrap.
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
@@ -157,7 +189,8 @@ O resultado do agente delegado volta ao CEO como `[AGENT_RESULT:ROLE]\n<resposta
 ### Execução de Turno (`ExecuteAgentTurnUseCase`)
 
 Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAgentRegistryPort)`,
-`@Inject(IWorkspacePort)`, `DelegationDetectorService` e `ConversationRuntimeService`.
+`@Inject(IWorkspacePort)`, `@Inject(IAgentSettingsStorePort)`, `DelegationDetectorService` e
+`ConversationRuntimeService`.
 
 A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
 
@@ -175,16 +208,24 @@ Cada turno de agente (CEO ou delegado) executa internamente:
 
 1. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
 2. `connect()` seguido de `turn.throwIfCancelled()`.
-3. Se `currentSessionId` não estiver definido: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada após falha receba as instruções do papel.
-4. `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo.
+3. Se `currentSessionId` não estiver definido:
+   1. **CEO com `agentSessionId`**: `loadSession(cwd, agentSessionId)`. Com sucesso, o system prompt não é reenviado.
+   2. **Sem ID ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.
+   3. **CEO**: se o ID da sessão ACP mudou, salva `{ ...session, agentSessionId }` no store. Delegados são efêmeros e nunca são retomados nem persistidos.
+4. Configuração: com `AgentSettings`, `setConfig({ modelId, effortId: effortId ?? undefined })`; sem settings, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Vale para o CEO e para os delegados.
 5. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.
 6. `turn.throwIfCancelled()` e drenagem de `prompt(text)`, despachando blocos `agent_message_chunk` para `request.onTextChunk`.
 7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados.
 
 **Tratamento de Cancelamento e Falhas**: `PromptCancelledError` (ou erro com nome
 homônimo) lançado por qualquer agente ou pelo `ActiveTurn` retorna `status: 'cancelled'`. Demais
-erros retornam `status: 'failed'` com `errorMessage`. Em ambos os casos, `response` recebe o
-`lastAgentMessage` do CEO.
+erros retornam `status: 'failed'` com `errorMessage` e desconectam o agente do CEO, para que o
+turno seguinte suba um transporte novo e retome a sessão. Em ambos os casos, `response` recebe
+o `lastAgentMessage` do CEO.
+
+**Metadados do turno**: `agentInfo.roleName` vem de `getDisplayName(role)` e `agentName` do
+`IAgentPort` do CEO. `modelName` e `effortName` vêm das `AgentSettings`; sem settings,
+`modelName` é o `displayName` de `getAvailableModels().currentModelId`.
 
 ### Cancelamento de Turno (`CancelAgentTurnUseCase`)
 
@@ -195,27 +236,25 @@ O método `execute(channelId: string, threadId?: string): Promise<boolean>`:
 1. Localiza a sessão via `ISessionStorePort.findSession(channelId, threadId)`. Sem sessão, devolve `false`.
 2. Aciona `ConversationRuntimeService.cancel(sessionId)` e devolve se havia turno em andamento. O `PromptCancelledError` resultante interrompe o loop de delegação.
 
+## Seleção de Modelo e Effort
+
+A escolha é global e persistida. `AgentCapabilitiesService` descobre as opções numa porta
+descartável (`create()` → `connect()` → leitura → `disconnect()` no `finally`), isolada da
+porta da conversa.
+
+- **`StartAgentConfigSelectionUseCase`** `({ channelId, threadId?, pendingPrompt? })`: lista os modelos, salva `step: 'model'` e retorna `{ kind: 'selection', selection }`; sem modelos, `{ kind: 'unavailable' }`.
+- **`SubmitAgentConfigSelectionUseCase`** `({ channelId, threadId?, input })`: aceita só `^\d+$` entre 1 e N; outra entrada retorna `invalid` sem mudar o estado. Na etapa `model`, avança para `effort` se o modelo tiver efforts, senão salva com `effortId: null`. Na etapa `effort`, salva. Ao salvar, remove a seleção e retorna `{ kind: 'configured', settings, pendingPrompt? }`.
+- **`ResolveConversationInputUseCase`** `({ channelId, threadId?, prompt })`: com seleção ativa, delega para `Submit`; sem settings, delega para `Start` com `pendingPrompt` (`unavailable` vira `execute`); com settings, `execute`. Um `configured` com `pendingPrompt` vira `{ kind: 'execute', prompt: pendingPrompt, configured }`.
+- **`CancelAgentConfigSelectionUseCase`**: remove a seleção e retorna se havia uma.
+
 ## Fachada de Serviço (`OrchestratorService`)
 
-Encapsula os casos de uso de execução e cancelamento em uma interface simplificada:
+Interface do orquestrador para os canais:
 
-```typescript
-@Injectable()
-export class OrchestratorService {
-  constructor(
-    private readonly executeAgentTurnUseCase: ExecuteAgentTurnUseCase,
-    private readonly cancelAgentTurnUseCase: CancelAgentTurnUseCase,
-  ) {}
-
-  async executeTurn(request: TurnRequest): Promise<TurnResult> {
-    return this.executeAgentTurnUseCase.execute(request);
-  }
-
-  async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
-    return this.cancelAgentTurnUseCase.execute(channelId, threadId);
-  }
-}
-```
+- `executeTurn(request)` e `cancelTurn(channelId, threadId?)`;
+- `resolveInput({ channelId, threadId?, prompt })`: decide entre executar o prompt ou conduzir a seleção;
+- `startConfigSelection(channelId, threadId?)` e `cancelConfigSelection(channelId, threadId?)`;
+- `hasActiveConfigSelection(channelId, threadId?)`.
 
 ## Regras Prescritivas Mandatórias
 
@@ -224,7 +263,7 @@ export class OrchestratorService {
 - **Sem barrel exports**: nunca crie `index.ts` em `models/`, `ports/`, `adapters/`, `services/` ou `use-cases/`.
 - **Limpeza de recursos reativos**: todo callback registrado em `onActivity` deve ser desconectado em bloco `finally`.
 - **Uma sessão ACP por conversa**: obtenha instâncias de `IAgentPort` exclusivamente pela `IAgentPortFactory`. O agente do CEO de cada conversa vive no `ConversationRuntimeService`, e cada delegação usa uma instância descartável.
-- **Sessão só com dados**: `SessionContext` guarda apenas dados serializáveis. Agentes vivos, fila e turno ativo ficam no `ConversationRuntimeService`, para que o store possa ser substituído por uma persistência real.
+- **Sessão só com dados**: `SessionContext` guarda apenas dados serializáveis. Agentes vivos, fila e turno ativo ficam no `ConversationRuntimeService`, porque o store é persistido em disco.
 - **Um turno por vez**: todo turno passa por `ConversationRuntimeService.run`. Chamar `prompt()` em paralelo no mesmo agente corrompe o estado de streaming do adapter.
 - **Delegação cancelável**: todo agente em execução deve ser registrado com `turn.activate(agentPort)`, e `turn.throwIfCancelled()` deve preceder `connect` e `prompt`.
 - **Limite de rodadas**: mantenha `MAX_DELEGATION_ROUNDS` para impedir loops infinitos entre CEO e agentes delegados.

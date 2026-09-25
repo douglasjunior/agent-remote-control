@@ -6,7 +6,9 @@ import type {
 import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 
 import { DiscordInteractionHandler } from './discord-interaction.handler.js';
@@ -17,6 +19,17 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
   cancelledThreadId?: string;
   throwError = false;
   hasActiveTurn = true;
+  hasActiveSelection = false;
+  selectionResult: StartAgentConfigSelectionResult = {
+    kind: 'selection',
+    selection: {
+      channelId: 'channel-123',
+      step: 'model',
+      options: [{ index: 1, id: 'm1', label: 'Model 1' }],
+    },
+  };
+
+  startedSelections: { channelId: string; threadId?: string }[] = [];
 
   async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
     if (this.throwError) {
@@ -26,6 +39,49 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     this.cancelledThreadId = threadId;
     return this.hasActiveTurn;
   }
+
+  async cancelConfigSelection(): Promise<boolean> {
+    return this.hasActiveSelection;
+  }
+
+  async startConfigSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
+    if (this.throwError) {
+      throw new Error('agent down');
+    }
+    this.startedSelections.push({ channelId, threadId });
+    return this.selectionResult;
+  }
+}
+
+type InteractionOverrides = {
+  commandName?: string;
+  channelId?: string;
+  channel?: unknown;
+  user?: unknown;
+  deferred?: boolean;
+  replied?: boolean;
+  reply?: ReturnType<typeof vi.fn>;
+  followUp?: ReturnType<typeof vi.fn>;
+};
+
+function buildInteraction(overrides: InteractionOverrides = {}): ChatInputCommandInteraction {
+  const interaction = {
+    isChatInputCommand: vi.fn().mockReturnValue(true),
+    commandName: 'cancel',
+    channelId: 'channel-123',
+    channel: { isThread: vi.fn().mockReturnValue(false) },
+    user: { username: 'alice', id: 'u-1' },
+    deferred: false,
+    replied: false,
+    reply: vi.fn().mockResolvedValue(undefined),
+    followUp: vi.fn().mockResolvedValue(undefined),
+    editReply: vi.fn().mockResolvedValue(undefined),
+    deferReply: vi.fn(async () => {
+      interaction.deferred = true;
+    }),
+    ...overrides,
+  };
+  return interaction as unknown as ChatInputCommandInteraction;
 }
 
 describe('DiscordInteractionHandler', () => {
@@ -44,10 +100,11 @@ describe('DiscordInteractionHandler', () => {
     handler = new DiscordInteractionHandler(
       clientService,
       orchestratorService as unknown as OrchestratorService,
+      new DiscordActivityFormatter(),
     );
   });
 
-  it('should register interactionCreate listener on onModuleInit and invoke callback', () => {
+  const captureListener = () => {
     let interactionListener: ((interaction: Interaction) => void) | undefined;
     vi.mocked(mockClient.on).mockImplementation(((event: string, cb: any) => {
       if (event === Events.InteractionCreate) {
@@ -55,14 +112,31 @@ describe('DiscordInteractionHandler', () => {
       }
       return mockClient;
     }) as any);
-
     handler.onModuleInit();
-    expect(interactionListener).toBeDefined();
+    return interactionListener!;
+  };
+
+  it('should register interactionCreate listener on onModuleInit and invoke callback', () => {
+    const listener = captureListener();
 
     const nonChatInput = {
       isChatInputCommand: vi.fn().mockReturnValue(false),
     } as unknown as Interaction;
-    interactionListener?.(nonChatInput);
+    listener(nonChatInput);
+
+    expect(nonChatInput.isChatInputCommand).toHaveBeenCalled();
+  });
+
+  it('should log instead of rejecting when the handler itself fails', async () => {
+    const listener = captureListener();
+    const broken = {
+      isChatInputCommand: vi.fn(() => {
+        throw new Error('broken interaction');
+      }),
+    } as unknown as Interaction;
+
+    expect(() => listener(broken)).not.toThrow();
+    await vi.waitFor(() => expect(broken.isChatInputCommand).toHaveBeenCalled());
   });
 
   it('should ignore interactions that are not chat input commands', async () => {
@@ -75,186 +149,161 @@ describe('DiscordInteractionHandler', () => {
     expect(orchestratorService.cancelledChannelId).toBeUndefined();
   });
 
-  it('should ignore chat input commands other than cancel', async () => {
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'help',
-    } as unknown as Interaction;
+  it('should ignore unknown chat input commands', async () => {
+    const interaction = buildInteraction({ commandName: 'help' });
 
     await handler.handleInteraction(interaction);
 
     expect(orchestratorService.cancelledChannelId).toBeUndefined();
+    expect(orchestratorService.startedSelections).toHaveLength(0);
   });
 
-  it('should execute /cancel in standard channel and reply with ephemeral confirmation', async () => {
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
+  describe('/cancel', () => {
+    it('should cancel in a standard channel and reply with an ephemeral confirmation', async () => {
+      const interaction = buildInteraction();
 
-    await handler.handleInteraction(interaction);
+      await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledChannelId).toBe('channel-123');
-    expect(orchestratorService.cancelledThreadId).toBeUndefined();
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content:
-        '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
-      ephemeral: true,
+      expect(orchestratorService.cancelledChannelId).toBe('channel-123');
+      expect(orchestratorService.cancelledThreadId).toBeUndefined();
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
+        ephemeral: true,
+      });
+    });
+
+    it('should use the parent channel and thread ids inside a thread', async () => {
+      const interaction = buildInteraction({
+        channelId: 'thread-777',
+        channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'parent-channel-456' },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.cancelledChannelId).toBe('parent-channel-456');
+      expect(orchestratorService.cancelledThreadId).toBe('thread-777');
+    });
+
+    it('should fall back to the thread id when the thread has no parent', async () => {
+      const interaction = buildInteraction({
+        channelId: 'thread-777',
+        channel: { isThread: vi.fn().mockReturnValue(true), parentId: undefined },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.cancelledChannelId).toBe('thread-777');
+      expect(orchestratorService.cancelledThreadId).toBe('thread-777');
+    });
+
+    it('should confirm when only a model selection was cancelled', async () => {
+      orchestratorService.hasActiveTurn = false;
+      orchestratorService.hasActiveSelection = true;
+      const interaction = buildInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '🛑 **Seleção de modelo cancelada.**',
+        ephemeral: true,
+      });
+    });
+
+    it('should tell the user when there is nothing to cancel', async () => {
+      orchestratorService.hasActiveTurn = false;
+      const interaction = buildInteraction({ user: undefined });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: 'ℹ️ Não há nenhum turno em andamento para cancelar.',
+        ephemeral: true,
+      });
+    });
+
+    it('should use followUp when the interaction was already replied', async () => {
+      const interaction = buildInteraction({ replied: true });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.followUp).toHaveBeenCalledWith({
+        content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
+        ephemeral: true,
+      });
+    });
+
+    it('should reply with the error message when cancelling fails', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '❌ **Falha ao solicitar cancelamento**: Cancel turn failed',
+        ephemeral: true,
+      });
+    });
+
+    it('should stringify non-Error failures', async () => {
+      orchestratorService.cancelTurn = vi.fn().mockRejectedValueOnce('raw cancel error');
+      const interaction = buildInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '❌ **Falha ao solicitar cancelamento**: raw cancel error',
+        ephemeral: true,
+      });
+    });
+
+    it('should not reject when both the cancel and the error reply fail', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({
+        reply: vi.fn().mockRejectedValue(new Error('Unknown interaction')),
+      });
+
+      await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
+      expect(interaction.reply).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('should execute /cancel in a thread channel using parentId as channelId', async () => {
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'thread-777',
-      channel: {
-        isThread: vi.fn().mockReturnValue(true),
-        parentId: 'parent-channel-456',
-      },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
+  describe('/model', () => {
+    it('should defer and publish the model list for the conversation', async () => {
+      const interaction = buildInteraction({
+        commandName: 'model',
+        channelId: 'thread-1',
+        channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+      });
 
-    await handler.handleInteraction(interaction);
+      await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledChannelId).toBe('parent-channel-456');
-    expect(orchestratorService.cancelledThreadId).toBe('thread-777');
-  });
-
-  it('should fallback to channelId if parentId is not present on thread', async () => {
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'thread-777',
-      channel: {
-        isThread: vi.fn().mockReturnValue(true),
-        parentId: undefined,
-      },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
-
-    await handler.handleInteraction(interaction);
-
-    expect(orchestratorService.cancelledChannelId).toBe('thread-777');
-    expect(orchestratorService.cancelledThreadId).toBe('thread-777');
-  });
-
-  it('should tell the user when there is no turn in progress to cancel', async () => {
-    orchestratorService.hasActiveTurn = false;
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
-
-    await handler.handleInteraction(interaction);
-
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: 'ℹ️ Não há nenhum turno em andamento para cancelar.',
-      ephemeral: true,
+      expect(interaction.deferReply).toHaveBeenCalledWith();
+      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model 1',
+      });
     });
-  });
 
-  it('should use followUp if interaction is already deferred or replied', async () => {
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: true,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
+    it('should explain when the agent exposes no models', async () => {
+      orchestratorService.selectionResult = { kind: 'unavailable' };
+      const interaction = buildInteraction({ commandName: 'model' });
 
-    await handler.handleInteraction(interaction);
+      await handler.handleInteraction(interaction);
 
-    expect(interaction.followUp).toHaveBeenCalledWith({
-      content:
-        '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
-      ephemeral: true,
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: 'ℹ️ O agente atual não expõe modelos para seleção.',
+      });
     });
-  });
 
-  it('should handle cancel error and reply with error message', async () => {
-    orchestratorService.throwError = true;
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
+    it('should report failures listing the models', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({ commandName: 'model' });
 
-    await handler.handleInteraction(interaction);
+      await handler.handleInteraction(interaction);
 
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: '❌ **Falha ao solicitar cancelamento**: Cancel turn failed',
-      ephemeral: true,
-    });
-  });
-
-  it('should use followUp on error if interaction is already replied or deferred', async () => {
-    orchestratorService.throwError = true;
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: false,
-      replied: true,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
-
-    await handler.handleInteraction(interaction);
-
-    expect(interaction.followUp).toHaveBeenCalledWith({
-      content: '❌ **Falha ao solicitar cancelamento**: Cancel turn failed',
-      ephemeral: true,
-    });
-  });
-
-  it('should handle raw string error on cancel failure', async () => {
-    orchestratorService.cancelTurn = vi
-      .fn()
-      .mockRejectedValueOnce('raw cancel error');
-    const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(true),
-      commandName: 'cancel',
-      channelId: 'channel-123',
-      channel: { isThread: vi.fn().mockReturnValue(false) },
-      deferred: false,
-      replied: false,
-      reply: vi.fn().mockResolvedValue(undefined),
-      followUp: vi.fn().mockResolvedValue(undefined),
-    } as unknown as ChatInputCommandInteraction;
-
-    await handler.handleInteraction(interaction);
-
-    expect(interaction.reply).toHaveBeenCalledWith({
-      content: '❌ **Falha ao solicitar cancelamento**: raw cancel error',
-      ephemeral: true,
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Falha ao listar os modelos**: agent down',
+      });
     });
   });
 });

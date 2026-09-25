@@ -3,6 +3,7 @@ import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { ConversationInputResolution } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
@@ -43,6 +44,22 @@ class MockOrchestratorService {
   ];
 
   public queued = false;
+  public activeSelection = false;
+  public resolution: ConversationInputResolution | null = null;
+  public resolvedInputs: { channelId: string; threadId?: string; prompt: string }[] = [];
+
+  async hasActiveConfigSelection(): Promise<boolean> {
+    return this.activeSelection;
+  }
+
+  async resolveInput(input: {
+    channelId: string;
+    threadId?: string;
+    prompt: string;
+  }): Promise<ConversationInputResolution> {
+    this.resolvedInputs.push(input);
+    return this.resolution ?? { kind: 'execute', prompt: input.prompt };
+  }
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
     this.lastRequest = request;
@@ -767,5 +784,147 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(orchestratorService.lastRequest).toBeUndefined();
+  });
+
+  describe('agent footer', () => {
+    const agentInfo = { roleName: 'CEO', agentName: 'agy', modelName: 'Deep', effortName: 'High' };
+    const footer = '-# 🤖 CEO (agy) · 🧠 Deep · ⚡ High';
+
+    const threadMessage = (send: ReturnType<typeof vi.fn>) => ({
+      author: { bot: false, id: 'user-42' },
+      channelId: 'thread-1',
+      content: 'Do it',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      },
+    }) as unknown as Message;
+
+    it('should append the footer only to the last chunk of a long response', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.mockResult = {
+        sessionId: 'session-1',
+        response: 'A'.repeat(3000),
+        status: 'completed',
+        agentInfo,
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      const sent = send.mock.calls.map(call => call[0] as string).slice(1);
+      expect(sent).toHaveLength(2);
+      expect(sent[0]).not.toContain(footer);
+      expect(sent[1]!.endsWith(`\n${footer}`)).toBe(true);
+      expect(sent.every(text => text.length <= 2000)).toBe(true);
+    });
+
+    it.each([
+      ['completed without text', { response: '', status: 'completed' }, '✅ *Tarefa concluída sem mensagem de resposta.*'],
+      ['cancelled', { response: '', status: 'cancelled' }, '⚠️ **Turno cancelado pelo usuário.**'],
+      ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Erro na execução**: boom'],
+    ] as const)('should append the footer when the turn is %s', async (_label, partial, text) => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.mockResult = { sessionId: 'session-1', ...partial, agentInfo };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenLastCalledWith(`${text}\n${footer}`);
+    });
+  });
+
+  describe('agent configuration selection', () => {
+    const selection = {
+      channelId: 'channel-1',
+      threadId: 'thread-1',
+      step: 'model' as const,
+      options: [{ index: 1, id: 'm1', label: 'Model 1' }],
+    };
+    const settings = {
+      modelId: 'm1',
+      modelName: 'Model 1',
+      effortId: null,
+      effortName: null,
+      updatedAt: '',
+    };
+
+    const threadMessage = (send: ReturnType<typeof vi.fn>, content = '1') => ({
+      author: { bot: false, id: 'user-42' },
+      channelId: 'thread-1',
+      content,
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      },
+    }) as unknown as Message;
+
+    it('should show the options instead of running the turn', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'selection', selection };
+
+      await handler.handleMessage(threadMessage(send, 'Build it'));
+
+      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: 'thread-1', prompt: 'Build it' }]);
+      expect(send).toHaveBeenCalledWith(expect.stringContaining('**1.** Model 1'));
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should repeat the options on an invalid answer', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'invalid', selection };
+
+      await handler.handleMessage(threadMessage(send, 'abc'));
+
+      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Opção inválida/));
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should confirm a configuration without pending prompt', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'configured', settings };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should confirm the configuration and run the pending prompt', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.resolution = { kind: 'execute', prompt: 'Build it', configured: settings };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send.mock.calls[0]![0]).toBe('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
+    });
+
+    it('should accept an answer in a plain channel with an active selection without opening a thread', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      const startThread = vi.fn();
+      orchestratorService.activeSelection = true;
+      orchestratorService.resolution = { kind: 'configured', settings };
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: ' 1 ',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: { isThread: vi.fn().mockReturnValue(false), send },
+        startThread,
+      } as unknown as Message;
+
+      await handler.handleMessage(message);
+
+      expect(startThread).not.toHaveBeenCalled();
+      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: undefined, prompt: '1' }]);
+      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+    });
   });
 });

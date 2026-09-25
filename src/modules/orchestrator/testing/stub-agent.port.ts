@@ -10,11 +10,16 @@ import type {
 
 
 export class StubAgentPort implements IAgentPort {
+  agentName = 'stub';
   lastAgentMessage = '';
   currentSessionId?: string = undefined;
   connected = false;
   connectCalls = 0;
   createSessionCalls: string[] = [];
+  loadSessionCalls: { cwd: string; sessionId: string }[] = [];
+  loadSessionResult = true;
+  modelsToReturn: AgentModelState | null = null;
+  effortsByModel: Record<string, AgentEffortState | null> = {};
   promptCalls: string[] = [];
   cancelCalls = 0;
   closeSessionCalls = 0;
@@ -46,6 +51,14 @@ export class StubAgentPort implements IAgentPort {
     this.currentSessionId = `session-${this.createSessionCalls.length}`;
   }
 
+  async loadSession(cwd: string, sessionId: string): Promise<boolean> {
+    this.loadSessionCalls.push({ cwd, sessionId });
+    if (this.loadSessionResult) {
+      this.currentSessionId = sessionId;
+    }
+    return this.loadSessionResult;
+  }
+
   async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.promptCalls.push(text);
     if (this.promptErrorToThrow) {
@@ -57,7 +70,7 @@ export class StubAgentPort implements IAgentPort {
     const response = this.mockResponses.shift();
     if (response) {
       this.lastAgentMessage = response;
-      yield { update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: response } } } as any;
+      yield { kind: 'text', text: response };
     } else {
       for (const update of this.updatesToYield) {
         yield update;
@@ -100,13 +113,13 @@ export class StubAgentPort implements IAgentPort {
   }
 
   getAvailableModels(): AgentModelState | null {
-    return null;
+    return this.modelsToReturn;
   }
 
   async getAvailableEffortsForModel(
-    _modelId?: string,
+    modelId: string,
   ): Promise<AgentEffortState | null> {
-    return null;
+    return this.effortsByModel[modelId] ?? null;
   }
 
   async setConfig(config: AgentConfig): Promise<void> {

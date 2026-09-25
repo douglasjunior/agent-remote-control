@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { SessionContext } from '../models/session-context.model.js';
-import { buildSessionContext } from '../testing/session-context.fixture.js';
 
-import { InMemorySessionStoreAdapter } from './in-memory-session-store.adapter.js';
+import { InMemorySessionStoreFake } from './in-memory-session-store.fake.js';
+import { buildSessionContext } from './session-context.fixture.js';
 
 
-describe('InMemorySessionStoreAdapter', () => {
-  let store: InMemorySessionStoreAdapter;
+describe('InMemorySessionStoreFake', () => {
+  let store: InMemorySessionStoreFake;
 
   beforeEach(() => {
-    store = new InMemorySessionStoreAdapter();
+    store = new InMemorySessionStoreFake();
   });
 
   it('should return null when session does not exist', async () => {
@@ -94,22 +94,5 @@ describe('InMemorySessionStoreAdapter', () => {
 
     expect(found?.workspacePath).toBe('/path/new');
     expect(found?.updatedAt).toEqual(new Date('2026-01-02T00:00:00Z'));
-  });
-
-  it('should remove session by sessionId', async () => {
-    const session: SessionContext = buildSessionContext({
-      sessionId: 'sess-5',
-      channelId: 'ch-2',
-      userId: 'usr-2',
-      workspacePath: '/path/workspace',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    await store.saveSession(session);
-    await store.removeSession('sess-5');
-
-    const found = await store.findSession('ch-2');
-    expect(found).toBeNull();
   });
 });

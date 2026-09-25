@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
 
 import { DiscordActivityFormatter } from './discord-activity.formatter.js';
 
@@ -260,6 +261,79 @@ describe('DiscordActivityFormatter', () => {
         }
         expect(withoutFences(chunks.join('\n'))).toBe(withoutFences(content));
       });
+    });
+  });
+
+  describe('agent configuration', () => {
+    const selection: AgentConfigSelection = {
+      channelId: 'ch-1',
+      step: 'model',
+      options: [
+        { index: 1, id: 'fast', label: 'Fast Model', description: 'Quick answers' },
+        { index: 2, id: 'deep', label: 'Deep Model' },
+      ],
+    };
+
+    it('should format the footer with model and effort', () => {
+      expect(
+        formatter.formatAgentFooter({
+          roleName: 'CEO',
+          agentName: 'agy',
+          modelName: 'Deep Model',
+          effortName: 'High',
+        }),
+      ).toBe('-# 🤖 CEO (agy) · 🧠 Deep Model · ⚡ High');
+    });
+
+    it('should fall back to the default label in the footer', () => {
+      expect(formatter.formatAgentFooter({ roleName: 'CEO', agentName: 'agy' })).toBe(
+        '-# 🤖 CEO (agy) · 🧠 padrão · ⚡ padrão',
+      );
+    });
+
+    it('should list the model options', () => {
+      expect(formatter.formatSelection(selection)).toBe(
+        [
+          '🧠 **Escolha o modelo do agente** respondendo com o número da opção:',
+          '**1.** Fast Model — Quick answers',
+          '**2.** Deep Model',
+        ].join('\n'),
+      );
+    });
+
+    it('should name the selected model in the effort step', () => {
+      const text = formatter.formatSelection({
+        ...selection,
+        step: 'effort',
+        selectedModel: { id: 'deep', name: 'Deep Model' },
+      });
+
+      expect(text.split('\n')[0]).toBe(
+        '⚡ **Escolha o effort para Deep Model** respondendo com o número da opção:',
+      );
+    });
+
+    it('should explain the valid range on an invalid answer', () => {
+      expect(formatter.formatInvalidSelection(selection)).toMatch(
+        /^⚠️ Opção inválida\. Responda apenas com um número de 1 a 2\.\n\n🧠/,
+      );
+    });
+
+    it('should confirm the saved settings', () => {
+      const settings = {
+        modelId: 'deep',
+        modelName: 'Deep Model',
+        effortId: null,
+        effortName: null,
+        updatedAt: '',
+      };
+
+      expect(formatter.formatConfigured(settings)).toBe(
+        '✅ **Configuração salva**: 🧠 Deep Model · ⚡ padrão',
+      );
+      expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
+        '✅ **Configuração salva**: 🧠 Deep Model · ⚡ High',
+      );
     });
   });
 });

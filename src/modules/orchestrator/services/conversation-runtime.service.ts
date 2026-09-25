@@ -9,7 +9,6 @@ import {
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import type { IAgentPort } from '../../agent/ports/agent.port.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
-import { ISessionStorePort } from '../ports/session-store.port.js';
 
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -31,8 +30,6 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   constructor(
     @Inject(IAgentPortFactory)
     private readonly agentPortFactory: IAgentPortFactory,
-    @Inject(ISessionStorePort)
-    private readonly sessionStore: ISessionStorePort,
     @Optional() idleTimeoutMs?: number,
   ) {
     this.idleTimeoutMs =
@@ -125,7 +122,6 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     runtime.idleTimer = null;
     this.runtimes.delete(sessionId);
     this.logger.log(`[Session Expired] Session=${sessionId} idle for ${this.idleTimeoutMs}ms`);
-    await this.sessionStore.removeSession(sessionId);
     await runtime.agentPort.closeSession().catch(() => undefined);
     await runtime.agentPort.disconnect().catch(() => undefined);
   }

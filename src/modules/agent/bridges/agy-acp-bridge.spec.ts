@@ -96,6 +96,7 @@ describe('AgyBridgeServer', () => {
       expect(response).toEqual({
         protocolVersion: 1,
         agentCapabilities: {
+          loadSession: true,
           promptCapabilities: { image: false, embeddedContext: false },
           sessionCapabilities: { close: {} },
         },
@@ -105,6 +106,70 @@ describe('AgyBridgeServer', () => {
           version: '1.0.0',
         },
       });
+    });
+  });
+
+  describe('loadSession', () => {
+    it('should resume the agy conversation and adopt the requested session id', async () => {
+      const server = new AgyBridgeServer();
+
+      const loadPromise = server.loadSession({
+        cwd: '/test/cwd',
+        sessionId: 'conv-previous',
+      });
+      lastSpawnedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"init","conversation_id":"conv-previous","init":{"model":"gemini-3.8-flash-low","cwd":"/test/cwd","tools":[]}}\n',
+        ),
+      );
+      const response = await loadPromise;
+
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'agy',
+        expect.arrayContaining(['--conversation', 'conv-previous']),
+        expect.objectContaining({ cwd: '/test/cwd' }),
+      );
+      expect(response.configOptions[0]).toEqual(
+        expect.objectContaining({ id: 'model', currentValue: 'gemini-3.8-flash-low' }),
+      );
+
+      const client = createMockClientContext();
+      const promptPromise = server.prompt(
+        { sessionId: 'conv-previous', prompt: [{ type: 'text', text: 'hi' }] },
+        client,
+      );
+      lastSpawnedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"step_update","step_update":{"conversation_id":"conv-previous","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"hello"}}\n',
+        ),
+      );
+      lastSpawnedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"result","result":{"conversation_id":"conv-previous","status":"SUCCESS","response":"hello","num_turns":1,"usage":{"input_tokens":1,"output_tokens":1,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":2}}}\n',
+        ),
+      );
+      await promptPromise;
+
+      expect(client.notify).toHaveBeenCalledWith(
+        'session/update',
+        expect.objectContaining({ sessionId: 'conv-previous' }),
+      );
+    });
+
+    it('should propagate agy startup failures', async () => {
+      const server = new AgyBridgeServer();
+
+      const loadPromise = server.loadSession({
+        cwd: '/test/cwd',
+        sessionId: 'conv-missing',
+      });
+      const rejection = expect(loadPromise).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(15_000);
+
+      await rejection;
     });
   });
 
@@ -1867,6 +1932,21 @@ describe('AgyBridgeServer', () => {
         );
         const res = await promise;
         expect(res.sessionId).toBe('conv-wired');
+      }
+
+      const loadHandler = requestHandlers.get('session/load');
+      if (loadHandler) {
+        const promise = loadHandler({
+          params: { cwd: '/test/cwd', sessionId: 'conv-wired' },
+        }) as Promise<{ configOptions: unknown[] }>;
+        lastSpawnedProc?.stdout.emit(
+          'data',
+          Buffer.from(
+            '{"event":"init","conversation_id":"conv-wired","init":{"model":"gemini-3.8-flash-low","cwd":"/test/cwd","tools":[]}}\n',
+          ),
+        );
+        const res = await promise;
+        expect(res.configOptions).toBeDefined();
       }
 
       const setOptionHandler = requestHandlers.get('session/set_config_option');
