@@ -822,6 +822,40 @@ describe('DiscordMessageHandler', () => {
       expect(sent.every(text => text.length <= 2000)).toBe(true);
     });
 
+    it('should split a long failure message and keep the footer on the last chunk', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.mockResult = {
+        sessionId: 'session-1',
+        response: '',
+        status: 'failed',
+        errorMessage: 'stderr line\n'.repeat(400),
+        agentInfo,
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      const sent = send.mock.calls.map(call => call[0] as string).slice(1);
+      expect(sent.length).toBeGreaterThan(1);
+      expect(sent[0]!.startsWith('❌ **Erro na execução**: stderr line')).toBe(true);
+      expect(sent.slice(0, -1).some(text => text.includes(footer))).toBe(false);
+      expect(sent.at(-1)!.endsWith(`\n${footer}`)).toBe(true);
+      expect(sent.every(text => text.length <= 2000)).toBe(true);
+    });
+
+    it('should split a long error thrown while processing the message', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.executeTurn = async () => {
+        throw new Error('trace line\n'.repeat(400));
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      const sent = send.mock.calls.map(call => call[0] as string).slice(1);
+      expect(sent.length).toBeGreaterThan(1);
+      expect(sent[0]!.startsWith('❌ **Ocorreu um erro ao processar sua solicitação:** trace line')).toBe(true);
+      expect(sent.every(text => text.length <= 2000)).toBe(true);
+    });
+
     it.each([
       ['completed without text', { response: '', status: 'completed' }, '✅ *Tarefa concluída sem mensagem de resposta.*'],
       ['cancelled', { response: '', status: 'cancelled' }, '⚠️ **Turno cancelado pelo usuário.**'],
