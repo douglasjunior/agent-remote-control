@@ -88,12 +88,22 @@ export class DiscordMessageHandler implements OnModuleInit {
       const prompt = isDirectMessage
         ? message.content.trim()
         : this.cleanPrompt(message.content, clientUser.id);
+      const authorName = message.author?.username ?? 'user';
+      const authorId = message.author?.id ?? 'unknown';
+
       if (!prompt) {
+        this.logger.log(
+          `[Empty Prompt] Received empty message from @${authorName} in ${isDirectMessage ? 'DM' : 'Channel'} ${message.channelId}`,
+        );
         await targetChannel.send(
           'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
         );
         return;
       }
+
+      this.logger.log(
+        `[Message Received] From @${authorName} (${authorId}) in ${isDirectMessage ? 'DM' : 'Channel'} (${channelId}): "${prompt.slice(0, 100)}${prompt.length > 100 ? '...' : ''}"`,
+      );
 
       const progressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
@@ -102,6 +112,14 @@ export class DiscordMessageHandler implements OnModuleInit {
       const throttler = new DiscordThrottler({ intervalMs: 1500 });
 
       const onActivity = (activity: AgentActivity): void => {
+        if (activity.kind === 'thought') {
+          this.logger.log(`💭 [Agent Thought] ${activity.text.trim()}`);
+        } else if (activity.kind === 'tool') {
+          this.logger.log(
+            `🔧 [Tool Call: ${activity.status}] ${activity.title} (callId: ${activity.toolCallId})`,
+          );
+        }
+
         const formatted = this.activityFormatter.formatActivity(activity);
         if (formatted) {
           activities.push(formatted);
@@ -133,6 +151,9 @@ export class DiscordMessageHandler implements OnModuleInit {
 
       if (result.status === 'completed') {
         const chunks = this.activityFormatter.splitMessage(result.response);
+        this.logger.log(
+          `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars, Chunks: ${chunks.length}`,
+        );
         if (chunks.length === 0) {
           await targetChannel.send(
             '✅ *Tarefa concluída sem mensagem de resposta.*',
@@ -143,8 +164,14 @@ export class DiscordMessageHandler implements OnModuleInit {
           }
         }
       } else if (result.status === 'cancelled') {
+        this.logger.warn(
+          `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
+        );
         await targetChannel.send('⚠️ **Turno cancelado pelo usuário.**');
       } else {
+        this.logger.error(
+          `[Turn Failed] Turn execution failed for session ${result.sessionId}: ${result.errorMessage}`,
+        );
         await targetChannel.send(
           `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
         );
