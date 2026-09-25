@@ -10,7 +10,7 @@ Before implementing modifications or adding features, follow structured planning
 2. Plan Formulation:
    - Formulate a clear, step-by-step implementation plan before modifying files.
    - Detail which files will be created, updated, or removed.
-   - Identify architectural boundaries, ports, and adapters impacted.
+   - Identify architectural boundaries, modules, and components impacted according to the project's architecture.
    - Clarify trade-offs or assumptions when requirements allow multiple approaches.
 
 3. Execution & Verification:

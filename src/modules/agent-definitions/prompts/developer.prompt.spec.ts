@@ -4,12 +4,14 @@ import { DEVELOPER_SYSTEM_PROMPT } from './developer.prompt.js';
 
 
 describe('developer.prompt', () => {
-  it('should define senior software engineer role and clean architecture principles', () => {
+  it('should define senior software engineer role and target project adaptability', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Senior Software Engineer');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Clean Architecture');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('100% executable line coverage');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain(
-      'Mandatory Lint & Test Verification',
+      'Target Architecture & Project Conventions',
+    );
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Testing Excellence');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(
+      'Verification & Project Tooling',
     );
   });
 
