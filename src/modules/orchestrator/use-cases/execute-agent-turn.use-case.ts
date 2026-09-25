@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -15,6 +15,8 @@ import { ISessionStorePort } from '../ports/session-store.port.js';
 
 @Injectable()
 export class ExecuteAgentTurnUseCase {
+  private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
+
   constructor(
     @Inject(IAgentPort)
     private readonly agentPort: IAgentPort,
@@ -57,6 +59,11 @@ export class ExecuteAgentTurnUseCase {
       }
 
       await this.sessionStore.saveSession(session);
+
+      this.logger.log(
+        `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole ?? 'default'}`,
+      );
+
       await this.agentPort.connect();
 
       if (!this.agentPort.currentSessionId) {
@@ -94,6 +101,10 @@ export class ExecuteAgentTurnUseCase {
       const usage = await this.agentPort.getLastRoundUsage();
       const response = this.agentPort.lastAgentMessage || accumulatedChunks;
 
+      this.logger.log(
+        `[Turn Completed] Session=${session.sessionId}. Tokens: input=${usage?.inputTokens ?? 0}, output=${usage?.outputTokens ?? 0}, total=${usage?.totalTokens ?? 0}`,
+      );
+
       return {
         sessionId: session.sessionId,
         response,
@@ -109,6 +120,10 @@ export class ExecuteAgentTurnUseCase {
           .getLastRoundUsage()
           .catch(() => undefined);
 
+        this.logger.warn(
+          `[Turn Cancelled] Active turn was cancelled for session=${session?.sessionId ?? 'unknown'}`,
+        );
+
         return {
           sessionId: session?.sessionId ?? '',
           response: this.agentPort.lastAgentMessage || accumulatedChunks,
@@ -117,11 +132,17 @@ export class ExecuteAgentTurnUseCase {
         };
       }
 
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `[Turn Failed] Session=${session?.sessionId ?? 'unknown'}: ${errorMessage}`,
+      );
+
       return {
         sessionId: session?.sessionId ?? '',
         response: this.agentPort.lastAgentMessage || accumulatedChunks,
         status: 'failed',
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage,
       };
     } finally {
       unsubscribeActivity?.();

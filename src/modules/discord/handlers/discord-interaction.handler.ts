@@ -48,7 +48,18 @@ export class DiscordInteractionHandler implements OnModuleInit {
         : interaction.channelId;
       const threadId = isThread ? interaction.channelId : undefined;
 
+      const username = interaction.user?.username ?? 'user';
+      const userId = interaction.user?.id ?? 'unknown';
+
+      this.logger.log(
+        `[Slash Command] /cancel received from @${username} (${userId}) in channel=${channelId}, thread=${threadId ?? 'none'}`,
+      );
+
       await this.orchestratorService.cancelTurn(channelId, threadId);
+
+      this.logger.log(
+        `[Slash Command] /cancel signal dispatched for channel=${channelId}`,
+      );
 
       const replyContent =
         '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.';
