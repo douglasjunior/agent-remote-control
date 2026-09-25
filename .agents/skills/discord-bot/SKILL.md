@@ -95,8 +95,17 @@ Todo desfecho de turno com `TurnResult.agentInfo` recebe o rodapé
 `formatAgentFooter(info)`: `-# 🤖 <papel> (<agente>) · 🧠 <modelo> · ⚡ <effort>`, com `padrão`
 quando o modelo ou o effort não são conhecidos.
 
-- **Concluído**: a resposta é particionada com `splitMessage(response, 2000 - footer.length - 1)` e o rodapé vai numa nova linha do último chunk; sem texto, vai na mensagem `✅ *Tarefa concluída sem mensagem de resposta.*`.
-- **Cancelado e falha**: o rodapé vai numa nova linha das mensagens de cancelamento e de erro.
+Todo desfecho é particionado com `splitMessage(texto, 2000 - footer.length - 1)`, e o rodapé vai
+numa nova linha do último chunk. Isso vale também para a falha, porque o `errorMessage` pode
+trazer o stderr completo do agente:
+
+- **Concluído**: o texto é a resposta; sem texto, `✅ *Tarefa concluída sem mensagem de resposta.*`.
+- **Cancelado**: `⚠️ **Turno cancelado pelo usuário.**`.
+- **Falha**: `❌ **Erro na execução**: <errorMessage>`.
+
+Uma exceção durante o processamento da mensagem é informada com
+`❌ **Ocorreu um erro ao processar sua solicitação:** <mensagem>`, também particionada; se esse
+envio falhar, a falha só é registrada em log.
 
 ## Streaming de Atividades e Formatação
 

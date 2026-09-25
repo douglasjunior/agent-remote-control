@@ -210,11 +210,12 @@ export class DiscordMessageHandler implements OnModuleInit {
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Error processing Discord message: ${errorMessage}`);
       if (targetChannel) {
-        await targetChannel
-          .send(
-            `❌ **Ocorreu um erro ao processar sua solicitação:** ${errorMessage}`,
-          )
-          .catch(() => undefined);
+        await this.sendChunks(
+          targetChannel,
+          `❌ **Ocorreu um erro ao processar sua solicitação:** ${errorMessage}`,
+        ).catch((sendError: unknown) => {
+          this.logger.warn(`Failed to report the error to Discord: ${String(sendError)}`);
+        });
       }
     }
   }
@@ -223,23 +224,16 @@ export class DiscordMessageHandler implements OnModuleInit {
     const footer = result.agentInfo
       ? this.activityFormatter.formatAgentFooter(result.agentInfo)
       : '';
-    const withFooter = (text: string): string => (footer ? `${text}\n${footer}` : text);
 
     if (result.status === 'completed') {
-      const chunks = this.activityFormatter.splitMessage(
-        result.response,
-        footer ? DISCORD_MESSAGE_LIMIT - footer.length - 1 : DISCORD_MESSAGE_LIMIT,
-      );
       this.logger.log(
-        `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars, Chunks: ${chunks.length}`,
+        `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars`,
       );
-      if (chunks.length === 0) {
-        await targetChannel.send(withFooter('✅ *Tarefa concluída sem mensagem de resposta.*'));
-        return;
-      }
-      for (const [index, chunk] of chunks.entries()) {
-        await targetChannel.send(index === chunks.length - 1 ? withFooter(chunk) : chunk);
-      }
+      await this.sendWithFooter(
+        targetChannel,
+        result.response || '✅ *Tarefa concluída sem mensagem de resposta.*',
+        footer,
+      );
       return;
     }
 
@@ -247,16 +241,29 @@ export class DiscordMessageHandler implements OnModuleInit {
       this.logger.warn(
         `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
       );
-      await targetChannel.send(withFooter('⚠️ **Turno cancelado pelo usuário.**'));
+      await this.sendWithFooter(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer);
       return;
     }
 
     this.logger.error(
       `[Turn Failed] Turn execution failed for session ${result.sessionId}: ${result.errorMessage}`,
     );
-    await targetChannel.send(
-      withFooter(`❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`),
+    await this.sendWithFooter(
+      targetChannel,
+      `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
+      footer,
     );
+  }
+
+  private async sendWithFooter(targetChannel: SendableChannel, text: string, footer: string): Promise<void> {
+    if (!footer) {
+      await this.sendChunks(targetChannel, text);
+      return;
+    }
+    const chunks = this.activityFormatter.splitMessage(text, DISCORD_MESSAGE_LIMIT - footer.length - 1);
+    for (const [index, chunk] of chunks.entries()) {
+      await targetChannel.send(index === chunks.length - 1 ? `${chunk}\n${footer}` : chunk);
+    }
   }
 
   private async sendChunks(targetChannel: SendableChannel, content: string): Promise<void> {
