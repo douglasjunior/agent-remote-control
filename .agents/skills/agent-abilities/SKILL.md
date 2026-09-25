@@ -24,6 +24,21 @@ especializadas injetadas nos prompts dos agentes de IA da aplicação.
 A habilidade `GIT_ABILITY` padroniza a interação com repositórios clonados sob o diretório
 de workspaces da aplicação.
 
+### Clone via SSH
+
+- **Somente SSH**: clones e remotes usam a URL SSH, nunca HTTPS, pois a autenticação por chave dispensa prompts interativos de credencial, que travariam o agente.
+- **Conversão de URLs HTTPS**: GitHub (`git@github.com:<org>/<repo>.git`), GitLab (`git@gitlab.com:<group>/<repo>.git`) e Azure DevOps (`git@ssh.dev.azure.com:v3/<org>/<project>/<repo>`).
+- **Host key não interativa**: clones executam com `GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new"`.
+
+### Preparação da Chave SSH
+
+- **Verificação**: antes do primeiro clone, o agente verifica `$HOME/.ssh/id_rsa.pub`.
+- **Chave pública ausente com privada presente**: regenera a pública com `ssh-keygen -y`.
+- **Par inexistente**: cria `$HOME/.ssh` (modo 700) e gera par RSA 4096 sem passphrase com `ssh-keygen -t rsa -b 4096 -N ""`.
+- **Preservação**: chaves existentes nunca são sobrescritas, movidas ou removidas.
+- **Devolução ao usuário**: ao gerar o par ou receber `Permission denied (publickey)`, o agente interrompe o clone e devolve o conteúdo integral de `id_rsa.pub` em bloco de código, pedindo que o usuário o cadastre no provedor Git.
+- **Chave privada**: nunca é exibida, copiada ou transmitida.
+
 ### Convenção de Commits (Conventional Commits em pt-BR)
 
 Todo commit gerado pelos agentes ou pelo projeto deve seguir o padrão:

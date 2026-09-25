@@ -1,8 +1,9 @@
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
@@ -16,6 +17,8 @@ export class DiscordMessageHandler implements OnModuleInit {
     private readonly discordClientService: DiscordClientService,
     private readonly orchestratorService: OrchestratorService,
     private readonly activityFormatter: DiscordActivityFormatter,
+    @Inject(IWorkspacePort)
+    private readonly workspacePort: IWorkspacePort,
   ) {}
 
   onModuleInit(): void {
@@ -141,7 +144,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         threadId,
         userId: message.author.id,
         prompt,
-        workspacePath: process.env.WORKSPACE_PATH || process.cwd(),
+        workspacePath: this.workspacePort.getBaseDirectory(),
         agentRole: 'CEO',
         onActivity,
       });

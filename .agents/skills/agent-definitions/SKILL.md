@@ -66,8 +66,8 @@ Os prompts especializados residem em `src/modules/agent-definitions/prompts/`:
 
 A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/modules/orchestrator/ports/agent-registry.port.ts`:
 
-- `getSystemPrompt(agentRoleOrId?: string)`: resolve o prompt comportamental da persona de forma case-insensitive, fornecendo fallback amigável caso o papel não esteja pré-configurado;
-- `getDefaultModel(agentRoleOrId?: string)`: retorna o identificador do modelo preferencial associado ao papel;
+- `getSystemPrompt(agentRole: string)`: resolve o prompt comportamental da persona de forma case-insensitive, fornecendo fallback amigável caso o papel não esteja pré-configurado;
+- `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;
 - `getAllDefinitions()`: lista todas as definições registradas;
 - `registerDefinition(definition: AgentDefinition)`: permite inclusão dinâmica ou sobrescrita em tempo de execução.

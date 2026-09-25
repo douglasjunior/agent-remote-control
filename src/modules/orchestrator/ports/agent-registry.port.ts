@@ -1,6 +1,6 @@
 export interface IAgentRegistryPort {
-  getSystemPrompt(agentRoleOrId?: string): string | undefined;
-  getDefaultModel(agentRoleOrId?: string): string | undefined;
+  getSystemPrompt(agentRole: string): string;
+  getDefaultModel(agentRole: string): string | undefined;
 }
 
 export const IAgentRegistryPort = Symbol('IAgentRegistryPort');

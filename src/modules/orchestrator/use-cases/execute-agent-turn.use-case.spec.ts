@@ -1,355 +1,399 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type {
-  AgentActivity,
-  AgentUpdate,
-  AgentUsage,
-} from '../../agent/ports/agent.port.js';
-import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
+import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
-import type { TurnRequest } from '../models/turn-request.model.js';
-import type { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { DelegationDetectorService } from '../services/delegation-detector.service.js';
+import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 
 
 class StubAgentRegistryPort implements IAgentRegistryPort {
-  systemPromptToReturn: string | undefined = undefined;
-  defaultModelToReturn: string | undefined = undefined;
+  getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
+  getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
+}
 
-  getSystemPrompt(): string | undefined {
-    return this.systemPromptToReturn;
-  }
+class StubWorkspacePort implements IWorkspacePort {
+  getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
+  resolveRepositoryPath = vi.fn().mockReturnValue('/mock/workspace/my-app');
+  registerRepository = vi.fn();
+  getRepository = vi.fn();
+  listRepositories = vi.fn();
+  hasRepository = vi.fn();
+}
 
-  getDefaultModel(): string | undefined {
-    return this.defaultModelToReturn;
-  }
+function textChunk(text: string): AgentUpdate {
+  return {
+    sessionId: 's',
+    update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
+  };
 }
 
 describe('ExecuteAgentTurnUseCase', () => {
   let useCase: ExecuteAgentTurnUseCase;
   let stubAgentPort: StubAgentPort;
+  let delegateStubPort: StubAgentPort;
   let sessionStore: InMemorySessionStoreAdapter;
-  let stubRegistry: StubAgentRegistryPort;
+  let agentRegistry: StubAgentRegistryPort;
+  let workspacePort: StubWorkspacePort;
+  let delegationDetector: DelegationDetectorService;
 
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
+    delegateStubPort = new StubAgentPort();
     sessionStore = new InMemorySessionStoreAdapter();
-    stubRegistry = new StubAgentRegistryPort();
+    agentRegistry = new StubAgentRegistryPort();
+    workspacePort = new StubWorkspacePort();
+    delegationDetector = new DelegationDetectorService();
+
+    let createCount = 0;
+    const portFactory: IAgentPortFactory = {
+      create: () => {
+        createCount++;
+        return createCount === 1 ? stubAgentPort : delegateStubPort;
+      },
+    };
 
     useCase = new ExecuteAgentTurnUseCase(
-      stubAgentPort,
+      portFactory,
       sessionStore,
-      stubRegistry,
+      agentRegistry,
+      workspacePort,
+      delegationDetector,
     );
   });
 
-  it('should execute first turn creating new session and prepending system prompt', async () => {
-    stubRegistry.systemPromptToReturn = 'System instructions for developer';
-    stubRegistry.defaultModelToReturn = 'claude-3-5-sonnet';
-    stubAgentPort.lastAgentMessage = 'Turn completed successfully.';
+  it('should return direct_response on first turn without delegation', async () => {
+    stubAgentPort.mockResponses = ['Hello world!'];
 
-    const expectedUsage: AgentUsage = {
-      totalTokens: 150,
-      inputTokens: 100,
-      outputTokens: 50,
-    };
-    stubAgentPort.usageToReturn = expectedUsage;
-
-    const messageUpdate: AgentUpdate = {
-      sessionId: 'sess-test',
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: 'Turn completed successfully.' },
-      },
-    };
-    stubAgentPort.updatesToYield = [messageUpdate];
-
-    const activities: AgentActivity[] = [];
-    const textChunks: string[] = [];
-
-    const request: TurnRequest = {
+    const request = {
       channelId: 'ch-1',
-      threadId: 'th-1',
       userId: 'user-1',
-      prompt: 'Hello agent!',
-      workspacePath: '/repo/workspace',
-      agentRole: 'DEVELOPER',
-      onActivity: activity => activities.push(activity),
-      onTextChunk: chunk => textChunks.push(chunk),
+      prompt: 'Say hello',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
     };
 
     const result = await useCase.execute(request);
 
     expect(result.status).toBe('completed');
-    expect(result.response).toBe('Turn completed successfully.');
-    expect(result.usage).toEqual(expectedUsage);
-    expect(result.sessionId).toBeDefined();
-
+    expect(result.response).toBe('Hello world!');
     expect(stubAgentPort.connectCalls).toBe(1);
-    expect(stubAgentPort.createSessionCalls).toEqual(['/repo/workspace']);
-    expect(stubAgentPort.configCalls).toEqual([{ modelId: 'claude-3-5-sonnet' }]);
-    expect(stubAgentPort.promptCalls).toEqual(['System instructions for developer\n\nHello agent!']);
-    expect(textChunks).toEqual(['Turn completed successfully.']);
-
-    const storedSession = await sessionStore.findSession('ch-1', 'th-1');
-    expect(storedSession).not.toBeNull();
-    expect(storedSession?.channelId).toBe('ch-1');
-    expect(storedSession?.threadId).toBe('th-1');
-    expect(storedSession?.userId).toBe('user-1');
+    expect(stubAgentPort.createSessionCalls.length).toBe(1);
   });
 
-  it('should execute subsequent turn without creating session again and without prepending system prompt', async () => {
-    stubRegistry.systemPromptToReturn = 'System instructions for developer';
-    stubAgentPort.currentSessionId = 'existing-session-id';
-    stubAgentPort.lastAgentMessage = 'Second response';
+  it('should handle done marker correctly', async () => {
+    stubAgentPort.mockResponses = ['Task is finished\n[DONE]'];
 
-    const firstRequest: TurnRequest = {
-      channelId: 'ch-2',
-      userId: 'user-2',
-      prompt: 'First prompt',
-      workspacePath: '/repo/workspace',
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Do task',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
     };
-    await useCase.execute(firstRequest);
 
-    stubAgentPort.promptCalls = [];
-    stubAgentPort.createSessionCalls = [];
-
-    const secondRequest: TurnRequest = {
-      channelId: 'ch-2',
-      userId: 'user-2',
-      prompt: 'Second prompt',
-      workspacePath: '/repo/workspace',
-    };
-    const result = await useCase.execute(secondRequest);
+    const result = await useCase.execute(request);
 
     expect(result.status).toBe('completed');
-    expect(result.response).toBe('Second response');
-    expect(stubAgentPort.createSessionCalls).toHaveLength(0);
-    expect(stubAgentPort.promptCalls).toEqual(['Second prompt']);
+    expect(result.response).toBe('Task is finished');
   });
 
-  it('should not configure model if registry returns undefined', async () => {
-    stubRegistry.defaultModelToReturn = undefined;
-    stubAgentPort.lastAgentMessage = 'Ok';
+  it('should handle one delegation round', async () => {
+    stubAgentPort.mockResponses = [
+      'Delegating...\n[DELEGATE:DEVELOPER:my-app]',
+      'All good.\n[DONE]',
+    ];
+    delegateStubPort.mockResponses = ['I wrote the code.'];
 
-    const request: TurnRequest = {
-      channelId: 'ch-3',
-      userId: 'user-3',
-      prompt: 'Check model',
-      workspacePath: '/repo/workspace',
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Write code',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    };
+
+    const result = await useCase.execute(request);
+
+    expect(result.status).toBe('completed');
+    expect(result.response).toBe('All good.');
+    expect(stubAgentPort.connectCalls).toBe(2);
+    expect(delegateStubPort.connectCalls).toBe(1);
+    expect(delegateStubPort.closeSessionCalls).toBe(1);
+  });
+
+  it('should return failed when max delegation rounds exceeded', async () => {
+    stubAgentPort.mockResponses = Array(15).fill('Delegating...\n[DELEGATE:DEVELOPER:my-app]');
+    delegateStubPort.mockResponses = Array(15).fill('I did it.');
+
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Looping task',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    };
+
+    const result = await useCase.execute(request);
+
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
+    expect(stubAgentPort.connectCalls).toBe(10);
+  });
+
+  it('should return cancelled when PromptCancelledError is thrown', async () => {
+    stubAgentPort.promptErrorToThrow = new PromptCancelledError();
+
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Cancel me',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    };
+
+    const result = await useCase.execute(request);
+
+    expect(result.status).toBe('cancelled');
+  });
+
+  it('should return failed when generic error is thrown', async () => {
+    stubAgentPort.promptErrorToThrow = new Error('Generic error');
+
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Error me',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    };
+
+    const result = await useCase.execute(request);
+
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toBe('Generic error');
+  });
+
+  it('should run the delegate in the resolved project directory with its own system prompt', async () => {
+    stubAgentPort.mockResponses = [
+      'Implement login.\n[DELEGATE:DEVELOPER:my-app]',
+      'Done.\n[DONE]',
+    ];
+    delegateStubPort.mockResponses = ['Login implemented.'];
+    agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Add login',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    expect(workspacePort.resolveRepositoryPath).toHaveBeenCalledWith('my-app');
+    expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
+    expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+    expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.']);
+    expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER]\nLogin implemented.');
+  });
+
+  it('should run the delegate in the request workspace when no project is given', async () => {
+    stubAgentPort.mockResponses = ['Review it.\n[DELEGATE:DEVELOPER]', 'Ok.\n[DONE]'];
+    delegateStubPort.mockResponses = ['Reviewed.'];
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Review',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    expect(workspacePort.resolveRepositoryPath).not.toHaveBeenCalled();
+    expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace']);
+  });
+
+  it('should expose the delegate port as active only while the delegate runs', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    let activePortDuringDelegation: unknown;
+    delegateStubPort.prompt = async function* () {
+      const session = await sessionStore.findSession('ch-1', 'th-1');
+      activePortDuringDelegation = session?.activeAgentPort;
+      yield textChunk('Worked.');
+    };
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      threadId: 'th-1',
+      userId: 'user-1',
+      prompt: 'Work',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    const session = await sessionStore.findSession('ch-1', 'th-1');
+    expect(activePortDuringDelegation).toBe(delegateStubPort);
+    expect(session?.activeAgentPort).toBe(stubAgentPort);
+    expect(session?.agentPort).toBe(stubAgentPort);
+  });
+
+  it('should close the delegate and return cancelled when the delegate is cancelled', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
+    delegateStubPort.promptErrorToThrow = new PromptCancelledError();
+
+    const result = await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Work',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    const session = await sessionStore.findSession('ch-1');
+    expect(result.status).toBe('cancelled');
+    expect(delegateStubPort.closeSessionCalls).toBe(1);
+    expect(delegateStubPort.connected).toBe(false);
+    expect(session?.activeAgentPort).toBe(stubAgentPort);
+  });
+
+  it('should reuse the session agent port and skip the system prompt on later turns', async () => {
+    stubAgentPort.mockResponses = ['First.', 'Second.'];
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
     };
 
     await useCase.execute(request);
+    await useCase.execute({ ...request, prompt: 'Again' });
+
+    expect(stubAgentPort.createSessionCalls.length).toBe(1);
+    expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\nHi', 'Again']);
+  });
+
+  it('should isolate agent ports between different threads', async () => {
+    stubAgentPort.mockResponses = ['A.'];
+    delegateStubPort.mockResponses = ['B.'];
+    const request = {
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    };
+
+    await useCase.execute({ ...request, threadId: 'th-a' });
+    await useCase.execute({ ...request, threadId: 'th-b' });
+
+    expect((await sessionStore.findSession('ch-1', 'th-a'))?.agentPort).toBe(stubAgentPort);
+    expect((await sessionStore.findSession('ch-1', 'th-b'))?.agentPort).toBe(delegateStubPort);
+  });
+
+  it('should restore the session agent port as active when a stored session is resumed', async () => {
+    const stalePort = new StubAgentPort();
+    await sessionStore.saveSession(
+      buildSessionContext({
+        sessionId: 'sess-existing',
+        agentPort: stubAgentPort,
+        activeAgentPort: stalePort,
+      }),
+    );
+    stubAgentPort.mockResponses = ['Hi.'];
+
+    const result = await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    expect(result.sessionId).toBe('sess-existing');
+    expect((await sessionStore.findSession('ch-1'))?.activeAgentPort).toBe(stubAgentPort);
+    expect(stubAgentPort.promptCalls).toEqual(['Hi']);
+  });
+
+  it('should stream text chunks and forward activities from every agent', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    delegateStubPort.prompt = async function* (this: StubAgentPort) {
+      this.emitActivity({ kind: 'thought', text: 'thinking' } as never);
+      yield textChunk('first ');
+      yield { sessionId: 's', update: { sessionUpdate: 'tool_call', toolCallId: 't', title: 'ls' } };
+      yield textChunk('second');
+    };
+    const onActivity = vi.fn();
+    const onTextChunk = vi.fn();
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Work',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+      onActivity,
+      onTextChunk,
+    });
+
+    expect(onActivity).toHaveBeenCalledWith({ kind: 'thought', text: 'thinking' });
+    expect(onTextChunk).toHaveBeenCalledWith('first ');
+    expect(onTextChunk).toHaveBeenCalledWith('second');
+    expect(onTextChunk).toHaveBeenCalledTimes(4);
+    expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER]\nfirst second');
+    expect(delegateStubPort.activityListeners).toHaveLength(0);
+  });
+
+  it('should skip model configuration when the role has no default model', async () => {
+    agentRegistry.getDefaultModel.mockReturnValue(undefined);
+    stubAgentPort.mockResponses = ['Hi.'];
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
 
     expect(stubAgentPort.configCalls).toHaveLength(0);
   });
 
-  it('should not prepend system prompt if registry returns undefined or whitespace', async () => {
-    stubRegistry.systemPromptToReturn = '   ';
-    stubAgentPort.lastAgentMessage = 'Ok';
+  it('should treat errors named PromptCancelledError as cancellation', async () => {
+    const error = new Error('cancelled');
+    error.name = 'PromptCancelledError';
+    stubAgentPort.promptErrorToThrow = error;
 
-    const request: TurnRequest = {
-      channelId: 'ch-4',
-      userId: 'user-4',
-      prompt: 'Pure prompt',
-      workspacePath: '/repo/workspace',
-    };
-
-    await useCase.execute(request);
-
-    expect(stubAgentPort.promptCalls).toEqual(['Pure prompt']);
-  });
-
-  it('should stream different chunk formats and ignore non-text updates', async () => {
-    const chunk1: AgentUpdate = {
-      sessionId: 's',
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'text', text: 'Part 1. ' },
-      },
-    };
-    const nonTextChunk = {
-      sessionId: 's',
-      update: {
-        sessionUpdate: 'tool_call',
-        toolCallId: 't1',
-        title: 'bash',
-      },
-    } as unknown as AgentUpdate;
-    const objectChunk = {
-      text: 'Part 2. ',
-    } as unknown as AgentUpdate;
-    const rawStringChunk = 'Part 3.' as unknown as AgentUpdate;
-    const invalidChunk = {
-      update: {
-        sessionUpdate: 'agent_message_chunk',
-        content: { type: 'image' },
-      },
-    } as unknown as AgentUpdate;
-    const nullChunk = null as unknown as AgentUpdate;
-
-    stubAgentPort.updatesToYield = [
-      chunk1,
-      nonTextChunk,
-      objectChunk,
-      rawStringChunk,
-      invalidChunk,
-      nullChunk,
-    ];
-
-    const chunks: string[] = [];
-    const request: TurnRequest = {
-      channelId: 'ch-stream',
-      userId: 'user-stream',
-      prompt: 'Stream test',
-      workspacePath: '/repo/workspace',
-      onTextChunk: chunk => chunks.push(chunk),
-    };
-
-    const result = await useCase.execute(request);
-
-    expect(chunks).toEqual(['Part 1. ', 'Part 2. ', 'Part 3.']);
-    expect(result.response).toBe('Part 1. Part 2. Part 3.');
-  });
-
-  it('should relay activities and unsubscribe when turn completes', async () => {
-    const activities: AgentActivity[] = [];
-    const unsubscribeSpy = vi.fn();
-
-    stubAgentPort.onActivity = vi.fn(
-      (listener: (activity: AgentActivity) => void) => {
-        stubAgentPort.activityListeners.push(listener);
-        return unsubscribeSpy;
-      },
-    );
-
-    const request: TurnRequest = {
-      channelId: 'ch-activity',
-      userId: 'user-activity',
-      prompt: 'Activity test',
-      workspacePath: '/repo/workspace',
-      onActivity: activity => activities.push(activity),
-    };
-
-    await useCase.execute(request);
-
-    expect(unsubscribeSpy).toHaveBeenCalled();
-  });
-
-  it('should handle PromptCancelledError returning cancelled status and usage', async () => {
-    stubAgentPort.errorToThrowOnPrompt = new PromptCancelledError();
-    stubAgentPort.lastAgentMessage = 'Partial response before cancel';
-    stubAgentPort.usageToReturn = {
-      totalTokens: 20,
-      inputTokens: 15,
-      outputTokens: 5,
-    };
-
-    const request: TurnRequest = {
-      channelId: 'ch-cancel',
-      userId: 'user-cancel',
-      prompt: 'Will be cancelled',
-      workspacePath: '/repo/workspace',
-    };
-
-    const result = await useCase.execute(request);
+    const result = await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
 
     expect(result.status).toBe('cancelled');
-    expect(result.response).toBe('Partial response before cancel');
-    expect(result.usage?.totalTokens).toBe(20);
   });
 
-  it('should handle custom error with name PromptCancelledError and usage fetch failure', async () => {
-    const customCancelError = new Error('Cancelled by steering');
-    customCancelError.name = 'PromptCancelledError';
-    stubAgentPort.errorToThrowOnPrompt = customCancelError;
-
-    stubAgentPort.getLastRoundUsage = vi
-      .fn()
-      .mockRejectedValue(new Error('Usage unavailable'));
-
-    const request: TurnRequest = {
-      channelId: 'ch-cancel-duck',
-      userId: 'user-cancel-duck',
-      prompt: 'Will be cancelled duck typing',
-      workspacePath: '/repo/workspace',
+  it('should stringify non-Error failures', async () => {
+    stubAgentPort.connect = async () => {
+      throw 'raw failure';
     };
 
-    const result = await useCase.execute(request);
-
-    expect(result.status).toBe('cancelled');
-    expect(result.usage).toBeUndefined();
-  });
-
-  it('should return empty sessionId when PromptCancelledError occurs before session resolution', async () => {
-    sessionStore.findSession = vi
-      .fn()
-      .mockRejectedValue(new PromptCancelledError());
-
-    const request: TurnRequest = {
-      channelId: 'ch-pre-cancel',
-      userId: 'user-pre-cancel',
-      prompt: 'Will be cancelled early',
-      workspacePath: '/repo/workspace',
-    };
-
-    const result = await useCase.execute(request);
-
-    expect(result.status).toBe('cancelled');
-    expect(result.sessionId).toBe('');
-  });
-
-  it('should handle general Error returning failed status with errorMessage and sessionId', async () => {
-    stubAgentPort.errorToThrowOnConnect = new Error('Transport connect failed');
-
-    const request: TurnRequest = {
-      channelId: 'ch-fail',
-      userId: 'user-fail',
-      prompt: 'Will fail',
-      workspacePath: '/repo/workspace',
-    };
-
-    const result = await useCase.execute(request);
+    const result = await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
 
     expect(result.status).toBe('failed');
-    expect(result.errorMessage).toBe('Transport connect failed');
-    expect(result.sessionId).not.toBe('');
-  });
-
-  it('should return empty sessionId when failure happens before session is initialized', async () => {
-    sessionStore.findSession = vi
-      .fn()
-      .mockRejectedValue(new Error('Store connection refused'));
-
-    const request: TurnRequest = {
-      channelId: 'ch-pre-fail',
-      userId: 'user-pre-fail',
-      prompt: 'Will fail in store',
-      workspacePath: '/repo/workspace',
-    };
-
-    const result = await useCase.execute(request);
-
-    expect(result.status).toBe('failed');
-    expect(result.errorMessage).toBe('Store connection refused');
-    expect(result.sessionId).toBe('');
-  });
-
-  it('should handle non-Error thrown exception returning failed status', async () => {
-    stubAgentPort.connect = vi.fn().mockRejectedValue('Fatal network panic');
-
-    const request: TurnRequest = {
-      channelId: 'ch-fail-raw',
-      userId: 'user-fail-raw',
-      prompt: 'Will fail raw',
-      workspacePath: '/repo/workspace',
-    };
-
-    const result = await useCase.execute(request);
-
-    expect(result.status).toBe('failed');
-    expect(result.errorMessage).toBe('Fatal network panic');
+    expect(result.errorMessage).toBe('raw failure');
   });
 });

@@ -14,4 +14,16 @@ describe('git.ability', () => {
     expect(GIT_ABILITY).toContain('force push');
     expect(GIT_ABILITY).toContain('git status');
   });
+
+  it('should require SSH clones with non-interactive host key acceptance', () => {
+    expect(GIT_ABILITY).toContain('SSH URL form, never HTTPS');
+    expect(GIT_ABILITY).toContain('git@ssh.dev.azure.com:v3/');
+    expect(GIT_ABILITY).toContain('StrictHostKeyChecking=accept-new');
+  });
+
+  it('should generate an RSA key pair and return only the public key to the user', () => {
+    expect(GIT_ABILITY).toContain('ssh-keygen -t rsa -b 4096 -N ""');
+    expect(GIT_ABILITY).toContain('full content of $HOME/.ssh/id_rsa.pub');
+    expect(GIT_ABILITY).toContain('Never print, copy, or transmit the private key');
+  });
 });

@@ -15,23 +15,15 @@ export class AgentRegistryService implements IAgentRegistryPort {
     }
   }
 
-  getSystemPrompt(agentRoleOrId?: string): string | undefined {
-    if (!agentRoleOrId) {
-      return undefined;
-    }
-    const definition = this.definitions.get(agentRoleOrId.toUpperCase());
-    if (definition) {
-      return definition.systemPrompt;
-    }
-    return `You are an AI assistant acting in the role of ${agentRoleOrId}.`;
+  getSystemPrompt(agentRole: string): string {
+    return (
+      this.getDefinition(agentRole)?.systemPrompt
+      ?? `You are an AI assistant acting in the role of ${agentRole}.`
+    );
   }
 
-  getDefaultModel(agentRoleOrId?: string): string | undefined {
-    if (!agentRoleOrId) {
-      return undefined;
-    }
-    const definition = this.definitions.get(agentRoleOrId.toUpperCase());
-    return definition?.defaultModel;
+  getDefaultModel(agentRole: string): string | undefined {
+    return this.getDefinition(agentRole)?.defaultModel;
   }
 
   getDefinition(roleOrId: string): AgentDefinition | undefined {

@@ -31,6 +31,7 @@ describe('OrchestratorService', () => {
       userId: 'user-1',
       prompt: 'Test prompt',
       workspacePath: '/repo/workspace',
+      agentRole: 'CEO',
     };
 
     const expectedResult: TurnResult = {

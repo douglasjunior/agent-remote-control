@@ -11,17 +11,12 @@ describe('AgentRegistryService', () => {
   });
 
   describe('getSystemPrompt', () => {
-    it('should return undefined when agentRoleOrId is not provided', () => {
-      expect(service.getSystemPrompt()).toBeUndefined();
-      expect(service.getSystemPrompt(undefined)).toBeUndefined();
-    });
-
     it('should return specialized system prompt for DEVELOPER role in case-insensitive manner', () => {
       const promptUpper = service.getSystemPrompt('DEVELOPER');
       const promptLower = service.getSystemPrompt('developer');
 
       expect(promptUpper).toBeDefined();
-      expect(promptUpper).toContain('Senior Software Engineer');
+      expect(promptUpper).toContain('Developer Agent');
       expect(promptLower).toBe(promptUpper);
     });
 
@@ -43,10 +38,6 @@ describe('AgentRegistryService', () => {
   });
 
   describe('getDefaultModel', () => {
-    it('should return undefined when agentRoleOrId is undefined', () => {
-      expect(service.getDefaultModel()).toBeUndefined();
-    });
-
     it('should return undefined when agent has no default model configured', () => {
       expect(service.getDefaultModel('DEVELOPER')).toBeUndefined();
     });

@@ -4,26 +4,30 @@ import { Events } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
+import { IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
 import type {
   AgentActivity,
   AgentUsage,
   IAgentPort,
 } from '../src/modules/agent/ports/agent.port.js';
-import { IAgentPort as IAgentPortSymbol } from '../src/modules/agent/ports/agent.port.js';
 import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-message.handler.js';
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
+import { IWorkspacePort } from '../src/modules/workspace/ports/workspace.port.js';
 
 
 class E2EAgentFake implements Partial<IAgentPort> {
   lastAgentMessage = 'Implementation completed successfully.';
   currentSessionId?: string;
+  readonly sessionCwds: string[] = [];
+  readonly prompts: string[] = [];
 
   async connect(): Promise<void> {
     return undefined;
   }
 
-  async createSession(): Promise<void> {
+  async createSession(cwd: string): Promise<void> {
+    this.sessionCwds.push(cwd);
     this.currentSessionId = 'e2e-session-123';
   }
 
@@ -35,7 +39,8 @@ class E2EAgentFake implements Partial<IAgentPort> {
     };
   }
 
-  async* prompt(): AsyncGenerator<any> {
+  async* prompt(text: string): AsyncGenerator<any> {
+    this.prompts.push(text);
     yield {
       update: {
         sessionUpdate: 'agent_message_chunk',
@@ -93,6 +98,23 @@ class E2EAgentFake implements Partial<IAgentPort> {
   }
 }
 
+class ScriptedAgentFake extends E2EAgentFake {
+  constructor(private readonly responses: string[]) {
+    super();
+  }
+
+  override async* prompt(text: string): AsyncGenerator<any> {
+    this.prompts.push(text);
+    this.lastAgentMessage = this.responses.shift() ?? '';
+    yield {
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: this.lastAgentMessage },
+      },
+    };
+  }
+}
+
 describe('Discord Bot Driving Adapter (e2e)', () => {
   it('should process user message, emit activities, and post final response to thread', async () => {
     const fakeAgent = new E2EAgentFake();
@@ -100,8 +122,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(IAgentPortSymbol)
-      .useValue(fakeAgent)
+      .overrideProvider(IAgentPortFactory)
+      .useValue({ create: () => fakeAgent })
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -168,7 +190,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     );
     expect(storedSession).not.toBeNull();
     expect(storedSession?.userId).toBe('discord-user-777');
-    expect(storedSession?.agentId).toBe('CEO');
+    expect(storedSession?.agentRole).toBe('CEO');
 
     await app.close();
   });
@@ -180,8 +202,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(IAgentPortSymbol)
-      .useValue(fakeAgent)
+      .overrideProvider(IAgentPortFactory)
+      .useValue({ create: () => fakeAgent })
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -198,6 +220,9 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       threadId: 'thread-sub',
       userId: 'user-1',
       workspacePath: process.cwd(),
+      agentRole: 'CEO',
+      agentPort: fakeAgent as unknown as IAgentPort,
+      activeAgentPort: fakeAgent as unknown as IAgentPort,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -229,6 +254,67 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       });
       expect(cancelSpy).toHaveBeenCalled();
     });
+
+    await app.close();
+  });
+
+  it('should delegate from CEO to Developer inside the project workspace and report the final summary', async () => {
+    const ceo = new ScriptedAgentFake([
+      'Implement the login screen.\n[DELEGATE:DEVELOPER:my-app]',
+      'Login delivered.\n[DONE]',
+    ]);
+    const developer = new ScriptedAgentFake(['Login screen implemented.']);
+    const agents = [ceo, developer];
+
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue({ create: () => agents.shift() })
+      .compile();
+
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const discordClientService =
+      moduleFixture.get<DiscordClientService>(DiscordClientService);
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(
+      DiscordMessageHandler,
+    );
+    const workspacePort = moduleFixture.get<IWorkspacePort>(IWorkspacePort);
+    (discordClientService.getClient() as any).user = { id: 'bot-e2e-id' };
+
+    const threadMessages: string[] = [];
+    const mockThread = {
+      id: 'thread-delegation',
+      parentId: 'channel-delegation',
+      send: vi.fn().mockImplementation(async (content: string) => {
+        threadMessages.push(content);
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    };
+    const incomingMessage = {
+      author: { bot: false, id: 'discord-user-777' },
+      channelId: 'channel-delegation',
+      cleanContent: 'Add login to my-app',
+      content: '<@bot-e2e-id> Add login to my-app',
+      mentions: {
+        has: vi.fn().mockImplementation((user: any) => user?.id === 'bot-e2e-id'),
+      },
+      channel: { isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await messageHandler.handleMessage(incomingMessage);
+
+    expect(ceo.sessionCwds).toEqual([workspacePort.getBaseDirectory()]);
+    expect(developer.sessionCwds).toEqual([workspacePort.resolveRepositoryPath('my-app')]);
+    expect(developer.prompts[0]).toContain('Developer Agent');
+    expect(developer.prompts[0]).toContain('Implement the login screen.');
+    expect(ceo.prompts[1]).toBe(
+      '[AGENT_RESULT:DEVELOPER]\nLogin screen implemented.',
+    );
+    expect(threadMessages).toContain('Login delivered.');
 
     await app.close();
   });
