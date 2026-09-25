@@ -81,6 +81,13 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('hasRole', () => {
+    it('should report whether a role is registered, ignoring case', () => {
+      expect(service.hasRole('developer')).toBe(true);
+      expect(service.hasRole('AUDITOR')).toBe(false);
+    });
+  });
+
   describe('getDefinition and getAllDefinitions', () => {
     it('should return definition by role name', () => {
       const def = service.getDefinition('DEVELOPER');

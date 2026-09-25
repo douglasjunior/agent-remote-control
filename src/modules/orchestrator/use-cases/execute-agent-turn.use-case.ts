@@ -16,17 +16,27 @@ import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
+import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
+  type CeoDecision,
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
+
+
+type ValidatedDelegation = DelegationResult & { readonly cwd: string };
+
+type ValidatedDecision =
+  | Exclude<CeoDecision, { kind: 'delegate' }>
+  | { readonly kind: 'delegate'; readonly delegation: ValidatedDelegation };
 
 
 @Injectable()
 export class ExecuteAgentTurnUseCase {
   private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
   private readonly MAX_DELEGATION_ROUNDS = 10;
+  private readonly MAX_REPAIR_ATTEMPTS = 1;
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -69,17 +79,11 @@ export class ExecuteAgentTurnUseCase {
 
     try {
       for (let round = 1; round <= this.MAX_DELEGATION_ROUNDS; round++) {
-        const response = await this.runAgentTurn(
-          ceoPort,
-          request.workspacePath,
-          request.agentRole,
-          prompt,
-          request,
-          turn,
-          session,
-        );
+        const { response, decision } = await this.runCeoTurn(ceoPort, prompt, request, turn, session);
 
-        const decision = this.delegationDetector.detect(response);
+        if (decision.kind === 'invalid') {
+          return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
+        }
 
         if (decision.kind === 'direct_response') {
           return await finish('completed', response);
@@ -136,16 +140,74 @@ export class ExecuteAgentTurnUseCase {
     return session;
   }
 
+  private async runCeoTurn(
+    ceoPort: IAgentPort,
+    prompt: string,
+    request: TurnRequest,
+    turn: ActiveTurn,
+    session: SessionContext,
+  ): Promise<{ response: string; decision: ValidatedDecision }> {
+    const runCeo = (text: string) => this.runAgentTurn(
+      ceoPort,
+      request.workspacePath,
+      request.agentRole,
+      text,
+      request,
+      turn,
+      session,
+    );
+
+    let response = await runCeo(prompt);
+    let decision = this.decide(response, request);
+
+    for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
+      this.logger.warn(
+        `[Delegation Repair] Session=${session.sessionId}, Attempt=${attempt}: ${decision.reason}`,
+      );
+      response = await runCeo(buildDelegationRepairPrompt(decision.reason));
+      decision = this.decide(response, request);
+    }
+
+    return { response, decision };
+  }
+
+  private decide(response: string, request: TurnRequest): ValidatedDecision {
+    const decision = this.delegationDetector.detect(response);
+    if (decision.kind !== 'delegate') {
+      return decision;
+    }
+
+    const { delegateToRole, projectName } = decision.delegation;
+    if (delegateToRole === request.agentRole.toUpperCase() || !this.agentRegistry.hasRole(delegateToRole)) {
+      return {
+        kind: 'invalid',
+        reason: `Unknown role "${delegateToRole}". Delegate only to a role listed in Your Team.`,
+      };
+    }
+
+    if (!projectName) {
+      return { kind: 'delegate', delegation: { ...decision.delegation, cwd: request.workspacePath } };
+    }
+
+    try {
+      const cwd = this.workspacePort.resolveRepositoryPath(projectName);
+      return { kind: 'delegate', delegation: { ...decision.delegation, cwd } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        kind: 'invalid',
+        reason: `Invalid project folder "${projectName}": ${message}. Use a folder name relative to the workspaces root.`,
+      };
+    }
+  }
+
   private async delegate(
     session: SessionContext,
-    { delegateToRole, projectName, taskSpec }: DelegationResult,
+    { delegateToRole, taskSpec, cwd }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
     turn: ActiveTurn,
   ): Promise<string> {
-    const cwd = projectName
-      ? this.workspacePort.resolveRepositoryPath(projectName)
-      : request.workspacePath;
     const delegatePort = this.agentPortFactory.create();
 
     this.logger.log(
@@ -219,7 +281,9 @@ export class ExecuteAgentTurnUseCase {
         }
       }
 
-      return agentPort.lastAgentMessage || accumulatedChunks;
+      const response = agentPort.lastAgentMessage || accumulatedChunks;
+      this.logger.log(`[Agent Response] Role=${role}: ${response}`);
+      return response;
     } finally {
       unsubscribeActivity?.();
     }

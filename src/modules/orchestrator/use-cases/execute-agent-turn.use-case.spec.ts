@@ -19,6 +19,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
+  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER'].includes(role));
 }
 
 class StubWorkspacePort implements IWorkspacePort {
@@ -170,6 +171,82 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
     expect(stubAgentPort.promptCalls).toHaveLength(10);
+  });
+
+  describe('delegation repair', () => {
+    it('should send a repair prompt with the reason and delegate once the CEO fixes the marker', async () => {
+      stubAgentPort.mockResponses = [
+        'Cloning it. [DELEGATE:DEVELOPER:my-app]',
+        'Clone the repo.\n[DELEGATE:DEVELOPER:my-app]',
+        'Cloned.\n[DONE]',
+      ];
+      delegateStubPort.mockResponses = ['Repo cloned.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Cloned.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('[DELEGATION_ERROR]');
+      expect(stubAgentPort.promptCalls[1]).toContain('alone on its own line');
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nClone the repo.']);
+    });
+
+    it('should repair a delegation to a role outside the team', async () => {
+      stubAgentPort.mockResponses = ['Test it.\n[DELEGATE:QA:my-app]', 'Ok, I will ask you first.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Ok, I will ask you first.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('Unknown role "QA"');
+      expect(delegateStubPort.promptCalls).toHaveLength(0);
+    });
+
+    it('should repair a delegation from the CEO to itself', async () => {
+      stubAgentPort.mockResponses = ['Plan it.\n[DELEGATE:CEO]', 'Planned.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('Unknown role "CEO"');
+    });
+
+    it('should repair a delegation to a project folder outside the workspaces root', async () => {
+      workspacePort.resolveRepositoryPath.mockImplementationOnce(() => {
+        throw new Error('Path is outside the workspace directory: /etc');
+      });
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:../../etc]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Invalid project folder "../../etc": Path is outside the workspace directory: /etc.',
+      );
+      expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+    });
+
+    it('should stringify non-Error failures when resolving the project folder', async () => {
+      workspacePort.resolveRepositoryPath.mockImplementationOnce(() => {
+        throw 'bad path';
+      });
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:x]', 'Never mind.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('Invalid project folder "x": bad path.');
+    });
+
+    it('should fail the turn when the repaired response is still invalid', async () => {
+      stubAgentPort.mockResponses = ['Go [DONE] now.', 'Still [DONE] wrong.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('failed');
+      expect(result.response).toBe('Still [DONE] wrong.');
+      expect(result.errorMessage).toBe(
+        'Invalid CEO response: The marker must be alone on its own line, with no other text on that line.',
+      );
+      expect(stubAgentPort.promptCalls).toHaveLength(2);
+    });
   });
 
   it('should send the system prompt only when the CEO ACP session is created', async () => {

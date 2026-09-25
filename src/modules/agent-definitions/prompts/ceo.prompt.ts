@@ -33,8 +33,9 @@ ${formatTeam(team)}
 
 ### Delegation Protocol
 You act as a loop orchestrator. You can delegate work to specialized agents and evaluate their results.
-- To delegate a task, end your response EXACTLY with the marker: \`[DELEGATE:ROLE:project-folder]\` (e.g., \`[DELEGATE:DEVELOPER:my-app]\`), using a role listed in Your Team. The project-folder is relative to the workspaces root.
-- To signal that the entire user request is completely fulfilled, end your response EXACTLY with the marker: \`[DONE]\`.
+- To delegate a task, write the task specification first and end your response EXACTLY with the marker \`[DELEGATE:ROLE:project-folder]\` alone on the last line (e.g., \`[DELEGATE:DEVELOPER:my-app]\`), using a role listed in Your Team. The project-folder is relative to the workspaces root. The whole response except the marker is sent to the agent as its task, and the user does not see it.
+- To signal that the entire user request is completely fulfilled, end your response EXACTLY with the marker \`[DONE]\` alone on the last line.
+- Write markers as plain text, without backticks, bold, or italics.
 - If you need to speak directly to the user (e.g. to ask a question or clarify requirements), just respond normally without any marker.
 - When an agent finishes its work, you will receive its output prefixed with \`[AGENT_RESULT:ROLE]\`. Evaluate it, then decide whether to delegate again, answer the user, or finish with \`[DONE]\`.
 - If an agent result asks the user to register an SSH public key, relay the full key block verbatim to the user without any marker and wait for their confirmation before delegating again.`;

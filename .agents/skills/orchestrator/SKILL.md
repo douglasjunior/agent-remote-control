@@ -130,6 +130,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `getSystemPrompt(agentRole: string): string`
 - `getDefaultModel(agentRole: string): string | undefined`
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
+- `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
@@ -148,13 +149,14 @@ Mantém em memória o estado de execução de cada sessão (`sessionId`):
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
 
-Interpreta o final da resposta do CEO e devolve uma `CeoDecision`:
+Interpreta os marcadores da resposta do CEO e devolve uma `CeoDecision`. Um marcador vale quando
+ocupa uma linha inteira, aceitando formatação markdown em volta (`` ` ``, `*`, `_`) e caixa
+qualquer; o papel é normalizado para maiúsculas:
 
-- `{ kind: 'delegate', delegation: { delegateToRole, projectName, taskSpec } }` quando a resposta termina com `[DELEGATE:ROLE:project]` (o segmento `:project` é opcional). `taskSpec` é o texto anterior ao marcador;
-- `{ kind: 'done', summary }` quando a resposta termina com `[DONE]`. `summary` é o texto anterior ao marcador;
-- `{ kind: 'direct_response' }` quando não há marcador final.
-
-Marcadores no meio do texto são ignorados: apenas o sufixo da resposta decide.
+- `{ kind: 'delegate', delegation: { delegateToRole, projectName, taskSpec } }` para `[DELEGATE:ROLE:project]` (o segmento `:project` é opcional). `taskSpec` é a resposta sem a linha do marcador, incluindo o texto posterior a ele, já que os modelos às vezes escrevem a especificação depois do marcador;
+- `{ kind: 'done', summary }` para `[DONE]`. `summary` é a resposta sem a linha do marcador;
+- `{ kind: 'direct_response' }` quando a resposta não contém nenhum marcador;
+- `{ kind: 'invalid', reason }` para marcador que divide a linha com texto, mais de um marcador, marcador malformado ou delegação sem `taskSpec`. `reason` é escrito em inglês para o CEO corrigir a resposta.
 
 ## Casos de Uso e Ciclo de Vida do Turno
 
@@ -178,11 +180,12 @@ repositório dentro da pasta do projeto é responsabilidade do agente delegado.
 
 ### Protocolo de Marcadores
 
-| Marcador no fim da resposta do CEO | Ação do orquestrador |
+| Último marcador da resposta do CEO | Ação do orquestrador |
 |---|---|
 | `[DELEGATE:ROLE:project]` | Cria novo `IAgentPort` para `ROLE` com `cwd` no projeto e envia `systemPrompt(ROLE) + taskSpec` |
-| `[DONE]` | Encerra o loop e devolve o texto anterior ao marcador |
+| `[DONE]` | Encerra o loop e devolve a resposta sem o marcador |
 | *(nenhum)* | Encerra o loop e devolve a resposta integral do CEO |
+| *(inválido)* | Envia ao CEO o prompt de reparo com o motivo |
 
 O resultado do agente delegado volta ao CEO como `[AGENT_RESULT:ROLE]\n<resposta>`.
 
@@ -198,10 +201,12 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 2. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(sessionId, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
 3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
-   2. Classifica a resposta com `DelegationDetectorService.detect()`. `direct_response` e `done` encerram com `status: 'completed'`.
-   3. Em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório do projeto (ou em `request.workspacePath` sem projeto).
-   4. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento.
-   5. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
+   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
+   3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
+   4. `direct_response` e `done` encerram com `status: 'completed'`.
+   5. Em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto).
+   6. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento.
+   7. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
 4. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
 
 Cada turno de agente (CEO ou delegado) executa internamente:
@@ -215,7 +220,7 @@ Cada turno de agente (CEO ou delegado) executa internamente:
 4. Configuração: com `AgentSettings`, `setConfig({ modelId, effortId: effortId ?? undefined })`; sem settings, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Vale para o CEO e para os delegados.
 5. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.
 6. `turn.throwIfCancelled()` e drenagem de `prompt(text)`, despachando blocos `agent_message_chunk` para `request.onTextChunk`.
-7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados.
+7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados, registrada no log como `[Agent Response] Role=<ROLE>`.
 
 **Tratamento de Cancelamento e Falhas**: `PromptCancelledError` (ou erro com nome
 homônimo) lançado por qualquer agente ou pelo `ActiveTurn` retorna `status: 'cancelled'`. Demais
