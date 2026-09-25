@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { DiscordThrottler } from './discord-throttler.util.js';
+
 
 describe('DiscordThrottler', () => {
   beforeEach(() => {
@@ -53,7 +55,7 @@ describe('DiscordThrottler', () => {
     const throttler = new DiscordThrottler({ intervalMs: 500 });
     const executed: string[] = [];
 
-    let resolveAction1: () => void = () => {};
+    let resolveAction1: () => void = () => undefined;
     const action1Promise = new Promise<void>((resolve) => {
       resolveAction1 = resolve;
     });
@@ -120,7 +122,7 @@ describe('DiscordThrottler', () => {
     const throttler = new DiscordThrottler({ intervalMs: 1000 });
     const executed: string[] = [];
 
-    let finishSlow: () => void = () => {};
+    let finishSlow: () => void = () => undefined;
     const slowAction = vi.fn().mockImplementation(async () => {
       await new Promise<void>((res) => {
         finishSlow = res;

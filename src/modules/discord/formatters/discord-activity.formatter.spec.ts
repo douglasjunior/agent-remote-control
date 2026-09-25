@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+
 import { DiscordActivityFormatter } from './discord-activity.formatter.js';
+
 
 describe('DiscordActivityFormatter', () => {
   const formatter = new DiscordActivityFormatter();

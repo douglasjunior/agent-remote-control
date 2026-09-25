@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { simpleGit } from 'simple-git';
+
 import type {
   GitCheckoutOptions,
   GitCloneOptions,
@@ -9,6 +10,7 @@ import type {
   GitStatusResult,
   IGitPort,
 } from '../ports/git.port.js';
+
 
 @Injectable()
 export class SimpleGitAdapter implements IGitPort {
@@ -49,7 +51,7 @@ export class SimpleGitAdapter implements IGitPort {
     return {
       currentBranch: result.current ?? '',
       isClean: result.isClean(),
-      files: result.files.map((file) => ({
+      files: result.files.map(file => ({
         path: file.path,
         workingDir: file.working_dir,
         index: file.index,

@@ -1,7 +1,13 @@
-import { spawn, type ChildProcess } from 'node:child_process';
 import { Logger } from '@nestjs/common';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  PromptCancelledError,
+  type AgentActivity,
+  type AgentUpdate,
+  type AgentUsage,
+} from '../ports/agent.port.js';
 import {
   acpHarness,
   effortConfigOption,
@@ -10,30 +16,23 @@ import {
   permissionsConfigOption,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
+
 import {
   AbstractAcpAdapter,
   CANCEL_ABORT_PROMPT_TEXT,
   type AgentExtensionRequest,
   type SessionConfigPreset,
 } from './abstract-acp.adapter.js';
-import {
-  PromptCancelledError,
-  type AgentActivity,
-  type AgentUpdate,
-  type AgentUsage,
-} from '../ports/agent.port.js';
+
 
 vi.mock('node:child_process', async () =>
   (
     await import('../testing/acp-adapter-test-harness.js')
-  ).childProcessMockModule(),
-);
+  ).childProcessMockModule());
 vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule(),
-);
+  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
 vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule(),
-);
+  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
 class TestAcpAdapter extends AbstractAcpAdapter {
   protected readonly agentName = 'test';
@@ -1516,7 +1515,7 @@ describe('AbstractAcpAdapter', () => {
       await adapter.createSession('/repo');
 
       const activities: AgentActivity[] = [];
-      const unsubscribe = adapter.onActivity((act) => activities.push(act));
+      const unsubscribe = adapter.onActivity(act => activities.push(act));
 
       await withTurn(adapter, async () => {
         await acpHarness.lastClient?.sessionUpdate({
@@ -1581,7 +1580,7 @@ describe('AbstractAcpAdapter', () => {
 
       expect(() => adapter.sendSteeringPrompt('redirect')).not.toThrow();
 
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise(r => setTimeout(r, 10));
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('steering_prompt_failed'),
       );
@@ -1609,7 +1608,7 @@ describe('AbstractAcpAdapter', () => {
 
       expect(() => adapter.sendSteeringPrompt('redirect wire')).not.toThrow();
 
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise(r => setTimeout(r, 10));
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining('steering_inject_failed'),
       );
@@ -1712,7 +1711,7 @@ describe('AbstractAcpAdapter', () => {
       await adapter.createSession('/repo');
 
       const activities: AgentActivity[] = [];
-      adapter.onActivity((a) => activities.push(a));
+      adapter.onActivity(a => activities.push(a));
 
       let resolvePrompt: (val: unknown) => void = () => undefined;
       acpHarness.connectionInstance?.prompt.mockImplementation(
@@ -1737,7 +1736,7 @@ describe('AbstractAcpAdapter', () => {
         // ignore PromptCancelledError
       }
 
-      expect(activities.some((a) => a.kind === 'cancelled')).toBe(true);
+      expect(activities.some(a => a.kind === 'cancelled')).toBe(true);
     });
 
     it('should log warning if sendCancelNotification fails', async () => {

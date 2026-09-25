@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { IAgentPort, PromptCancelledError } from './agent.port.js';
+
 
 describe('agent.port', () => {
   it('should instantiate PromptCancelledError with default message and name', () => {

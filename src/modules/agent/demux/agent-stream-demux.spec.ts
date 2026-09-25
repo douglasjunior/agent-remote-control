@@ -3,13 +3,16 @@ import type {
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { AgentActivity } from '../ports/agent.port.js';
+
 import {
   AgentStreamDemux,
   extractAgentTextChunk,
   extractToolCallFields,
   extractToolResultSummary,
 } from './agent-stream-demux.js';
+
 
 function textNotif(text: string, messageId?: string): SessionNotification {
   return {
@@ -48,11 +51,11 @@ function toolCallNotif(fields: {
       status: fields.status,
       content: fields.resultText
         ? [
-            {
-              type: 'content',
-              content: { type: 'text', text: fields.resultText },
-            },
-          ]
+          {
+            type: 'content',
+            content: { type: 'text', text: fields.resultText },
+          },
+        ]
         : null,
     },
   } as unknown as SessionNotification;
@@ -71,11 +74,11 @@ function toolUpdateNotif(fields: {
       status: fields.status,
       content: fields.resultText
         ? [
-            {
-              type: 'content',
-              content: { type: 'text', text: fields.resultText },
-            },
-          ]
+          {
+            type: 'content',
+            content: { type: 'text', text: fields.resultText },
+          },
+        ]
         : null,
     },
   } as unknown as SessionNotification;
@@ -93,7 +96,7 @@ const IDLE_MS = 1_000;
 function createDemux(idleMs?: number) {
   const emitted: AgentActivity[] = [];
   const demux = new AgentStreamDemux(
-    (activity) => emitted.push(activity),
+    activity => emitted.push(activity),
     idleMs,
   );
   return { demux, emitted };
@@ -145,11 +148,11 @@ describe('AgentStreamDemux', () => {
     demux.handle(textNotif('Part B', 'm2'));
     demux.handle(textNotif(' and rest of A', 'm1'));
 
-    expect(thoughts(emitted).some((thought) => thought.final === true)).toBe(
+    expect(thoughts(emitted).some(thought => thought.final === true)).toBe(
       false,
     );
     expect(
-      thoughts(emitted).findLast((thought) => thought.id === 'm1')?.text,
+      thoughts(emitted).findLast(thought => thought.id === 'm1')?.text,
     ).toBe('Part A and rest of A');
   });
 
@@ -161,7 +164,7 @@ describe('AgentStreamDemux', () => {
       toolCallNotif({ toolCallId: 'c1', title: 'Read', status: 'pending' }),
     );
 
-    expect(thoughts(emitted).some((thought) => thought.final === true)).toBe(
+    expect(thoughts(emitted).some(thought => thought.final === true)).toBe(
       false,
     );
   });
@@ -173,10 +176,10 @@ describe('AgentStreamDemux', () => {
     demux.handle(textNotif('Subagent B', 'm2'));
     demux.handle(textNotif(' continues', 'm1'));
 
-    expect(thoughts(emitted).findLast((t) => t.id === 'm1')?.text).toBe(
+    expect(thoughts(emitted).findLast(t => t.id === 'm1')?.text).toBe(
       'Subagent A continues',
     );
-    expect(thoughts(emitted).findLast((t) => t.id === 'm2')?.text).toBe(
+    expect(thoughts(emitted).findLast(t => t.id === 'm2')?.text).toBe(
       'Subagent B',
     );
   });
@@ -190,7 +193,7 @@ describe('AgentStreamDemux', () => {
     );
     demux.handle(textNotif('the file.', 'm1'));
 
-    expect(thoughts(emitted).findLast((t) => t.id === 'm1')?.text).toBe(
+    expect(thoughts(emitted).findLast(t => t.id === 'm1')?.text).toBe(
       'Editing the file.',
     );
   });
@@ -213,7 +216,7 @@ describe('AgentStreamDemux', () => {
       id: 'm1',
       text: 'Running tests.',
     });
-    expect(emitted.some((a) => a.kind === 'tool')).toBe(true);
+    expect(emitted.some(a => a.kind === 'tool')).toBe(true);
   });
 
   it('should ignore non-text non-tool events without breaking narration', () => {
@@ -358,7 +361,7 @@ describe('AgentStreamDemux', () => {
     demux.handle(thoughtNotif('Internal reasoning', 't1'));
     demux.handle(textNotif('Final response to user', 'm1'));
 
-    expect(thoughts(emitted).some((t) => t.text === 'Internal reasoning')).toBe(
+    expect(thoughts(emitted).some(t => t.text === 'Internal reasoning')).toBe(
       true,
     );
     expect(demux.takeFinalText()).toBe('Final response to user');
@@ -379,7 +382,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(IDLE_MS);
     demux.handle(textNotif('Found it.', 'm2'));
 
-    expect(thoughts(emitted).find((t) => t.final === true)).toEqual({
+    expect(thoughts(emitted).find(t => t.final === true)).toEqual({
       kind: 'thought',
       id: 'm1',
       text: 'Investigating...',
@@ -411,7 +414,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(IDLE_MS);
     demux.handle(textNotif('Part 2.', 'm1'));
 
-    expect(thoughts(emitted).some((t) => t.final === true)).toBe(false);
+    expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
     expect(thoughts(emitted).at(-1)?.text).toBe('Part 1. Part 2.');
   });
 
@@ -422,7 +425,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(IDLE_MS - 1);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
-    expect(thoughts(emitted).some((t) => t.final === true)).toBe(false);
+    expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
   });
 
   it('should emit continuation of a closed message under derived id with new text', () => {
@@ -450,7 +453,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
 
-    expect(thoughts(emitted).filter((t) => t.final === true)).toEqual([
+    expect(thoughts(emitted).filter(t => t.final === true)).toEqual([
       { kind: 'thought', id: 'm1', text: 'Block 1.', final: true },
       { kind: 'thought', id: 'm1#1', text: 'Block 2.', final: true },
     ]);
@@ -463,7 +466,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(2_999);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
-    expect(thoughts(emitted).some((t) => t.final === true)).toBe(false);
+    expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
 
     vi.advanceTimersByTime(1);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
@@ -479,9 +482,7 @@ describe('AgentStreamDemux', () => {
     vi.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
 
-    expect(thoughts(emitted).filter((t) => t.final === true)).toEqual([
-      expect.objectContaining({ text: 'synthetic preamble', final: true }),
-    ]);
+    expect(thoughts(emitted).filter(t => t.final === true)).toEqual([expect.objectContaining({ text: 'synthetic preamble', final: true })]);
   });
 
   it('should not close anything when idle block has no visible text', () => {
@@ -605,9 +606,7 @@ describe('extractToolResultSummary', () => {
 
   it('should ignore non-text content items', () => {
     expect(
-      extractToolResultSummary([
-        { type: 'diff', path: 'a.txt', newText: 'b' } as unknown as any,
-      ]),
+      extractToolResultSummary([{ type: 'diff', path: 'a.txt', newText: 'b' } as unknown as any]),
     ).toBeUndefined();
   });
 

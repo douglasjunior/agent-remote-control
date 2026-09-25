@@ -1,5 +1,6 @@
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 
+
 export type TurnRequest = {
   channelId: string;
   threadId?: string;

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { DefaultAgentRegistryAdapter } from './default-agent-registry.adapter.js';
+
 
 describe('DefaultAgentRegistryAdapter', () => {
   it('should return undefined for system prompt when no role is given', () => {

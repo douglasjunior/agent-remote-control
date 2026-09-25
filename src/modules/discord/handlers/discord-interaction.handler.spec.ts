@@ -1,13 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ChatInputCommandInteraction,
   Client,
   Interaction,
 } from 'discord.js';
 import { Events } from 'discord.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+
 import { DiscordInteractionHandler } from './discord-interaction.handler.js';
+
 
 class StubOrchestratorService implements Partial<OrchestratorService> {
   cancelledChannelId?: string;

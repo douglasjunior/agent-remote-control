@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
+
 import type { IAgentRegistryPort } from '../../orchestrator/ports/agent-registry.port.js';
 import { INITIAL_AGENT_DEFINITIONS } from '../constants/initial-agents.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
+
 
 @Injectable()
 export class AgentRegistryService implements IAgentRegistryPort {

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { SimpleGitAdapter } from './simple-git.adapter.js';
+
 
 const mockClone = vi.fn();
 const mockCheckout = vi.fn();

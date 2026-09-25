@@ -1,5 +1,6 @@
-import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+
 import {
   type AgentUpdate,
   IAgentPort,
@@ -10,6 +11,7 @@ import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
+
 
 @Injectable()
 export class ExecuteAgentTurnUseCase {
@@ -100,8 +102,8 @@ export class ExecuteAgentTurnUseCase {
       };
     } catch (error) {
       if (
-        error instanceof PromptCancelledError ||
-        (error instanceof Error && error.name === 'PromptCancelledError')
+        error instanceof PromptCancelledError
+        || (error instanceof Error && error.name === 'PromptCancelledError')
       ) {
         const usage = await this.agentPort
           .getLastRoundUsage()
@@ -143,10 +145,10 @@ export class ExecuteAgentTurnUseCase {
     }
     const payload = update?.update;
     if (
-      payload &&
-      payload.sessionUpdate === 'agent_message_chunk' &&
-      payload.content?.type === 'text' &&
-      typeof payload.content.text === 'string'
+      payload
+      && payload.sessionUpdate === 'agent_message_chunk'
+      && payload.content?.type === 'text'
+      && typeof payload.content.text === 'string'
     ) {
       return payload.content.text;
     }

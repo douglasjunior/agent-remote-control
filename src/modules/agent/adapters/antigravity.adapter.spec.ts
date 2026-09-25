@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { IFileSystemPort } from '../ports/file-system.port.js';
 import {
   acpHarness,
   createProcessRunnerMock,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
+
 import { AntigravityAdapter } from './antigravity.adapter.js';
-import type { IFileSystemPort } from '../ports/file-system.port.js';
+
 
 vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule(),
-);
+  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
 vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule(),
-);
+  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
 function fileSystemStub(
   overrides: {
@@ -83,8 +83,7 @@ describe('AntigravityAdapter', () => {
     it('should spawn the dist bridge via node when nested dist bridge is readable', async () => {
       const fs = fileSystemStub();
       vi.mocked(fs.isReadableFile).mockImplementation((path: string) =>
-        path.includes('bridges/agy-acp-bridge.js'),
-      );
+        path.includes('bridges/agy-acp-bridge.js'));
       const { runner, spawn: distSpawn } = createProcessRunnerMock();
       const distAdapter = new AntigravityAdapter(fs, runner);
 
@@ -100,8 +99,7 @@ describe('AntigravityAdapter', () => {
     it('should spawn the flat dist bridge when nested is not readable but flat is readable', async () => {
       const fs = fileSystemStub();
       vi.mocked(fs.isReadableFile).mockImplementation((path: string) =>
-        path.endsWith('adapters/agy-acp-bridge.js'),
-      );
+        path.endsWith('adapters/agy-acp-bridge.js'));
       const { runner, spawn: distSpawn } = createProcessRunnerMock();
       const distAdapter = new AntigravityAdapter(fs, runner);
 

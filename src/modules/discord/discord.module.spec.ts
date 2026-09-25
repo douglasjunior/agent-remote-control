@@ -1,10 +1,12 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
+
 import { DiscordModule } from './discord.module.js';
 import { DiscordActivityFormatter } from './formatters/discord-activity.formatter.js';
 import { DiscordInteractionHandler } from './handlers/discord-interaction.handler.js';
 import { DiscordMessageHandler } from './handlers/discord-message.handler.js';
 import { DiscordClientService } from './services/discord-client.service.js';
+
 
 describe('DiscordModule', () => {
   it('should compile the module and resolve all discord providers', async () => {

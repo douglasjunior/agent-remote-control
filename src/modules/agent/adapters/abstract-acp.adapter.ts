@@ -17,6 +17,7 @@ import { Logger } from '@nestjs/common';
 import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { Readable, Writable } from 'node:stream';
+
 import { AgentStreamDemux } from '../demux/agent-stream-demux.js';
 import {
   PromptCancelledError,
@@ -29,6 +30,7 @@ import {
   type AgentUsage,
   type IAgentPort,
 } from '../ports/agent.port.js';
+
 
 type SessionConfigOptionSelect = SessionConfigOption & { type: 'select' };
 type ConfigCategory = 'model' | 'thought_level' | 'permissions';
@@ -64,9 +66,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private readonly activityListeners = new Set<
     (activity: AgentActivity) => void
   >();
-  private readonly demux = new AgentStreamDemux((activity) =>
-    this.emitActivity(activity),
-  );
+
+  private readonly demux = new AgentStreamDemux(activity =>
+    this.emitActivity(activity));
+
   private stderrBuffer = '';
   private stderrListener: ((chunk: Buffer) => void) | null = null;
   private cachedConfigOptions: SessionConfigOption[] = [];
@@ -170,8 +173,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
       for (const extension of this.agentExtensionRequests()) {
         app = app.onRequest(extension.method, extension.parseParams, () =>
-          extension.respond(),
-        );
+          extension.respond());
       }
 
       this.connection = app.connect(stream);
@@ -203,7 +205,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
   private pickPermissionOption(options: readonly PermissionOption[]): string {
     for (const kind of PERMISSION_ALLOW_PREFERENCE) {
-      const match = options.find((option) => option.kind === kind);
+      const match = options.find(option => option.kind === kind);
       if (match) {
         return match.optionId;
       }
@@ -277,7 +279,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
   }
 
-  async *prompt(text: string): AsyncGenerator<AgentUpdate> {
+  async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     if (!this.connection)
       throw new Error('Not connected. Call connect() first.');
     if (!this.activeSession)
@@ -321,7 +323,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
         const outcome = await Promise.race([
           session
             .nextUpdate()
-            .then((message) => ({ kind: 'message' as const, message })),
+            .then(message => ({ kind: 'message' as const, message })),
           forcePromise.then(() => ({ kind: 'forced' as const })),
         ]);
 
@@ -519,9 +521,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     if (!option) return null;
 
     return {
-      availableModels: this.flattenSelectOptions(option.options).map((opt) =>
-        this.mapModel(opt),
-      ),
+      availableModels: this.flattenSelectOptions(option.options).map(opt =>
+        this.mapModel(opt)),
       currentModelId: option.currentValue,
     };
   }
@@ -558,7 +559,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
       return {
         availableEfforts: this.flattenSelectOptions(effortOption.options).map(
-          (opt) => ({
+          opt => ({
             effortId: opt.value,
             name: opt.name,
             description:
@@ -618,7 +619,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
 
     const exists = this.flattenSelectOptions(option.options).some(
-      (opt) => opt.value === value,
+      opt => opt.value === value,
     );
     if (!exists) {
       this.logger.warn(`config_option_value_unknown: ${category}=${value}`);
@@ -717,8 +718,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   ): SessionConfigOptionSelect | null {
     const match = options.find(
       (option): option is SessionConfigOptionSelect =>
-        option.type === 'select' &&
-        (option.id === key || option.category === key),
+        option.type === 'select'
+        && (option.id === key || option.category === key),
     );
     return match ?? null;
   }
@@ -726,7 +727,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private flattenSelectOptions(
     options: SessionConfigSelectOptions,
   ): readonly SessionConfigSelectOption[] {
-    return options.flatMap((item) => ('value' in item ? [item] : item.options));
+    return options.flatMap(item => ('value' in item ? [item] : item.options));
   }
 
   private isMethodNotFoundError(message: string): boolean {

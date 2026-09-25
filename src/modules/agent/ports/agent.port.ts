@@ -3,25 +3,26 @@ import type {
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
 
+
 export type AgentUpdate = SessionNotification;
 
 export type AgentActivity =
   | {
-      readonly kind: 'thought';
-      readonly id: string;
-      readonly text: string;
-      readonly removed?: boolean;
-      readonly final?: boolean;
-    }
+    readonly kind: 'thought';
+    readonly id: string;
+    readonly text: string;
+    readonly removed?: boolean;
+    readonly final?: boolean;
+  }
   | { readonly kind: 'steering'; readonly id: string; readonly text: string }
   | { readonly kind: 'cancelled'; readonly id: string }
   | {
-      readonly kind: 'tool';
-      readonly toolCallId: string;
-      readonly title: string;
-      readonly status: ToolCallStatus;
-      readonly result?: string;
-    };
+    readonly kind: 'tool';
+    readonly toolCallId: string;
+    readonly title: string;
+    readonly status: ToolCallStatus;
+    readonly result?: string;
+  };
 
 export type AgentUsage = {
   readonly totalTokens: number;

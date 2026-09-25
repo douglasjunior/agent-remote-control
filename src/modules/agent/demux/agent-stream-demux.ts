@@ -3,7 +3,9 @@ import type {
   ToolCallContent,
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
+
 import type { AgentActivity } from '../ports/agent.port.js';
+
 
 type ToolActivity = AgentActivity & { kind: 'tool' };
 
@@ -40,8 +42,8 @@ export function extractToolCallFields(
   const { update: payload } = update;
 
   if (
-    payload.sessionUpdate !== 'tool_call' &&
-    payload.sessionUpdate !== 'tool_call_update'
+    payload.sessionUpdate !== 'tool_call'
+    && payload.sessionUpdate !== 'tool_call_update'
   ) {
     return null;
   }
@@ -60,8 +62,8 @@ export function extractAgentTextChunk(
   const { update: payload } = update;
 
   if (
-    payload.sessionUpdate !== 'agent_message_chunk' &&
-    payload.sessionUpdate !== 'agent_thought_chunk'
+    payload.sessionUpdate !== 'agent_message_chunk'
+    && payload.sessionUpdate !== 'agent_thought_chunk'
   ) {
     return null;
   }

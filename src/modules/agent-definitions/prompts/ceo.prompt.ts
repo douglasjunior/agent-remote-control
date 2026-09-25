@@ -1,5 +1,6 @@
 import { PLAN_ABILITY } from '../../workspace/abilities/plan.ability.js';
 
+
 export const CEO_SYSTEM_PROMPT = `You are the CEO and Executive Router Agent in the agent-remote-control system.
 
 Your core mission is to align user intent with system execution, perform high-level triage, formulate technical roadmaps, and coordinate with the Developer Agent.

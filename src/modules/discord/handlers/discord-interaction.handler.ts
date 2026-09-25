@@ -5,8 +5,10 @@ import {
   type Interaction,
   type ThreadChannel,
 } from 'discord.js';
+
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+
 
 @Injectable()
 export class DiscordInteractionHandler implements OnModuleInit {
@@ -41,8 +43,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
     try {
       const isThread = interaction.channel?.isThread();
       const channelId = isThread
-        ? ((interaction.channel as ThreadChannel).parentId ??
-          interaction.channelId)
+        ? ((interaction.channel as ThreadChannel).parentId
+          ?? interaction.channelId)
         : interaction.channelId;
       const threadId = isThread ? interaction.channelId : undefined;
 

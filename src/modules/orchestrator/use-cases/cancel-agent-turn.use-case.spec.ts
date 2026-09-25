@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+
 import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store.adapter.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
+
 import { CancelAgentTurnUseCase } from './cancel-agent-turn.use-case.js';
+
 
 describe('CancelAgentTurnUseCase', () => {
   let useCase: CancelAgentTurnUseCase;

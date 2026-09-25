@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+
 import { AgentRegistryService } from './agent-registry.service.js';
+
 
 describe('AgentRegistryService', () => {
   let service: AgentRegistryService;
@@ -76,7 +78,7 @@ describe('AgentRegistryService', () => {
     it('should return all registered definitions', () => {
       const all = service.getAllDefinitions();
       expect(all.length).toBeGreaterThanOrEqual(2);
-      const roles = all.map((d) => d.role);
+      const roles = all.map(d => d.role);
       expect(roles).toContain('CEO');
       expect(roles).toContain('DEVELOPER');
     });

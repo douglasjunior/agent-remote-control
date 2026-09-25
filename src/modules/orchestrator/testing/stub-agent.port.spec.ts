@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
+
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+
 import { StubAgentPort } from './stub-agent.port.js';
+
 
 describe('StubAgentPort', () => {
   it('should support steering prompt and activity listeners', () => {
@@ -9,7 +12,7 @@ describe('StubAgentPort', () => {
     expect(stub.steeringPrompts).toEqual(['Steer instruction']);
 
     const received: AgentActivity[] = [];
-    const unsubscribe = stub.onActivity((act) => received.push(act));
+    const unsubscribe = stub.onActivity(act => received.push(act));
 
     const activity: AgentActivity = {
       kind: 'thought',

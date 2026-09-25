@@ -3,6 +3,7 @@ import { vi, type Mock } from 'vitest';
 
 import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
+
 export type ChildProcessLike = EventEmitter & {
   stdin: NodeJS.WritableStream;
   stdout: NodeJS.ReadableStream;
@@ -117,10 +118,12 @@ class HarnessUpdateQueue {
   private readonly values: (
     { ok: true; value: unknown } | { ok: false; error: unknown }
   )[] = [];
+
   private readonly waiters: {
     resolve: (v: unknown) => void;
     reject: (e: unknown) => void;
   }[] = [];
+
   private failed = false;
   private failure: unknown;
 
@@ -172,7 +175,7 @@ function createActiveSessionMock(
         prompt: [{ type: 'text', text }],
       });
       void Promise.resolve(promise).then(
-        (value) =>
+        value =>
           queue.enqueue({
             kind: 'stop',
             response: value,
@@ -233,7 +236,7 @@ export function acpSdkMockModule() {
             parse:
               typeof parser === 'function'
                 ? parser
-                : (params) => parser.parse(params),
+                : params => parser.parse(params),
             handle: extensionHandler,
           });
           return app;
@@ -337,7 +340,7 @@ export function modelConfigOption(opts: {
     name: 'Model',
     category: 'model',
     currentValue: opts.currentValue,
-    options: opts.options.map((o) => ({
+    options: opts.options.map(o => ({
       value: o.value,
       name: o.name,
       description: o.description,
@@ -355,7 +358,7 @@ export function effortConfigOption(opts: {
     name: 'Thought level',
     category: 'thought_level',
     currentValue: opts.currentValue,
-    options: opts.options.map((o) => ({
+    options: opts.options.map(o => ({
       value: o.value,
       name: o.name,
       description: o.description,
@@ -373,7 +376,7 @@ export function permissionsConfigOption(opts: {
     name: 'Allow all',
     category: 'permissions',
     currentValue: opts.currentValue,
-    options: opts.options.map((o) => ({
+    options: opts.options.map(o => ({
       value: o.value,
       name: o.name,
       description: o.description,

@@ -1,12 +1,15 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Client, Message, ThreadChannel, User } from 'discord.js';
+import type { Client, Message, User } from 'discord.js';
 import { Events } from 'discord.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+
 import { DiscordMessageHandler } from './discord-message.handler.js';
+
 
 class StubOrchestratorService implements Partial<OrchestratorService> {
   lastRequest?: TurnRequest;
@@ -15,6 +18,7 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     response: 'Hello from agent!',
     status: 'completed',
   };
+
   throwError = false;
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
@@ -25,7 +29,9 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     return this.mockResult;
   }
 
-  async cancelTurn(): Promise<void> {}
+  async cancelTurn(): Promise<void> {
+    return undefined;
+  }
 }
 
 describe('DiscordMessageHandler', () => {

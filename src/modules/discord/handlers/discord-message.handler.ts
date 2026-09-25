@@ -1,10 +1,12 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
+
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
+
 
 @Injectable()
 export class DiscordMessageHandler implements OnModuleInit {
