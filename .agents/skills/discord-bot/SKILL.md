@@ -33,6 +33,8 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   - `GatewayIntentBits.DirectMessages`: recepção de mensagens diretas e privadas (DM).
 - **Partials obrigatórios**:
   - `Partials.Channel` e `Partials.Message`: garantem recepção de eventos em canais de DM não cacheados previamente.
+- **Permissões do Bot (Permissions Integer)**:
+  - O conjunto padrão de permissões de texto e canais totaliza o inteiro `380104727616` na calculadora de permissões do Discord.
 - **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra o comando `/cancel` globalmente no aplicativo e na guilda especificada em `DISCORD_GUILD_ID` (quando fornecida).
 - **Tolerância a ausência de token**: Se a variável `DISCORD_BOT_TOKEN` não estiver definida
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.

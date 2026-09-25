@@ -146,7 +146,8 @@ Para que o bot do Discord consiga autenticar, escutar mensagens, responder em ca
 2. Na seção **Scopes**, selecione:
    - `bot`
    - `applications.commands`
-3. Na seção **Bot Permissions**, selecione:
+   *(Importante: marque apenas estes dois escopos para que a URL gerada não exija servidor de redirecionamento).*
+3. Na seção **Bot Permissions**, selecione as permissões necessárias:
    - *Send Messages* (Enviar mensagens)
    - *Send Messages in Threads* (Enviar mensagens em tópicos)
    - *Create Public Threads* (Criar tópicos públicos)
@@ -154,7 +155,11 @@ Para que o bot do Discord consiga autenticar, escutar mensagens, responder em ca
    - *Read Message History* (Ver histórico de mensagens)
    - *View Channels* (Ver canais)
    - *Add Reactions* (Adicionar reações)
-4. Copie a URL gerada no rodapé da página, cole no navegador e selecione o seu servidor para autorizar o bot.
+   - *Embed Links* (Inserir links)
+   - *Attach Files* (Anexar arquivos)
+   - *Use Slash Commands* (Usar comandos de barra)
+   > **Permissions Integer (Calculadora de Permissões):** `380104727616` (ou marque `Administrador` se for seu servidor pessoal).
+4. Copie a URL gerada no rodapé da página (campo **URL gerado**), cole no navegador e selecione o seu servidor para autorizar o bot.
 
 ### Passo 5: Como Conversar com o Bot
 
