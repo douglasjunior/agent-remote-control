@@ -171,6 +171,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
     expect(stubAgentPort.promptCalls).toHaveLength(10);
+    expect(delegateStubPort.promptCalls).toHaveLength(9);
   });
 
   describe('delegation repair', () => {
@@ -314,6 +315,44 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(secondResult.response).toBe('reply to two');
   });
 
+  it('should create a single session when two messages start a new conversation at once', async () => {
+    let releaseFirst: () => void = () => undefined;
+    const firstStarted = new Promise<void>((started) => {
+      stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
+        this.promptCalls.push(text);
+        if (this.promptCalls.length === 1) {
+          started();
+          await new Promise<void>((release) => {
+            releaseFirst = release;
+          });
+        }
+        yield textChunk('ok');
+      };
+    });
+
+    const first = useCase.execute(turnRequest({ prompt: 'one' }));
+    const second = useCase.execute(turnRequest({ prompt: 'two' }));
+    await firstStarted;
+    releaseFirst();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(secondResult.sessionId).toBe(firstResult.sessionId);
+    expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\none', 'two']);
+  });
+
+  it('should return failed when the session cannot be saved', async () => {
+    sessionStore.saveSession = async () => {
+      throw new Error('EACCES: permission denied');
+    };
+
+    const result = await useCase.execute(turnRequest());
+
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toBe('EACCES: permission denied');
+    expect(result.sessionId).toEqual(expect.any(String));
+    expect(stubAgentPort.promptCalls).toHaveLength(0);
+  });
+
   it('should honour a cancellation requested while the delegate is still connecting', async () => {
     stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
     let finishConnect: () => void = () => undefined;
@@ -328,9 +367,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     const turn = useCase.execute(turnRequest());
     await connecting;
-    const sessionId = (await sessionStore.findSession('ch-1'))!.sessionId;
 
-    await expect(runtime.cancel(sessionId)).resolves.toBe(true);
+    await expect(runtime.cancel('ch-1:')).resolves.toBe(true);
     finishConnect();
     const result = await turn;
 

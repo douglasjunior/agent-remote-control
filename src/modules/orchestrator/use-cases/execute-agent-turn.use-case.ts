@@ -23,6 +23,7 @@ import {
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
+import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 
 type ValidatedDelegation = DelegationResult & { readonly cwd: string };
@@ -54,30 +55,29 @@ export class ExecuteAgentTurnUseCase {
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
-    const session = await this.resolveSession(request);
-
     return this.conversationRuntime.run(
-      session.sessionId,
-      (agentPort, turn) => this.runTurn(session, agentPort, turn, request),
+      buildConversationKey(request.channelId, request.threadId),
+      (agentPort, turn) => this.runTurn(agentPort, turn, request),
       request.onQueued,
     );
   }
 
   private async runTurn(
-    session: SessionContext,
     ceoPort: IAgentPort,
     turn: ActiveTurn,
     request: TurnRequest,
   ): Promise<TurnResult> {
-    this.logger.log(
-      `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
-    );
-
+    let session = this.newSession(request);
     let prompt = request.prompt;
     const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
       this.buildResult({ session, ceoPort, role: request.agentRole, status, response, errorMessage });
 
     try {
+      session = await this.resolveSession(request, session);
+      this.logger.log(
+        `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
+      );
+
       for (let round = 1; round <= this.MAX_DELEGATION_ROUNDS; round++) {
         const { response, decision } = await this.runCeoTurn(ceoPort, prompt, request, turn, session);
 
@@ -93,6 +93,9 @@ export class ExecuteAgentTurnUseCase {
           return await finish('completed', decision.summary);
         }
 
+        if (round === this.MAX_DELEGATION_ROUNDS) {
+          break;
+        }
         prompt = await this.delegate(session, decision.delegation, request, round, turn);
       }
 
@@ -119,24 +122,24 @@ export class ExecuteAgentTurnUseCase {
     }
   }
 
-  private async resolveSession(request: TurnRequest): Promise<SessionContext> {
-    const existing = await this.sessionStore.findSession(request.channelId, request.threadId);
+  private newSession(request: TurnRequest): SessionContext {
     const now = new Date();
+    return {
+      sessionId: randomUUID(),
+      channelId: request.channelId,
+      threadId: request.threadId,
+      userId: request.userId,
+      workspacePath: request.workspacePath,
+      agentRole: request.agentRole,
+      agentSessions: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
 
-    const session: SessionContext = existing
-      ? { ...existing, updatedAt: now }
-      : {
-        sessionId: randomUUID(),
-        channelId: request.channelId,
-        threadId: request.threadId,
-        userId: request.userId,
-        workspacePath: request.workspacePath,
-        agentRole: request.agentRole,
-        agentSessions: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-
+  private async resolveSession(request: TurnRequest, fallback: SessionContext): Promise<SessionContext> {
+    const existing = await this.sessionStore.findSession(request.channelId, request.threadId);
+    const session = existing ? { ...existing, updatedAt: new Date() } : fallback;
     await this.sessionStore.saveSession(session);
     return session;
   }

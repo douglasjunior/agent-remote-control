@@ -38,15 +38,15 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   }
 
   run<T>(
-    sessionId: string,
+    conversationKey: string,
     work: (agentPort: IAgentPort, turn: ActiveTurn) => Promise<T>,
     onQueued?: () => void,
   ): Promise<T> {
-    const runtime = this.getOrCreate(sessionId);
+    const runtime = this.getOrCreate(conversationKey);
     this.clearIdleTimer(runtime);
 
     if (runtime.pendingTurns > 0) {
-      this.logger.log(`[Turn Queued] Session=${sessionId}, Ahead=${runtime.pendingTurns}`);
+      this.logger.log(`[Turn Queued] Conversation=${conversationKey}, Ahead=${runtime.pendingTurns}`);
       onQueued?.();
     }
     runtime.pendingTurns++;
@@ -60,7 +60,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
         runtime.activeTurn = null;
         runtime.pendingTurns--;
         if (runtime.pendingTurns === 0) {
-          this.scheduleExpiration(sessionId, runtime);
+          this.scheduleExpiration(conversationKey, runtime);
         }
       }
     });
@@ -71,8 +71,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     return result;
   }
 
-  async cancel(sessionId: string): Promise<boolean> {
-    const turn = this.runtimes.get(sessionId)?.activeTurn;
+  async cancel(conversationKey: string): Promise<boolean> {
+    const turn = this.runtimes.get(conversationKey)?.activeTurn;
     if (!turn) {
       return false;
     }
@@ -89,8 +89,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     }));
   }
 
-  private getOrCreate(sessionId: string): ConversationRuntime {
-    let runtime = this.runtimes.get(sessionId);
+  private getOrCreate(conversationKey: string): ConversationRuntime {
+    let runtime = this.runtimes.get(conversationKey);
     if (!runtime) {
       runtime = {
         agentPort: this.agentPortFactory.create(),
@@ -99,14 +99,14 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
         activeTurn: null,
         idleTimer: null,
       };
-      this.runtimes.set(sessionId, runtime);
+      this.runtimes.set(conversationKey, runtime);
     }
     return runtime;
   }
 
-  private scheduleExpiration(sessionId: string, runtime: ConversationRuntime): void {
+  private scheduleExpiration(conversationKey: string, runtime: ConversationRuntime): void {
     runtime.idleTimer = setTimeout(() => {
-      void this.expire(sessionId, runtime);
+      void this.expire(conversationKey, runtime);
     }, this.idleTimeoutMs);
     runtime.idleTimer.unref();
   }
@@ -118,10 +118,10 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     }
   }
 
-  private async expire(sessionId: string, runtime: ConversationRuntime): Promise<void> {
+  private async expire(conversationKey: string, runtime: ConversationRuntime): Promise<void> {
     runtime.idleTimer = null;
-    this.runtimes.delete(sessionId);
-    this.logger.log(`[Session Expired] Session=${sessionId} idle for ${this.idleTimeoutMs}ms`);
+    this.runtimes.delete(conversationKey);
+    this.logger.log(`[Session Expired] Conversation=${conversationKey} idle for ${this.idleTimeoutMs}ms`);
     await runtime.agentPort.closeSession().catch(() => undefined);
     await runtime.agentPort.disconnect().catch(() => undefined);
   }

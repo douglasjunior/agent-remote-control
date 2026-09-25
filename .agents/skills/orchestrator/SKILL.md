@@ -139,11 +139,14 @@ papéis desconhecidos.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
 
-Mantém em memória o estado de execução de cada sessão (`sessionId`):
+Mantém em memória o estado de execução de cada conversa, identificada por
+`buildConversationKey(channelId, threadId)` (`utils/conversation-key.util.ts`, formato
+`channelId:threadId`). A chave é a conversa e não o `sessionId` porque a sessão só é resolvida
+dentro da fila:
 
 - **Agente da conversa**: um `IAgentPort` criado pela `IAgentPortFactory` na primeira execução e reutilizado nos turnos seguintes;
-- **Fila de turnos**: `run(sessionId, work, onQueued)` executa os turnos de uma mesma sessão um de cada vez, na ordem de chegada. Um turno que chega com outro em andamento chama `onQueued`. Uma falha não interrompe a fila;
-- **Turno ativo**: `cancel(sessionId)` cancela o `ActiveTurn` em execução e devolve `false` quando não há turno em andamento. Turnos na fila não são afetados;
+- **Fila de turnos**: `run(conversationKey, work, onQueued)` executa os turnos de uma mesma conversa um de cada vez, na ordem de chegada. Um turno que chega com outro em andamento chama `onQueued`. Uma falha não interrompe a fila;
+- **Turno ativo**: `cancel(conversationKey)` cancela o `ActiveTurn` em execução e devolve `false` quando não há turno em andamento. Turnos na fila não são afetados;
 - **Expiração por ociosidade**: sem turnos por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra o agente (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
 - **Shutdown**: `onApplicationShutdown` desconecta todos os agentes. Requer `app.enableShutdownHooks()` no bootstrap.
 
@@ -197,16 +200,17 @@ Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAge
 
 A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
 
-1. **Resolução de Sessão**: consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store.
-2. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(sessionId, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
+1. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(conversationKey, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
+2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'`.
 3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
    2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
-   5. Em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). A sessão é por papel, e não por projeto: uma delegação a outro projeto retoma a mesma sessão com o novo `cwd`.
-   6. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` permanece em `agentSessions` para a próxima delegação ao mesmo papel, inclusive em rodadas seguintes do mesmo turno.
-   7. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
+   5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.
+   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). A sessão é por papel, e não por projeto: uma delegação a outro projeto retoma a mesma sessão com o novo `cwd`.
+   7. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` permanece em `agentSessions` para a próxima delegação ao mesmo papel, inclusive em rodadas seguintes do mesmo turno.
+   8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
 4. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
 
 Cada turno de agente (CEO ou delegado) executa internamente:
@@ -234,12 +238,12 @@ o `lastAgentMessage` do CEO.
 
 ### Cancelamento de Turno (`CancelAgentTurnUseCase`)
 
-Injeta `@Inject(ISessionStorePort)` e `ConversationRuntimeService`.
+Injeta `ConversationRuntimeService`.
 
-O método `execute(channelId: string, threadId?: string): Promise<boolean>`:
-
-1. Localiza a sessão via `ISessionStorePort.findSession(channelId, threadId)`. Sem sessão, devolve `false`.
-2. Aciona `ConversationRuntimeService.cancel(sessionId)` e devolve se havia turno em andamento. O `PromptCancelledError` resultante interrompe o loop de delegação.
+O método `execute(channelId: string, threadId?: string): Promise<boolean>` aciona
+`ConversationRuntimeService.cancel(buildConversationKey(channelId, threadId))` e devolve se havia
+turno em andamento, inclusive num turno que ainda não salvou a sessão. O `PromptCancelledError`
+resultante interrompe o loop de delegação.
 
 ## Seleção de Modelo e Effort
 
