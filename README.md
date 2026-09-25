@@ -166,7 +166,7 @@ yarn test:cov
 # Executa testes ponta a ponta (e2e)
 yarn test:e2e
 
-# Análise estática com oxlint
+# Análise estática com ESLint
 yarn lint
 
 # Formatação de código com Prettier
