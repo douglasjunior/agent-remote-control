@@ -32,6 +32,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.name ?? agentRole;
   }
 
+  hasRole(agentRole: string): boolean {
+    return this.getDefinition(agentRole) !== undefined;
+  }
+
   getDefinition(roleOrId: string): AgentDefinition | undefined {
     return this.definitions.get(roleOrId.toUpperCase());
   }

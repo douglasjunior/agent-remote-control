@@ -71,6 +71,7 @@ A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/
 
 - `getSystemPrompt(agentRole: string)`: resolve a definição de forma case-insensitive e chama `buildSystemPrompt` com todas as outras definições registradas. Papéis não registrados recebem um prompt genérico;
 - `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
+- `hasRole(agentRole: string)`: indica, de forma case-insensitive, se o papel está registrado;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;
 - `getAllDefinitions()`: lista todas as definições registradas;
 - `registerDefinition(definition: AgentDefinition)`: permite inclusão dinâmica ou sobrescrita em tempo de execução. Um agente registrado passa a constar na seção "Your Team" do prompt do CEO.
