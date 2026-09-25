@@ -2,6 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
@@ -31,20 +32,20 @@ class MockOrchestratorService {
     status: 'completed',
   };
 
+  public activitiesToEmit: AgentActivity[] = [
+    { kind: 'thought', id: '1', text: 'Thinking about the request' },
+    {
+      kind: 'tool',
+      title: 'Running bash command',
+      toolCallId: 'call-1',
+      status: 'in_progress',
+    },
+  ];
+
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
     this.lastRequest = request;
-    if (request.onActivity) {
-      request.onActivity({
-        kind: 'thought',
-        id: '1',
-        text: 'Thinking about the request',
-      });
-      request.onActivity({
-        kind: 'tool',
-        title: 'Running bash command',
-        toolCallId: 'call-1',
-        status: 'in_progress',
-      });
+    for (const activity of this.activitiesToEmit) {
+      request.onActivity?.(activity);
     }
     return this.mockResult;
   }
@@ -53,6 +54,7 @@ class MockOrchestratorService {
 class MockWorkspacePort implements IWorkspacePort {
   getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
   resolveRepositoryPath = vi.fn();
+  ensureDirectory = vi.fn().mockResolvedValue(undefined);
   registerRepository = vi.fn();
   getRepository = vi.fn();
   listRepositories = vi.fn();
@@ -265,6 +267,82 @@ describe('DiscordMessageHandler', () => {
     const editCalls = progressMessage.edit.mock.calls.map(call => call[0]);
     expect(editCalls.some((c: string) => c.includes('Thinking about the request'))).toBe(true);
     expect(editCalls.some((c: string) => c.includes('Running bash command'))).toBe(true);
+  });
+
+  describe('progress feed', () => {
+    const buildThreadMessage = () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+      return { message, progressMessage };
+    };
+
+    const lastEdit = (progressMessage: { edit: ReturnType<typeof vi.fn> }): string =>
+      progressMessage.edit.mock.calls.at(-1)![0] as string;
+
+    it('should replace a growing thought in place instead of appending each update', async () => {
+      orchestratorService.activitiesToEmit = [
+        { kind: 'thought', id: 't1', text: 'Hello' },
+        { kind: 'thought', id: 't1', text: 'Hello there' },
+        { kind: 'thought', id: 't1', text: 'Hello there, friend', final: true },
+      ];
+      const { message, progressMessage } = buildThreadMessage();
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Hello there, friend*');
+    });
+
+    it('should update tool calls in place and drop removed thoughts', async () => {
+      orchestratorService.activitiesToEmit = [
+        { kind: 'thought', id: 't1', text: 'Draft' },
+        { kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' },
+        { kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' },
+        { kind: 'thought', id: 't1', text: 'Draft', removed: true },
+        { kind: 'cancelled', id: 'x' },
+      ];
+      const { message, progressMessage } = buildThreadMessage();
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso do Agente**:\n✅ **Concluído**: `ls`');
+    });
+
+    it('should skip activities without formatted content', async () => {
+      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: '   ' }];
+      const { message, progressMessage } = buildThreadMessage();
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(progressMessage.edit).not.toHaveBeenCalled();
+    });
+
+    it('should keep the progress message within the Discord length limit', async () => {
+      const longText = 'x'.repeat(5000);
+      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longText }];
+      const { message, progressMessage } = buildThreadMessage();
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(lastEdit(progressMessage).length).toBeLessThanOrEqual(2000);
+    });
   });
 
   it('should swallow error when progress message update fails', async () => {

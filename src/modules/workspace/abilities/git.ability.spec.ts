@@ -19,6 +19,7 @@ describe('git.ability', () => {
     expect(GIT_ABILITY).toContain('SSH URL form, never HTTPS');
     expect(GIT_ABILITY).toContain('git@ssh.dev.azure.com:v3/');
     expect(GIT_ABILITY).toContain('StrictHostKeyChecking=accept-new');
+    expect(GIT_ABILITY).toContain('git clone <ssh-url> .');
   });
 
   it('should generate an RSA key pair and return only the public key to the user', () => {

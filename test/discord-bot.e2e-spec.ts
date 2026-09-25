@@ -1,7 +1,10 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
-import { describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
 import { IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
@@ -13,7 +16,6 @@ import type {
 import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-message.handler.js';
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
-import { IWorkspacePort } from '../src/modules/workspace/ports/workspace.port.js';
 
 
 class E2EAgentFake implements Partial<IAgentPort> {
@@ -116,6 +118,23 @@ class ScriptedAgentFake extends E2EAgentFake {
 }
 
 describe('Discord Bot Driving Adapter (e2e)', () => {
+  let workspaceDir: string;
+  const originalWorkspaceDir = process.env.WORKSPACE_DIR;
+
+  beforeAll(() => {
+    workspaceDir = mkdtempSync(join(tmpdir(), 'arc-e2e-workspaces-'));
+    process.env.WORKSPACE_DIR = workspaceDir;
+  });
+
+  afterAll(() => {
+    if (originalWorkspaceDir === undefined) {
+      delete process.env.WORKSPACE_DIR;
+    } else {
+      process.env.WORKSPACE_DIR = originalWorkspaceDir;
+    }
+    rmSync(workspaceDir, { recursive: true, force: true });
+  });
+
   it('should process user message, emit activities, and post final response to thread', async () => {
     const fakeAgent = new E2EAgentFake();
 
@@ -219,7 +238,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       channelId: 'channel-main',
       threadId: 'thread-sub',
       userId: 'user-1',
-      workspacePath: process.cwd(),
+      workspacePath: workspaceDir,
       agentRole: 'CEO',
       agentPort: fakeAgent as unknown as IAgentPort,
       activeAgentPort: fakeAgent as unknown as IAgentPort,
@@ -281,7 +300,6 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const messageHandler = moduleFixture.get<DiscordMessageHandler>(
       DiscordMessageHandler,
     );
-    const workspacePort = moduleFixture.get<IWorkspacePort>(IWorkspacePort);
     (discordClientService.getClient() as any).user = { id: 'bot-e2e-id' };
 
     const threadMessages: string[] = [];
@@ -307,8 +325,9 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(incomingMessage);
 
-    expect(ceo.sessionCwds).toEqual([workspacePort.getBaseDirectory()]);
-    expect(developer.sessionCwds).toEqual([workspacePort.resolveRepositoryPath('my-app')]);
+    expect(ceo.sessionCwds).toEqual([workspaceDir]);
+    expect(developer.sessionCwds).toEqual([join(workspaceDir, 'my-app')]);
+    expect(existsSync(join(workspaceDir, 'my-app'))).toBe(true);
     expect(developer.prompts[0]).toContain('Developer Agent');
     expect(developer.prompts[0]).toContain('Implement the login screen.');
     expect(ceo.prompts[1]).toBe(

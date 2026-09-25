@@ -91,6 +91,10 @@ class StubWorkspacePort implements IWorkspacePort {
     return `${this.baseDirectory}/${repositoryName}`;
   }
 
+  async ensureDirectory(): Promise<void> {
+    return undefined;
+  }
+
   async registerRepository(metadata: RepositoryMetadata): Promise<void> {
     this.repositories.set(metadata.name, metadata);
   }

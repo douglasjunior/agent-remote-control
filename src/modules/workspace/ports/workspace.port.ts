@@ -9,6 +9,7 @@ export interface RepositoryMetadata {
 export interface IWorkspacePort {
   getBaseDirectory(): string;
   resolveRepositoryPath(repositoryName: string): string;
+  ensureDirectory(path: string): Promise<void>;
   registerRepository(metadata: RepositoryMetadata): Promise<void>;
   getRepository(repositoryName: string): Promise<RepositoryMetadata | null>;
   listRepositories(): Promise<RepositoryMetadata[]>;
