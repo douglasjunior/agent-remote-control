@@ -100,38 +100,74 @@ cp .env.example .env
 
 Parâmetros suportados:
 
-| Variável | Descrição | Padrão |
-|---|---|---|
-| `DISCORD_BOT_TOKEN` | Token do bot obtido no Discord Developer Portal | *(Obrigatório)* |
-| `DISCORD_CLIENT_ID` | Application Client ID do bot no Discord | *(Obrigatório)* |
-| `DISCORD_GUILD_ID` | ID do servidor Discord para registro de slash commands | *(Opcional)* |
-| `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | `./workspaces` |
-| `AGY_PATH` | Caminho explícito para o executável `agy` caso não esteja no `PATH` | `agy` |
-| `PORT` | Porta para o servidor HTTP NestJS | `3000` |
+| Variável | Descrição | Onde Obter no Discord | Padrão |
+|---|---|---|---|
+| `DISCORD_BOT_TOKEN` | Token secreto do bot | Aba **Bot** > Seção *Token* > Botão **Redefinir token** (*Reset Token*) | *(Obrigatório)* |
+| `DISCORD_CLIENT_ID` | ID do aplicativo do bot | Aba **Informações gerais** (*General Information*) > Campo **ID DO APLICATIVO** (*Application ID*) | *(Obrigatório)* |
+| `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
+| `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
+| `AGY_PATH` | Caminho para o executável `agy` | Executável no `PATH` global | `agy` |
+| `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
 
 ---
 
 ## 6. Configuração no Discord Developer Portal
 
-Para que o bot do Discord consiga escutar mensagens, criar threads e transmitir atualizações:
+Para que o bot do Discord consiga autenticar, escutar mensagens, responder em canais privados (DM) ou criar threads em servidores:
 
-1. Acesse o [Discord Developer Portal](https://discord.com/developers/applications) e clique em **New Application**.
-2. Na aba **Bot**:
-   - Clique em **Reset Token** e copie o token gerado para `DISCORD_BOT_TOKEN`.
-   - Na seção **Privileged Gateway Intents**, marque:
-     - **Message Content Intent** (essencial para ler o texto dos prompts dos usuários).
-     - **Server Members Intent** (recomendado para identificar o remetente).
-3. Na aba **OAuth2 > URL Generator**:
-   - Selecione os escopos: `bot` e `applications.commands`.
-   - Selecione as permissões de bot:
-     - *Send Messages*
-     - *Send Messages in Threads*
-     - *Create Public Threads*
-     - *Create Private Threads*
-     - *Read Message History*
-     - *View Channels*
-     - *Add Reactions*
-   - Copie a URL gerada, cole no navegador e convide o bot para o seu servidor Discord.
+### Passo 1: Criar o Aplicativo e Obter o `DISCORD_CLIENT_ID`
+1. Acesse o [Discord Developer Portal](https://discord.com/developers/applications) e clique em **New Application** (ou **Criar**).
+2. Dê um nome ao seu aplicativo (ex.: `Agent Remote Control`).
+3. No menu lateral esquerdo, clique em **Informações gerais** (*General Information*).
+4. No campo **ID DO APLICATIVO** (*Application ID*), clique no botão **Copiar** e cole no seu `.env` como `DISCORD_CLIENT_ID`.
+
+### Passo 2: Configurar o Bot, Obter o `DISCORD_BOT_TOKEN` e Ativar as Intents
+1. No menu lateral esquerdo, clique em **Bot**.
+2. **Nome de usuário do bot**: Escolha um nome exclusivo (se aparecer o erro em vermelho *"username: Muitas pessoas já usam este nome de usuário"*, altere para um identificador único como `Jarvis-ARC-Dev` e clique em *Salvar alterações*).
+3. **Token do bot (`DISCORD_BOT_TOKEN`)**:
+   - Na seção **Token**, clique no botão azul **Redefinir token** (*Reset Token*).
+   - Confirme a ação e copie o token gerado para a variável `DISCORD_BOT_TOKEN` no `.env`.
+4. **Intenções de Gateway Privilegiadas** (*Privileged Gateway Intents*):
+   - Role a página até a seção **Intenções de gateway privilegiadas**.
+   - Ative as seguintes opções com a chave seletora à direita:
+     - ✅ **Intenção dos membros do servidor** (*Server Members Intent*): necessária para identificar membros e remetentes.
+     - ✅ **Intenção de conteúdo da mensagem** (*Message Content Intent*): **mandatória** para que o bot consiga ler o texto dos prompts digitados pelos usuários.
+   - Clique no botão verde **Salvar alterações** (*Save Changes*) no rodapé da página.
+
+### Passo 3: Obter o `DISCORD_GUILD_ID` (Opcional para Servidor)
+1. No aplicativo do Discord (desktop ou web), acesse as **Configurações de Usuário** (ícone de engrenagem ao lado do seu perfil) > aba **Avançado**.
+2. Ative a opção **Modo de Desenvolvedor**.
+3. Feche as configurações.
+4. Na barra lateral esquerda do Discord, clique com o **botão direito** no ícone do seu servidor e selecione **Copiar ID do Servidor**.
+5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Isso permite o registro imediato do comando `/cancel` no servidor durante o desenvolvimento).*
+
+### Passo 4: Convidar o Bot para o Servidor
+1. No Developer Portal, vá em **OAuth2 > URL Generator**.
+2. Na seção **Scopes**, selecione:
+   - `bot`
+   - `applications.commands`
+3. Na seção **Bot Permissions**, selecione:
+   - *Send Messages* (Enviar mensagens)
+   - *Send Messages in Threads* (Enviar mensagens em tópicos)
+   - *Create Public Threads* (Criar tópicos públicos)
+   - *Create Private Threads* (Criar tópicos privados)
+   - *Read Message History* (Ver histórico de mensagens)
+   - *View Channels* (Ver canais)
+   - *Add Reactions* (Adicionar reações)
+4. Copie a URL gerada no rodapé da página, cole no navegador e selecione o seu servidor para autorizar o bot.
+
+### Passo 5: Como Conversar com o Bot
+
+O **Agent Remote Control** suporta dois modos de interação:
+
+- **No Particular (Direct Message / DM Privada)**:
+  - Após convidar o bot para o seu servidor, clique no perfil do bot na lista de membros à direita e clique em **Enviar mensagem** (abrir DM privada).
+  - No chat particular, você **não precisa** mencionar `@Bot`. Basta digitar sua tarefa diretamente. O bot responderá em tempo real no privado.
+- **Em Canais de Servidor**:
+  - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
+  - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
+- **Cancelamento de Turno**:
+  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução.
 
 ---
 
