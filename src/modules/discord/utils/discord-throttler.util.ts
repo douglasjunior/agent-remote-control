@@ -7,6 +7,7 @@ export class DiscordThrottler {
   private timer: NodeJS.Timeout | null = null;
   private pendingAction: (() => Promise<void>) | null = null;
   private isExecuting = false;
+  private executionPromise: Promise<void> | null = null;
   private lastExecutedAt = 0;
 
   constructor(options?: DiscordThrottlerOptions) {
@@ -26,7 +27,7 @@ export class DiscordThrottler {
     if (elapsed >= this.intervalMs && !this.timer) {
       void this.executePending();
     } else if (!this.timer) {
-      const delay = Math.max(0, this.intervalMs - elapsed);
+      const delay = this.intervalMs - elapsed;
       this.timer = setTimeout(() => {
         this.timer = null;
         void this.executePending();
@@ -40,13 +41,11 @@ export class DiscordThrottler {
       this.timer = null;
     }
 
-    while (this.isExecuting) {
-      await new Promise((resolve) => setTimeout(resolve, 5));
+    if (this.executionPromise) {
+      await this.executionPromise;
     }
 
-    if (this.pendingAction) {
-      await this.executePending();
-    }
+    await this.executePending();
   }
 
   destroy(): void {
@@ -66,20 +65,25 @@ export class DiscordThrottler {
     this.pendingAction = null;
     this.isExecuting = true;
 
-    try {
-      await action();
-    } catch {
-      // Ignored to allow subsequent updates to proceed without halting the throttler
-    } finally {
-      this.lastExecutedAt = Date.now();
-      this.isExecuting = false;
+    this.executionPromise = (async () => {
+      try {
+        await action();
+      } catch {
+        // Ignored to allow subsequent updates to proceed without halting the throttler
+      } finally {
+        this.lastExecutedAt = Date.now();
+        this.isExecuting = false;
+        this.executionPromise = null;
 
-      if (this.pendingAction && !this.timer) {
-        this.timer = setTimeout(() => {
-          this.timer = null;
-          void this.executePending();
-        }, this.intervalMs);
+        if (this.pendingAction && !this.timer) {
+          this.timer = setTimeout(() => {
+            this.timer = null;
+            void this.executePending();
+          }, this.intervalMs);
+        }
       }
-    }
+    })();
+
+    await this.executionPromise;
   }
 }

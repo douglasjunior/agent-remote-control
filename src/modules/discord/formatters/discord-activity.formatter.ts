@@ -11,9 +11,7 @@ export class DiscordActivityFormatter {
       }
       const lines = text.split('\n');
       return lines
-        .map((line, index) =>
-          index === 0 ? `> 💭 *${line}*` : `> *${line}*`,
-        )
+        .map((line, index) => (index === 0 ? `> 💭 *${line}*` : `> *${line}*`))
         .join('\n');
     }
 
