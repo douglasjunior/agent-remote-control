@@ -216,5 +216,50 @@ describe('DiscordActivityFormatter', () => {
         expect(chunk.length).toBeLessThanOrEqual(26);
       }
     });
+
+    it('should keep lines after a sliced long line inside the code block', () => {
+      const content = ['```ts', 'x'.repeat(50), 'const after = 1;', '```', 'outside'].join('\n');
+
+      const chunks = formatter.splitMessage(content, 30);
+
+      const afterChunk = chunks.find(chunk => chunk.includes('const after = 1;'))!;
+      expect(afterChunk.startsWith('```ts\n')).toBe(true);
+      expect(afterChunk.indexOf('const after = 1;')).toBeLessThan(afterChunk.lastIndexOf('```'));
+      const outsideChunk = chunks.find(chunk => chunk.includes('outside'))!;
+      expect(outsideChunk.match(/```/g)?.length ?? 0).toBe(0);
+    });
+
+    it('should reserve room for the closing fence when an opening fence fills the chunk', () => {
+      const content = `${'a'.repeat(14)}\n\`\`\`ts\ncode\n\`\`\``;
+
+      const chunks = formatter.splitMessage(content, 20);
+
+      for (const chunk of chunks) {
+        expect(chunk.length).toBeLessThanOrEqual(20);
+      }
+    });
+
+    describe('invariants', () => {
+      const samples: [string, number][] = [
+        [['intro', '```ts', 'x'.repeat(90), 'y', '```', 'z'.repeat(45)].join('\n'), 30],
+        [['```', 'a'.repeat(10), '```', '```js', 'b'.repeat(70), '```'].join('\n'), 25],
+        [Array.from({ length: 40 }, (_, i) => (i % 7 === 0 ? '```py' : `line ${i}`)).join('\n'), 40],
+        [`${'q'.repeat(15)}\n\`\`\`\n${'w'.repeat(15)}\n\`\`\``, 20],
+        ['```sh\n' + 'c'.repeat(300), 50],
+      ];
+
+      const withoutFences = (text: string): string =>
+        text.split('\n').filter(line => !/^```/.test(line)).join('');
+
+      it.each(samples)('should respect maxLength and balance fences (%#)', (content, maxLength) => {
+        const chunks = formatter.splitMessage(content, maxLength);
+
+        for (const chunk of chunks) {
+          expect(chunk.length).toBeLessThanOrEqual(maxLength);
+          expect((chunk.match(/^```/gm) ?? []).length % 2).toBe(0);
+        }
+        expect(withoutFences(chunks.join('\n'))).toBe(withoutFences(content));
+      });
+    });
   });
 });

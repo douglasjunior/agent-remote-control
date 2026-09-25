@@ -40,7 +40,8 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.
   A aplicação deve inicializar normalmente em ambientes de CI e testes unitários.
 - **Encerramento limpo**: No hook `onApplicationShutdown`, invoque `client.destroy()` para
-  fechar conexões de WebSocket ativas com a API do Discord.
+  fechar conexões de WebSocket ativas com a API do Discord. O hook só roda com
+  `app.enableShutdownHooks()` em `main.ts`.
 
 ## Modos de Interação Conversacional
 
@@ -56,7 +57,9 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
    descartadas imediatamente.
 2. **Critério de acionamento**:
    - Em canais normais de guilda: o bot só responde quando for explicitamente mencionado
-     (`message.mentions.has(clientUser)`).
+     (`message.mentions.has(clientUser, { ignoreEveryone: true, ignoreRoles: true })`).
+     As opções padrão do discord.js contam `@everyone`, `@here` e menções de cargo, o que
+     faria qualquer anúncio no servidor abrir uma sessão de agente.
    - Em threads: responde se a thread for gerenciada pelo bot (`channel.ownerId === clientUser.id`)
      ou se o bot for mencionado no corpo da mensagem.
 3. **Criação de thread**: Ao receber uma menção em canal normal, o handler cria uma nova
@@ -67,6 +70,9 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
    - `threadId`: o ID da própria thread;
    - `userId`: o identificador do autor da mensagem;
    - `agentRole`: invariavelmente `'CEO'` para triagem e orquestração inicial.
+5. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
+   orquestrador. Via `onQueued`, a mensagem de progresso exibe
+   `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`.
 
 ## Streaming de Atividades e Formatação
 
@@ -109,12 +115,15 @@ são particionados por `DiscordActivityFormatter.splitMessage(content, maxLength
 - Preserva blocos de código Markdown (\`\`\`): quando um bloco de código precisa ser dividido
   entre mensagens, a mensagem corrente deve fechar o bloco com \`\`\` e a mensagem seguinte
   deve reabrir o bloco com \`\`\`<lang> para preservar a formatação sintática no cliente.
-- Nenhuma parte individual gerada pode ultrapassar o limite de `maxLength`.
+- Nenhuma parte individual gerada pode ultrapassar o limite de `maxLength`. Cada linha só entra
+  na parte corrente se couber junto com a cerca de fechamento que o bloco ainda exigirá após
+  ela, e linhas maiores que o espaço disponível são fatiadas pelo mesmo mecanismo, preservando
+  o estado do bloco de código entre as fatias.
 
 ## Interações e Comandos de Barra
 
 Comandos de barra são interceptados por `DiscordInteractionHandler`:
 
-- **/cancel**: Localiza o canal e a thread da interação e aciona `OrchestratorService.cancelTurn(channelId, threadId)`.
+- **/cancel**: Localiza o canal e a thread da interação e aciona `OrchestratorService.cancelTurn(channelId, threadId)`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; sem turno, responde `ℹ️ Não há nenhum turno em andamento para cancelar.`
 - Respostas a interações de comando utilizam flags efêmeras (`ephemeral: true`) para não
   poluir a timeline pública dos canais.

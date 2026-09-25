@@ -10,4 +10,5 @@ export type TurnRequest = {
   agentRole: string;
   onActivity?: (activity: AgentActivity) => void;
   onTextChunk?: (chunk: string) => void;
+  onQueued?: () => void;
 };

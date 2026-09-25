@@ -48,7 +48,10 @@ export class DiscordMessageHandler implements OnModuleInit {
     const isThread =
       typeof message.channel?.isThread === 'function'
       && message.channel.isThread();
-    const isBotMentioned = message.mentions.has(clientUser);
+    const isBotMentioned = message.mentions.has(clientUser, {
+      ignoreEveryone: true,
+      ignoreRoles: true,
+    });
     const isManagedThread =
       isThread && (message.channel.ownerId === clientUser.id || isBotMentioned);
 
@@ -159,6 +162,11 @@ export class DiscordMessageHandler implements OnModuleInit {
         workspacePath: this.workspacePort.getBaseDirectory(),
         agentRole: 'CEO',
         onActivity,
+        onQueued: () => {
+          void progressMessage
+            .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
+            .catch(() => undefined);
+        },
       });
 
       await throttler.flush();

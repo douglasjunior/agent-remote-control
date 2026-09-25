@@ -49,10 +49,9 @@ describe('OrchestratorService', () => {
   });
 
   it('should delegate cancelTurn to CancelAgentTurnUseCase', async () => {
-    vi.mocked(mockCancelUseCase.execute).mockResolvedValue(undefined);
+    vi.mocked(mockCancelUseCase.execute).mockResolvedValue(true);
 
-    await service.cancelTurn('ch-1', 'th-1');
-
+    await expect(service.cancelTurn('ch-1', 'th-1')).resolves.toBe(true);
     expect(mockCancelUseCase.execute).toHaveBeenCalledWith('ch-1', 'th-1');
   });
 });

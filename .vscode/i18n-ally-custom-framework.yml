@@ -1,0 +1,38 @@
+#
+# Configura i18n-ally para trabalhar com as funções personalizadas `getTranslation` e
+# `getTranslationAsync`, utilizadas fora de componentes.
+#
+# Exemplo:
+#
+# const { t } = getTranslation('namespace');
+# t('key')
+#
+# Ou, quando o namespace precisa ser carregado antes:
+#
+# const { t } = await getTranslationAsync('namespace');
+# t('key')
+#
+# Ou, com mais de um namespace:
+#
+# const { t } = getTranslation(['namespace1', 'namespace2']);
+# t('key')
+
+languageIds:
+  - javascript
+  - typescript
+  - javascriptreact
+  - typescriptreact
+
+usageMatchRegex:
+  - "[^\\w\\d]t\\(['\"`]({key})['\"`]\""
+
+# Diferente de `usageMatchRegex`, este campo é uma **string**, não uma lista: duas entradas
+# viram `"regex1,regex2"` e param de casar. As duas funções entram como alternativa no
+# mesmo padrão, e o `await` de `getTranslationAsync` fica de fora por não ser necessário
+# para capturar o namespace.
+scopeRangeRegex: "getTranslation(?:Async)?\\(\\s*\\[?\\s*?['\"`](.*?)['\"`]\\s*,?\\s*\\]?\\s*\\)"
+
+refactorTemplates:
+  - "t('$1')"
+
+monopoly: true

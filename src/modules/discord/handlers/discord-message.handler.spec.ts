@@ -42,8 +42,13 @@ class MockOrchestratorService {
     },
   ];
 
+  public queued = false;
+
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
     this.lastRequest = request;
+    if (this.queued) {
+      request.onQueued?.();
+    }
     for (const activity of this.activitiesToEmit) {
       request.onActivity?.(activity);
     }
@@ -267,6 +272,73 @@ describe('DiscordMessageHandler', () => {
     const editCalls = progressMessage.edit.mock.calls.map(call => call[0]);
     expect(editCalls.some((c: string) => c.includes('Thinking about the request'))).toBe(true);
     expect(editCalls.some((c: string) => c.includes('Running bash command'))).toBe(true);
+  });
+
+  it('should ignore @everyone and role mentions when checking for the bot mention', async () => {
+    const has = vi.fn().mockReturnValue(false);
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      content: '@everyone hello',
+      mentions: { has },
+      channel: { isThread: vi.fn().mockReturnValue(false) },
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(has).toHaveBeenCalledWith(
+      discordClientService.mockClient.user,
+      { ignoreEveryone: true, ignoreRoles: true },
+    );
+    expect(orchestratorService.lastRequest).toBeUndefined();
+  });
+
+  it('should tell the user when the message is waiting for the previous turn', async () => {
+    orchestratorService.queued = true;
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      content: 'Next task',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(progressMessage.edit).toHaveBeenCalledWith(
+      '⏳ *Aguardando a tarefa anterior desta conversa terminar...*',
+    );
+  });
+
+  it('should ignore failures when showing the queued notice', async () => {
+    orchestratorService.queued = true;
+    orchestratorService.activitiesToEmit = [];
+    const progressMessage = { edit: vi.fn().mockRejectedValue(new Error('gone')) };
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockResolvedValue(progressMessage),
+    } as unknown as ThreadChannel;
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      content: 'Next task',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    expect(mockThread.send).toHaveBeenCalledWith('Hello from agent!');
   });
 
   describe('progress feed', () => {

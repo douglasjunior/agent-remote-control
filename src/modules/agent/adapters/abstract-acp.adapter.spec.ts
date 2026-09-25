@@ -1218,18 +1218,19 @@ describe('AbstractAcpAdapter', () => {
       }).rejects.toThrow('agent crashed');
     });
 
-    it('should throw PromptCancelledError immediately when cancel() was called before prompt()', async () => {
+    it('should ignore cancel() while no prompt is running so the next prompt runs normally', async () => {
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       await adapter.createSession('/repo');
 
       await adapter.cancel();
 
+      expect(acpHarness.connectionInstance?.cancel).not.toHaveBeenCalled();
       await expect(async () => {
         for await (const _ of adapter.prompt('hello')) {
           // exhaust
         }
-      }).rejects.toThrow(PromptCancelledError);
+      }).not.toThrow();
     });
 
     it('should throw PromptCancelledError when stopReason is cancelled', async () => {
@@ -1744,12 +1745,17 @@ describe('AbstractAcpAdapter', () => {
       await adapter.connect();
       await adapter.createSession('/repo');
 
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () => new Promise<void>(() => undefined),
+      );
       acpHarness.connectionInstance?.cancel.mockImplementationOnce(() => {
         throw new Error('cancel notify boom');
       });
       const warnSpy = vi
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(vi.fn());
+      const iterator = adapter.prompt('hi')[Symbol.asyncIterator]();
+      void iterator.next().catch(() => undefined);
 
       await adapter.cancel();
 
@@ -1757,6 +1763,7 @@ describe('AbstractAcpAdapter', () => {
         expect.stringContaining('cancel_failed'),
       );
       warnSpy.mockRestore();
+      await adapter.disconnect();
     });
   });
 
@@ -1791,6 +1798,22 @@ describe('AbstractAcpAdapter', () => {
       await expect(adapter.connect()).rejects.toThrow(
         'Erro retornado pelo agente (test)',
       );
+    });
+
+    it('should release the failed transport so a later connect() spawns a fresh agent', async () => {
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockRejectedValueOnce(new Error('init fail')),
+      };
+      const adapter = new TestAcpAdapter();
+
+      await expect(adapter.connect()).rejects.toThrow('init fail');
+      expect(acpHarness.spawnedProcs[0]!.kill).toHaveBeenCalled();
+
+      acpHarness.pendingConnectionOverrides = null;
+      await adapter.connect();
+
+      expect(acpHarness.spawnedProcs).toHaveLength(2);
+      await expect(adapter.createSession('/repo')).resolves.toBeUndefined();
     });
 
     it('should wrap newSession() rejections from createSession', async () => {

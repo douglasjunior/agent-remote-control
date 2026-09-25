@@ -8,10 +8,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
 import { IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
-import type {
-  AgentActivity,
-  AgentUsage,
-  IAgentPort,
+import {
+  type AgentActivity,
+  type AgentUsage,
+  type IAgentPort,
+  PromptCancelledError,
 } from '../src/modules/agent/ports/agent.port.js';
 import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-message.handler.js';
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
@@ -117,6 +118,33 @@ class ScriptedAgentFake extends E2EAgentFake {
   }
 }
 
+class BlockingAgentFake extends E2EAgentFake {
+  private rejectPrompt: ((error: Error) => void) | null = null;
+  readonly promptStarted: Promise<void>;
+  private markStarted: () => void = () => undefined;
+
+  constructor() {
+    super();
+    this.promptStarted = new Promise((resolve) => {
+      this.markStarted = resolve;
+    });
+  }
+
+  override async* prompt(text: string): AsyncGenerator<any> {
+    this.prompts.push(text);
+    this.lastAgentMessage = '';
+    await new Promise<void>((_resolve, reject) => {
+      this.rejectPrompt = reject;
+      this.markStarted();
+    });
+    yield undefined;
+  }
+
+  override async cancel(): Promise<void> {
+    this.rejectPrompt?.(new PromptCancelledError());
+  }
+}
+
 describe('Discord Bot Driving Adapter (e2e)', () => {
   let workspaceDir: string;
   const originalWorkspaceDir = process.env.WORKSPACE_DIR;
@@ -214,8 +242,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await app.close();
   });
 
-  it('should handle /cancel slash command and trigger orchestrator cancellation', async () => {
-    const fakeAgent = new E2EAgentFake();
+  it('should cancel a turn in progress through the /cancel slash command', async () => {
+    const fakeAgent = new BlockingAgentFake();
     const cancelSpy = vi.spyOn(fakeAgent, 'cancel');
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -230,23 +258,34 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     const discordClientService =
       moduleFixture.get<DiscordClientService>(DiscordClientService);
-    const sessionStore =
-      moduleFixture.get<ISessionStorePort>(ISessionStorePort);
-
-    await sessionStore.saveSession({
-      sessionId: 'session-cancel-e2e',
-      channelId: 'channel-main',
-      threadId: 'thread-sub',
-      userId: 'user-1',
-      workspacePath: workspaceDir,
-      agentRole: 'CEO',
-      agentPort: fakeAgent as unknown as IAgentPort,
-      activeAgentPort: fakeAgent as unknown as IAgentPort,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(
+      DiscordMessageHandler,
+    );
     const client = discordClientService.getClient();
+    (client as any).user = { id: 'bot-e2e-id' };
+
+    const threadMessages: string[] = [];
+    const thread = {
+      id: 'thread-sub',
+      parentId: 'channel-main',
+      ownerId: 'bot-e2e-id',
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async (content: string) => {
+        threadMessages.push(content);
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    };
+    const incomingMessage = {
+      author: { bot: false, id: 'discord-user-777' },
+      channelId: 'thread-sub',
+      cleanContent: 'Long task',
+      content: 'Long task',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: thread,
+    } as unknown as Message;
+
+    const handling = messageHandler.handleMessage(incomingMessage);
+    await fakeAgent.promptStarted;
 
     const replyMock = vi.fn().mockResolvedValue(undefined);
     const interaction = {
@@ -264,15 +303,17 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     } as unknown as ChatInputCommandInteraction;
 
     client.emit(Events.InteractionCreate, interaction);
+    await handling;
 
+    expect(cancelSpy).toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(replyMock).toHaveBeenCalledWith({
         content:
           '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
         ephemeral: true,
       });
-      expect(cancelSpy).toHaveBeenCalled();
     });
+    expect(threadMessages).toContain('⚠️ **Turno cancelado pelo usuário.**');
 
     await app.close();
   });

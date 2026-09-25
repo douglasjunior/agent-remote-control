@@ -106,6 +106,7 @@ Parâmetros suportados:
 | `DISCORD_CLIENT_ID` | ID do aplicativo do bot | Aba **Informações gerais** (*General Information*) > Campo **ID DO APLICATIVO** (*Application ID*) | *(Obrigatório)* |
 | `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
 | `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
+| `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
 | `AGY_PATH` | Caminho para o executável `agy` | Executável no `PATH` global | `agy` |
 | `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
 

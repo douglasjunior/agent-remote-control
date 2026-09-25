@@ -38,11 +38,11 @@ conversas compartilharem a mesma sessão ACP e o mesmo `cwd`.
 
 ### Métodos Obrigatórios
 
-- `connect(): Promise<void>`: inicializa o transporte com o agente, executa a descoberta de capacidades e opções de configuração iniciais. É idempotente.
+- `connect(): Promise<void>`: inicializa o transporte com o agente, executa a descoberta de capacidades e opções de configuração iniciais. É idempotente. Se o handshake falhar, o subprocesso é encerrado e o estado limpo, permitindo nova tentativa.
 - `createSession(cwd: string): Promise<void>`: cria uma sessão de trabalho vinculada ao diretório informado (`cwd`).
 - `prompt(text: string): AsyncGenerator<AgentUpdate>`: envia um turno de instrução ao agente, processando os updates de streaming e gerando blocos consolidados.
 - `sendSteeringPrompt(text: string): void`: envia um redirecionamento em tempo real sem interromper o turno atual. Utiliza o protocolo nativo de steering quando suportado, ou prompt direto como fallback.
-- `cancel(): Promise<void>`: interrompe o turno corrente através de escada de escalação temporizada.
+- `cancel(): Promise<void>`: interrompe o prompt em andamento através de escada de escalação temporizada. Sem prompt em andamento é no-op, para que um cancelamento tardio não aborte o turno seguinte.
 - `closeSession(): Promise<void>`: encerra a sessão ativa no agente, preservando a conexão base para novas sessões.
 - `disconnect(): Promise<void>`: finaliza a conexão de transporte e encerra o subprocesso do agente.
 - `getAvailableModels(): AgentModelList | null`: lista os modelos publicados pelo agente e o modelo atualmente ativo.
