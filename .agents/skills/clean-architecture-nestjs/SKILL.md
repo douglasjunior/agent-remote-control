@@ -221,6 +221,9 @@ export class AgentModule {}
    arquivo original.
 4. **Um use case por arquivo**: Cada classe de Caso de Uso mora em seu próprio arquivo `*.use-case.ts`,
    com seu teste correspondente `*.use-case.spec.ts`.
+5. **Validação mandatória de lint e testes**: Toda e qualquer alteração de código exige a execução
+   de `yarn lint` e `yarn test` (e `yarn test:e2e` quando afetar pontos de entrada). A formatação do
+   código é feita exclusivamente via ESLint (`yarn format`).
 
 ## Checklist
 
@@ -230,3 +233,4 @@ export class AgentModule {}
 - [ ] Caso de uso livre de imports de tecnologias concretas ou SDKs de terceiros.
 - [ ] Amarração realizada no módulo NestJS com `{ provide: IPort, useClass: MyAdapter }`.
 - [ ] Nenhum conceito de workflow introduzido no módulo.
+- [ ] Validação executada com `yarn lint` e `yarn test` com 100% de sucesso.

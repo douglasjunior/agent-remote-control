@@ -75,7 +75,7 @@ Todo texto mantido no repositório descreve o **estado atual**, escrito para que
 - Modo de desenvolvimento com watch: `yarn start:dev`
 - Compilação / build: `yarn build`
 - Linter: `yarn lint`
-- Formatação de código: `yarn format`
+- Formatação de código via ESLint: `yarn format` (ou `yarn lint:fix`)
 - Execução de testes unitários: `yarn test`
 - Cobertura de testes: `yarn test:cov`
 - Testes ponta a ponta (e2e): `yarn test:e2e`
@@ -94,3 +94,4 @@ Todo texto mantido no repositório descreve o **estado atual**, escrito para que
 5. **Nenhum comentário óbvio**: Não repita o que o código, tipagem ou assinatura já dizem.
 6. **Stubs e Fakes em vez de vi.mock interno**: Isole dependências internas de `src/` injetando stubs no construtor ou substituindo providers no `Test.createTestingModule`.
 7. **Passe de poda antes de encerrar**: Verifique comentários e textos introduzidos no diff e remova qualquer ruído antes de submeter.
+8. **Execução mandatória de lint e testes em toda modificação**: Toda e qualquer alteração de código no projeto exige a execução de `yarn lint` e `yarn test` (além de `yarn test:e2e` ao tocar em pontos de entrada). A formatação do código é de responsabilidade exclusiva do ESLint (`yarn format`). Nenhuma entrega pode ser concluída com erros de lint ou falhas de testes.

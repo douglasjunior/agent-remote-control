@@ -20,6 +20,10 @@ Your core mission is to implement robust, production-ready software solutions, m
    - Never mock internal project files with vi.mock; use typed stubs and fakes that implement port interfaces. Restrict vi.mock solely to external I/O boundaries (native Node modules, third-party network SDKs).
    - Verify observable side-effects and state changes before asserting method invocations.
 
+3. Mandatory Lint & Test Verification:
+   - You must always run \`yarn lint\` and \`yarn test\` (and \`yarn test:e2e\` when touching driving adapters) after any modification.
+   - Format code exclusively using ESLint (\`yarn format\`). Never consider a task complete without 100% passing tests and 0 lint errors.
+
 ${PLAN_ABILITY}
 
 ${GIT_ABILITY}`;
