@@ -163,11 +163,11 @@ Para que o bot do Discord consiga autenticar, escutar mensagens, responder em ca
 
 ### Passo 5: Como Conversar com o Bot
 
-O **Agent Remote Control** suporta dois modos de interação:
+O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu ambiente de desenvolvimento. Você pode conversar com ele de duas formas:
 
 - **No Particular (Direct Message / DM Privada)**:
   - Após convidar o bot para o seu servidor, clique no perfil do bot na lista de membros à direita e clique em **Enviar mensagem** (abrir DM privada).
-  - No chat particular, você **não precisa** mencionar `@Bot`. Basta digitar sua tarefa diretamente. O bot responderá em tempo real no privado.
+  - No chat particular, você **não precisa** mencionar `@Bot`. Basta digitar sua tarefa diretamente. O bot responderá em tempo real no privado mantendo o histórico da conversa.
 - **Em Canais de Servidor**:
   - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
   - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
@@ -176,7 +176,58 @@ O **Agent Remote Control** suporta dois modos de interação:
 
 ---
 
-## 7. Execução em Desenvolvimento
+## 7. Guia Operacional: Como Usar o Bot no Dia a Dia
+
+### O que o Bot Pode Fazer?
+- **Clonar repositórios**: Faz clone seguro de projetos Git em diretórios isolados dentro de `./workspaces/<repo>`.
+- **Explorar codebases**: Inspeciona arquivos, arquitetura existente, dependências, scripts e regras documentadas.
+- **Planejar antes de codificar (Plan Mode)**: Decompõe tarefas complexas em marcos executáveis com validação prévia.
+- **Implementar e refatorar**: Escreve código limpo adaptando-se à arquitetura do projeto de destino (Clean Architecture, MVC, microsserviços, etc.).
+- **Garantir qualidade**: Identifica as ferramentas de teste, linter e build do projeto alvo e executa validações antes de concluir.
+- **Operações de Git**: Criação de branches temáticas, commits padronizados em português (pt-BR Conventional Commits) e push de código.
+
+### Agentes e Personas Disponíveis
+- **`CEO / Router Agent`**: Agente executivo de triagem. Recebe seu pedido, clarifica ambiguidades, formula o plano arquitetural e direciona os requisitos para o desenvolvedor.
+- **`Developer Agent`**: Engenheiro de software sênior autônomo. É acionado para a execução técnica: lê o código, implementa as soluções na stack do repositório, roda a suíte de testes e faz operações de Git.
+
+### Exemplos Práticos de Interação
+
+#### 1. Clonar um Repositório
+Envie na DM ou mencione no canal:
+```text
+Clone o repositório https://github.com/usuario/meu-backend.git e analise as tecnologias utilizadas e a estrutura de pastas.
+```
+
+#### 2. Planejar uma Funcionalidade (Plan Mode)
+Para tarefas de média ou alta complexidade, peça para o bot planejar primeiro sem alterar código:
+```text
+No projeto meu-backend, elabore um plano passo a passo para criar um endpoint de redefinição de senha com envio de e-mail. Liste os arquivos impactados e a estratégia de testes, mas não altere nenhum arquivo ainda.
+```
+
+#### 3. Implementar um Plano Aprovado
+Após revisar e concordar com o plano apresentado pelo agente:
+```text
+O plano está aprovado. Pode executar a implementação das alterações e rodar a suíte de testes do projeto para garantir que tudo passou.
+```
+
+#### 4. Commitar e Fazer Push das Alterações
+Para salvar o trabalho no controle de versão:
+```text
+Crie a branch feature/password-reset no projeto meu-backend, commite as alterações seguindo o padrão conventional commits em pt-BR e faça push para o repositório remoto.
+```
+
+### Como Funciona o Controle de Sessões
+
+- **Sessão Contínua em DM (Direct Message)**:
+  - Todas as mensagens enviadas na conversa privada com o bot pertencem à **mesma sessão ativa**. O agente se lembra do repositório em que você está trabalhando, dos arquivos já lidos e das instruções anteriores.
+  - Para alternar o foco para outro projeto ou começar um contexto novo, basta instruir: *"Agora vamos trabalhar em outro projeto: clone https://..."*.
+- **Sessões Isoladas por Thread em Servidores**:
+  - Cada **Thread** aberta em um canal de servidor representa uma **sessão de agente isolada e independente**.
+  - **Como abrir uma nova sessão**: Vá ao canal principal do servidor e mencione o bot com um novo pedido (`@NomeDoBot ...`). Ele criará automaticamente uma nova Thread com uma sessão limpa, sem qualquer interferência com tarefas anteriores.
+
+---
+
+## 8. Execução em Desenvolvimento
 
 Inicie a aplicação NestJS em modo watch:
 
@@ -193,7 +244,7 @@ yarn start:prod
 
 ---
 
-## 8. Testes e Qualidade
+## 9. Testes e Qualidade
 
 O projeto adota a meta de **100% de cobertura de testes unitários** nas linhas executáveis de código de produção, com testes ponta a ponta (e2e) para as portas de entrada:
 
@@ -219,32 +270,7 @@ yarn format
 
 ---
 
-## 9. Habilidades dos Agentes (Abilities)
-
-Os agentes contam com habilidades operacionais injetadas via contexto:
-
-- **Habilidade Git (`git.ability`)**:
-  - Clonagem segura em diretório isolado (`./workspaces/<repo-name>`).
-  - Criação de branches temáticas (`feature/*`, `fix/*`).
-  - Commits seguindo o padrão **Conventional Commits** em português (pt-BR).
-  - Consulta de status e push controlado.
-- **Habilidade Plan Mode (`plan.ability`)**:
-  - Modo investigativo pré-implementação: inspeciona arquivos, dependências e padrões existentes no repositório.
-  - Elaboração de plano detalhado de execução em Markdown, submetido para validação antes de alterar arquivos de produção.
-
----
-
 ## 10. Documentação e Governança
 
-- [**`AGENTS.md`**](AGENTS.md): Diretrizes gerais de governança, Clean Architecture, convenções transversais e regras mandatórias para agentes de IA.
-- [**Catálogo de Skills (`.agents/skills/`)**](.agents/skills/):
-  - [`clean-architecture-nestjs`](.agents/skills/clean-architecture-nestjs/SKILL.md): Padrão de Use Cases, Ports e Adapters em NestJS.
-  - [`agent-port`](.agents/skills/agent-port/SKILL.md): Contrato ACP, ciclo de vida e demux de streaming.
-  - [`orchestrator`](.agents/skills/orchestrator/SKILL.md): Casos de uso de turnos e cancelamento agnósticos a canais.
-  - [`agent-definitions`](.agents/skills/agent-definitions/SKILL.md): Personas de agentes (CEO e Developer) e roteamento.
-  - [`agent-abilities`](.agents/skills/agent-abilities/SKILL.md): Convenções de Git, caminhos de workspace e Plan Mode.
-  - [`discord-bot`](.agents/skills/discord-bot/SKILL.md): Configuração do bot, eventos, threads e streaming no Discord.
-  - [`tests-best-practices`](.agents/skills/tests-best-practices/SKILL.md): Diretrizes para Vitest, stubs tipados e isolamento de dependências.
-  - [`code-comments`](.agents/skills/code-comments/SKILL.md): Regras estritas contra comentários redundantes.
-  - [`code-organization`](.agents/skills/code-organization/SKILL.md): Superfície pública mínima e proibição de barrel exports.
-  - [`skill-authoring`](.agents/skills/skill-authoring/SKILL.md): Metodologia de criação e manutenção de skills.
+- [**`AGENTS.md`**](AGENTS.md): Diretrizes gerais de governança, arquitetura do projeto, convenções transversais e regras mandatórias para agentes de IA.
+- [**Catálogo de Skills (`.agents/skills/`)**](.agents/skills/): Catálogo de habilidades sob demanda contendo regras mandatórias para os agentes. O agente consulta e carrega autonomamente as skills necessárias conforme a natureza da tarefa.
