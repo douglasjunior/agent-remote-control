@@ -89,7 +89,9 @@ export class StubAgentPort implements IAgentPort {
     return null;
   }
 
-  async getAvailableEffortsForModel(): Promise<AgentEffortState | null> {
+  async getAvailableEffortsForModel(
+    _modelId?: string,
+  ): Promise<AgentEffortState | null> {
     return null;
   }
 
