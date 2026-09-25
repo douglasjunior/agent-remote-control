@@ -168,11 +168,7 @@ describe('DiscordActivityFormatter', () => {
       const longLine = 'A'.repeat(50);
       const chunks = formatter.splitMessage(longLine, 20);
 
-      expect(chunks).toEqual([
-        'A'.repeat(20),
-        'A'.repeat(20),
-        'A'.repeat(10),
-      ]);
+      expect(chunks).toEqual(['A'.repeat(20), 'A'.repeat(20), 'A'.repeat(10)]);
     });
 
     it('should split long single line inside code block and wrap each slice in code fences', () => {
@@ -219,4 +215,3 @@ describe('DiscordActivityFormatter', () => {
     });
   });
 });
-
