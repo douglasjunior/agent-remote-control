@@ -1955,7 +1955,7 @@ describe('AgyBridgeServer', () => {
     it('should return normalized path when file is outside cwd and outside home', async () => {
       const server = new AgyBridgeServer();
       const client = createMockClientContext();
-      const sessionPromise = server.newSession({ cwd: '/test/cwd' }, client);
+      const sessionPromise = server.newSession({ cwd: '/test/cwd' });
       lastSpawnedProc?.stdout.emit(
         'data',
         Buffer.from(

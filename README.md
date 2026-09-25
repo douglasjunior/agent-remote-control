@@ -202,10 +202,13 @@ yarn test:cov
 # Executa testes ponta a ponta (e2e)
 yarn test:e2e
 
+# Checagem estática de tipos TypeScript
+yarn ts
+
 # Análise estática com ESLint
 yarn lint
 
-# Formatação de código com Prettier
+# Formatação e autocorreção via ESLint
 yarn format
 ```
 
