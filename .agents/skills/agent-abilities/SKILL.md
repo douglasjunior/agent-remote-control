@@ -60,10 +60,10 @@ agente compreenda o contexto antes de produzir alterações de código.
 2. **Formulação do Plano**:
    - Estruturar os passos lógicos da implementação antes de modificar qualquer arquivo;
    - Listar arquivos a criar, alterar ou excluir;
-   - Identificar limites arquiteturais (Ports, Adapters, Use Cases);
+   - Identificar limites arquiteturais, módulos e componentes impactados conforme a arquitetura do projeto alvo;
    - Solicitar alinhamento com o usuário caso existam requisitos ambíguos.
 
 3. **Execução e Verificação**:
    - Aplicar alterações em etapas atômicas;
-   - Garantir 100% de cobertura de testes unitários para novas linhas executáveis;
-   - Executar linters e suíte de testes garantindo estado verde e sem erros.
+   - Garantir testes automatizados abrangentes cobrindo as modificações conforme os padrões do projeto alvo;
+   - Executar linters, compiladores e suíte de testes do projeto alvo garantindo estado verde e sem erros.

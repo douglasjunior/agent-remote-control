@@ -31,7 +31,7 @@ export type AgentRole = 'CEO' | 'DEVELOPER';
 ```
 
 - **`CEO`**: Agente executivo de triagem, planejamento estratégico, refinamento de escopo e roteamento de tarefas técnicas para o Developer Agent.
-- **`DEVELOPER`**: Engenheiro de software sênior focado em arquitetura limpa, implementação de código, testes automatizados e operações de Git.
+- **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código, testes automatizados e operações de Git.
 
 ### Contrato de Definição (`AgentDefinition`)
 
@@ -49,9 +49,10 @@ Os prompts especializados residem em `src/modules/agent-definitions/prompts/`:
 
 ### 1. Developer Agent (`developer.prompt.ts`)
 
-- Governa engenharia de software de alta precisão baseada em Clean Architecture (Ports & Adapters);
-- Exige 100% de cobertura de testes unitários para novas linhas executáveis;
-- Proíbe barrel exports (`index.ts`) e comentários óbvios ou redundantes;
+- Atua como engenheiro de software sênior autônomo, adaptável a qualquer linguagem, stack ou arquitetura;
+- Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
+- Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
+- Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
 - Incorpora as habilidades de Git (`GIT_ABILITY`) e Planejamento (`PLAN_ABILITY`).
 
 ### 2. CEO / Router Agent (`ceo.prompt.ts`)
