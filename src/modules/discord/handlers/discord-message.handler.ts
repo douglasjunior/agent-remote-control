@@ -6,8 +6,11 @@ import { OrchestratorService } from '../../orchestrator/services/orchestrator.se
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import { ActivityFeed } from '../utils/activity-feed.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 
+
+const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
 
 @Injectable()
 export class DiscordMessageHandler implements OnModuleInit {
@@ -111,11 +114,16 @@ export class DiscordMessageHandler implements OnModuleInit {
       const progressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
       );
-      const activities: string[] = [];
+      const feed = new ActivityFeed();
       const throttler = new DiscordThrottler({ intervalMs: 1500 });
 
       const onActivity = (activity: AgentActivity): void => {
-        if (activity.kind === 'thought') {
+        const key = this.activityKey(activity);
+        if (!key) {
+          return;
+        }
+
+        if (activity.kind === 'thought' && activity.final) {
           this.logger.log(`💭 [Agent Thought] ${activity.text.trim()}`);
         } else if (activity.kind === 'tool') {
           this.logger.log(
@@ -124,19 +132,23 @@ export class DiscordMessageHandler implements OnModuleInit {
         }
 
         const formatted = this.activityFormatter.formatActivity(activity);
-        if (formatted) {
-          activities.push(formatted);
-          throttler.schedule(async () => {
-            try {
-              const content = this.formatProgressContent(activities);
-              await progressMessage.edit(content);
-            } catch (error) {
-              const message =
-                error instanceof Error ? error.message : String(error);
-              this.logger.warn(`Failed to update progress message: ${message}`);
-            }
-          });
+        if (activity.kind === 'thought' && activity.removed) {
+          feed.remove(key);
+        } else if (formatted) {
+          feed.upsert(key, formatted);
+        } else {
+          return;
         }
+
+        throttler.schedule(async () => {
+          try {
+            await progressMessage.edit(feed.render(PROGRESS_HEADER));
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            this.logger.warn(`Failed to update progress message: ${message}`);
+          }
+        });
       };
 
       const result = await this.orchestratorService.executeTurn({
@@ -198,8 +210,13 @@ export class DiscordMessageHandler implements OnModuleInit {
     return content.replace(mentionRegex, '').trim();
   }
 
-  private formatProgressContent(activities: readonly string[]): string {
-    const recent = activities.slice(-8).join('\n');
-    return `🤖 **Progresso do Agente**:\n${recent}`;
+  private activityKey(activity: AgentActivity): string | null {
+    if (activity.kind === 'thought') {
+      return `thought:${activity.id}`;
+    }
+    if (activity.kind === 'tool') {
+      return `tool:${activity.toolCallId}`;
+    }
+    return null;
   }
 }

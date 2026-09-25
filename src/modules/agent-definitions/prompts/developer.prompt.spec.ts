@@ -14,4 +14,9 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Plan Mode & Codebase Inspection');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Git Version Control & Commit Conventions');
   });
+
+  it('should confine the developer to its project folder', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('project folder assigned to you. Stay inside it');
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('currently running you');
+  });
 });

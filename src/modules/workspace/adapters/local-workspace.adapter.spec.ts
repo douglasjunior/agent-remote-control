@@ -75,6 +75,33 @@ describe('LocalWorkspaceAdapter', () => {
       expect(resolved).toBe('/test/workspaces/project-alpha');
     });
 
+    it('should reject repository names that escape or equal the base directory', () => {
+      expect(() => adapter.resolveRepositoryPath('../outside')).toThrow(
+        'Path is outside the workspace directory: /test/outside',
+      );
+      expect(() => adapter.resolveRepositoryPath('/etc')).toThrow(
+        'Path is outside the workspace directory: /etc',
+      );
+      expect(() => adapter.resolveRepositoryPath('.')).toThrow(
+        'Invalid repository name: "."',
+      );
+    });
+
+    it('should create directories inside the base directory recursively', async () => {
+      await adapter.ensureDirectory('/test/workspaces');
+      await adapter.ensureDirectory('/test/workspaces/project-alpha');
+
+      expect(mkdir).toHaveBeenCalledWith('/test/workspaces', { recursive: true });
+      expect(mkdir).toHaveBeenCalledWith('/test/workspaces/project-alpha', { recursive: true });
+    });
+
+    it('should refuse to create directories outside the base directory', async () => {
+      await expect(adapter.ensureDirectory('/test/other')).rejects.toThrow(
+        'Path is outside the workspace directory: /test/other',
+      );
+      expect(mkdir).not.toHaveBeenCalled();
+    });
+
     it('should register repository and persist manifest file', async () => {
       const metadata = {
         name: 'repo-1',

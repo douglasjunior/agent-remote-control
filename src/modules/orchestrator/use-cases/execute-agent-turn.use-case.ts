@@ -180,6 +180,7 @@ export class ExecuteAgentTurnUseCase {
       await agentPort.connect();
 
       if (!agentPort.currentSessionId) {
+        await this.workspacePort.ensureDirectory(workspacePath);
         await agentPort.createSession(workspacePath);
       }
 

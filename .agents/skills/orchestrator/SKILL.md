@@ -120,7 +120,10 @@ Cada agente delegado opera em `IWorkspacePort.resolveRepositoryPath(project)`:
 └── my-frontend/
 ```
 
-Clonar ou preparar o repositório é responsabilidade do agente delegado.
+Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureDirectory(cwd)`, pois o
+`agy` falha ao iniciar em diretório inexistente. `resolveRepositoryPath` e `ensureDirectory` rejeitam
+caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO. Clonar o
+repositório dentro da pasta do projeto é responsabilidade do agente delegado.
 
 ### Protocolo de Marcadores
 
@@ -151,7 +154,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 
 Cada turno de agente (CEO ou delegado) executa internamente:
 
-1. `connect()` e, se `currentSessionId` não estiver definido, `createSession(cwd)`.
+1. `connect()` e, se `currentSessionId` não estiver definido, `ensureDirectory(cwd)` seguido de `createSession(cwd)`.
 2. `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo.
 3. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.
 4. Drenagem de `prompt(text)`, despachando blocos `agent_message_chunk` para `request.onTextChunk`.

@@ -79,9 +79,14 @@ e formatadas pelo `DiscordActivityFormatter`:
   - Em andamento: `⏳ **Executando**: \`<title>\``;
   - Sucesso: `✅ **Concluído**: \`<title>\``;
   - Falha: `❌ **Falhou**: \`<title>\``.
-- **Mensagem de progresso**: As atividades são agrupadas em uma mensagem de progresso dedicada
-  na thread. Para evitar poluição visual, apenas as últimas 8 atividades são exibidas
-  na mensagem de progresso atualizada dinamicamente.
+- **Mensagem de progresso**: as atividades são agrupadas em uma mensagem de progresso dedicada
+  na thread, mantida pelo `ActivityFeed` (`utils/activity-feed.util.ts`):
+  - Atividades são *upserts* por chave (`thought:<id>`, `tool:<toolCallId>`). Um `thought` chega
+    com o texto acumulado a cada chunk e um `tool` a cada mudança de status; ambos atualizam a
+    própria entrada. `thought` com `removed` remove a entrada.
+  - `render(header)` exibe as 8 entradas mais recentes que couberem em 2000 caracteres
+    (limite de conteúdo do Discord), preservando o final de uma entrada maior que o limite.
+  - O log registra cada `thought` uma única vez, ao receber `final`.
 
 ## Throttling e Coalescing contra Rate Limit (HTTP 429)
 

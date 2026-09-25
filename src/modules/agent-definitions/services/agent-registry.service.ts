@@ -16,10 +16,12 @@ export class AgentRegistryService implements IAgentRegistryPort {
   }
 
   getSystemPrompt(agentRole: string): string {
-    return (
-      this.getDefinition(agentRole)?.systemPrompt
-      ?? `You are an AI assistant acting in the role of ${agentRole}.`
-    );
+    const definition = this.getDefinition(agentRole);
+    if (!definition) {
+      return `You are an AI assistant acting in the role of ${agentRole}.`;
+    }
+    const team = this.getAllDefinitions().filter(other => other !== definition);
+    return definition.buildSystemPrompt(team);
   }
 
   getDefaultModel(agentRole: string): string | undefined {

@@ -10,6 +10,7 @@ When interacting with Git repositories, follow these rules:
      - GitHub: https://github.com/<org>/<repo>.git -> git@github.com:<org>/<repo>.git
      - GitLab: https://gitlab.com/<group>/<repo>.git -> git@gitlab.com:<group>/<repo>.git
      - Azure DevOps: https://dev.azure.com/<org>/<project>/_git/<repo> -> git@ssh.dev.azure.com:v3/<org>/<project>/<repo>
+   - Your working directory is the project folder assigned to you. Clone directly into it with: git clone <ssh-url> .
    - Run clones with GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=accept-new" so the first connection to a host does not block waiting for host key confirmation.
 
 2. SSH Key Setup:

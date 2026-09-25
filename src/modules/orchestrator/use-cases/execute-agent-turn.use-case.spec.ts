@@ -20,6 +20,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
 class StubWorkspacePort implements IWorkspacePort {
   getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
   resolveRepositoryPath = vi.fn().mockReturnValue('/mock/workspace/my-app');
+  ensureDirectory = vi.fn().mockResolvedValue(undefined);
   registerRepository = vi.fn();
   getRepository = vi.fn();
   listRepositories = vi.fn();
@@ -200,6 +201,40 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
     expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.']);
     expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER]\nLogin implemented.');
+  });
+
+  it('should ensure each agent working directory exists before creating its session', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    delegateStubPort.mockResponses = ['Done.'];
+
+    await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Work',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+    });
+
+    expect(workspacePort.ensureDirectory.mock.calls).toEqual([
+      ['/mock/workspace'],
+      ['/mock/workspace/my-app'],
+    ]);
+  });
+
+  it('should fail the turn without creating a session when the directory cannot be prepared', async () => {
+    workspacePort.ensureDirectory.mockRejectedValue(new Error('Path is outside the workspace directory: /x'));
+
+    const result = await useCase.execute({
+      channelId: 'ch-1',
+      userId: 'user-1',
+      prompt: 'Hi',
+      workspacePath: '/x',
+      agentRole: 'CEO',
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.errorMessage).toBe('Path is outside the workspace directory: /x');
+    expect(stubAgentPort.createSessionCalls).toHaveLength(0);
   });
 
   it('should run the delegate in the request workspace when no project is given', async () => {

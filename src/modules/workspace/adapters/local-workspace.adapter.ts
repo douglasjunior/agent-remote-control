@@ -1,7 +1,7 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import type {
   IWorkspacePort,
@@ -33,7 +33,18 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
   }
 
   resolveRepositoryPath(repositoryName: string): string {
-    return resolve(this.baseDirectory, repositoryName);
+    const path = resolve(this.baseDirectory, repositoryName);
+    if (path === this.baseDirectory) {
+      throw new Error(`Invalid repository name: "${repositoryName}"`);
+    }
+    this.assertInsideBaseDirectory(path);
+    return path;
+  }
+
+  async ensureDirectory(path: string): Promise<void> {
+    const target = resolve(path);
+    this.assertInsideBaseDirectory(target);
+    await mkdir(target, { recursive: true });
   }
 
   async registerRepository(metadata: RepositoryMetadata): Promise<void> {
@@ -61,6 +72,13 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
     }
     const targetPath = this.resolveRepositoryPath(repositoryName);
     return existsSync(targetPath);
+  }
+
+  private assertInsideBaseDirectory(path: string): void {
+    const relativePath = relative(this.baseDirectory, path);
+    if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+      throw new Error(`Path is outside the workspace directory: ${path}`);
+    }
   }
 
   private async ensureManifestLoaded(): Promise<void> {

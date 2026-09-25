@@ -25,8 +25,23 @@ describe('AgentRegistryService', () => {
       const promptMixed = service.getSystemPrompt('Ceo');
 
       expect(promptUpper).toBeDefined();
-      expect(promptUpper).toContain('CEO and Executive Router Agent');
+      expect(promptUpper).toContain('You are the CEO.');
       expect(promptMixed).toBe(promptUpper);
+    });
+
+    it('should give the CEO its team of every other registered agent', () => {
+      service.registerDefinition({
+        role: 'REVIEWER',
+        name: 'Reviewer Agent',
+        description: 'Reviews pull requests.',
+        buildSystemPrompt: () => 'Reviewer prompt',
+      });
+
+      const prompt = service.getSystemPrompt('CEO');
+
+      expect(prompt).toContain('- DEVELOPER (Developer Agent):');
+      expect(prompt).toContain('- REVIEWER (Reviewer Agent): Reviews pull requests.');
+      expect(prompt).not.toContain('- CEO (');
     });
 
     it('should return fallback prompt when role is unknown', () => {
@@ -47,7 +62,7 @@ describe('AgentRegistryService', () => {
         role: 'TESTER',
         name: 'Tester Agent',
         description: 'Testing specialist',
-        systemPrompt: 'You test things.',
+        buildSystemPrompt: () => 'You test things.',
         defaultModel: 'claude-3-5-sonnet',
       });
 
@@ -81,7 +96,7 @@ describe('AgentRegistryService', () => {
         role: 'ARCHITECT',
         name: 'Solution Architect',
         description: 'Architectural governance',
-        systemPrompt: 'Architect prompt',
+        buildSystemPrompt: () => 'Architect prompt',
       });
 
       const found = service.getDefinition('ARCHITECT');
@@ -95,7 +110,7 @@ describe('AgentRegistryService', () => {
         role: 'DEVELOPER',
         name: 'Custom Developer',
         description: 'Overridden developer',
-        systemPrompt: 'Overridden prompt',
+        buildSystemPrompt: () => 'Overridden prompt',
       });
 
       const found = service.getDefinition('DEVELOPER');

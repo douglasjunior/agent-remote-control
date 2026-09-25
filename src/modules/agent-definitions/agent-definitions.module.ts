@@ -10,7 +10,7 @@ import { AgentRegistryService } from './services/agent-registry.service.js';
     AgentRegistryService,
     {
       provide: IAgentRegistryPort,
-      useClass: AgentRegistryService,
+      useExisting: AgentRegistryService,
     },
   ],
   exports: [AgentRegistryService, IAgentRegistryPort],

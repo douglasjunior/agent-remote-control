@@ -17,6 +17,6 @@ describe('AgentDefinitionsModule', () => {
     const registryPort = module.get<IAgentRegistryPort>(IAgentRegistryPort);
 
     expect(service).toBeInstanceOf(AgentRegistryService);
-    expect(registryPort).toBeInstanceOf(AgentRegistryService);
+    expect(registryPort).toBe(service);
   });
 });
