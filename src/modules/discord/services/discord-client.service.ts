@@ -7,17 +7,17 @@ import {
 } from '@nestjs/common';
 import { Client, type ClientEvents, GatewayIntentBits } from 'discord.js';
 
+
 @Injectable()
 export class DiscordClientService
-  implements OnApplicationBootstrap, OnApplicationShutdown
-{
+implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(DiscordClientService.name);
   private readonly client: Client;
 
   constructor(@Optional() client?: Client) {
     this.client =
-      client ??
-      new Client({
+      client
+      ?? new Client({
         intents: [
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,

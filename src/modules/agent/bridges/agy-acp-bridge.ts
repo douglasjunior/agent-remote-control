@@ -16,6 +16,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface, type Interface } from 'node:readline';
 import { Readable, Writable } from 'node:stream';
 
+
 type AgyInitEvent = {
   readonly event: 'init';
   readonly conversation_id: string;
@@ -76,6 +77,7 @@ export class AgyBridgeServer {
   private currentCwd: string | null = null;
   private activePromptResolver: ((result: PromptResponse) => void) | null =
     null;
+
   private activePromptRejecter: ((error: Error) => void) | null = null;
   private activeClientContext: AgentContext | null = null;
   private selectedModel: string | null = null;
@@ -169,7 +171,7 @@ export class AgyBridgeServer {
     const stdin = proc.stdin;
     this.isCancelled = false;
     this.activeClientContext = client;
-    const text = params.prompt.map((p) => p.text ?? '').join('\n');
+    const text = params.prompt.map(p => p.text ?? '').join('\n');
     const inputPayload =
       JSON.stringify({ event: 'user', message: { content: text } }) + '\n';
 
@@ -203,7 +205,7 @@ export class AgyBridgeServer {
         type: 'select' as const,
         name: 'Model',
         currentValue,
-        options: models.map((model) => ({
+        options: models.map(model => ({
           value: model.value,
           name: model.name,
         })),
@@ -303,16 +305,16 @@ export class AgyBridgeServer {
     proc.stdin.on('error', () => undefined);
 
     const rl = createInterface({ input: proc.stdout });
-    rl.on('line', (line) => this.handleAgyLine(line));
-    proc.stderr?.on('data', (chunk) => process.stderr.write(chunk));
+    rl.on('line', line => this.handleAgyLine(line));
+    proc.stderr?.on('data', chunk => process.stderr.write(chunk));
 
     proc.on('exit', (code, signal) => {
       if (this.agyProcess === proc) {
         this.agyProcess = null;
       }
       if (
-        this.activePromptResolver &&
-        (this.isCancelled || signal === 'SIGINT')
+        this.activePromptResolver
+        && (this.isCancelled || signal === 'SIGINT')
       ) {
         this.resolvePromptResult({
           conversation_id: this.currentSessionId ?? '',
@@ -423,11 +425,11 @@ export class AgyBridgeServer {
             status: 'completed',
             content: update.tool_info?.output
               ? [
-                  {
-                    type: 'content',
-                    content: { type: 'text', text: update.tool_info.output },
-                  },
-                ]
+                {
+                  type: 'content',
+                  content: { type: 'text', text: update.tool_info.output },
+                },
+              ]
               : undefined,
           },
         });
@@ -442,11 +444,11 @@ export class AgyBridgeServer {
             status: 'failed',
             content: errorMessage
               ? [
-                  {
-                    type: 'content',
-                    content: { type: 'text', text: errorMessage },
-                  },
-                ]
+                {
+                  type: 'content',
+                  content: { type: 'text', text: errorMessage },
+                },
+              ]
               : undefined,
           },
         });
@@ -460,10 +462,10 @@ export class AgyBridgeServer {
     const failed = result.status === 'ERROR' || abandonedTurn;
 
     if (
-      failed &&
-      !result.response &&
-      !isCancelled &&
-      this.activePromptRejecter
+      failed
+      && !result.response
+      && !isCancelled
+      && this.activePromptRejecter
     ) {
       const rejecter = this.activePromptRejecter;
       this.activePromptResolver = null;
@@ -740,15 +742,12 @@ export function runAgyBridge() {
 
   acpAgent({ name: 'agy-acp-bridge' })
     .onRequest(methods.agent.initialize, () => server.initialize())
-    .onRequest(methods.agent.session.new, (ctx) =>
-      server.newSession(ctx.params),
-    )
-    .onRequest(methods.agent.session.setConfigOption, (ctx) =>
-      server.setConfigOption(ctx.params),
-    )
-    .onRequest(methods.agent.session.prompt, (ctx) =>
-      server.prompt(ctx.params, ctx.client),
-    )
+    .onRequest(methods.agent.session.new, ctx =>
+      server.newSession(ctx.params))
+    .onRequest(methods.agent.session.setConfigOption, ctx =>
+      server.setConfigOption(ctx.params))
+    .onRequest(methods.agent.session.prompt, ctx =>
+      server.prompt(ctx.params, ctx.client))
     .onNotification(methods.agent.session.cancel, () => server.cancel())
     .onRequest(methods.agent.session.close, () => server.closeSession())
     .connect(stream);
@@ -756,9 +755,9 @@ export function runAgyBridge() {
 
 /* v8 ignore start */
 if (
-  process.argv[1] &&
-  (process.argv[1].endsWith('agy-acp-bridge.ts') ||
-    process.argv[1].endsWith('agy-acp-bridge.js'))
+  process.argv[1]
+  && (process.argv[1].endsWith('agy-acp-bridge.ts')
+    || process.argv[1].endsWith('agy-acp-bridge.js'))
 ) {
   runAgyBridge();
 }

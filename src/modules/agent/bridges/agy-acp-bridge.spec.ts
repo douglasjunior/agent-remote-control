@@ -3,7 +3,9 @@ import { EventEmitter } from 'node:events';
 import { homedir } from 'node:os';
 import { PassThrough } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { AgyBridgeServer, runAgyBridge } from './agy-acp-bridge.js';
+
 
 type MockProc = EventEmitter & {
   stdin: PassThrough;
@@ -1440,7 +1442,7 @@ describe('AgyBridgeServer', () => {
       const response = await configPromise;
 
       const modelOption = response.configOptions.find(
-        (opt) => opt.id === 'model',
+        opt => opt.id === 'model',
       );
       expect(modelOption?.currentValue).toBe('claude-sonnet-4-6');
     });
@@ -1476,7 +1478,7 @@ describe('AgyBridgeServer', () => {
       );
       const response = await configPromise;
       const modelOption = response.configOptions.find(
-        (opt) => opt.id === 'model',
+        opt => opt.id === 'model',
       );
       expect(modelOption?.currentValue).toBe('gemini-3.8-flash-high');
     });
@@ -1516,7 +1518,7 @@ describe('AgyBridgeServer', () => {
 
       expect(runningProc?.kill).not.toHaveBeenCalled();
       const modelOption = response.configOptions.find(
-        (opt) => opt.id === 'model',
+        opt => opt.id === 'model',
       );
       expect(modelOption?.currentValue).toBe('gemini-3.8-flash-low');
     });

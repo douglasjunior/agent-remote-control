@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
 import type {
   AgentActivity,
   AgentUpdate,
@@ -9,7 +10,9 @@ import { InMemorySessionStoreAdapter } from '../adapters/in-memory-session-store
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
+
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
+
 
 class StubAgentRegistryPort implements IAgentRegistryPort {
   systemPromptToReturn: string | undefined = undefined;
@@ -73,8 +76,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       prompt: 'Hello agent!',
       workspacePath: '/repo/workspace',
       agentRole: 'DEVELOPER',
-      onActivity: (activity) => activities.push(activity),
-      onTextChunk: (chunk) => textChunks.push(chunk),
+      onActivity: activity => activities.push(activity),
+      onTextChunk: chunk => textChunks.push(chunk),
     };
 
     const result = await useCase.execute(request);
@@ -86,12 +89,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(stubAgentPort.connectCalls).toBe(1);
     expect(stubAgentPort.createSessionCalls).toEqual(['/repo/workspace']);
-    expect(stubAgentPort.configCalls).toEqual([
-      { modelId: 'claude-3-5-sonnet' },
-    ]);
-    expect(stubAgentPort.promptCalls).toEqual([
-      'System instructions for developer\n\nHello agent!',
-    ]);
+    expect(stubAgentPort.configCalls).toEqual([{ modelId: 'claude-3-5-sonnet' }]);
+    expect(stubAgentPort.promptCalls).toEqual(['System instructions for developer\n\nHello agent!']);
     expect(textChunks).toEqual(['Turn completed successfully.']);
 
     const storedSession = await sessionStore.findSession('ch-1', 'th-1');
@@ -206,7 +205,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       userId: 'user-stream',
       prompt: 'Stream test',
       workspacePath: '/repo/workspace',
-      onTextChunk: (chunk) => chunks.push(chunk),
+      onTextChunk: chunk => chunks.push(chunk),
     };
 
     const result = await useCase.execute(request);
@@ -231,7 +230,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       userId: 'user-activity',
       prompt: 'Activity test',
       workspacePath: '/repo/workspace',
-      onActivity: (activity) => activities.push(activity),
+      onActivity: activity => activities.push(activity),
     };
 
     await useCase.execute(request);

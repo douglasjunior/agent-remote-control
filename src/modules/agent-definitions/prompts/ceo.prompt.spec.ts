@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { CEO_SYSTEM_PROMPT } from './ceo.prompt.js';
+
 
 describe('ceo.prompt', () => {
   it('should define executive router role, triage, and delegation to developer', () => {

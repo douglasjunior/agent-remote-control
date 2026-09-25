@@ -2,10 +2,12 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+
 import type {
   IWorkspacePort,
   RepositoryMetadata,
 } from '../ports/workspace.port.js';
+
 
 const MANIFEST_FILENAME = 'workspace-manifest.json';
 
@@ -76,7 +78,7 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
           this.repositories.set(item.name, item);
         }
       }
-    } catch (error) {
+    } catch (_error) {
       this.logger.debug(`manifest_read_skipped: ${manifestPath}`);
     }
   }

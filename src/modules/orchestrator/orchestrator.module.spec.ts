@@ -1,5 +1,6 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
+
 import { DefaultAgentRegistryAdapter } from './adapters/default-agent-registry.adapter.js';
 import { InMemorySessionStoreAdapter } from './adapters/in-memory-session-store.adapter.js';
 import { OrchestratorModule } from './orchestrator.module.js';
@@ -8,6 +9,7 @@ import { ISessionStorePort } from './ports/session-store.port.js';
 import { OrchestratorService } from './services/orchestrator.service.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
+
 
 describe('OrchestratorModule', () => {
   it('should compile the module and resolve all orchestrator providers', async () => {

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
+
 import type { SessionContext } from '../models/session-context.model.js';
 import type { ISessionStorePort } from '../ports/session-store.port.js';
+
 
 @Injectable()
 export class InMemorySessionStoreAdapter implements ISessionStorePort {
@@ -13,8 +15,8 @@ export class InMemorySessionStoreAdapter implements ISessionStorePort {
     const normalizedThreadId = threadId ?? undefined;
     for (const session of this.sessions.values()) {
       if (
-        session.channelId === channelId &&
-        (session.threadId ?? undefined) === normalizedThreadId
+        session.channelId === channelId
+        && (session.threadId ?? undefined) === normalizedThreadId
       ) {
         return session;
       }

@@ -1,6 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Client } from 'discord.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { DiscordClientService } from './discord-client.service.js';
+
 
 describe('DiscordClientService', () => {
   let loginMock: ReturnType<typeof vi.fn>;

@@ -8,6 +8,7 @@ import type {
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 
+
 export class StubAgentPort implements IAgentPort {
   lastAgentMessage = '';
   currentSessionId?: string = undefined;
@@ -41,7 +42,7 @@ export class StubAgentPort implements IAgentPort {
     this.currentSessionId = `session-${this.createSessionCalls.length}`;
   }
 
-  async *prompt(text: string): AsyncGenerator<AgentUpdate> {
+  async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.promptCalls.push(text);
     if (this.errorToThrowOnPrompt) {
       throw this.errorToThrowOnPrompt;

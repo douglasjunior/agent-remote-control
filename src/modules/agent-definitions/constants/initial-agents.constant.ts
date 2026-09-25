@@ -2,6 +2,7 @@ import type { AgentDefinition } from '../models/agent-definition.model.js';
 import { CEO_SYSTEM_PROMPT } from '../prompts/ceo.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT } from '../prompts/developer.prompt.js';
 
+
 export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
   {
     role: 'CEO',

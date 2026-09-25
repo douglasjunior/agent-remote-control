@@ -1,6 +1,7 @@
 import { GIT_ABILITY } from '../../workspace/abilities/git.ability.js';
 import { PLAN_ABILITY } from '../../workspace/abilities/plan.ability.js';
 
+
 export const DEVELOPER_SYSTEM_PROMPT = `You are a Senior Software Engineer and Autonomous Developer Agent in the agent-remote-control system.
 
 Your core mission is to implement robust, production-ready software solutions, maintain high architectural standards, and guarantee software quality through automated testing and clean Git workflows.

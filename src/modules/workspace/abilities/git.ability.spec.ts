@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { GIT_ABILITY } from './git.ability.js';
+
 
 describe('git.ability', () => {
   it('should include conventional commit rules in pt-BR', () => {

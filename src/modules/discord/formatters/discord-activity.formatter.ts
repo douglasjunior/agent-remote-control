@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+
 
 @Injectable()
 export class DiscordActivityFormatter {
@@ -64,9 +66,9 @@ export class DiscordActivityFormatter {
       const isFenceLine = /^```(\w*)/.test(line);
       const closeFenceOverhead = inCodeBlock && !isFenceLine ? 4 : 0;
       const candidateLength =
-        (currentChunk.length > 0 ? currentChunk.length + 1 : 0) +
-        line.length +
-        closeFenceOverhead;
+        (currentChunk.length > 0 ? currentChunk.length + 1 : 0)
+        + line.length
+        + closeFenceOverhead;
 
       if (candidateLength <= maxLength) {
         currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;
@@ -85,9 +87,9 @@ export class DiscordActivityFormatter {
       }
 
       const availableLength =
-        maxLength -
-        (currentChunk.length > 0 ? currentChunk.length + 1 : 0) -
-        (inCodeBlock ? 4 : 0);
+        maxLength
+        - (currentChunk.length > 0 ? currentChunk.length + 1 : 0)
+        - (inCodeBlock ? 4 : 0);
 
       if (line.length <= availableLength) {
         currentChunk = currentChunk ? `${currentChunk}\n${line}` : line;

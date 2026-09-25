@@ -1,10 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { spawn, type ChildProcess } from 'node:child_process';
+
 import type {
   IProcessRunnerPort,
   ProcessRunResult,
   ProcessSpawnOptions,
 } from '../ports/process-runner.port.js';
+
 
 @Injectable()
 export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
@@ -49,7 +51,7 @@ export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
     return new Promise((resolve) => {
       const child = this.spawn(command, args, { stdio: 'inherit' });
       child.on('error', () => resolve(1));
-      child.on('close', (code) => resolve(code ?? 0));
+      child.on('close', code => resolve(code ?? 0));
     });
   }
 
@@ -57,6 +59,6 @@ export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
     const child = this.spawn(process.argv[0], process.argv.slice(1), {
       stdio: 'inherit',
     });
-    child.on('exit', (code) => process.exit(code ?? 0));
+    child.on('exit', code => process.exit(code ?? 0));
   }
 }

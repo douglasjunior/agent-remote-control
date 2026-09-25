@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { NodeProcessRunnerAdapter } from './node-process-runner.adapter.js';
+
 
 type ChildProcessLike = EventEmitter & {
   stdout: EventEmitter;

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+
 import type {
   GitCheckoutOptions,
   GitCloneOptions,
@@ -12,19 +13,23 @@ import type {
   IWorkspacePort,
   RepositoryMetadata,
 } from '../ports/workspace.port.js';
+
 import { PrepareWorkspaceUseCase } from './prepare-workspace.use-case.js';
 
+
 class StubGitPort implements IGitPort {
-  cloneCalls: Array<{
+  cloneCalls: {
     url: string;
     target: string;
     options?: GitCloneOptions;
-  }> = [];
-  checkoutCalls: Array<{
+  }[] = [];
+
+  checkoutCalls: {
     dir: string;
     branch: string;
     options?: GitCheckoutOptions;
-  }> = [];
+  }[] = [];
+
   statusCalls: string[] = [];
 
   statusToReturn: GitStatusResult = {
@@ -69,7 +74,9 @@ class StubGitPort implements IGitPort {
     };
   }
 
-  async push(_dir: string, _options?: GitPushOptions): Promise<void> {}
+  async push(_dir: string, _options?: GitPushOptions): Promise<void> {
+    return undefined;
+  }
 }
 
 class StubWorkspacePort implements IWorkspacePort {

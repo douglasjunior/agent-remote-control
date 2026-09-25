@@ -1,8 +1,11 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
+
 import { IAgentRegistryPort } from '../orchestrator/ports/agent-registry.port.js';
+
 import { AgentDefinitionsModule } from './agent-definitions.module.js';
 import { AgentRegistryService } from './services/agent-registry.service.js';
+
 
 describe('AgentDefinitionsModule', () => {
   it('should compile the module and resolve agent registry providers', async () => {

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+
 import { AGENT_ROLES } from './agent-role.type.js';
+
 
 describe('agent-role.type', () => {
   it('should define CEO and DEVELOPER roles in AGENT_ROLES', () => {

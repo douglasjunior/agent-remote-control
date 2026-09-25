@@ -2,6 +2,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
 import { describe, expect, it, vi } from 'vitest';
+
 import { AppModule } from '../src/app.module.js';
 import type {
   AgentActivity,
@@ -13,11 +14,14 @@ import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-m
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
 
+
 class E2EAgentFake implements Partial<IAgentPort> {
   lastAgentMessage = 'Implementation completed successfully.';
   currentSessionId?: string;
 
-  async connect(): Promise<void> {}
+  async connect(): Promise<void> {
+    return undefined;
+  }
 
   async createSession(): Promise<void> {
     this.currentSessionId = 'e2e-session-123';
@@ -31,7 +35,7 @@ class E2EAgentFake implements Partial<IAgentPort> {
     };
   }
 
-  async *prompt(): AsyncGenerator<any> {
+  async* prompt(): AsyncGenerator<any> {
     yield {
       update: {
         sessionUpdate: 'agent_message_chunk',
@@ -61,19 +65,32 @@ class E2EAgentFake implements Partial<IAgentPort> {
       title: 'git status',
       status: 'completed',
     });
-    return () => {};
+    return () => undefined;
   }
 
-  async cancel(): Promise<void> {}
-  async closeSession(): Promise<void> {}
-  async disconnect(): Promise<void> {}
+  async cancel(): Promise<void> {
+    return undefined;
+  }
+
+  async closeSession(): Promise<void> {
+    return undefined;
+  }
+
+  async disconnect(): Promise<void> {
+    return undefined;
+  }
+
   getAvailableModels() {
     return null;
   }
+
   async getAvailableEffortsForModel() {
     return null;
   }
-  async setConfig(): Promise<void> {}
+
+  async setConfig(): Promise<void> {
+    return undefined;
+  }
 }
 
 describe('Discord Bot Driving Adapter (e2e)', () => {

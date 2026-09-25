@@ -1,6 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
 import { NodeFileSystemAdapter } from './node-file-system.adapter.js';
+
 
 function enoent(): NodeJS.ErrnoException {
   const error = new Error(
@@ -60,7 +62,7 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should return true when the binary exists in any PATH directory', () => {
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/usr/local/bin/agy',
+        path => path === '/usr/local/bin/agy',
       );
 
       const adapter = new NodeFileSystemAdapter();
@@ -79,7 +81,7 @@ describe('NodeFileSystemAdapter', () => {
     it('should ignore empty PATH segments', () => {
       process.env.PATH = ':/usr/local/bin::';
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/usr/local/bin/agy',
+        path => path === '/usr/local/bin/agy',
       );
 
       const adapter = new NodeFileSystemAdapter();
@@ -107,7 +109,7 @@ describe('NodeFileSystemAdapter', () => {
       process.env.PATH = '/win-bin';
       process.env.PATHEXT = '.EXE;.CMD';
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/win-bin/agy.CMD',
+        path => path === '/win-bin/agy.CMD',
       );
 
       try {
@@ -132,7 +134,7 @@ describe('NodeFileSystemAdapter', () => {
       process.env.PATH = '/win-bin';
       delete process.env.PATHEXT;
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/win-bin/agy.COM',
+        path => path === '/win-bin/agy.COM',
       );
 
       try {
@@ -163,7 +165,7 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should return the absolute path of the first PATH directory that contains the binary', () => {
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/usr/bin/agy',
+        path => path === '/usr/bin/agy',
       );
 
       const adapter = new NodeFileSystemAdapter();
@@ -189,7 +191,7 @@ describe('NodeFileSystemAdapter', () => {
       process.env.PATH = '/win-bin';
       process.env.PATHEXT = '.EXE;.CMD';
       vi.mocked(existsSync).mockImplementation(
-        (path) => path === '/win-bin/agy.CMD',
+        path => path === '/win-bin/agy.CMD',
       );
 
       try {

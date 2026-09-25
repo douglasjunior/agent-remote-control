@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+
 import type { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+
 
 const ROLE_PROMPTS: Record<string, string> = {
   CEO: 'You are an executive agent focused on strategic leadership, scope, and project alignment.',
@@ -33,8 +35,8 @@ export class DefaultAgentRegistryAdapter implements IAgentRegistryPort {
     }
     const normalized = agentRoleOrId.toUpperCase();
     return (
-      this.rolePrompts[normalized] ??
-      `You are an AI assistant acting in the role of ${agentRoleOrId}.`
+      this.rolePrompts[normalized]
+      ?? `You are an AI assistant acting in the role of ${agentRoleOrId}.`
     );
   }
 

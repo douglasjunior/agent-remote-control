@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+
 import type { SessionContext } from '../models/session-context.model.js';
+
 import { InMemorySessionStoreAdapter } from './in-memory-session-store.adapter.js';
+
 
 describe('InMemorySessionStoreAdapter', () => {
   let store: InMemorySessionStoreAdapter;

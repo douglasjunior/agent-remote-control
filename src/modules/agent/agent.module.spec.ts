@@ -9,6 +9,7 @@ import { IAgentPort } from './ports/agent.port.js';
 import { IFileSystemPort } from './ports/file-system.port.js';
 import { IProcessRunnerPort } from './ports/process-runner.port.js';
 
+
 describe('AgentModule', () => {
   it('should compile the module and resolve all port providers', async () => {
     const module: TestingModule = await Test.createTestingModule({
