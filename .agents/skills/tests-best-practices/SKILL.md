@@ -222,3 +222,4 @@ Para cada caso de uso, adapter ou service, assegure testes para:
 - [ ] Asserções verificam estado e efeitos observáveis antes de checar chamadas a métodos.
 - [ ] Nenhum delay de tempo real (`setTimeout`); uso exclusivo de `vi.waitFor` ou fake timers.
 - [ ] Todos os ramos e tratamentos de erro cobertos pelo spec.
+- [ ] Validação mandatória executada com `yarn lint` e `yarn test` (e `yarn test:e2e`).
