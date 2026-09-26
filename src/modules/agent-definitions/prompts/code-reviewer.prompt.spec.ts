@@ -34,4 +34,20 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('Never invent problems');
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('<final_response>');
   });
+
+  it('should instruct the agent to suggest publishing PR comments when reviewing a Pull Request with findings', () => {
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Pull Request (PR) Comment Publishing');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
+      'When reviewing a Pull Request (PR) and findings are identified',
+    );
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
+      'suggest publishing the findings as comments on the pull request',
+    );
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
+      'ask the user to reply indicating which specific findings',
+    );
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain(
+      'When reviewing a Pull Request (PR) with identified findings, proactively suggest publishing them as PR comments',
+    );
+  });
 });
