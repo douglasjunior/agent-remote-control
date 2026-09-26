@@ -167,12 +167,11 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     session: SessionContext,
   ): Promise<{ response: string; decision: ValidatedDecision }> {
-    const reminder = this.agentRegistry.getTurnReminder?.(request.agentRole);
     const runCeo = (text: string) => this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
-      reminder ? `${text}\n\n${reminder}` : text,
+      text,
       request,
       turn,
       session,
@@ -291,7 +290,8 @@ export class ExecuteAgentTurnUseCase {
       await agentPort.connect();
       turn.throwIfCancelled();
 
-      let fullPrompt = prompt;
+      const reminder = this.agentRegistry.getTurnReminder(role);
+      let fullPrompt = reminder ? `${prompt}\n\n${reminder}` : prompt;
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
         const storedSessionId = latest.agentSessions.find(agentSession => agentSession.role === role)?.sessionId;
@@ -299,7 +299,7 @@ export class ExecuteAgentTurnUseCase {
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
           await agentPort.createSession(workspacePath);
-          fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${prompt}`;
+          fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${fullPrompt}`;
         }
         const { currentSessionId } = agentPort;
         if (currentSessionId && currentSessionId !== storedSessionId) {

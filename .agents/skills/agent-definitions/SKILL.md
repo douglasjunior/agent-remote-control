@@ -42,7 +42,7 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 - `description`: resumo descritivo de especialidade e propósito;
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
 - `defaultModel`: modelo de linguagem padrão opcional associado à persona;
-- `turnReminder`: lembrete de turno opcional injetado no prompt de cada rodada do agente.
+- `turnReminder`: lembrete de turno obrigatório (`string`) injetado no prompt de cada rodada do agente.
 
 ## Prompts do Sistema Especializados
 
@@ -60,7 +60,8 @@ da narração.
 - Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
 - Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
 - Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
-- Incorpora as habilidades de Git (`GIT_ABILITY`) e Planejamento (`PLAN_ABILITY`).
+- Incorpora as habilidades de Git (`GIT_ABILITY`) e Planejamento (`PLAN_ABILITY`);
+- Possui o lembrete `DEVELOPER_TURN_REMINDER` configurado em sua definição, reforçando a cada turno a aderência a convenções, testes automatizados e o envelope `<final_response>`.
 
 ### 2. CEO (`ceo.prompt.ts`)
 
@@ -79,7 +80,7 @@ A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/
 
 - `getSystemPrompt(agentRole: string)`: resolve a definição de forma case-insensitive e chama `buildSystemPrompt` com todas as outras definições registradas. Papéis não registrados recebem um prompt genérico;
 - `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
-- `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), ou `undefined`;
+- `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), ou texto padrão de fallback para papéis não registrados (sempre string, nunca null ou undefined);
 - `hasRole(agentRole: string)`: indica, de forma case-insensitive, se o papel está registrado;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;
 - `getAllDefinitions()`: lista todas as definições registradas;

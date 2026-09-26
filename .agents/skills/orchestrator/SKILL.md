@@ -133,7 +133,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `getDefaultModel(agentRole: string): string | undefined`
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
-- `getTurnReminder(agentRole: string): string | undefined`: lembrete opcional injetado ao final de cada prompt do turno
+- `getTurnReminder(agentRole: string): string`: lembrete mandatório injetado ao final de cada prompt do turno (sempre string)
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
@@ -209,7 +209,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 1. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(conversationKey, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
 2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'` sem `sessionId`.
 3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
-   1. Executa o turno do CEO com `cwd = request.workspacePath` (anexando o `getTurnReminder` do papel ao prompt quando definido).
+   1. Executa o turno do CEO com `cwd = request.workspacePath`.
    2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
@@ -221,8 +221,9 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 
 Cada turno de agente (CEO ou delegado) executa internamente:
 
-1. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
-2. `connect()` seguido de `turn.throwIfCancelled()`.
+1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido.
+2. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
+3. `connect()` seguido de `turn.throwIfCancelled()`.
 3. Se `currentSessionId` não estiver definido:
    1. **Com sessão do papel em `agentSessions`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
    2. **Sem ID ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.

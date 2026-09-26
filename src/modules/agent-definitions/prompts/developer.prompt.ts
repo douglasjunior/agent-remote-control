@@ -4,6 +4,14 @@ import { PLAN_ABILITY } from '../../workspace/abilities/plan.ability.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
+export const DEVELOPER_TURN_REMINDER = `---
+REMINDER:
+- Adhere strictly to the target project conventions, architecture, linters, and documentation.
+- Deliver complete implementations with comprehensive automated tests and validation.
+- Execute git operations following repository security rules and conventional commit messages.
+- Always put your final answer inside the <final_response> block.`;
+
+
 export const DEVELOPER_SYSTEM_PROMPT = `You are the Developer Agent.
 
 Your core mission is to execute technical implementations, write code, refactor existing systems, and solve complex software engineering problems assigned by the CEO or requested directly by the user.

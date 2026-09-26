@@ -35,6 +35,7 @@ describe('AgentRegistryService', () => {
         name: 'Reviewer Agent',
         description: 'Reviews pull requests.',
         buildSystemPrompt: () => 'Reviewer prompt',
+        turnReminder: 'Reviewer turn reminder',
       });
 
       const prompt = service.getSystemPrompt('CEO');
@@ -64,6 +65,7 @@ describe('AgentRegistryService', () => {
         description: 'Testing specialist',
         buildSystemPrompt: () => 'You test things.',
         defaultModel: 'claude-3-5-sonnet',
+        turnReminder: 'Tester turn reminder',
       });
 
       expect(service.getDefaultModel('tester')).toBe('claude-3-5-sonnet');
@@ -98,12 +100,20 @@ describe('AgentRegistryService', () => {
       expect(reminderUpper).toContain('strictly an orchestrator');
     });
 
-    it('should return undefined when agent has no turn reminder configured', () => {
-      expect(service.getTurnReminder('DEVELOPER')).toBeUndefined();
+    it('should return turn reminder for DEVELOPER role in case-insensitive manner', () => {
+      const reminderUpper = service.getTurnReminder('DEVELOPER');
+      const reminderLower = service.getTurnReminder('developer');
+
+      expect(reminderUpper).toBeDefined();
+      expect(reminderLower).toBe(reminderUpper);
+      expect(reminderUpper).toContain('conventions, architecture, linters, and documentation');
     });
 
-    it('should return undefined for unknown role', () => {
-      expect(service.getTurnReminder('NON_EXISTENT')).toBeUndefined();
+    it('should return fallback turn reminder string for unknown role', () => {
+      const fallback = service.getTurnReminder('NON_EXISTENT');
+      expect(typeof fallback).toBe('string');
+      expect(fallback).toContain('NON_EXISTENT');
+      expect(fallback).toContain('<final_response>');
     });
 
     it('should return custom turn reminder for dynamically registered agent', () => {
@@ -145,12 +155,14 @@ describe('AgentRegistryService', () => {
         name: 'Solution Architect',
         description: 'Architectural governance',
         buildSystemPrompt: () => 'Architect prompt',
+        turnReminder: 'Architect turn reminder',
       });
 
       const found = service.getDefinition('ARCHITECT');
       expect(found).toBeDefined();
       expect(found?.name).toBe('Solution Architect');
       expect(service.getSystemPrompt('ARCHITECT')).toBe('Architect prompt');
+      expect(service.getTurnReminder('ARCHITECT')).toBe('Architect turn reminder');
     });
 
     it('should allow overriding an existing agent definition', () => {
@@ -159,11 +171,13 @@ describe('AgentRegistryService', () => {
         name: 'Custom Developer',
         description: 'Overridden developer',
         buildSystemPrompt: () => 'Overridden prompt',
+        turnReminder: 'Overridden turn reminder',
       });
 
       const found = service.getDefinition('DEVELOPER');
       expect(found?.name).toBe('Custom Developer');
       expect(service.getSystemPrompt('DEVELOPER')).toBe('Overridden prompt');
+      expect(service.getTurnReminder('DEVELOPER')).toBe('Overridden turn reminder');
     });
   });
 });
