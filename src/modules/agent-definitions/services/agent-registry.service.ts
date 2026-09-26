@@ -36,6 +36,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole) !== undefined;
   }
 
+  getDefaultSessionMode(agentRole: string): 'resume' | 'new' {
+    return this.getDefinition(agentRole)?.defaultSessionMode ?? 'resume';
+  }
+
   getTurnReminder(agentRole: string): string {
     const definition = this.getDefinition(agentRole);
     if (!definition) {

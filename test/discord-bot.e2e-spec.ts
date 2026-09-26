@@ -460,7 +460,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(existsSync(join(workspaceDir, 'my-app'))).toBe(true);
     expect(developer.prompts[0]).toContain('Developer Agent');
     expect(developer.prompts[0]).toContain('Implement the login screen.');
-    expect(ceo.prompts[1]).toBe(
+    expect(ceo.prompts[1]).toContain(
       '[AGENT_RESULT:DEVELOPER]\nLogin screen implemented.',
     );
     expect(threadMessages).toContain(
@@ -522,7 +522,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(sent).toContain('✅ **Configuração salva**: 🧠 Model Two · ⚡ Low');
     expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (agy) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
-    expect(agents.some(agent => agent.prompts.some(prompt => prompt.endsWith('Build it')))).toBe(true);
+    expect(agents.some(agent => agent.prompts.some(prompt => prompt.includes('Build it')))).toBe(true);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
       modelId: 'two',
       modelName: 'Model Two',

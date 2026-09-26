@@ -131,13 +131,14 @@ Contrato para resolução de instruções comportamentais e especificações de 
 
 - `getSystemPrompt(agentRole: string): string`
 - `getDefaultModel(agentRole: string): string | undefined`
+- `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
 - `getTurnReminder(agentRole: string): string`: lembrete mandatório injetado ao final de cada prompt do turno (sempre string)
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
-prompts completos de cada papel (`CEO`, `DEVELOPER`), fornece lembretes de turno e devolve um prompt genérico para
+prompts completos de cada papel (`CEO`, `DEVELOPER`, `CODE_REVIEWER`), fornece lembretes de turno e devolve um prompt genérico para
 papéis desconhecidos.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
@@ -159,7 +160,7 @@ Interpreta os marcadores da resposta do CEO e devolve uma `CeoDecision`. Um marc
 ocupa uma linha inteira, aceitando formatação markdown em volta (`` ` ``, `*`, `_`) e caixa
 qualquer; o papel é normalizado para maiúsculas:
 
-- `{ kind: 'delegate', delegation: { delegateToRole, projectName, taskSpec } }` para `[DELEGATE:ROLE:project]` (o segmento `:project` é opcional). `taskSpec` é a resposta sem a linha do marcador, incluindo o texto posterior a ele, já que os modelos às vezes escrevem a especificação depois do marcador;
+- `{ kind: 'delegate', delegation: { delegateToRole, projectName, taskSpec, sessionMode } }` para `[DELEGATE:ROLE:project]` ou com modificador de sessão `[DELEGATE:ROLE:project:new]` / `[DELEGATE:ROLE:new]` (`sessionMode?: 'resume' | 'new'`). `taskSpec` é a resposta sem a linha do marcador, incluindo o texto posterior a ele, já que os modelos às vezes escrevem a especificação depois do marcador;
 - `{ kind: 'done', summary }` para `[DONE]`. `summary` é a resposta sem a linha do marcador;
 - `{ kind: 'direct_response' }` quando a resposta não contém nenhum marcador;
 - `{ kind: 'invalid', reason }` para marcador que divide a linha com texto, mais de um marcador, marcador malformado ou delegação sem `taskSpec`. `reason` é escrito em inglês para o CEO corrigir a resposta.
@@ -188,7 +189,8 @@ repositório dentro da pasta do projeto é responsabilidade do agente delegado.
 
 | Último marcador da resposta do CEO | Ação do orquestrador |
 |---|---|
-| `[DELEGATE:ROLE:project]` | Cria novo `IAgentPort` para `ROLE` com `cwd` no projeto, retoma a sessão de `ROLE` em `agentSessions` e envia `taskSpec` (prefixado com `systemPrompt(ROLE)` quando a sessão é criada) |
+| `[DELEGATE:ROLE:project]` | Cria novo `IAgentPort` para `ROLE` com `cwd` no projeto, retoma ou inicia sessão conforme `sessionMode` / `defaultSessionMode` e envia `taskSpec` (prefixado com `systemPrompt(ROLE)` quando a sessão é criada) |
+| `[DELEGATE:ROLE:project:new]` | Idem ao anterior, forçando sessão ACP nova (`sessionMode: 'new'`) sem reaproveitar histórico |
 | `[DONE]` | Encerra o loop e devolve a resposta sem o marcador |
 | *(nenhum)* | Encerra o loop e devolve a resposta integral do CEO |
 | *(inválido)* | Envia ao CEO o prompt de reparo com o motivo |
@@ -214,8 +216,8 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). Registra `[Delegation Started]` (papel, projeto, `cwd` e prévia da tarefa) e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` (duração e tamanho da resposta) e emite `finished`. Cancelamento ou falha do delegado não emitem `finished`. A sessão é por papel, e não por projeto: uma delegação a outro projeto retoma a mesma sessão com o novo `cwd`.
-   7. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` permanece em `agentSessions` para a próxima delegação ao mesmo papel, inclusive em rodadas seguintes do mesmo turno.
+   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). O modo efetivo de sessão é resolvido como `sessionMode ?? agentRegistry.getDefaultSessionMode(delegateToRole)`. Registra `[Delegation Started]` (papel, projeto, `cwd` e prévia da tarefa) e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` (duração e tamanho da resposta) e emite `finished`. Cancelamento ou falha do delegado não emitem `finished`.
+   7. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` gerado/usado permanece em `agentSessions` para a próxima delegação ao mesmo papel.
    8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
 4. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
 
@@ -225,8 +227,8 @@ Cada turno de agente (CEO ou delegado) executa internamente:
 2. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
 3. `connect()` seguido de `turn.throwIfCancelled()`.
 3. Se `currentSessionId` não estiver definido:
-   1. **Com sessão do papel em `agentSessions`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
-   2. **Sem ID ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.
+   1. **Com sessão do papel em `agentSessions` e `sessionMode !== 'new'`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
+   2. **Sem ID, modo `'new'` ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.
    3. Se o ID da sessão ACP mudou, substitui a entrada do papel em `agentSessions` e salva no store.
 4. Configuração: com `AgentSettings`, `setConfig({ modelId, effortId: effortId ?? undefined })`; sem settings, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Vale para o CEO e para os delegados.
 5. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.

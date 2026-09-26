@@ -7,5 +7,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['test/**/*.e2e-spec.ts'],
+    env: {
+      DISCORD_BOT_TOKEN: '',
+    },
   },
 });
