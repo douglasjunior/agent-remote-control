@@ -457,7 +457,7 @@ describe('DiscordMessageHandler', () => {
       const contents = sentMessages.map(sent => sent.content);
       expect(contents).toEqual([
         '⏳ *Iniciando processamento...*',
-        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando no projeto `my-app`.',
+        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
         '🤖 **Progresso — Desenvolvedor**:\n⏳ *Aguardando atividades...*',
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
         '🤖 **Progresso do Agente**:\n⏳ *Aguardando atividades...*',

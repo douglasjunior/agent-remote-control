@@ -289,10 +289,10 @@ describe('DiscordActivityFormatter', () => {
       const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor' };
 
       expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
-        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando no projeto `my-app`.',
+        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
       );
       expect(formatter.formatDelegation({ ...delegation, phase: 'started' })).toBe(
-        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando.',
+        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) — ele assumiu a tarefa agora.',
       );
       expect(formatter.formatDelegation({ ...delegation, phase: 'finished' })).toBe(
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',

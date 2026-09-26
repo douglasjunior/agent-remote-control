@@ -134,7 +134,7 @@ e formatadas pelo `DiscordActivityFormatter`:
   - O log registra cada `thought` uma única vez, ao receber `final`.
 - **Delegação**: `onDelegation` encerra a mensagem de progresso atual com o estado final do
   feed, envia o aviso de `formatDelegation(event)` e abre uma nova mensagem de progresso com feed
-  vazio. No `started`, o aviso diz qual agente assumiu (e o projeto) e o cabeçalho vira
+  vazio. No `started`, o aviso diz qual agente assumiu, com nome e papel (ex.: `DEVELOPER`), e o projeto e o cabeçalho vira
   `formatDelegateProgressHeader(roleName)`; no `finished`, o aviso diz que o CEO está revisando e o
   cabeçalho volta a `🤖 **Progresso do Agente**:`. Esses envios são encadeados na ordem dos
   eventos, e o handler aguarda a cadeia antes do `flush()` final. Se o envio falhar, o progresso

@@ -463,6 +463,10 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(ceo.prompts[1]).toBe(
       '[AGENT_RESULT:DEVELOPER]\nLogin screen implemented.',
     );
+    expect(threadMessages).toContain(
+      '🔀 **Tarefa delegada** ao agente **Developer Agent** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
+    );
+    expect(threadMessages).toContain('↩️ **Developer Agent concluiu** — o CEO está revisando o resultado.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
 
     await app.close();
