@@ -60,20 +60,24 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
      (`message.mentions.has(clientUser, { ignoreEveryone: true, ignoreRoles: true })`).
      As opções padrão do discord.js contam `@everyone`, `@here` e menções de cargo, o que
      faria qualquer anúncio no servidor abrir uma sessão de agente.
-   - Em threads: responde se a thread for gerenciada pelo bot (`channel.ownerId === clientUser.id`)
-     ou se o bot for mencionado no corpo da mensagem.
+   - Em DM: toda mensagem é aceita.
+   - Em threads: responde se a thread for gerenciada pelo bot (`channel.ownerId === clientUser.id`),
+     se o bot for mencionado no corpo da mensagem ou se houver seleção de modelo aberta na
+     thread (`hasActiveConfigSelection(parentId, threadId)`, aberta por `/model` numa thread
+     que não é do bot).
+   - Mensagens sem menção em canal comum são sempre ignoradas. A seleção de `/model` num canal
+     comum acontece numa thread do bot, então nenhuma conversa solta do canal é tratada como
+     resposta.
 3. **Criação de thread**: Ao receber uma menção em canal normal, o handler cria uma nova
    thread a partir da mensagem (`message.startThread({ name, autoArchiveDuration: 60 })`).
    O título da thread utiliza os primeiros 50 caracteres do prompt.
-4. **Resolução de IDs para o Orquestrador**:
-   - `channelId`: o ID do canal pai da thread (`thread.parentId ?? thread.id`);
-   - `threadId`: o ID da própria thread;
+4. **Resolução de IDs para o Orquestrador**: `resolveConversationKey(channelId, channel)`
+   (`utils/conversation-key.util.ts`), compartilhado com o `DiscordInteractionHandler`:
+   - `channelId`: o ID do canal pai da thread (`thread.parentId ?? thread.id`), ou o próprio canal fora de threads;
+   - `threadId`: o ID da própria thread, ausente em DM;
    - `userId`: o identificador do autor da mensagem;
    - `agentRole`: invariavelmente `'CEO'` para triagem e orquestração inicial.
-5. **Resposta a seleção em canal comum**: sem menção e fora de thread, a mensagem só é aceita
-   se `hasActiveConfigSelection(channelId)` for verdadeiro (seleção aberta por `/model` no canal).
-   Nesse caso o bot responde no próprio canal, sem criar thread, com `threadId = undefined`.
-6. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
+5. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
    orquestrador. Via `onQueued`, a mensagem de progresso exibe
    `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`.
 
@@ -158,5 +162,8 @@ são particionados por `DiscordActivityFormatter.splitMessage(content, maxLength
 Comandos de barra são interceptados por `DiscordInteractionHandler`:
 
 - **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada, `🛑 **Seleção de modelo cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
-- **/model**: `deferReply()` público, `startConfigSelection(channelId, threadId)` e `editReply(formatSelection)`. Com `unavailable`, responde `ℹ️ O agente atual não expõe modelos para seleção.` A resposta é pública porque as opções são respondidas por mensagem na conversa.
+- **/model**: `deferReply()` público. As opções são respondidas por mensagem na conversa, por isso a resposta é pública:
+  - Em canal de guilda: `editReply('🧵 Escolha o modelo na thread abaixo.')`, thread criada a partir desse aviso (`startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` e `formatSelection` particionado dentro da thread. A thread é do bot, então as respostas entram sem menção e, depois de configurar, ela segue como uma conversa normal. Se a thread não puder ser criada, responde `❌ **Falha ao abrir a seleção de modelo**: <erro>`.
+  - Em DM ou thread: `startConfigSelection` com a chave da conversa atual e `editReply(formatSelection)`.
+  - Com `unavailable`, publica `ℹ️ O agente atual não expõe modelos para seleção.` no mesmo destino das opções.
 - **Respostas protegidas**: toda resposta passa por um único método que usa `editReply` quando a interação foi adiada, `followUp` quando já respondida e `reply` nos demais casos, e apenas loga falhas de envio. O listener de `InteractionCreate` encadeia `.catch(...)` com log, e `main.ts` registra `process.on('unhandledRejection')` como rede de segurança: uma rejeição sem tratamento derrubaria o processo.

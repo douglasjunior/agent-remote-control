@@ -48,7 +48,10 @@ class MockOrchestratorService {
   public resolution: ConversationInputResolution | null = null;
   public resolvedInputs: { channelId: string; threadId?: string; prompt: string }[] = [];
 
-  async hasActiveConfigSelection(): Promise<boolean> {
+  public selectionLookups: { channelId: string; threadId?: string }[] = [];
+
+  async hasActiveConfigSelection(channelId: string, threadId?: string): Promise<boolean> {
+    this.selectionLookups.push({ channelId, threadId });
     return this.activeSelection;
   }
 
@@ -172,6 +175,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -269,6 +273,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -298,7 +303,7 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       content: '@everyone hello',
       mentions: { has },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -317,6 +322,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -343,6 +349,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -365,6 +372,7 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(true),
         send: vi.fn().mockResolvedValue(progressMessage),
       } as unknown as ThreadChannel;
@@ -442,6 +450,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -467,6 +476,7 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
@@ -503,7 +513,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Long task',
       content: '<@bot-123> Long task',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -532,7 +542,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Silent task',
       content: '<@bot-123> Silent task',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -562,7 +572,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Stop',
       content: '<@bot-123> Stop',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -593,7 +603,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Crash',
       content: '<@bot-123> Crash',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -619,7 +629,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Crash test',
       content: '<@bot-123> Crash test',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -645,7 +655,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Crash test',
       content: '<@!bot-123> Crash test',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -663,7 +673,7 @@ describe('DiscordMessageHandler', () => {
       cleanContent: 'Thread failure',
       content: '<@!bot-123> Thread failure',
       mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockRejectedValue(new Error('Cannot create thread')),
     } as unknown as Message;
 
@@ -799,6 +809,7 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(true),
         send,
       },
@@ -894,6 +905,7 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(true),
         send,
       },
@@ -940,25 +952,60 @@ describe('DiscordMessageHandler', () => {
       expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
     });
 
-    it('should accept an answer in a plain channel with an active selection without opening a thread', async () => {
+    const unmanagedThreadMessage = (send: ReturnType<typeof vi.fn>) => ({
+      author: { bot: false, id: 'user-42' },
+      channelId: 'thread-9',
+      content: ' 1 ',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: {
+        id: 'thread-9',
+        parentId: 'channel-1',
+        ownerId: 'someone-else',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      },
+    }) as unknown as Message;
+
+    it('should accept an answer without mention in an unmanaged thread with an active selection', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      const startThread = vi.fn();
       orchestratorService.activeSelection = true;
       orchestratorService.resolution = { kind: 'configured', settings };
+
+      await handler.handleMessage(unmanagedThreadMessage(send));
+
+      expect(orchestratorService.selectionLookups).toEqual([{ channelId: 'channel-1', threadId: 'thread-9' }]);
+      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: 'thread-9', prompt: '1' }]);
+      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+    });
+
+    it('should ignore messages without mention in an unmanaged thread without a selection', async () => {
+      const send = vi.fn();
+
+      await handler.handleMessage(unmanagedThreadMessage(send));
+
+      expect(orchestratorService.resolvedInputs).toEqual([]);
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('should ignore messages without mention in a plain channel even with a selection open', async () => {
+      const send = vi.fn();
+      const startThread = vi.fn();
+      orchestratorService.activeSelection = true;
       const message = {
-        author: { bot: false, id: 'user-42' },
+        author: { bot: false, id: 'user-7' },
         channelId: 'channel-1',
-        content: ' 1 ',
+        content: 'just chatting',
         mentions: { has: vi.fn().mockReturnValue(false) },
-        channel: { isThread: vi.fn().mockReturnValue(false), send },
+        channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false), send },
         startThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
 
+      expect(orchestratorService.selectionLookups).toEqual([]);
       expect(startThread).not.toHaveBeenCalled();
-      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: undefined, prompt: '1' }]);
-      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(send).not.toHaveBeenCalled();
     });
   });
 });

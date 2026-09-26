@@ -188,6 +188,7 @@ function buildThread(id: string, parentId: string, sent: string[]) {
     id,
     parentId,
     ownerId: 'bot-e2e-id',
+    isDMBased: vi.fn().mockReturnValue(false),
     isThread: vi.fn().mockReturnValue(true),
     send: vi.fn().mockImplementation(async (content: string) => {
       sent.push(content);
@@ -293,6 +294,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
           .mockImplementation((user: any) => user?.id === 'bot-e2e-id'),
       },
       channel: {
+        isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(false),
       },
       startThread: startThreadMock,
@@ -351,6 +353,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       id: 'thread-sub',
       parentId: 'channel-main',
       ownerId: 'bot-e2e-id',
+      isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
       send: vi.fn().mockImplementation(async (content: string) => {
         threadMessages.push(content);
@@ -374,7 +377,10 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       isChatInputCommand: vi.fn().mockReturnValue(true),
       commandName: 'cancel',
       channelId: 'thread-sub',
+      inGuild: vi.fn().mockReturnValue(true),
       channel: {
+        id: 'thread-sub',
+        isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(true),
         parentId: 'channel-main',
       },
@@ -443,7 +449,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       mentions: {
         has: vi.fn().mockImplementation((user: any) => user?.id === 'bot-e2e-id'),
       },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
@@ -492,7 +498,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       cleanContent: 'Build it',
       content: '<@bot-e2e-id> Build it',
       mentions: { has: vi.fn().mockImplementation((user: any) => user?.id === 'bot-e2e-id') },
-      channel: { isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
       startThread: vi.fn().mockResolvedValue(thread),
     } as unknown as Message);
 
@@ -545,7 +551,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       isChatInputCommand: vi.fn().mockReturnValue(true),
       commandName: 'model',
       channelId: 'thread-model',
-      channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'channel-model' },
+      inGuild: vi.fn().mockReturnValue(true),
+      channel: { id: 'thread-model', isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(true), parentId: 'channel-model' },
       user: { username: 'alice', id: 'discord-user-777' },
       deferred: false,
       replied: false,
@@ -564,6 +571,63 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
     expect(sent).toEqual(['✅ **Configuração salva**: 🧠 Model One · ⚡ padrão']);
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
+
+    await app.close();
+  });
+
+  it('should open the /model selection of a guild channel in a thread answered without mention', async () => {
+    seedAgentSettings(dataDir);
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue({ create: () => new SelectableAgentFake() })
+      .compile();
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const interactionHandler = moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler);
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler);
+    (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
+      id: 'bot-e2e-id',
+    };
+
+    const sent: string[] = [];
+    const selectionThread = buildThread('thread-selection', 'channel-general', sent);
+    const interaction = {
+      isChatInputCommand: vi.fn().mockReturnValue(true),
+      commandName: 'model',
+      channelId: 'channel-general',
+      inGuild: vi.fn().mockReturnValue(true),
+      channel: { id: 'channel-general', isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      user: { username: 'alice', id: 'discord-user-777' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn().mockResolvedValue({ startThread: vi.fn().mockResolvedValue(selectionThread) }),
+    };
+    await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
+
+    expect(sent).toEqual(['🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two']);
+
+    const channelChatter = {
+      author: { bot: false, id: 'discord-user-888' },
+      channelId: 'channel-general',
+      cleanContent: 'lunch?',
+      content: 'lunch?',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false), send: vi.fn() },
+      startThread: vi.fn(),
+    } as unknown as Message;
+    await messageHandler.handleMessage(channelChatter);
+    expect(channelChatter.startThread).not.toHaveBeenCalled();
+
+    await messageHandler.handleMessage(threadReply(selectionThread, '1'));
+
+    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🧠 Model One · ⚡ padrão');
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
 
     await app.close();
