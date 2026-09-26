@@ -4,9 +4,9 @@ description: >
   Bot do Discord como adaptador primário de entrada para agentes de IA. Governa os
   comandos /model e /cancel, a seleção numerada de modelo/effort, o rodapé de agente
   nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
-  threads por conversa, streaming de atividades, throttling contra 429 e particionamento
-  em 2000 caracteres. Use ao trabalhar com mensagens, interações, formatação ou eventos
-  do Discord.
+  threads por conversa, streaming de atividades, indicador de digitação com watchdog,
+  throttling contra 429 e particionamento em 2000 caracteres. Use ao trabalhar com mensagens,
+  interações, formatação ou eventos do Discord.
 ---
 
 # Integração com Bot do Discord
@@ -141,6 +141,14 @@ e formatadas pelo `DiscordActivityFormatter`:
   cabeçalho volta a `🤖 **Progresso do Agente**:`. Esses envios são encadeados na ordem dos
   eventos, e o handler aguarda a cadeia antes do `flush()` final. Se o envio falhar, o progresso
   segue na mensagem anterior.
+
+## Indicador de Digitação e Watchdog de Inatividade
+
+Durante a execução de um turno em `DiscordMessageHandler`, o feedback visual de digitação ("digitando...") é gerenciado por `DiscordTypingIndicator` (`utils/discord-typing-indicator.util.ts`):
+
+- **Disparo inicial e repetição periódica**: ao iniciar o processamento de um turno, `start()` dispara `sendTyping()` imediatamente no canal e agenda repetições a cada `8000ms` (padrão de `intervalMs`). Rejeições e exceções em `sendTyping()` são suprimidas silenciosamente.
+- **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity` e `onDelegation` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
+- **Encerramento no ciclo de vida**: `stop()` cancela os timers de repetição e de inatividade. O método é invocado em bloco `finally` logo após `executeTurn`, garantindo encerramento em conclusões com sucesso, cancelamentos e falhas.
 
 ## Throttling e Coalescing contra Rate Limit (HTTP 429)
 
