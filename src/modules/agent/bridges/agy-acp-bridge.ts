@@ -68,21 +68,29 @@ type AgyResultEvent = {
 
 type AgyEvent = AgyInitEvent | AgyStepUpdateEvent | AgyResultEvent;
 
+type PendingPrompt = {
+  readonly client: AgentContext;
+  readonly resolve: (response: PromptResponse) => void;
+  readonly reject: (error: Error) => void;
+};
+
+type AgyRun = {
+  readonly proc: ChildProcess;
+  readonly stdin: Writable;
+  // SIGINT was sent: the run only settles its own prompt and never receives another one.
+  interrupted: boolean;
+  pendingPrompt: PendingPrompt | null;
+};
+
 const INIT_TIMEOUT_MS = 15_000;
 const PRINT_TIMEOUT = '8760h';
 
 export class AgyBridgeServer {
-  private agyProcess: ChildProcess | null = null;
+  private run: AgyRun | null = null;
   private currentSessionId: string | null = null;
   private currentCwd: string | null = null;
-  private activePromptResolver: ((result: PromptResponse) => void) | null =
-    null;
-
-  private activePromptRejecter: ((error: Error) => void) | null = null;
-  private activeClientContext: AgentContext | null = null;
   private selectedModel: string | null = null;
   private activeModel: string | null = null;
-  private isCancelled = false;
   private discoveredModels:
     readonly { readonly value: string; readonly name: string }[] | null = null;
 
@@ -104,7 +112,7 @@ export class AgyBridgeServer {
 
   async newSession(params: { readonly cwd: string }) {
     this.currentCwd = params.cwd;
-    const sessionId = await this.startAgyProcess(params.cwd);
+    const { sessionId } = await this.startAgyProcess(params.cwd);
     const models = await this.getModels();
 
     return {
@@ -139,7 +147,7 @@ export class AgyBridgeServer {
       changed = true;
     }
 
-    if (changed && this.currentCwd && !this.activePromptResolver) {
+    if (changed && this.currentCwd && !this.run?.pendingPrompt) {
       await this.startAgyProcess(
         this.currentCwd,
         this.currentSessionId ?? undefined,
@@ -162,52 +170,48 @@ export class AgyBridgeServer {
     },
     client: AgentContext,
   ): Promise<PromptResponse> {
-    if (this.activePromptResolver) {
+    if (this.run?.pendingPrompt) {
       throw new Error('Another prompt is already in progress');
     }
 
-    if (!this.agyProcess) {
-      if (this.currentCwd) {
-        await this.startAgyProcess(
-          this.currentCwd,
-          this.currentSessionId ?? undefined,
-        );
-      } else {
-        throw new Error('AGY process is not running');
-      }
-    }
-
-    const proc = this.agyProcess;
-    /* v8 ignore next 3 */
-    if (!proc || !proc.stdin) {
-      throw new Error('AGY process is not running');
-    }
-
-    const stdin = proc.stdin;
-    this.isCancelled = false;
-    this.activeClientContext = client;
+    const run = this.run && !this.run.interrupted
+      ? this.run
+      : await this.restartRun();
     const text = params.prompt.map(p => p.text ?? '').join('\n');
     const inputPayload =
       JSON.stringify({ event: 'user', message: { content: text } }) + '\n';
 
     return new Promise<PromptResponse>((resolve, reject) => {
-      this.activePromptResolver = resolve;
-      this.activePromptRejecter = reject;
-      stdin.write(inputPayload);
+      run.pendingPrompt = { client, resolve, reject };
+      run.stdin.write(inputPayload);
     });
   }
 
   cancel(): void {
-    this.isCancelled = true;
-    this.agyProcess?.kill('SIGINT');
+    if (!this.run) {
+      return;
+    }
+    this.run.interrupted = true;
+    this.run.proc.kill('SIGINT');
   }
 
   async closeSession() {
-    this.killCurrentProcess('SIGTERM');
+    this.terminateRun(this.run);
     this.currentSessionId = null;
     this.currentCwd = null;
     this.activeModel = null;
     return {};
+  }
+
+  private async restartRun(): Promise<AgyRun> {
+    if (!this.currentCwd) {
+      throw new Error('AGY process is not running');
+    }
+    const { run } = await this.startAgyProcess(
+      this.currentCwd,
+      this.currentSessionId ?? undefined,
+    );
+    return run;
   }
 
   private buildConfigOptions(
@@ -282,8 +286,8 @@ export class AgyBridgeServer {
   private async startAgyProcess(
     cwd: string,
     resumeConversationId?: string,
-  ): Promise<string> {
-    this.killCurrentProcess('SIGTERM');
+  ): Promise<{ readonly run: AgyRun; readonly sessionId: string }> {
+    this.terminateRun(this.run);
 
     const agyBin = process.env.AGY_PATH || 'agy';
     const args = [
@@ -316,97 +320,83 @@ export class AgyBridgeServer {
       throw new Error('Failed to open stdio streams for AGY process');
     }
 
-    this.agyProcess = proc;
+    const run: AgyRun = {
+      proc,
+      stdin: proc.stdin,
+      interrupted: false,
+      pendingPrompt: null,
+    };
+    this.run = run;
     proc.stdin.on('error', () => undefined);
 
     const rl = createInterface({ input: proc.stdout });
-    rl.on('line', line => this.handleAgyLine(line));
+    rl.on('line', line => this.handleAgyLine(run, line));
     proc.stderr?.on('data', chunk => process.stderr.write(chunk));
-
-    proc.on('exit', (code, signal) => {
-      if (this.agyProcess === proc) {
-        this.agyProcess = null;
-      }
-      if (
-        this.activePromptResolver
-        && (this.isCancelled || signal === 'SIGINT')
-      ) {
-        this.resolvePromptResult({
-          conversation_id: this.currentSessionId ?? '',
-          status: 'ERROR',
-          response: '',
-          num_turns: 0,
-          error: 'interrupted',
-          usage: {
-            input_tokens: 0,
-            output_tokens: 0,
-            thinking_tokens: 0,
-            cache_read_tokens: 0,
-            total_tokens: 0,
-          },
-        });
-      } else if (this.activePromptRejecter) {
-        const rejecter = this.activePromptRejecter;
-        this.activePromptResolver = null;
-        this.activePromptRejecter = null;
-        this.activeClientContext = null;
-        this.isCancelled = false;
-        rejecter(
-          new Error(
-            `AGY process exited prematurely (code=${code}, signal=${signal})`,
-          ),
-        );
-      }
-    });
+    proc.on('exit', (code, signal) => this.handleExit(run, code, signal));
 
     let initEvent: AgyInitEvent;
     try {
       initEvent = await this.waitForInitEvent(proc, rl);
     } catch (error) {
-      this.killCurrentProcess('SIGTERM');
+      this.terminateRun(run);
       throw error;
     }
     this.activeModel = initEvent.init.model;
     if (!resumeConversationId) {
       this.currentSessionId = initEvent.conversation_id;
     }
-    return this.currentSessionId ?? initEvent.conversation_id;
+    return { run, sessionId: this.currentSessionId ?? initEvent.conversation_id };
   }
 
-  private killCurrentProcess(signal: NodeJS.Signals): void {
-    if (this.agyProcess) {
-      this.agyProcess.kill(signal);
-      this.agyProcess = null;
+  private terminateRun(run: AgyRun | null): void {
+    if (!run) {
+      return;
     }
-    this.activeClientContext = null;
-    if (this.activePromptRejecter) {
-      const rejecter = this.activePromptRejecter;
-      this.activePromptResolver = null;
-      this.activePromptRejecter = null;
-      rejecter(new Error('AGY process was terminated'));
+    run.proc.kill('SIGTERM');
+    if (this.run === run) {
+      this.run = null;
     }
+    this.takePendingPrompt(run)?.reject(new Error('AGY process was terminated'));
   }
 
-  private handleAgyLine(line: string): void {
+  private handleExit(
+    run: AgyRun,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (this.run === run) {
+      this.run = null;
+    }
+    if (run.interrupted || signal === 'SIGINT') {
+      this.resolvePrompt(run, 'cancelled');
+      return;
+    }
+    this.takePendingPrompt(run)?.reject(
+      new Error(`AGY process exited prematurely (code=${code}, signal=${signal})`),
+    );
+  }
+
+  private handleAgyLine(run: AgyRun, line: string): void {
     const trimmed = line.trim();
     if (!trimmed.startsWith('{')) return;
     try {
       const parsed = JSON.parse(trimmed) as AgyEvent;
       if (parsed.event === 'step_update') {
-        this.forwardStepUpdate(parsed.step_update);
+        this.forwardStepUpdate(run, parsed.step_update);
       } else if (parsed.event === 'result') {
-        this.resolvePromptResult(parsed.result);
+        this.settlePrompt(run, parsed.result);
       }
     } catch {
       // ignore malformed line
     }
   }
 
-  private forwardStepUpdate(update: AgyStepUpdateEvent['step_update']): void {
-    if (!this.activeClientContext || !this.currentSessionId) return;
+  private forwardStepUpdate(run: AgyRun, update: AgyStepUpdateEvent['step_update']): void {
+    const client = run.pendingPrompt?.client;
+    if (!client || !this.currentSessionId) return;
 
     if (update.step_type === 'agent_response' && update.text_delta) {
-      void this.activeClientContext.notify(methods.client.session.update, {
+      void client.notify(methods.client.session.update, {
         sessionId: this.currentSessionId,
         update: {
           sessionUpdate: 'agent_message_chunk',
@@ -421,7 +411,7 @@ export class AgyBridgeServer {
         update.tool_info?.parameters,
       );
       if (update.state === 'ACTIVE') {
-        void this.activeClientContext.notify(methods.client.session.update, {
+        void client.notify(methods.client.session.update, {
           sessionId: this.currentSessionId,
           update: {
             sessionUpdate: 'tool_call',
@@ -431,7 +421,7 @@ export class AgyBridgeServer {
           },
         });
       } else if (update.state === 'DONE') {
-        void this.activeClientContext.notify(methods.client.session.update, {
+        void client.notify(methods.client.session.update, {
           sessionId: this.currentSessionId,
           update: {
             sessionUpdate: 'tool_call_update',
@@ -450,7 +440,7 @@ export class AgyBridgeServer {
         });
       } else if (update.state === 'ERROR') {
         const errorMessage = update.tool_info?.error?.message;
-        void this.activeClientContext.notify(methods.client.session.update, {
+        void client.notify(methods.client.session.update, {
           sessionId: this.currentSessionId,
           update: {
             sessionUpdate: 'tool_call_update',
@@ -471,50 +461,40 @@ export class AgyBridgeServer {
     }
   }
 
-  private resolvePromptResult(result: AgyResultEvent['result']): void {
-    const isCancelled = this.isCancelled || result.error === 'interrupted';
+  private settlePrompt(run: AgyRun, result: AgyResultEvent['result']): void {
+    const cancelled = run.interrupted || result.error === 'interrupted';
     const abandonedTurn = (result.usage?.total_tokens ?? 0) === 0;
     const failed = result.status === 'ERROR' || abandonedTurn;
 
-    if (
-      failed
-      && !result.response
-      && !isCancelled
-      && this.activePromptRejecter
-    ) {
-      const rejecter = this.activePromptRejecter;
-      this.activePromptResolver = null;
-      this.activePromptRejecter = null;
-      this.activeClientContext = null;
-      this.isCancelled = false;
+    if (failed && !result.response && !cancelled) {
       const fallbackMessage =
         result.status === 'ERROR'
           ? 'AGY execution failed'
           : 'AGY abandoned the turn without producing a response';
-      rejecter(new Error(result.error || fallbackMessage));
+      this.takePendingPrompt(run)?.reject(new Error(result.error || fallbackMessage));
       return;
     }
 
-    if (!this.activePromptResolver) return;
+    this.resolvePrompt(run, cancelled ? 'cancelled' : 'end_turn', result.usage);
+  }
 
-    const stopReason: StopReason = isCancelled ? 'cancelled' : 'end_turn';
-    const response: PromptResponse = {
+  private resolvePrompt(run: AgyRun, stopReason: StopReason, usage?: AgyUsage): void {
+    this.takePendingPrompt(run)?.resolve({
       stopReason,
       usage: {
-        totalTokens: result.usage?.total_tokens ?? 0,
-        inputTokens: result.usage?.input_tokens ?? 0,
-        outputTokens: result.usage?.output_tokens ?? 0,
-        thoughtTokens: result.usage?.thinking_tokens ?? 0,
-        cachedReadTokens: result.usage?.cache_read_tokens ?? 0,
+        totalTokens: usage?.total_tokens ?? 0,
+        inputTokens: usage?.input_tokens ?? 0,
+        outputTokens: usage?.output_tokens ?? 0,
+        thoughtTokens: usage?.thinking_tokens ?? 0,
+        cachedReadTokens: usage?.cache_read_tokens ?? 0,
       },
-    };
+    });
+  }
 
-    const resolver = this.activePromptResolver;
-    this.activePromptResolver = null;
-    this.activePromptRejecter = null;
-    this.activeClientContext = null;
-    this.isCancelled = false;
-    resolver(response);
+  private takePendingPrompt(run: AgyRun): PendingPrompt | null {
+    const pending = run.pendingPrompt;
+    run.pendingPrompt = null;
+    return pending;
   }
 
   private waitForInitEvent(

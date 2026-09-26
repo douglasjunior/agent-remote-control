@@ -123,6 +123,13 @@ O bridge `agy-acp-bridge.ts` anuncia `loadSession: true`. O `session/load` reini
 com `--conversation <sessionId>` e adota esse ID; o histórico fica guardado no próprio agy e
 não é reenviado. O bridge expõe apenas a opção `model` (sem `thought_level`).
 
+Cada processo `agy` é uma execução (`AgyRun`) que guarda o próprio prompt pendente. Eventos
+`result`, `step_update` e `exit` de um processo só encerram o prompt dele. O `session/cancel`
+envia `SIGINT` e marca a execução como interrompida; o próximo prompt sobe um processo novo
+com `--conversation`, mesmo que o anterior ainda não tenha saído, e o processo interrompido
+recebe `SIGTERM`. Assim, um `exit` atrasado do processo antigo não cancela nem rejeita o prompt
+novo.
+
 ## Regras Prescritivas
 
 - **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias via `@Inject(IAgentPortFactory)` e `create()`.
