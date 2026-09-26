@@ -77,7 +77,8 @@ Estrutura imutável com o desfecho do turno:
 - `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, ou `'failed'` se abortado por erro;
 - `usage`: consumo de tokens da última rodada do CEO (`getLastRoundUsage()`); ausente quando o agente não informa ou a coleta falha;
 - `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha;
-- `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada.
+- `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada;
+- `attachments`: lista opcional de caminhos absolutos de arquivos locais existentes no disco extraídos da resposta final.
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 

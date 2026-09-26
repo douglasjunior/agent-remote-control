@@ -686,6 +686,100 @@ describe('DiscordMessageHandler', () => {
     );
   });
 
+  it('should attach files to single chunk completed turn result', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-999',
+      send: vi.fn().mockResolvedValue(progressMessage),
+    };
+
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'Here is the report.',
+      status: 'completed',
+      attachments: ['/path/to/report.pdf'],
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Get report',
+      content: '<@bot-123> Get report',
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(mockThread.send).toHaveBeenCalledWith({
+      content: 'Here is the report.',
+      files: ['/path/to/report.pdf'],
+    });
+  });
+
+  it('should attach files only to the last chunk of a multi-chunk response', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-999',
+      send: vi.fn().mockResolvedValue(progressMessage),
+    };
+
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'A'.repeat(3000),
+      status: 'completed',
+      attachments: ['/path/to/screenshot.png'],
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Long task with files',
+      content: '<@bot-123> Long task with files',
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(mockThread.send).toHaveBeenCalledWith('A'.repeat(2000));
+    expect(mockThread.send).toHaveBeenCalledWith({
+      content: 'A'.repeat(1000),
+      files: ['/path/to/screenshot.png'],
+    });
+  });
+
+  it('should send plain string message when attachments is empty array', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-999',
+      send: vi.fn().mockResolvedValue(progressMessage),
+    };
+
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'Task done.',
+      status: 'completed',
+      attachments: [],
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Get report',
+      content: '<@bot-123> Get report',
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(mockThread.send).toHaveBeenCalledWith('Task done.');
+  });
+
   it('should handle thrown error in execution and send friendly error message to thread', async () => {
     const mockThread = {
       id: 'thread-999',

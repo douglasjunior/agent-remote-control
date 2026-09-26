@@ -16,6 +16,13 @@ import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 
 
+vi.mock('node:fs', () => ({
+  existsSync: vi.fn().mockReturnValue(false),
+}));
+
+const { existsSync } = await import('node:fs');
+
+
 class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
@@ -720,6 +727,26 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.agentInfo?.modelName).toBe('Model Two');
       expect(result.agentInfo?.effortName).toBeUndefined();
+    });
+  });
+
+  describe('attachments extraction', () => {
+    it('should extract existing attachments from completed turn response', async () => {
+      vi.mocked(existsSync).mockImplementation(path => path === '/mock/workspace/screenshot.png');
+      stubAgentPort.mockResponses = ['Here is the screenshot: ![screen](screenshot.png)'];
+
+      const result = await useCase.execute(turnRequest({ workspacePath: '/mock/workspace' }));
+
+      expect(result.status).toBe('completed');
+      expect(result.attachments).toEqual(['/mock/workspace/screenshot.png']);
+    });
+
+    it('should omit attachments when none exist in response', async () => {
+      stubAgentPort.mockResponses = ['Plain response without images'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.attachments).toBeUndefined();
     });
   });
 });
