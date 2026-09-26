@@ -243,10 +243,18 @@ export class ExecuteAgentTurnUseCase {
         turn,
         session,
       );
+      const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${((Date.now() - startedAt) / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
       );
-      request.onDelegation?.({ ...event, phase: 'finished' });
+      request.onDelegation?.({
+        ...event,
+        phase: 'finished',
+        response,
+        agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
+        usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
+        durationMs,
+      });
       return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
       await delegatePort.closeSession().catch(() => undefined);
@@ -368,20 +376,23 @@ export class ExecuteAgentTurnUseCase {
     response: string;
     errorMessage?: string;
   }): Promise<TurnResult> {
-    const settings = await this.settingsStore.load();
-    const agentInfo: TurnAgentInfo = {
-      roleName: this.agentRegistry.getDisplayName(input.role),
-      agentName: input.ceoPort.agentName,
-      modelName: settings?.modelName ?? this.currentModelName(input.ceoPort),
-      effortName: settings?.effortName ?? undefined,
-    };
     return {
       sessionId: input.sessionId,
       response: input.response,
       status: input.status,
       errorMessage: input.errorMessage,
-      agentInfo,
+      agentInfo: await this.buildAgentInfo(input.ceoPort, input.role),
       usage: await input.ceoPort.getLastRoundUsage().catch(() => undefined),
+    };
+  }
+
+  private async buildAgentInfo(agentPort: IAgentPort, role: string): Promise<TurnAgentInfo> {
+    const settings = await this.settingsStore.load();
+    return {
+      roleName: this.agentRegistry.getDisplayName(role),
+      agentName: agentPort.agentName,
+      modelName: settings?.modelName ?? this.currentModelName(agentPort),
+      effortName: settings?.effortName ?? undefined,
     };
   }
 

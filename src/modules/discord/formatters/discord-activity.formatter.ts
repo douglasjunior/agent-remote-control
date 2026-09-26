@@ -49,6 +49,14 @@ export class DiscordActivityFormatter {
     return `🔀 **Tarefa delegada** ao agente **${event.roleName}** (\`${event.role}\`)${project} — ele assumiu a tarefa agora.`;
   }
 
+  formatDelegateResult(event: DelegationEvent & { phase: 'finished' }): string {
+    return `📋 **Resposta do agente ${event.roleName}** (\`${event.role}\`):\n${event.response.trim()}`;
+  }
+
+  formatDelegateFooter(event: DelegationEvent & { phase: 'finished' }): string {
+    return `${this.formatAgentFooter(event.agentInfo, event.usage)} · ⏱️ ${(event.durationMs / 1000).toFixed(1)}s`;
+  }
+
   formatDelegateProgressHeader(roleName: string): string {
     return `🤖 **Progresso — ${roleName}**:\n`;
   }

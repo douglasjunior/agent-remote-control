@@ -165,6 +165,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
     delegateStubPort.mockResponses = ['Done.'];
     agentRegistry.getDisplayName.mockImplementation((role: string) => `${role} name`);
+    const usage = { totalTokens: 40, inputTokens: 30, outputTokens: 10 };
+    delegateStubPort.usageToReturn = usage;
     const events: DelegationEvent[] = [];
 
     await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
@@ -172,7 +174,14 @@ describe('ExecuteAgentTurnUseCase', () => {
     const delegation = { round: 1, role: 'DEVELOPER', roleName: 'DEVELOPER name', projectName: 'my-app' };
     expect(events).toEqual([
       { ...delegation, phase: 'started' },
-      { ...delegation, phase: 'finished' },
+      {
+        ...delegation,
+        phase: 'finished',
+        response: 'Done.',
+        agentInfo: { roleName: 'DEVELOPER name', agentName: 'stub' },
+        usage,
+        durationMs: expect.any(Number),
+      },
     ]);
   });
 
@@ -422,6 +431,19 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.status).toBe('cancelled');
     expect(delegateStubPort.closeSessionCalls).toBe(1);
     expect(delegateStubPort.connected).toBe(false);
+  });
+
+  it('should report a finished delegation without usage when collecting it fails', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    delegateStubPort.mockResponses = ['Done.'];
+    delegateStubPort.usageErrorToThrow = new Error('usage unavailable');
+    const events: DelegationEvent[] = [];
+
+    await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+
+    const finished = events.find(event => event.phase === 'finished');
+    expect(finished).toMatchObject({ phase: 'finished', response: 'Done.' });
+    expect(finished && 'usage' in finished ? finished.usage : undefined).toBeUndefined();
   });
 
   it('should not report a finished delegation when the delegate is cancelled', async () => {

@@ -135,7 +135,7 @@ e formatadas pelo `DiscordActivityFormatter`:
 - **Delegação**: `onDelegation` encerra a mensagem de progresso atual com o estado final do
   feed, envia o aviso de `formatDelegation(event)` e abre uma nova mensagem de progresso com feed
   vazio. No `started`, o aviso diz qual agente assumiu, com nome e papel (ex.: `DEVELOPER`), e o projeto e o cabeçalho vira
-  `formatDelegateProgressHeader(roleName)`; no `finished`, o aviso diz que o CEO está revisando e o
+  `formatDelegateProgressHeader(roleName)`; no `finished`, a resposta do delegado é publicada com `formatDelegateResult(event)` e o rodapé `formatDelegateFooter(event)` (o mesmo de `formatAgentFooter` com agente, modelo, effort e tokens do delegado, mais `· ⏱️ <duração>`), particionada como as respostas finais, e o aviso diz que o CEO está revisando e o
   cabeçalho volta a `🤖 **Progresso do Agente**:`. Esses envios são encadeados na ordem dos
   eventos, e o handler aguarda a cadeia antes do `flush()` final. Se o envio falhar, o progresso
   segue na mensagem anterior.

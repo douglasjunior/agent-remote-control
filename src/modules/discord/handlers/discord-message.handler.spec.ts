@@ -446,7 +446,13 @@ describe('DiscordMessageHandler', () => {
         request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' });
         request.onDelegation?.({ ...delegation, phase: 'started' });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
-        request.onDelegation?.({ ...delegation, phase: 'finished' });
+        request.onDelegation?.({
+          ...delegation,
+          phase: 'finished',
+          response: 'Listed files.',
+          agentInfo: { roleName: 'Desenvolvedor', agentName: 'agy' },
+          durationMs: 3_000,
+        });
         request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' });
         return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
       };
@@ -459,13 +465,14 @@ describe('DiscordMessageHandler', () => {
         '⏳ *Iniciando processamento...*',
         '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
         '🤖 **Progresso — Desenvolvedor**:\n⏳ *Aguardando atividades...*',
+        '📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nListed files.\n-# 🤖 Desenvolvedor (agy) · 🧠 padrão · ⚡ padrão · ⏱️ 3.0s',
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
         '🤖 **Progresso do Agente**:\n⏳ *Aguardando atividades...*',
         'Done.',
       ]);
       expect(lastEdit(sentMessages[0]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Planning*');
       expect(lastEdit(sentMessages[2]!)).toBe('🤖 **Progresso — Desenvolvedor**:\n✅ **Concluído**: `ls`');
-      expect(lastEdit(sentMessages[4]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Reviewing*');
+      expect(lastEdit(sentMessages[5]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Reviewing*');
     });
 
     it('should keep the current progress message when a delegation cannot be announced', async () => {

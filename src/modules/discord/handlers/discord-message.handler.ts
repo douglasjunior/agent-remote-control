@@ -154,6 +154,13 @@ export class DiscordMessageHandler implements OnModuleInit {
         const message = previous.message.then(async (previousMessage) => {
           await this.renderProgress(previous);
           try {
+            if (event.phase === 'finished' && event.response.trim()) {
+              await this.sendChunks(
+                targetChannel!,
+                this.activityFormatter.formatDelegateResult(event),
+                this.activityFormatter.formatDelegateFooter(event),
+              );
+            }
             await targetChannel!.send(this.activityFormatter.formatDelegation(event));
             return await targetChannel!.send(`${header}⏳ *Aguardando atividades...*`) as ProgressMessage;
           } catch (error) {
