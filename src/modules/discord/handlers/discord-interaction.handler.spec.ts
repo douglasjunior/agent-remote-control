@@ -57,15 +57,18 @@ type InteractionOverrides = {
   commandName?: string;
   channelId?: string;
   channel?: unknown;
+  inGuild?: boolean;
   user?: unknown;
+  editReply?: ReturnType<typeof vi.fn>;
   deferred?: boolean;
   replied?: boolean;
   reply?: ReturnType<typeof vi.fn>;
   followUp?: ReturnType<typeof vi.fn>;
 };
 
-function buildInteraction(overrides: InteractionOverrides = {}): ChatInputCommandInteraction {
+function buildInteraction({ inGuild = true, ...overrides }: InteractionOverrides = {}): ChatInputCommandInteraction {
   const interaction = {
+    inGuild: vi.fn().mockReturnValue(inGuild),
     isChatInputCommand: vi.fn().mockReturnValue(true),
     commandName: 'cancel',
     channelId: 'channel-123',
@@ -175,7 +178,7 @@ describe('DiscordInteractionHandler', () => {
     it('should use the parent channel and thread ids inside a thread', async () => {
       const interaction = buildInteraction({
         channelId: 'thread-777',
-        channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'parent-channel-456' },
+        channel: { id: 'thread-777', isThread: vi.fn().mockReturnValue(true), parentId: 'parent-channel-456' },
       });
 
       await handler.handleInteraction(interaction);
@@ -187,7 +190,7 @@ describe('DiscordInteractionHandler', () => {
     it('should fall back to the thread id when the thread has no parent', async () => {
       const interaction = buildInteraction({
         channelId: 'thread-777',
-        channel: { isThread: vi.fn().mockReturnValue(true), parentId: undefined },
+        channel: { id: 'thread-777', isThread: vi.fn().mockReturnValue(true), parentId: null },
       });
 
       await handler.handleInteraction(interaction);
@@ -268,41 +271,77 @@ describe('DiscordInteractionHandler', () => {
   });
 
   describe('/model', () => {
-    it('should defer and publish the model list for the conversation', async () => {
-      const interaction = buildInteraction({
-        commandName: 'model',
-        channelId: 'thread-1',
-        channel: { isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
-      });
+    const optionsText = '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model 1';
+
+    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+      commandName: 'model',
+      editReply: vi.fn().mockResolvedValue({ startThread }),
+    });
+
+    it('should open the selection in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const startThread = vi.fn().mockResolvedValue(thread);
+      const interaction = guildChannelInteraction(startThread);
 
       await handler.handleInteraction(interaction);
 
       expect(interaction.deferReply).toHaveBeenCalledWith();
-      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
-      expect(interaction.editReply).toHaveBeenCalledWith({
-        content: '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model 1',
-      });
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o modelo na thread abaixo.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de modelo', autoArchiveDuration: 60 });
+      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'selection-thread' }]);
+      expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
 
-    it('should explain when the agent exposes no models', async () => {
+    it('should explain inside the new thread when the agent exposes no models', async () => {
       orchestratorService.selectionResult = { kind: 'unavailable' };
-      const interaction = buildInteraction({ commandName: 'model' });
+      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
+
+      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+
+      expect(thread.send).toHaveBeenCalledWith('ℹ️ O agente atual não expõe modelos para seleção.');
+    });
+
+    it('should report the failure when the thread cannot be created', async () => {
+      const interaction = guildChannelInteraction(vi.fn().mockRejectedValue(new Error('Missing Permissions')));
 
       await handler.handleInteraction(interaction);
 
-      expect(interaction.editReply).toHaveBeenCalledWith({
-        content: 'ℹ️ O agente atual não expõe modelos para seleção.',
+      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(interaction.editReply).toHaveBeenLastCalledWith({
+        content: '❌ **Falha ao abrir a seleção de modelo**: Missing Permissions',
       });
     });
 
-    it('should report failures listing the models', async () => {
+    it('should publish the options in the current thread', async () => {
+      const interaction = buildInteraction({
+        commandName: 'model',
+        channelId: 'thread-1',
+        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
+    });
+
+    it('should publish the options in a direct message', async () => {
+      const interaction = buildInteraction({ commandName: 'model', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'dm-1', threadId: undefined }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
+    });
+
+    it('should report failures starting the selection', async () => {
       orchestratorService.throwError = true;
-      const interaction = buildInteraction({ commandName: 'model' });
+      const interaction = buildInteraction({ commandName: 'model', inGuild: false, channel: null });
 
       await handler.handleInteraction(interaction);
 
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao listar os modelos**: agent down',
+        content: '❌ **Falha ao abrir a seleção de modelo**: agent down',
       });
     });
   });

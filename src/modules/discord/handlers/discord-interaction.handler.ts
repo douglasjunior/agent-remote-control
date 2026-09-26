@@ -3,15 +3,15 @@ import {
   type ChatInputCommandInteraction,
   Events,
   type Interaction,
-  type ThreadChannel,
 } from 'discord.js';
 
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 
 
-type ConversationKey = { readonly channelId: string; readonly threadId?: string };
+type SelectionTarget = ConversationKey & { readonly publish: (content: string) => Promise<void> };
 
 @Injectable()
 export class DiscordInteractionHandler implements OnModuleInit {
@@ -49,7 +49,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     try {
-      const { channelId, threadId } = this.resolveConversation(interaction);
+      const { channelId, threadId } = resolveConversationKey(interaction.channelId, interaction.channel);
       this.logCommand(interaction, channelId, threadId);
 
       const selectionCancelled = await this.orchestratorService.cancelConfigSelection(channelId, threadId);
@@ -71,24 +71,47 @@ export class DiscordInteractionHandler implements OnModuleInit {
     interaction: ChatInputCommandInteraction,
   ): Promise<void> {
     try {
-      const { channelId, threadId } = this.resolveConversation(interaction);
-      this.logCommand(interaction, channelId, threadId);
-
       await interaction.deferReply();
-      const result = await this.orchestratorService.startConfigSelection(channelId, threadId);
+      const target = await this.openSelectionTarget(interaction);
+      this.logCommand(interaction, target.channelId, target.threadId);
 
-      await this.respond(
-        interaction,
+      const result = await this.orchestratorService.startConfigSelection(target.channelId, target.threadId);
+
+      await target.publish(
         result.kind === 'selection'
           ? this.activityFormatter.formatSelection(result.selection)
           : 'ℹ️ O agente atual não expõe modelos para seleção.',
-        false,
       );
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /model command: ${errorMessage}`);
-      await this.respond(interaction, `❌ **Falha ao listar os modelos**: ${errorMessage}`, false);
+      await this.respond(interaction, `❌ **Falha ao abrir a seleção de modelo**: ${errorMessage}`, false);
     }
+  }
+
+  /**
+   * In a guild channel the options go to a new bot-owned thread, so answers without a mention
+   * stay inside that thread instead of capturing every message of the channel.
+   */
+  private async openSelectionTarget(interaction: ChatInputCommandInteraction): Promise<SelectionTarget> {
+    if (!interaction.inGuild() || interaction.channel?.isThread()) {
+      return {
+        ...resolveConversationKey(interaction.channelId, interaction.channel),
+        publish: content => this.respond(interaction, content, false),
+      };
+    }
+
+    const notice = await interaction.editReply({ content: '🧵 Escolha o modelo na thread abaixo.' });
+    const thread = await notice.startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 });
+    return {
+      channelId: interaction.channelId,
+      threadId: thread.id,
+      publish: async (content) => {
+        for (const chunk of this.activityFormatter.splitMessage(content)) {
+          await thread.send(chunk);
+        }
+      },
+    };
   }
 
   private cancelReply(turnCancelled: boolean, selectionCancelled: boolean): string {
@@ -99,16 +122,6 @@ export class DiscordInteractionHandler implements OnModuleInit {
       return '🛑 **Seleção de modelo cancelada.**';
     }
     return 'ℹ️ Não há nenhum turno em andamento para cancelar.';
-  }
-
-  private resolveConversation(interaction: ChatInputCommandInteraction): ConversationKey {
-    if (!interaction.channel?.isThread()) {
-      return { channelId: interaction.channelId };
-    }
-    return {
-      channelId: (interaction.channel as ThreadChannel).parentId ?? interaction.channelId,
-      threadId: interaction.channelId,
-    };
   }
 
   private logCommand(

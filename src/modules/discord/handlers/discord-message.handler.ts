@@ -1,5 +1,5 @@
 import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
-import { Events, type Message, type ThreadChannel } from 'discord.js';
+import { type ClientUser, Events, type Message } from 'discord.js';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
@@ -8,6 +8,7 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { ActivityFeed } from '../utils/activity-feed.util.js';
+import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 
 
@@ -15,6 +16,8 @@ const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
 const DISCORD_MESSAGE_LIMIT = 2000;
 
 type SendableChannel = { send: (content: any) => Promise<any> };
+
+type Conversation = ConversationKey & { readonly target: SendableChannel };
 
 @Injectable()
 export class DiscordMessageHandler implements OnModuleInit {
@@ -42,76 +45,27 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
 
     const clientUser = this.discordClientService.getClient().user;
-    if (!clientUser) {
-      return;
-    }
-
-    const isDirectMessage =
-      typeof message.channel?.isDMBased === 'function'
-      && message.channel.isDMBased();
-    const isThread =
-      typeof message.channel?.isThread === 'function'
-      && message.channel.isThread();
-    const isBotMentioned = message.mentions.has(clientUser, {
-      ignoreEveryone: true,
-      ignoreRoles: true,
-    });
-    const isManagedThread =
-      isThread && (message.channel.ownerId === clientUser.id || isBotMentioned);
-
-    const isChannelSelectionAnswer =
-      !isDirectMessage
-      && !isManagedThread
-      && !isBotMentioned
-      && (await this.orchestratorService.hasActiveConfigSelection(message.channelId));
-
-    if (!isDirectMessage && !isManagedThread && !isBotMentioned && !isChannelSelectionAnswer) {
+    if (!clientUser || !(await this.acceptsMessage(message, clientUser))) {
       return;
     }
 
     let targetChannel: SendableChannel | null = null;
-    let thread: ThreadChannel | null = null;
 
     try {
-      let channelId: string;
-      let threadId: string | undefined;
-
-      if (isDirectMessage || isChannelSelectionAnswer) {
-        if (
-          !('send' in message.channel)
-          || typeof message.channel.send !== 'function'
-        ) {
-          return;
-        }
-        channelId = message.channelId;
-        threadId = undefined;
-        targetChannel = message.channel as unknown as SendableChannel;
-      } else if (isThread) {
-        thread = message.channel as ThreadChannel;
-        channelId = thread.parentId ?? thread.id;
-        threadId = thread.id;
-        targetChannel = thread;
-      } else {
-        const threadTitle =
-          message.cleanContent.slice(0, 50).trim() || 'Agent Session';
-        thread = await message.startThread({
-          name: threadTitle,
-          autoArchiveDuration: 60,
-        });
-        channelId = message.channelId;
-        threadId = thread.id;
-        targetChannel = thread;
+      const conversation = await this.openConversation(message);
+      if (!conversation) {
+        return;
       }
+      const { channelId, threadId } = conversation;
+      targetChannel = conversation.target;
 
-      const rawPrompt = isDirectMessage || isChannelSelectionAnswer
-        ? message.content.trim()
-        : this.cleanPrompt(message.content, clientUser.id);
+      const rawPrompt = this.cleanPrompt(message.content, clientUser.id);
       const authorName = message.author?.username ?? 'user';
       const authorId = message.author?.id ?? 'unknown';
 
       if (!rawPrompt) {
         this.logger.log(
-          `[Empty Prompt] Received empty message from @${authorName} in ${isDirectMessage ? 'DM' : 'Channel'} ${message.channelId}`,
+          `[Empty Prompt] Received empty message from @${authorName} in channel=${channelId}, thread=${threadId ?? 'none'}`,
         );
         await targetChannel.send(
           'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
@@ -120,7 +74,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
 
       this.logger.log(
-        `[Message Received] From @${authorName} (${authorId}) in ${isDirectMessage ? 'DM' : 'Channel'} (${channelId}): "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"`,
+        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"`,
       );
 
       const resolution = await this.orchestratorService.resolveInput({
@@ -218,6 +172,41 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       }
     }
+  }
+
+  private async acceptsMessage(message: Message, bot: ClientUser): Promise<boolean> {
+    const isBotMentioned = message.mentions.has(bot, {
+      ignoreEveryone: true,
+      ignoreRoles: true,
+    });
+    if (isBotMentioned || message.channel?.isDMBased()) {
+      return true;
+    }
+    if (!message.channel?.isThread()) {
+      return false;
+    }
+    if (message.channel.ownerId === bot.id) {
+      return true;
+    }
+    const { channelId, threadId } = resolveConversationKey(message.channelId, message.channel);
+    return this.orchestratorService.hasActiveConfigSelection(channelId, threadId);
+  }
+
+  private async openConversation(message: Message): Promise<Conversation | null> {
+    if (message.channel.isDMBased()) {
+      if (!('send' in message.channel)) {
+        return null;
+      }
+      return { channelId: message.channelId, target: message.channel };
+    }
+    if (message.channel.isThread()) {
+      return { ...resolveConversationKey(message.channelId, message.channel), target: message.channel };
+    }
+    const thread = await message.startThread({
+      name: message.cleanContent.slice(0, 50).trim() || 'Agent Session',
+      autoArchiveDuration: 60,
+    });
+    return { channelId: message.channelId, threadId: thread.id, target: thread };
   }
 
   private async sendTurnResult(targetChannel: SendableChannel, result: TurnResult): Promise<void> {
