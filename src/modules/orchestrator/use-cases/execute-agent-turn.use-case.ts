@@ -67,54 +67,28 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     request: TurnRequest,
   ): Promise<TurnResult> {
-    let session = this.newSession(request);
-    let prompt = request.prompt;
+    let session: SessionContext | undefined;
     const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
-      this.buildResult({ session, ceoPort, role: request.agentRole, status, response, errorMessage });
+      this.buildResult({ sessionId: session?.sessionId, ceoPort, role: request.agentRole, status, response, errorMessage });
 
     try {
-      session = await this.resolveSession(request, session);
+      session = await this.resolveSession(request);
       this.logger.log(
         `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
       );
-
-      for (let round = 1; round <= this.MAX_DELEGATION_ROUNDS; round++) {
-        const { response, decision } = await this.runCeoTurn(ceoPort, prompt, request, turn, session);
-
-        if (decision.kind === 'invalid') {
-          return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
-        }
-
-        if (decision.kind === 'direct_response') {
-          return await finish('completed', response);
-        }
-
-        if (decision.kind === 'done') {
-          return await finish('completed', decision.summary);
-        }
-
-        if (round === this.MAX_DELEGATION_ROUNDS) {
-          break;
-        }
-        prompt = await this.delegate(session, decision.delegation, request, round, turn);
-      }
-
-      return await finish(
-        'failed',
-        'Limite de delegação atingido.',
-        'Max delegation rounds exceeded.',
-      );
+      return await this.runDelegationLoop(session, ceoPort, turn, request, finish);
     } catch (error) {
+      const sessionLabel = session?.sessionId ?? 'none';
       if (
         error instanceof PromptCancelledError
         || (error instanceof Error && error.name === 'PromptCancelledError')
       ) {
-        this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${session.sessionId}`);
+        this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${sessionLabel}`);
         return finish('cancelled', ceoPort.lastAgentMessage || '');
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[Turn Failed] Session=${session.sessionId}: ${errorMessage}`);
+      this.logger.error(`[Turn Failed] Session=${sessionLabel}: ${errorMessage}`);
 
       const result = await finish('failed', ceoPort.lastAgentMessage || '', errorMessage);
       await ceoPort.disconnect().catch(() => undefined);
@@ -122,24 +96,55 @@ export class ExecuteAgentTurnUseCase {
     }
   }
 
-  private newSession(request: TurnRequest): SessionContext {
-    const now = new Date();
-    return {
-      sessionId: randomUUID(),
-      channelId: request.channelId,
-      threadId: request.threadId,
-      userId: request.userId,
-      workspacePath: request.workspacePath,
-      agentRole: request.agentRole,
-      agentSessions: [],
-      createdAt: now,
-      updatedAt: now,
-    };
+  private async runDelegationLoop(
+    session: SessionContext,
+    ceoPort: IAgentPort,
+    turn: ActiveTurn,
+    request: TurnRequest,
+    finish: (status: TurnStatus, response: string, errorMessage?: string) => Promise<TurnResult>,
+  ): Promise<TurnResult> {
+    let prompt = request.prompt;
+    for (let round = 1; ; round++) {
+      const { response, decision } = await this.runCeoTurn(ceoPort, prompt, request, turn, session);
+
+      if (decision.kind === 'invalid') {
+        return finish('failed', response, `Invalid CEO response: ${decision.reason}`);
+      }
+
+      if (decision.kind === 'direct_response') {
+        return finish('completed', response);
+      }
+
+      if (decision.kind === 'done') {
+        return finish('completed', decision.summary);
+      }
+
+      if (round === this.MAX_DELEGATION_ROUNDS) {
+        return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
+      }
+
+      prompt = await this.delegate(session, decision.delegation, request, round, turn);
+    }
   }
 
-  private async resolveSession(request: TurnRequest, fallback: SessionContext): Promise<SessionContext> {
+  private async resolveSession(request: TurnRequest): Promise<SessionContext> {
     const existing = await this.sessionStore.findSession(request.channelId, request.threadId);
-    const session = existing ? { ...existing, updatedAt: new Date() } : fallback;
+    const now = new Date();
+
+    const session: SessionContext = existing
+      ? { ...existing, updatedAt: now }
+      : {
+        sessionId: randomUUID(),
+        channelId: request.channelId,
+        threadId: request.threadId,
+        userId: request.userId,
+        workspacePath: request.workspacePath,
+        agentRole: request.agentRole,
+        agentSessions: [],
+        createdAt: now,
+        updatedAt: now,
+      };
+
     await this.sessionStore.saveSession(session);
     return session;
   }
@@ -337,7 +342,7 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async buildResult(input: {
-    session: SessionContext;
+    sessionId?: string;
     ceoPort: IAgentPort;
     role: string;
     status: TurnStatus;
@@ -352,7 +357,7 @@ export class ExecuteAgentTurnUseCase {
       effortName: settings?.effortName ?? undefined,
     };
     return {
-      sessionId: input.session.sessionId,
+      sessionId: input.sessionId,
       response: input.response,
       status: input.status,
       errorMessage: input.errorMessage,

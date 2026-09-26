@@ -6,7 +6,8 @@ import type { TurnAgentInfo } from './turn-agent-info.model.js';
 export type TurnStatus = 'completed' | 'cancelled' | 'failed';
 
 export type TurnResult = {
-  sessionId: string;
+  // Absent when the turn failed before its session was opened.
+  sessionId?: string;
   response: string;
   status: TurnStatus;
   usage?: AgentUsage;

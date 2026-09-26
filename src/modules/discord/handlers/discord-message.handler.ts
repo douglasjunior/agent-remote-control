@@ -229,7 +229,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       this.logger.log(
         `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars`,
       );
-      await this.sendWithFooter(
+      await this.sendChunks(
         targetChannel,
         result.response || '✅ *Tarefa concluída sem mensagem de resposta.*',
         footer,
@@ -241,34 +241,26 @@ export class DiscordMessageHandler implements OnModuleInit {
       this.logger.warn(
         `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
       );
-      await this.sendWithFooter(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer);
+      await this.sendChunks(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer);
       return;
     }
 
     this.logger.error(
-      `[Turn Failed] Turn execution failed for session ${result.sessionId}: ${result.errorMessage}`,
+      `[Turn Failed] Turn execution failed for session ${result.sessionId ?? 'none'}: ${result.errorMessage}`,
     );
-    await this.sendWithFooter(
+    await this.sendChunks(
       targetChannel,
       `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
       footer,
     );
   }
 
-  private async sendWithFooter(targetChannel: SendableChannel, text: string, footer: string): Promise<void> {
-    if (!footer) {
-      await this.sendChunks(targetChannel, text);
-      return;
-    }
-    const chunks = this.activityFormatter.splitMessage(text, DISCORD_MESSAGE_LIMIT - footer.length - 1);
+  private async sendChunks(targetChannel: SendableChannel, content: string, footer = ''): Promise<void> {
+    const limit = footer ? DISCORD_MESSAGE_LIMIT - footer.length - 1 : DISCORD_MESSAGE_LIMIT;
+    const chunks = this.activityFormatter.splitMessage(content, limit);
     for (const [index, chunk] of chunks.entries()) {
-      await targetChannel.send(index === chunks.length - 1 ? `${chunk}\n${footer}` : chunk);
-    }
-  }
-
-  private async sendChunks(targetChannel: SendableChannel, content: string): Promise<void> {
-    for (const chunk of this.activityFormatter.splitMessage(content)) {
-      await targetChannel.send(chunk);
+      const isLast = index === chunks.length - 1;
+      await targetChannel.send(isLast && footer ? `${chunk}\n${footer}` : chunk);
     }
   }
 
