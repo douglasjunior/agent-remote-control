@@ -83,6 +83,7 @@ da narração.
 
 - Atua como revisor de código e auditor sênior estritamente opinativo, focado em segurança, boas práticas, legibilidade, concisão e prevenção de regressões;
 - Nunca implementa correções nem edita arquivos de código diretamente: aponta achados com severidade (`CRITICAL`, `MAJOR`, `MINOR`, `SUGGESTION`), linha/arquivo e sugestão concisa de solução;
+- Quando a revisão envolve um Pull Request (PR), sugere proativamente ao final do relatório a publicação dos achados como comentários no PR e solicita ao usuário que indique quais achados (por número, severidade ou todos) deseja publicar;
 - Executa ferramentas de leitura, linter ou testes apenas para inspeção quando necessário;
 - Opera por padrão em sessão nova (`defaultSessionMode: 'new'`) para auditar código sem viés de implementações anteriores ou contexto prévio acumulado;
 - Possui o lembrete `CODE_REVIEWER_TURN_REMINDER` configurado em sua definição, reforçando que é apenas revisor e não executor.
