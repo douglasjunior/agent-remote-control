@@ -780,6 +780,43 @@ describe('DiscordMessageHandler', () => {
     expect(mockThread.send).toHaveBeenCalledWith('Task done.');
   });
 
+  it('should fall back to sending plain text message when sending with attachments fails', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-999',
+      send: vi
+        .fn()
+        .mockResolvedValueOnce(progressMessage)
+        .mockRejectedValueOnce(new Error('File could not be found'))
+        .mockResolvedValueOnce(undefined),
+    };
+
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'Here is the report.',
+      status: 'completed',
+      attachments: ['/path/to/invalid-folder'],
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Get report',
+      content: '<@bot-123> Get report',
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(mockThread.send).toHaveBeenCalledWith({
+      content: 'Here is the report.',
+      files: ['/path/to/invalid-folder'],
+    });
+    expect(mockThread.send).toHaveBeenCalledWith('Here is the report.');
+  });
+
   it('should handle thrown error in execution and send friendly error message to thread', async () => {
     const mockThread = {
       id: 'thread-999',
