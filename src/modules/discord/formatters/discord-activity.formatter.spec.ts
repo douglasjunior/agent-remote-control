@@ -285,6 +285,12 @@ describe('DiscordActivityFormatter', () => {
       ).toBe('-# 🤖 CEO (agy) · 🧠 Deep Model · ⚡ High');
     });
 
+    const finishedDetails = {
+      response: 'Done.',
+      agentInfo: { roleName: 'Desenvolvedor', agentName: 'agy', modelName: 'Deep Model', effortName: 'High' },
+      durationMs: 42_100,
+    };
+
     it('should announce a delegation with and without a project', () => {
       const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor' };
 
@@ -294,9 +300,35 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatDelegation({ ...delegation, phase: 'started' })).toBe(
         '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) — ele assumiu a tarefa agora.',
       );
-      expect(formatter.formatDelegation({ ...delegation, phase: 'finished' })).toBe(
+      expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished' })).toBe(
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
       );
+    });
+
+    it('should present the delegate response with its name and role', () => {
+      expect(
+        formatter.formatDelegateResult({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          ...finishedDetails,
+          phase: 'finished',
+          response: '\nLogin implemented.\n',
+        }),
+      ).toBe('📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nLogin implemented.');
+    });
+
+    it('should show the delegate model, effort, tokens and duration in its footer', () => {
+      expect(
+        formatter.formatDelegateFooter({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          ...finishedDetails,
+          phase: 'finished',
+          usage: { totalTokens: 12_345, inputTokens: 10_000, outputTokens: 2_345 },
+        }),
+      ).toBe('-# 🤖 Desenvolvedor (agy) · 🧠 Deep Model · ⚡ High · 🪙 12.3k tokens · ⏱️ 42.1s');
     });
 
     it('should name the delegate in its progress header', () => {

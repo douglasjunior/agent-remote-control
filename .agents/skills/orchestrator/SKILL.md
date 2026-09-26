@@ -58,7 +58,7 @@ Encapsula os parâmetros para execução de uma rodada de interação:
 - `onActivity`: callback opcional `(activity: AgentActivity) => void` para consumo reativo de pensamentos e ferramentas;
 - `onTextChunk`: callback opcional `(chunk: string) => void` para streaming progressivo da resposta;
 - `onQueued`: callback opcional `() => void` chamado quando o turno entra na fila atrás de outro turno da mesma conversa.
-- `onDelegation`: callback opcional `(event: DelegationEvent) => void` (`delegation-event.model.ts`), chamado com `phase: 'started'` antes de o delegado trabalhar e `phase: 'finished'` quando ele conclui com sucesso; carrega `round`, `role`, `roleName` e `projectName?`.
+- `onDelegation`: callback opcional `(event: DelegationEvent) => void` (`delegation-event.model.ts`), chamado com `phase: 'started'` antes de o delegado trabalhar e `phase: 'finished'` quando ele conclui com sucesso; carrega `round`, `role`, `roleName` e `projectName?`. O `finished` traz também `response`, `agentInfo` e `usage` do delegado e `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
