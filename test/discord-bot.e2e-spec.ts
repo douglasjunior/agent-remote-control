@@ -23,7 +23,7 @@ import { DiscordClientService } from '../src/modules/discord/services/discord-cl
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
 
 
-const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ padrão';
+const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ padrão · 🪙 150 tokens';
 
 class E2EAgentFake implements Partial<IAgentPort> {
   readonly agentName = 'agy';
@@ -517,7 +517,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
     expect(sent).toContain('✅ **Configuração salva**: 🧠 Model Two · ⚡ Low');
-    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (agy) · 🧠 Model Two · ⚡ Low');
+    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (agy) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
     expect(agents.some(agent => agent.prompts.some(prompt => prompt.endsWith('Build it')))).toBe(true);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
       modelId: 'two',
