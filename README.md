@@ -103,7 +103,6 @@ Parâmetros suportados:
 | Variável | Descrição | Onde Obter no Discord | Padrão |
 |---|---|---|---|
 | `DISCORD_BOT_TOKEN` | Token secreto do bot | Aba **Bot** > Seção *Token* > Botão **Redefinir token** (*Reset Token*) | *(Obrigatório)* |
-| `DISCORD_CLIENT_ID` | ID do aplicativo do bot | Aba **Informações gerais** (*General Information*) > Campo **ID DO APLICATIVO** (*Application ID*) | *(Obrigatório)* |
 | `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
 | `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
 | `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o modelo/effort escolhidos) | Configuração local da máquina | `./data` |
@@ -117,11 +116,9 @@ Parâmetros suportados:
 
 Para que o bot do Discord consiga autenticar, escutar mensagens, responder em canais privados (DM) ou criar threads em servidores:
 
-### Passo 1: Criar o Aplicativo e Obter o `DISCORD_CLIENT_ID`
+### Passo 1: Criar o Aplicativo
 1. Acesse o [Discord Developer Portal](https://discord.com/developers/applications) e clique em **New Application** (ou **Criar**).
 2. Dê um nome ao seu aplicativo (ex.: `Agent Remote Control`).
-3. No menu lateral esquerdo, clique em **Informações gerais** (*General Information*).
-4. No campo **ID DO APLICATIVO** (*Application ID*), clique no botão **Copiar** e cole no seu `.env` como `DISCORD_CLIENT_ID`.
 
 ### Passo 2: Configurar o Bot, Obter o `DISCORD_BOT_TOKEN` e Ativar as Intents
 1. No menu lateral esquerdo, clique em **Bot**.
