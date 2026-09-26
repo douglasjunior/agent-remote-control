@@ -19,6 +19,6 @@ import { PrepareWorkspaceUseCase } from './use-cases/prepare-workspace.use-case.
     },
     PrepareWorkspaceUseCase,
   ],
-  exports: [IGitPort, IWorkspacePort, PrepareWorkspaceUseCase],
+  exports: [IWorkspacePort],
 })
 export class WorkspaceModule {}
