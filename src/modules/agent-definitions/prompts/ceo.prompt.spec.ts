@@ -21,16 +21,14 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Markers go inside the final response block');
   });
 
-  it('should define the CEO as a leader who delegates instead of executing work', () => {
+  it('should define the CEO as a leader of the agent team', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('You are the CEO.');
-    expect(CEO_SYSTEM_PROMPT).toContain('You do not execute work yourself.');
     expect(CEO_SYSTEM_PROMPT).toContain('DEVELOPER');
   });
 
-  it('should delegate planning and analysis instead of writing plans itself', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('never inspect a codebase, analyze a technical problem, or write an implementation plan');
-    expect(CEO_SYSTEM_PROMPT).toContain('When the user asks for a plan, an analysis, or a design, delegate it');
-    expect(CEO_SYSTEM_PROMPT).not.toContain('such as a plan');
+  it('should handle a task itself only when no agent is capable of it', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Delegation comes first.');
+    expect(CEO_SYSTEM_PROMPT).toContain('Only when no agent is capable of it do you handle the task yourself, as a last resort.');
   });
 
   it('should not include execution abilities', () => {
