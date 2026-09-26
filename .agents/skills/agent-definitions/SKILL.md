@@ -41,7 +41,8 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 - `name`: rótulo legível do agente;
 - `description`: resumo descritivo de especialidade e propósito;
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
-- `defaultModel`: modelo de linguagem padrão opcional associado à persona.
+- `defaultModel`: modelo de linguagem padrão opcional associado à persona;
+- `turnReminder`: lembrete de turno opcional injetado no prompt de cada rodada do agente.
 
 ## Prompts do Sistema Especializados
 
@@ -64,10 +65,11 @@ da narração.
 ### 2. CEO (`ceo.prompt.ts`)
 
 - Lidera o time de agentes e conversa diretamente com o usuário;
-- Prioriza a delegação: antes de executar qualquer tarefa, procura no time um agente cuja descrição a cubra e delega a ele. Só executa a tarefa por conta própria, em último caso, quando nenhum agente é capaz dela;
+- Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
+- Possui o lembrete `CEO_TURN_REMINDER` configurado em sua definição, reforçando o papel de orquestração pura e o contrato dos marcadores a cada turno;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
 - Não incorpora habilidades de execução (`PLAN_ABILITY`, `GIT_ABILITY`), pois as instruções delas são de quem executa.
 
@@ -77,6 +79,7 @@ A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/
 
 - `getSystemPrompt(agentRole: string)`: resolve a definição de forma case-insensitive e chama `buildSystemPrompt` com todas as outras definições registradas. Papéis não registrados recebem um prompt genérico;
 - `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
+- `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), ou `undefined`;
 - `hasRole(agentRole: string)`: indica, de forma case-insensitive, se o papel está registrado;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;
 - `getAllDefinitions()`: lista todas as definições registradas;

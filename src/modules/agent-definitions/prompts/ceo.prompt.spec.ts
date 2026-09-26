@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 
-import { buildCeoSystemPrompt } from './ceo.prompt.js';
+import { buildCeoSystemPrompt, CEO_TURN_REMINDER } from './ceo.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
@@ -26,9 +26,18 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('DEVELOPER');
   });
 
-  it('should handle a task itself only when no agent is capable of it', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Delegation comes first.');
-    expect(CEO_SYSTEM_PROMPT).toContain('Only when no agent is capable of it do you handle the task yourself, as a last resort.');
+  it('should enforce pure orchestration and prohibit direct technical execution', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Fundamental Role: Pure Orchestration');
+    expect(CEO_SYSTEM_PROMPT).toContain('You NEVER execute technical work directly.');
+    expect(CEO_SYSTEM_PROMPT).toContain('All hands-on technical work must be delegated to specialized agents from Your Team.');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('Only when no agent is capable of it do you handle the task yourself');
+  });
+
+  it('should define CEO_TURN_REMINDER with role reminder and delegation protocol', () => {
+    expect(CEO_TURN_REMINDER).toContain('strictly an orchestrator, planner, and reviewer');
+    expect(CEO_TURN_REMINDER).toContain('NEVER execute technical tasks');
+    expect(CEO_TURN_REMINDER).toContain('[DELEGATE:ROLE:project-folder]');
+    expect(CEO_TURN_REMINDER).toContain('[DONE]');
   });
 
   it('should not include execution abilities', () => {

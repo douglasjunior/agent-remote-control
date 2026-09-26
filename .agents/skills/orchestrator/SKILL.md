@@ -133,10 +133,11 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `getDefaultModel(agentRole: string): string | undefined`
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
+- `getTurnReminder(agentRole: string): string | undefined`: lembrete opcional injetado ao final de cada prompt do turno
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
-prompts completos de cada papel (`CEO`, `DEVELOPER`) e devolve um prompt genérico para
+prompts completos de cada papel (`CEO`, `DEVELOPER`), fornece lembretes de turno e devolve um prompt genérico para
 papéis desconhecidos.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
@@ -208,7 +209,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 1. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(conversationKey, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
 2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'` sem `sessionId`.
 3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
-   1. Executa o turno do CEO com `cwd = request.workspacePath`.
+   1. Executa o turno do CEO com `cwd = request.workspacePath` (anexando o `getTurnReminder` do papel ao prompt quando definido).
    2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.

@@ -3,6 +3,7 @@ export interface IAgentRegistryPort {
   getDefaultModel(agentRole: string): string | undefined;
   getDisplayName(agentRole: string): string;
   hasRole(agentRole: string): boolean;
+  getTurnReminder?(agentRole: string): string | undefined;
 }
 
 export const IAgentRegistryPort = Symbol('IAgentRegistryPort');
