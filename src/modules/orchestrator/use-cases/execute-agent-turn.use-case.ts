@@ -362,6 +362,7 @@ export class ExecuteAgentTurnUseCase {
       status: input.status,
       errorMessage: input.errorMessage,
       agentInfo,
+      usage: await input.ceoPort.getLastRoundUsage().catch(() => undefined),
     };
   }
 

@@ -96,8 +96,9 @@ reaberta com `/model`. O estado fica por conversa (canal + thread).
 ## Rodapé das Respostas
 
 Todo desfecho de turno com `TurnResult.agentInfo` recebe o rodapé
-`formatAgentFooter(info)`: `-# 🤖 <papel> (<agente>) · 🧠 <modelo> · ⚡ <effort>`, com `padrão`
-quando o modelo ou o effort não são conhecidos.
+`formatAgentFooter(info, usage?)`: `-# 🤖 <papel> (<agente>) · 🧠 <modelo> · ⚡ <effort>`, com `padrão`
+quando o modelo ou o effort não são conhecidos. Com `TurnResult.usage`, o rodapé termina em
+`· 🪙 <total> tokens`, abreviado em `k`/`M`.
 
 Todo desfecho é particionado com `splitMessage(texto, 2000 - footer.length - 1)`, e o rodapé vai
 numa nova linha do último chunk. Isso vale também para a falha, porque o `errorMessage` pode

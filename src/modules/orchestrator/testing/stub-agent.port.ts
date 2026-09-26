@@ -26,6 +26,7 @@ export class StubAgentPort implements IAgentPort {
   steeringPrompts: string[] = [];
   configCalls: AgentConfig[] = [];
   usageToReturn: AgentUsage | undefined = undefined;
+  usageErrorToThrow: Error | null = null;
   updatesToYield: AgentUpdate[] = [];
   errorToThrowOnPrompt: Error | null = null;
   errorToThrowOnConnect: Error | null = null;
@@ -127,6 +128,9 @@ export class StubAgentPort implements IAgentPort {
   }
 
   async getLastRoundUsage(): Promise<AgentUsage | undefined> {
+    if (this.usageErrorToThrow) {
+      throw this.usageErrorToThrow;
+    }
     return this.usageToReturn;
   }
 }

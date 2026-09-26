@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
 import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
@@ -40,8 +40,9 @@ export class DiscordActivityFormatter {
     return null;
   }
 
-  formatAgentFooter(info: TurnAgentInfo): string {
-    return `-# 🤖 ${info.roleName} (${info.agentName}) · 🧠 ${info.modelName ?? DEFAULT_LABEL} · ⚡ ${info.effortName ?? DEFAULT_LABEL}`;
+  formatAgentFooter(info: TurnAgentInfo, usage?: AgentUsage): string {
+    const footer = `-# 🤖 ${info.roleName} (${info.agentName}) · 🧠 ${info.modelName ?? DEFAULT_LABEL} · ⚡ ${info.effortName ?? DEFAULT_LABEL}`;
+    return usage ? `${footer} · 🪙 ${this.formatTokenCount(usage.totalTokens)} tokens` : footer;
   }
 
   formatSelection(selection: AgentConfigSelection): string {
@@ -61,6 +62,16 @@ export class DiscordActivityFormatter {
 
   formatConfigured(settings: AgentSettings): string {
     return `✅ **Configuração salva**: 🧠 ${settings.modelName} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  private formatTokenCount(tokens: number): string {
+    if (tokens >= 1_000_000) {
+      return `${(tokens / 1_000_000).toFixed(1)}M`;
+    }
+    if (tokens >= 1_000) {
+      return `${(tokens / 1_000).toFixed(1)}k`;
+    }
+    return String(tokens);
   }
 
   splitMessage(content: string, maxLength = 2000): string[] {

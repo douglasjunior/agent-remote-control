@@ -833,6 +833,21 @@ describe('DiscordMessageHandler', () => {
       expect(sent.every(text => text.length <= 2000)).toBe(true);
     });
 
+    it('should show the token usage in the footer', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.mockResult = {
+        sessionId: 'session-1',
+        response: 'Done.',
+        status: 'completed',
+        agentInfo,
+        usage: { totalTokens: 12_345, inputTokens: 10_000, outputTokens: 2_345 },
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenLastCalledWith(`Done.\n${footer} · 🪙 12.3k tokens`);
+    });
+
     it('should split a long failure message and keep the footer on the last chunk', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = {

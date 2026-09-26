@@ -291,6 +291,19 @@ describe('DiscordActivityFormatter', () => {
       );
     });
 
+    it.each([
+      [850, '850'],
+      [12_345, '12.3k'],
+      [2_500_000, '2.5M'],
+    ])('should append the token usage %i to the footer', (totalTokens, label) => {
+      expect(
+        formatter.formatAgentFooter(
+          { roleName: 'CEO', agentName: 'agy' },
+          { totalTokens, inputTokens: 0, outputTokens: 0 },
+        ),
+      ).toBe(`-# 🤖 CEO (agy) · 🧠 padrão · ⚡ padrão · 🪙 ${label} tokens`);
+    });
+
     it('should list the model options', () => {
       expect(formatter.formatSelection(selection)).toBe(
         [

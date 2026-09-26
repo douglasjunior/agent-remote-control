@@ -211,7 +211,7 @@ export class DiscordMessageHandler implements OnModuleInit {
 
   private async sendTurnResult(targetChannel: SendableChannel, result: TurnResult): Promise<void> {
     const footer = result.agentInfo
-      ? this.activityFormatter.formatAgentFooter(result.agentInfo)
+      ? this.activityFormatter.formatAgentFooter(result.agentInfo, result.usage)
       : '';
 
     if (result.status === 'completed') {
