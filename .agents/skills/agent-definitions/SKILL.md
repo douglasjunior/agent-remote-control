@@ -64,7 +64,7 @@ da narração.
 ### 2. CEO (`ceo.prompt.ts`)
 
 - Lidera o time de agentes e conversa diretamente com o usuário;
-- Não executa trabalho: não edita código, não clona repositórios, não instala dependências, não roda builds ou testes e não commita. Todo trabalho prático é delegado;
+- Não executa trabalho: não edita código, não clona repositórios, não instala dependências, não roda builds ou testes e não commita. Também não inspeciona código, não analisa problemas técnicos e não escreve planos de implementação, designs ou especificações técnicas. Todo trabalho prático, inclusive o planejamento, é delegado, e o CEO repassa ao usuário o plano produzido pelo agente;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;

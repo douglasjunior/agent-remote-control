@@ -27,6 +27,12 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('DEVELOPER');
   });
 
+  it('should delegate planning and analysis instead of writing plans itself', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('never inspect a codebase, analyze a technical problem, or write an implementation plan');
+    expect(CEO_SYSTEM_PROMPT).toContain('When the user asks for a plan, an analysis, or a design, delegate it');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('such as a plan');
+  });
+
   it('should not include execution abilities', () => {
     expect(CEO_SYSTEM_PROMPT).not.toContain('Plan Mode & Codebase Inspection');
   });
