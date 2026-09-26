@@ -121,7 +121,9 @@ O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e pro
 
 O bridge `agy-acp-bridge.ts` anuncia `loadSession: true`. O `session/load` reinicia o `agy`
 com `--conversation <sessionId>` e adota esse ID; o histórico fica guardado no próprio agy e
-não é reenviado. O bridge expõe apenas a opção `model` (sem `thought_level`).
+não é reenviado. Se o evento `init` trouxer outro `conversation_id`, o agy abriu uma conversa
+nova: o bridge encerra o processo e rejeita o `session/load`, e o orquestrador cria e persiste
+uma sessão nova. O bridge expõe apenas a opção `model` (sem `thought_level`).
 
 Cada processo `agy` é uma execução (`AgyRun`) que guarda o próprio prompt pendente. Eventos
 `result`, `step_update` e `exit` de um processo só encerram o prompt dele. O `session/cancel`

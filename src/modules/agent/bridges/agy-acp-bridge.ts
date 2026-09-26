@@ -112,11 +112,12 @@ export class AgyBridgeServer {
 
   async newSession(params: { readonly cwd: string }) {
     this.currentCwd = params.cwd;
-    const { sessionId } = await this.startAgyProcess(params.cwd);
+    const { conversationId } = await this.startAgyProcess(params.cwd);
+    this.currentSessionId = conversationId;
     const models = await this.getModels();
 
     return {
-      sessionId,
+      sessionId: conversationId,
       configOptions: this.buildConfigOptions(models),
     };
   }
@@ -126,7 +127,13 @@ export class AgyBridgeServer {
     readonly sessionId: string;
   }) {
     this.currentCwd = params.cwd;
-    await this.startAgyProcess(params.cwd, params.sessionId);
+    const { run, conversationId } = await this.startAgyProcess(params.cwd, params.sessionId);
+    if (conversationId !== params.sessionId) {
+      this.terminateRun(run);
+      throw new Error(
+        `AGY resumed a different conversation (requested=${params.sessionId}, got=${conversationId})`,
+      );
+    }
     this.currentSessionId = params.sessionId;
     const models = await this.getModels();
 
@@ -286,7 +293,7 @@ export class AgyBridgeServer {
   private async startAgyProcess(
     cwd: string,
     resumeConversationId?: string,
-  ): Promise<{ readonly run: AgyRun; readonly sessionId: string }> {
+  ): Promise<{ readonly run: AgyRun; readonly conversationId: string }> {
     this.terminateRun(this.run);
 
     const agyBin = process.env.AGY_PATH || 'agy';
@@ -342,10 +349,7 @@ export class AgyBridgeServer {
       throw error;
     }
     this.activeModel = initEvent.init.model;
-    if (!resumeConversationId) {
-      this.currentSessionId = initEvent.conversation_id;
-    }
-    return { run, sessionId: this.currentSessionId ?? initEvent.conversation_id };
+    return { run, conversationId: initEvent.conversation_id };
   }
 
   private terminateRun(run: AgyRun | null): void {

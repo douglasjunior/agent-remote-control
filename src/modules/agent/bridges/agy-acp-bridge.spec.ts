@@ -159,6 +159,26 @@ describe('AgyBridgeServer', () => {
       );
     });
 
+    it('should reject and stop agy when it resumes a different conversation', async () => {
+      const server = new AgyBridgeServer();
+
+      const loadPromise = server.loadSession({
+        cwd: '/test/cwd',
+        sessionId: 'conv-previous',
+      });
+      lastSpawnedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"init","conversation_id":"conv-fresh","init":{"model":"gemini-3.8-flash-low","cwd":"/test/cwd","tools":[]}}\n',
+        ),
+      );
+
+      await expect(loadPromise).rejects.toThrow(
+        'AGY resumed a different conversation (requested=conv-previous, got=conv-fresh)',
+      );
+      expect(lastSpawnedProc?.kill).toHaveBeenCalledWith('SIGTERM');
+    });
+
     it('should propagate agy startup failures', async () => {
       const server = new AgyBridgeServer();
 
