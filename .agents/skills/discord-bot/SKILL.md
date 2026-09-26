@@ -127,7 +127,8 @@ e formatadas pelo `DiscordActivityFormatter`:
   na thread, mantida pelo `ActivityFeed` (`utils/activity-feed.util.ts`):
   - Atividades são *upserts* por chave (`thought:<id>`, `tool:<toolCallId>`). Um `thought` chega
     com o texto acumulado a cada chunk e um `tool` a cada mudança de status; ambos atualizam a
-    própria entrada. `thought` com `removed` remove a entrada.
+    própria entrada. `thought` com `removed` remove a entrada; o demux remove assim a mensagem que
+    carrega o envelope `<final_response>`, para que a resposta final não apareça também no progresso.
   - `render(header)` exibe as 8 entradas mais recentes que couberem em 2000 caracteres
     (limite de conteúdo do Discord), preservando o final de uma entrada maior que o limite.
   - O log registra cada `thought` uma única vez, ao receber `final`.

@@ -11,6 +11,7 @@ import {
   extractAgentTextChunk,
   extractToolCallFields,
   extractToolResultSummary,
+  splitFinalResponse,
 } from './agent-stream-demux.js';
 
 
@@ -493,6 +494,87 @@ describe('AgentStreamDemux', () => {
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
     expect(thoughts(emitted)).toHaveLength(0);
+  });
+});
+
+describe('AgentStreamDemux final response envelope', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should remove the streamed answer from the feed and return only the envelope content', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(textNotif('<final_', 'm1'));
+    demux.handle(textNotif('response>All ', 'm1'));
+    demux.handle(textNotif('done.</final_response>', 'm1'));
+
+    expect(thoughts(emitted)).toEqual([
+      { kind: 'thought', id: 'm1', text: '<final_' },
+      { kind: 'thought', id: 'm1', text: '', removed: true },
+    ]);
+    expect(demux.lastAgentMessage).toBe('All done.');
+    expect(demux.takeFinalText()).toBe('All done.');
+  });
+
+  it('should keep the prose before the envelope in the feed', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(textNotif('Wrapping up. <final_response>Report', 'm1'));
+
+    expect(thoughts(emitted)).toEqual([{ kind: 'thought', id: 'm1', text: 'Wrapping up.', final: true }]);
+    expect(demux.takeFinalText()).toBe('Report');
+  });
+
+  it('should keep earlier narration in the feed and out of the final text', () => {
+    const { demux, emitted } = createDemux(IDLE_MS);
+
+    demux.handle(textNotif('Reading the code.', 'm1'));
+    demux.handle(textNotif('<final_response>Fixed.</final_response>', 'm2'));
+    vi.advanceTimersByTime(IDLE_MS);
+    demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
+
+    expect(thoughts(emitted)).toEqual([
+      { kind: 'thought', id: 'm1', text: 'Reading the code.' },
+      { kind: 'thought', id: 'm2', text: '', removed: true },
+      { kind: 'thought', id: 'm1', text: 'Reading the code.', final: true },
+    ]);
+    expect(demux.takeFinalText()).toBe('Fixed.');
+  });
+
+  it('should ignore the envelope inside thought chunks', () => {
+    const { demux } = createDemux();
+
+    demux.handle(thoughtNotif('<final_response>draft</final_response>', 't1'));
+    demux.handle(textNotif('Plain answer.', 'm1'));
+
+    expect(demux.takeFinalText()).toBe('Plain answer.');
+  });
+
+  it('should join the content of every envelope', () => {
+    const { demux } = createDemux();
+
+    demux.handle(textNotif('<final_response>Part one.</final_response>', 'm1'));
+    demux.handle(textNotif('<final_response> </final_response><final_response>Part two.</final_response>', 'm2'));
+
+    expect(demux.takeFinalText()).toBe('Part one.\n\nPart two.');
+  });
+});
+
+describe('splitFinalResponse', () => {
+  it('should separate prose from closed and unclosed envelopes', () => {
+    expect(splitFinalResponse('a<final_response>b</final_response>c<final_response>d')).toEqual({
+      prose: 'ac',
+      answers: ['b', 'd'],
+    });
+  });
+
+  it('should return the whole text as prose without envelopes', () => {
+    expect(splitFinalResponse('plain')).toEqual({ prose: 'plain', answers: [] });
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { DEVELOPER_SYSTEM_PROMPT } from './developer.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
 describe('developer.prompt', () => {
@@ -13,6 +14,10 @@ describe('developer.prompt', () => {
   it('should integrate abilities into Developer prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Plan Mode & Codebase Inspection');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Git Version Control & Commit Conventions');
+  });
+
+  it('should require the final answer inside the final response block', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
   });
 
   it('should confine the developer to its project folder', () => {

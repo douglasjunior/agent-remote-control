@@ -47,6 +47,12 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 
 Os prompts especializados residem em `src/modules/agent-definitions/prompts/`:
 
+Todo prompt de agente termina com `FINAL_RESPONSE_INSTRUCTIONS` (`final-response.prompt.ts`): a
+resposta final do turno vem uma única vez dentro de `<final_response>…</final_response>`
+(`agent/constants/final-response.constant.ts`), e o texto fora dele é só narração de progresso.
+Um novo agente precisa incluir esse bloco, porque o demux usa o envelope para separar a resposta
+da narração.
+
 ### 1. Developer Agent (`developer.prompt.ts`)
 
 - Atua como engenheiro de software sênior autônomo, adaptável a qualquer linguagem, stack ou arquitetura;
@@ -61,7 +67,7 @@ Os prompts especializados residem em `src/modules/agent-definitions/prompts/`:
 - Não executa trabalho: não edita código, não clona repositórios, não instala dependências, não roda builds ou testes e não commita. Todo trabalho prático é delegado;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
-- Delega via protocolo de marcadores usando um papel do time e revisa cada resultado antes de concluir;
+- Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
 - Não incorpora habilidades de execução (`PLAN_ABILITY`, `GIT_ABILITY`), pois as instruções delas são de quem executa.
 
