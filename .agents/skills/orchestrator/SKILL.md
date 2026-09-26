@@ -74,7 +74,7 @@ Estrutura imutável com o desfecho do turno:
 - `sessionId`: identificador da sessão processada; ausente quando o turno falha antes de abrir a sessão;
 - `response`: resposta textual final consolidada;
 - `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, ou `'failed'` se abortado por erro;
-- `usage`: dados opcionais de consumo de tokens (`AgentUsage`);
+- `usage`: consumo de tokens da última rodada do CEO (`getLastRoundUsage()`); ausente quando o agente não informa ou a coleta falha;
 - `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha;
 - `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada.
 

@@ -111,6 +111,26 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
   });
 
+  it('should report the token usage of the last CEO round', async () => {
+    const usage = { totalTokens: 165, inputTokens: 100, outputTokens: 65 };
+    stubAgentPort.usageToReturn = usage;
+    stubAgentPort.mockResponses = ['Hi.'];
+
+    const result = await useCase.execute(turnRequest());
+
+    expect(result.usage).toEqual(usage);
+  });
+
+  it('should omit the token usage when collecting it fails', async () => {
+    stubAgentPort.usageErrorToThrow = new Error('usage unavailable');
+    stubAgentPort.mockResponses = ['Hi.'];
+
+    const result = await useCase.execute(turnRequest());
+
+    expect(result.status).toBe('completed');
+    expect(result.usage).toBeUndefined();
+  });
+
   it('should delegate to a new agent in the project folder and feed its result back to the CEO', async () => {
     stubAgentPort.mockResponses = ['Implement login.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
     delegateStubPort.mockResponses = ['Login implemented.'];
