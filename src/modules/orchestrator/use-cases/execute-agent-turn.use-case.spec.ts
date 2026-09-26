@@ -17,10 +17,10 @@ import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 
 
 vi.mock('node:fs', () => ({
-  existsSync: vi.fn().mockReturnValue(false),
+  statSync: vi.fn().mockReturnValue({ isFile: () => false }),
 }));
 
-const { existsSync } = await import('node:fs');
+const { statSync } = await import('node:fs');
 
 
 class StubAgentRegistryPort implements IAgentRegistryPort {
@@ -732,7 +732,9 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   describe('attachments extraction', () => {
     it('should extract existing attachments from completed turn response', async () => {
-      vi.mocked(existsSync).mockImplementation(path => path === '/mock/workspace/screenshot.png');
+      vi.mocked(statSync).mockImplementation(path => ({
+        isFile: () => path === '/mock/workspace/screenshot.png',
+      } as any));
       stubAgentPort.mockResponses = ['Here is the screenshot: ![screen](screenshot.png)'];
 
       const result = await useCase.execute(turnRequest({ workspacePath: '/mock/workspace' }));

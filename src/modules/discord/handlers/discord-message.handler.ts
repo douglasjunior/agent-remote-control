@@ -306,7 +306,14 @@ export class DiscordMessageHandler implements OnModuleInit {
       const messageContent = isLast && footer ? `${chunk}\n${footer}` : chunk;
 
       if (isLast && attachments && attachments.length > 0) {
-        await targetChannel.send({ content: messageContent, files: [...attachments] });
+        try {
+          await targetChannel.send({ content: messageContent, files: [...attachments] });
+        } catch (error) {
+          this.logger.warn(
+            `[Attachment Fallback] Failed to send attachments, falling back to text only: ${String(error)}`,
+          );
+          await targetChannel.send(messageContent);
+        }
       } else {
         await targetChannel.send(messageContent);
       }

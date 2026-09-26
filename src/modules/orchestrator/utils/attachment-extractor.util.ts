@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 
 
@@ -36,7 +36,7 @@ export function extractAttachments(text: string, baseDir?: string): string[] {
       : decodedTarget;
 
     try {
-      if (existsSync(resolvedPath)) {
+      if (statSync(resolvedPath).isFile()) {
         if (!seen.has(resolvedPath)) {
           seen.add(resolvedPath);
           attachments.push(resolvedPath);
