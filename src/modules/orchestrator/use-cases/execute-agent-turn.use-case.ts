@@ -107,9 +107,7 @@ export class ExecuteAgentTurnUseCase {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Turn Failed] Session=${sessionLabel}: ${errorMessage}`);
 
-      const result = await finish('failed', ceoPort.lastAgentMessage || '', errorMessage);
-      await ceoPort.disconnect().catch(() => undefined);
-      return result;
+      return finish('failed', ceoPort.lastAgentMessage || '', errorMessage);
     }
   }
 
@@ -292,7 +290,7 @@ export class ExecuteAgentTurnUseCase {
       roleName: event.roleName,
       projectName: projectName ?? null,
       get taskSpec() {
-        return currentTaskSpec;
+        return pendingSteerSpec ?? currentTaskSpec;
       },
       cwd,
       startedAt,
@@ -324,6 +322,16 @@ export class ExecuteAgentTurnUseCase {
             session,
             effectiveSessionMode,
           );
+          if (pendingSteerSpec !== null) {
+            this.logger.log(
+              `[Delegation Steered via Reprompt] Role=${delegateToRole}, NewTask="${this.preview(pendingSteerSpec)}"`,
+            );
+            currentTaskSpec = pendingSteerSpec;
+            pendingSteerSpec = null;
+            effectiveSessionMode = 'resume';
+            delegationTurn.reset();
+            continue;
+          }
           const durationMs = Date.now() - startedAt;
           this.logger.log(
             `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,

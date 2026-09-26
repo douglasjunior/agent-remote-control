@@ -694,14 +694,14 @@ describe('ExecuteAgentTurnUseCase', () => {
       ]);
     });
 
-    it('should disconnect the CEO agent when the turn fails', async () => {
+    it('should keep the CEO agent connected when the turn fails', async () => {
       stubAgentPort.promptErrorToThrow = new Error('agent crashed');
       stubAgentPort.currentSessionId = 'session-live';
 
       await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.connected).toBe(false);
-      expect(stubAgentPort.currentSessionId).toBeUndefined();
+      expect(stubAgentPort.connected).toBe(true);
+      expect(stubAgentPort.currentSessionId).toBe('session-live');
     });
 
     it('should keep the CEO agent connected when the turn is cancelled', async () => {
@@ -928,6 +928,43 @@ describe('ExecuteAgentTurnUseCase', () => {
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
+      expect(delegateStubPort.promptCalls).toHaveLength(2);
+      expect(delegateStubPort.promptCalls[0]).toContain('Start initial task.');
+      expect(delegateStubPort.promptCalls[1]).toContain('Redirected task');
+    });
+
+    it('should reprompt on resumed session when agent completes before cancellation and expose pending taskSpec', async () => {
+      delegateStubPort.supportsSteering = false;
+      stubAgentPort.mockResponses = [
+        'Start initial task.\n[DELEGATE:DEVELOPER:my-app]',
+        'Great job.\n[DONE]',
+      ];
+
+      const conversationKey = buildConversationKey('ch-1');
+      let steerAttempted = false;
+      let observedPendingSpec: string | undefined;
+      delegateStubPort.prompt = async function* (text: string) {
+        delegateStubPort.promptCalls.push(text);
+        if (!steerAttempted) {
+          steerAttempted = true;
+          const activeDelegation = runtime.findActiveDelegation(conversationKey, 'DEVELOPER');
+          if (activeDelegation) {
+            await activeDelegation.steer('Redirected task');
+            observedPendingSpec = activeDelegation.taskSpec;
+          }
+        }
+        const response = delegateStubPort.mockResponses.shift();
+        if (response) {
+          delegateStubPort.lastAgentMessage = response;
+          yield { kind: 'text', text: response };
+        }
+      };
+      delegateStubPort.mockResponses = ['First round response', 'Task done after reprompt.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(observedPendingSpec).toBe('Redirected task');
       expect(delegateStubPort.promptCalls).toHaveLength(2);
       expect(delegateStubPort.promptCalls[0]).toContain('Start initial task.');
       expect(delegateStubPort.promptCalls[1]).toContain('Redirected task');
