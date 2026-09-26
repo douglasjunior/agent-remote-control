@@ -1226,4 +1226,199 @@ describe('DiscordMessageHandler', () => {
       expect(send).not.toHaveBeenCalled();
     });
   });
+
+  describe('typing indicator', () => {
+    it('should start typing indicator when turn starts and stop when completed', async () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      let typingCallsDuringTurn = 0;
+
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+        sendTyping,
+      } as unknown as ThreadChannel;
+
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Run task',
+        content: 'Run task',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async () => {
+        typingCallsDuringTurn = sendTyping.mock.calls.length;
+        return {
+          sessionId: 'session-1',
+          response: 'Done',
+          status: 'completed',
+        };
+      };
+
+      await handler.handleMessage(message);
+
+      expect(typingCallsDuringTurn).toBe(1);
+      const callsAfterTurn = sendTyping.mock.calls.length;
+
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(callsAfterTurn);
+    });
+
+    it('should keep typing indicator alive on activity', async () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+        sendTyping,
+      } as unknown as ThreadChannel;
+
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Run task',
+        content: 'Run task',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        vi.advanceTimersByTime(4 * 60 * 1000);
+        request.onActivity?.({ kind: 'thought', id: '1', text: 'thinking' });
+        vi.advanceTimersByTime(2 * 60 * 1000);
+        expect(sendTyping).toHaveBeenCalled();
+        return {
+          sessionId: 'session-1',
+          response: 'Done',
+          status: 'completed',
+        };
+      };
+
+      await handler.handleMessage(message);
+    });
+
+    it('should keep typing indicator alive on delegation', async () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+        sendTyping,
+      } as unknown as ThreadChannel;
+
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Run task',
+        content: 'Run task',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        vi.advanceTimersByTime(4 * 60 * 1000);
+        request.onDelegation?.({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          phase: 'started',
+        });
+        vi.advanceTimersByTime(2 * 60 * 1000);
+        expect(sendTyping).toHaveBeenCalled();
+        return {
+          sessionId: 'session-1',
+          response: 'Done',
+          status: 'completed',
+        };
+      };
+
+      await handler.handleMessage(message);
+    });
+
+    it('should stop typing indicator if executeTurn throws', async () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+        sendTyping,
+      } as unknown as ThreadChannel;
+
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Run task',
+        content: 'Run task',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async () => {
+        throw new Error('Fatal error');
+      };
+
+      await handler.handleMessage(message);
+
+      const callCount = sendTyping.mock.calls.length;
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(callCount);
+    });
+
+    it('should stop typing indicator when turn is cancelled', async () => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(progressMessage),
+        sendTyping,
+      } as unknown as ThreadChannel;
+
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Cancel task',
+        content: 'Cancel task',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async () => ({
+        sessionId: 'session-1',
+        response: '',
+        status: 'cancelled',
+      });
+
+      await handler.handleMessage(message);
+
+      const callCount = sendTyping.mock.calls.length;
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(callCount);
+    });
+  });
 });

@@ -11,6 +11,7 @@ import { DiscordClientService } from '../services/discord-client.service.js';
 import { ActivityFeed } from '../utils/activity-feed.util.js';
 import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
+import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.js';
 
 
 const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
@@ -18,6 +19,7 @@ const DISCORD_MESSAGE_LIMIT = 2000;
 
 type SendableChannel = {
   send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
+  sendTyping?: () => Promise<unknown>;
 };
 
 type Conversation = ConversationKey & { readonly target: SendableChannel };
@@ -121,7 +123,11 @@ export class DiscordMessageHandler implements OnModuleInit {
         header: PROGRESS_HEADER,
       };
 
+      const typing = new DiscordTypingIndicator(targetChannel);
+      typing.start();
+
       const onActivity = (activity: AgentActivity): void => {
+        typing.keepAlive();
         const key = this.activityKey(activity);
         if (!key) {
           return;
@@ -149,6 +155,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       };
 
       const onDelegation = (event: DelegationEvent): void => {
+        typing.keepAlive();
         const previous = progress;
         const header = event.phase === 'started'
           ? this.activityFormatter.formatDelegateProgressHeader(event.roleName)
@@ -173,21 +180,26 @@ export class DiscordMessageHandler implements OnModuleInit {
         progress = { message, feed: new ActivityFeed(), header };
       };
 
-      const result = await this.orchestratorService.executeTurn({
-        channelId,
-        threadId,
-        userId: message.author.id,
-        prompt,
-        workspacePath: this.workspacePort.getBaseDirectory(),
-        agentRole: 'CEO',
-        onActivity,
-        onDelegation,
-        onQueued: () => {
-          void progressMessage
-            .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
-            .catch(() => undefined);
-        },
-      });
+      let result: TurnResult;
+      try {
+        result = await this.orchestratorService.executeTurn({
+          channelId,
+          threadId,
+          userId: message.author.id,
+          prompt,
+          workspacePath: this.workspacePort.getBaseDirectory(),
+          agentRole: 'CEO',
+          onActivity,
+          onDelegation,
+          onQueued: () => {
+            void progressMessage
+              .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
+              .catch(() => undefined);
+          },
+        });
+      } finally {
+        typing.stop();
+      }
 
       await progress.message;
       await throttler.flush();
