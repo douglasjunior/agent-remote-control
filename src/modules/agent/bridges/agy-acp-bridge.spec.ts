@@ -1784,9 +1784,7 @@ describe('AgyBridgeServer', () => {
       lastSpawnedProc?.stdin.on('data', (chunk) => {
         stdinWritten += chunk.toString('utf8');
       });
-
-      await Promise.resolve();
-      await Promise.resolve();
+      await vi.waitFor(() => expect(stdinWritten).not.toBe(''));
 
       lastSpawnedProc?.stdout.emit(
         'data',
@@ -1801,6 +1799,72 @@ describe('AgyBridgeServer', () => {
         event: 'user',
         message: { content: 'Task 2' },
       });
+    });
+
+    it('should run the next prompt on a new process when the interrupted one has not exited yet', async () => {
+      const server = new AgyBridgeServer();
+      const client = createMockClientContext();
+      const init = '{"event":"init","conversation_id":"conv-123","init":{"model":"gemini-3.8-flash-low","cwd":"/test/cwd","tools":[]}}\n';
+
+      const sessionPromise = server.newSession({ cwd: '/test/cwd' });
+      lastSpawnedProc?.stdout.emit('data', Buffer.from(init));
+      await sessionPromise;
+      const interruptedProc = lastSpawnedProc;
+
+      const firstPrompt = server.prompt(
+        { sessionId: 'conv-123', prompt: [{ type: 'text', text: 'Task 1' }] },
+        client,
+      );
+      server.cancel();
+      interruptedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"result","result":{"conversation_id":"conv-123","status":"ERROR","response":"","error":"interrupted","num_turns":1,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}}\n',
+        ),
+      );
+      await expect(firstPrompt).resolves.toMatchObject({ stopReason: 'cancelled' });
+
+      let interruptedStdin = '';
+      interruptedProc?.stdin.on('data', (chunk) => {
+        interruptedStdin += chunk.toString('utf8');
+      });
+
+      const nextPrompt = server.prompt(
+        { sessionId: 'conv-123', prompt: [{ type: 'text', text: 'Task 2' }] },
+        client,
+      );
+      const restartedProc = lastSpawnedProc;
+      expect(restartedProc).not.toBe(interruptedProc);
+      expect(interruptedProc?.kill).toHaveBeenLastCalledWith('SIGTERM');
+      expect(mockSpawn).toHaveBeenLastCalledWith(
+        'agy',
+        expect.arrayContaining(['--conversation', 'conv-123']),
+        expect.objectContaining({ cwd: '/test/cwd' }),
+      );
+      let restartedStdin = '';
+      restartedProc?.stdin.on('data', (chunk) => {
+        restartedStdin += chunk.toString('utf8');
+      });
+      restartedProc?.stdout.emit('data', Buffer.from(init));
+      await vi.waitFor(() => expect(restartedStdin).not.toBe(''));
+
+      interruptedProc?.emit('exit', null, 'SIGINT');
+      interruptedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"result","result":{"conversation_id":"conv-123","status":"ERROR","response":"","error":"interrupted","num_turns":1,"usage":{"input_tokens":0,"output_tokens":0,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":0}}}\n',
+        ),
+      );
+      restartedProc?.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"event":"result","result":{"conversation_id":"conv-123","status":"SUCCESS","response":"Done 2","num_turns":1,"usage":{"input_tokens":10,"output_tokens":5,"thinking_tokens":0,"cache_read_tokens":0,"total_tokens":15}}}\n',
+        ),
+      );
+
+      await expect(nextPrompt).resolves.toMatchObject({ stopReason: 'end_turn' });
+      expect(JSON.parse(restartedStdin)).toEqual({ event: 'user', message: { content: 'Task 2' } });
+      expect(interruptedStdin).not.toContain('Task 2');
     });
 
     it('should resolve cancellation when process exits with SIGINT before result event', async () => {
