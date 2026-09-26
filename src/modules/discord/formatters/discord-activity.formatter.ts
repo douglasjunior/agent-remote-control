@@ -46,7 +46,7 @@ export class DiscordActivityFormatter {
       return `↩️ **${event.roleName} concluiu** — o CEO está revisando o resultado.`;
     }
     const project = event.projectName ? ` no projeto \`${event.projectName}\`` : '';
-    return `🔀 **Tarefa delegada** — agora é o agente **${event.roleName}** que está trabalhando${project}.`;
+    return `🔀 **Tarefa delegada** ao agente **${event.roleName}** (\`${event.role}\`)${project} — ele assumiu a tarefa agora.`;
   }
 
   formatDelegateProgressHeader(roleName: string): string {
