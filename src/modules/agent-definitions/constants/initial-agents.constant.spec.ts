@@ -15,6 +15,7 @@ describe('initial-agents.constant', () => {
     for (const definition of INITIAL_AGENT_DEFINITIONS) {
       expect(definition.name).toBeTruthy();
       expect(definition.description).toBeTruthy();
+      expect(definition.turnReminder).toBeTruthy();
       expect(definition.buildSystemPrompt([])).toBeTruthy();
     }
   });

@@ -28,7 +28,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
   hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER'].includes(role));
-  getTurnReminder = vi.fn().mockReturnValue(undefined);
+  getTurnReminder = vi.fn().mockReturnValue('');
 }
 
 class StubWorkspacePort implements IWorkspacePort {
@@ -159,9 +159,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.connected).toBe(false);
   });
 
-  it('should append turn reminder to CEO prompt when registered', async () => {
+  it('should append turn reminder to CEO and delegate prompts', async () => {
     agentRegistry.getTurnReminder.mockImplementation(
-      (role: string) => (role === 'CEO' ? 'CEO turn reminder' : undefined),
+      (role: string) => `${role} turn reminder`,
     );
     agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
     stubAgentPort.mockResponses = ['Implement login.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
@@ -174,7 +174,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       'CEO prompt\n\nAdd login\n\nCEO turn reminder',
       '[AGENT_RESULT:DEVELOPER]\nLogin implemented.\n\nCEO turn reminder',
     ]);
-    expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.']);
+    expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.\n\nDEVELOPER turn reminder']);
   });
 
   it('should run the delegate in the request workspace when no project is given', async () => {

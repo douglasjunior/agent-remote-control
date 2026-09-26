@@ -11,6 +11,7 @@ const developer: AgentDefinition = {
   name: 'Developer Agent',
   description: 'Writes code.',
   buildSystemPrompt: () => 'dev',
+  turnReminder: 'dev reminder',
 };
 
 const CEO_SYSTEM_PROMPT = buildCeoSystemPrompt([developer]);
@@ -71,6 +72,7 @@ describe('ceo.prompt', () => {
       name: 'Reviewer Agent',
       description: 'Reviews code.',
       buildSystemPrompt: () => 'rev',
+      turnReminder: 'rev reminder',
     };
 
     const prompt = buildCeoSystemPrompt([developer, reviewer]);
