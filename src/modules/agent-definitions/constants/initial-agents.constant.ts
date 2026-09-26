@@ -1,5 +1,5 @@
 import type { AgentDefinition } from '../models/agent-definition.model.js';
-import { buildCeoSystemPrompt } from '../prompts/ceo.prompt.js';
+import { buildCeoSystemPrompt, CEO_TURN_REMINDER } from '../prompts/ceo.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT } from '../prompts/developer.prompt.js';
 
 
@@ -10,6 +10,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'Leads the agent team: talks with the user, scopes requests, delegates all hands-on work, and reviews results.',
     buildSystemPrompt: buildCeoSystemPrompt,
+    turnReminder: CEO_TURN_REMINDER,
   },
   {
     role: 'DEVELOPER',

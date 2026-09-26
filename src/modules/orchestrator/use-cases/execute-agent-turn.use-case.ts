@@ -167,11 +167,12 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     session: SessionContext,
   ): Promise<{ response: string; decision: ValidatedDecision }> {
+    const reminder = this.agentRegistry.getTurnReminder?.(request.agentRole);
     const runCeo = (text: string) => this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
-      text,
+      reminder ? `${text}\n\n${reminder}` : text,
       request,
       turn,
       session,

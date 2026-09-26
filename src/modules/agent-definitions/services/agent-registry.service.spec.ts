@@ -88,6 +88,36 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('getTurnReminder', () => {
+    it('should return turn reminder for CEO role in case-insensitive manner', () => {
+      const reminderUpper = service.getTurnReminder('CEO');
+      const reminderLower = service.getTurnReminder('ceo');
+
+      expect(reminderUpper).toBeDefined();
+      expect(reminderLower).toBe(reminderUpper);
+      expect(reminderUpper).toContain('strictly an orchestrator');
+    });
+
+    it('should return undefined when agent has no turn reminder configured', () => {
+      expect(service.getTurnReminder('DEVELOPER')).toBeUndefined();
+    });
+
+    it('should return undefined for unknown role', () => {
+      expect(service.getTurnReminder('NON_EXISTENT')).toBeUndefined();
+    });
+
+    it('should return custom turn reminder for dynamically registered agent', () => {
+      service.registerDefinition({
+        role: 'CUSTOM',
+        name: 'Custom Agent',
+        description: 'Custom description',
+        buildSystemPrompt: () => 'prompt',
+        turnReminder: 'Custom turn reminder',
+      });
+      expect(service.getTurnReminder('custom')).toBe('Custom turn reminder');
+    });
+  });
+
   describe('getDefinition and getAllDefinitions', () => {
     it('should return definition by role name', () => {
       const def = service.getDefinition('DEVELOPER');

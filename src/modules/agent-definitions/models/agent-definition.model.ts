@@ -6,5 +6,6 @@ export interface AgentDefinition {
   readonly name: string;
   readonly description: string;
   readonly defaultModel?: string;
+  readonly turnReminder?: string;
   buildSystemPrompt(team: readonly AgentDefinition[]): string;
 }

@@ -36,6 +36,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole) !== undefined;
   }
 
+  getTurnReminder(agentRole: string): string | undefined {
+    return this.getDefinition(agentRole)?.turnReminder;
+  }
+
   getDefinition(roleOrId: string): AgentDefinition | undefined {
     return this.definitions.get(roleOrId.toUpperCase());
   }
