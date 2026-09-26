@@ -13,4 +13,5 @@ export type TurnResult = {
   usage?: AgentUsage;
   errorMessage?: string;
   agentInfo?: TurnAgentInfo;
+  attachments?: readonly string[];
 };

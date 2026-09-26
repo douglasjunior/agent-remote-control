@@ -16,7 +16,9 @@ import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
 const DISCORD_MESSAGE_LIMIT = 2000;
 
-type SendableChannel = { send: (content: any) => Promise<any> };
+type SendableChannel = {
+  send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
+};
 
 type Conversation = ConversationKey & { readonly target: SendableChannel };
 
@@ -267,6 +269,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         targetChannel,
         result.response || '✅ *Tarefa concluída sem mensagem de resposta.*',
         footer,
+        result.attachments,
       );
       return;
     }
@@ -275,7 +278,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       this.logger.warn(
         `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
       );
-      await this.sendChunks(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer);
+      await this.sendChunks(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer, result.attachments);
       return;
     }
 
@@ -286,15 +289,27 @@ export class DiscordMessageHandler implements OnModuleInit {
       targetChannel,
       `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
       footer,
+      result.attachments,
     );
   }
 
-  private async sendChunks(targetChannel: SendableChannel, content: string, footer = ''): Promise<void> {
+  private async sendChunks(
+    targetChannel: SendableChannel,
+    content: string,
+    footer = '',
+    attachments?: readonly string[],
+  ): Promise<void> {
     const limit = footer ? DISCORD_MESSAGE_LIMIT - footer.length - 1 : DISCORD_MESSAGE_LIMIT;
     const chunks = this.activityFormatter.splitMessage(content, limit);
     for (const [index, chunk] of chunks.entries()) {
       const isLast = index === chunks.length - 1;
-      await targetChannel.send(isLast && footer ? `${chunk}\n${footer}` : chunk);
+      const messageContent = isLast && footer ? `${chunk}\n${footer}` : chunk;
+
+      if (isLast && attachments && attachments.length > 0) {
+        await targetChannel.send({ content: messageContent, files: [...attachments] });
+      } else {
+        await targetChannel.send(messageContent);
+      }
     }
   }
 

@@ -108,6 +108,8 @@ trazer o stderr completo do agente:
 - **Cancelado**: `⚠️ **Turno cancelado pelo usuário.**`.
 - **Falha**: `❌ **Erro na execução**: <errorMessage>`.
 
+Quando `TurnResult.attachments` contiver arquivos locais existentes, eles são enviados no parâmetro `files` da última mensagem enviada.
+
 Uma exceção durante o processamento da mensagem é informada com
 `❌ **Ocorreu um erro ao processar sua solicitação:** <mensagem>`, também particionada; se esse
 envio falhar, a falha só é registrada em log.

@@ -23,6 +23,7 @@ import {
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
+import { extractAttachments } from '../utils/attachment-extractor.util.js';
 import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 
@@ -71,7 +72,15 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
-      this.buildResult({ sessionId: session?.sessionId, ceoPort, role: request.agentRole, status, response, errorMessage });
+      this.buildResult({
+        sessionId: session?.sessionId,
+        ceoPort,
+        role: request.agentRole,
+        status,
+        response,
+        errorMessage,
+        workspacePath: request.workspacePath,
+      });
 
     try {
       session = await this.resolveSession(request);
@@ -375,7 +384,9 @@ export class ExecuteAgentTurnUseCase {
     status: TurnStatus;
     response: string;
     errorMessage?: string;
+    workspacePath?: string;
   }): Promise<TurnResult> {
+    const attachments = extractAttachments(input.response, input.workspacePath);
     return {
       sessionId: input.sessionId,
       response: input.response,
@@ -383,6 +394,7 @@ export class ExecuteAgentTurnUseCase {
       errorMessage: input.errorMessage,
       agentInfo: await this.buildAgentInfo(input.ceoPort, input.role),
       usage: await input.ceoPort.getLastRoundUsage().catch(() => undefined),
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
   }
 
