@@ -27,7 +27,8 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
-  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER'].includes(role));
+  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER'].includes(role));
+  getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
   getTurnReminder = vi.fn().mockReturnValue('');
 }
 
@@ -616,6 +617,42 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(await storedAgentSessions()).toEqual([
         { role: 'CEO', sessionId: 'conv-old' },
         { role: 'DEVELOPER', sessionId: 'dev-old' },
+      ]);
+    });
+
+    it('should start a fresh delegate session when sessionMode is new in delegation marker', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'DEVELOPER', sessionId: 'dev-old' }],
+      }));
+      stubAgentPort.mockResponses = ['Fix it from scratch.\n[DELEGATE:DEVELOPER:my-app:new]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Fixed.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.loadSessionCalls).toHaveLength(0);
+      expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nFix it from scratch.']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', sessionId: 'conv-old' },
+        { role: 'DEVELOPER', sessionId: 'session-1' },
+      ]);
+    });
+
+    it('should start a fresh delegate session when persona defaults to new session mode', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'CODE_REVIEWER', sessionId: 'rev-old' }],
+      }));
+      stubAgentPort.mockResponses = ['Review it.\n[DELEGATE:CODE_REVIEWER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Reviewed.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.loadSessionCalls).toHaveLength(0);
+      expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nReview it.']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', sessionId: 'conv-old' },
+        { role: 'CODE_REVIEWER', sessionId: 'session-1' },
       ]);
     });
 

@@ -90,6 +90,23 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('getDefaultSessionMode', () => {
+    it('should return resume for DEVELOPER role in case-insensitive manner', () => {
+      expect(service.getDefaultSessionMode('developer')).toBe('resume');
+      expect(service.getDefaultSessionMode('DEVELOPER')).toBe('resume');
+    });
+
+    it('should return new for CODE_REVIEWER role in case-insensitive manner', () => {
+      expect(service.getDefaultSessionMode('code_reviewer')).toBe('new');
+      expect(service.getDefaultSessionMode('CODE_REVIEWER')).toBe('new');
+    });
+
+    it('should return resume as fallback for unknown role or agent without explicit mode', () => {
+      expect(service.getDefaultSessionMode('CEO')).toBe('resume');
+      expect(service.getDefaultSessionMode('UNKNOWN_ROLE')).toBe('resume');
+    });
+  });
+
   describe('getTurnReminder', () => {
     it('should return turn reminder for CEO role in case-insensitive manner', () => {
       const reminderUpper = service.getTurnReminder('CEO');

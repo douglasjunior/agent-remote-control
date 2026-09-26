@@ -223,7 +223,7 @@ export class ExecuteAgentTurnUseCase {
 
   private async delegate(
     session: SessionContext,
-    { delegateToRole, projectName, taskSpec, cwd }: ValidatedDelegation,
+    { delegateToRole, projectName, taskSpec, sessionMode, cwd }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
     turn: ActiveTurn,
@@ -242,6 +242,8 @@ export class ExecuteAgentTurnUseCase {
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
+    const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+
     try {
       const response = await this.runAgentTurn(
         delegatePort,
@@ -251,6 +253,7 @@ export class ExecuteAgentTurnUseCase {
         request,
         turn,
         session,
+        effectiveSessionMode,
       );
       const durationMs = Date.now() - startedAt;
       this.logger.log(
@@ -279,6 +282,7 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     turn: ActiveTurn,
     session: SessionContext,
+    sessionMode: 'resume' | 'new' = 'resume',
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
@@ -294,7 +298,9 @@ export class ExecuteAgentTurnUseCase {
       let fullPrompt = reminder ? `${prompt}\n\n${reminder}` : prompt;
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
-        const storedSessionId = latest.agentSessions.find(agentSession => agentSession.role === role)?.sessionId;
+        const storedSessionId = sessionMode === 'new'
+          ? undefined
+          : latest.agentSessions.find(agentSession => agentSession.role === role)?.sessionId;
         const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);

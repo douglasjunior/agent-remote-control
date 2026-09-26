@@ -27,11 +27,12 @@ agentes de desenvolvimento do sistema.
 A tipagem `AgentRole` define os papéis canônicos de agentes:
 
 ```typescript
-export type AgentRole = 'CEO' | 'DEVELOPER';
+export type AgentRole = 'CEO' | 'DEVELOPER' | 'CODE_REVIEWER';
 ```
 
 - **`CEO`**: Líder do time de agentes. Conversa com o usuário, faz a triagem, delega todo o trabalho prático aos demais agentes e revisa os resultados.
 - **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código, testes automatizados e operações de Git.
+- **`CODE_REVIEWER`**: Revisor de código crítico e independente, focado em inspecionar alterações e propor melhorias técnicas, aderência a convenções e prevenção de bugs sem viés de implementações anteriores.
 
 ### Contrato de Definição (`AgentDefinition`)
 
@@ -42,6 +43,7 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 - `description`: resumo descritivo de especialidade e propósito;
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
 - `defaultModel`: modelo de linguagem padrão opcional associado à persona;
+- `defaultSessionMode`: modo de sessão padrão (`'resume' | 'new'`, padrão `'resume'`). Quando `'new'`, o orquestrador inicia sempre uma nova sessão ACP para o agente;
 - `turnReminder`: lembrete de turno obrigatório (`string`) injetado no prompt de cada rodada do agente.
 
 ## Prompts do Sistema Especializados
@@ -74,12 +76,21 @@ da narração.
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
 - Não incorpora habilidades de execução (`PLAN_ABILITY`, `GIT_ABILITY`), pois as instruções delas são de quem executa.
 
+### 3. Code Reviewer Agent (`code-reviewer.prompt.ts`)
+
+- Atua como revisor de código e auditor sênior estritamente opinativo, focado em segurança, boas práticas, legibilidade, concisão e prevenção de regressões;
+- Nunca implementa correções nem edita arquivos de código diretamente: aponta achados com severidade (`CRITICAL`, `MAJOR`, `MINOR`, `SUGGESTION`), linha/arquivo e sugestão concisa de solução;
+- Executa ferramentas de leitura, linter ou testes apenas para inspeção quando necessário;
+- Opera por padrão em sessão nova (`defaultSessionMode: 'new'`) para auditar código sem viés de implementações anteriores ou contexto prévio acumulado;
+- Possui o lembrete `CODE_REVIEWER_TURN_REMINDER` configurado em sua definição, reforçando que é apenas revisor e não executor.
+
 ## Serviço de Registro (`AgentRegistryService`)
 
 A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/modules/orchestrator/ports/agent-registry.port.ts`:
 
 - `getSystemPrompt(agentRole: string)`: resolve a definição de forma case-insensitive e chama `buildSystemPrompt` com todas as outras definições registradas. Papéis não registrados recebem um prompt genérico;
 - `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
+- `getDefaultSessionMode(agentRole: string)`: retorna o modo de sessão padrão do papel (`'resume' | 'new'`), recorrendo a `'resume'` se não configurado ou desconhecido;
 - `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), ou texto padrão de fallback para papéis não registrados (sempre string, nunca null ou undefined);
 - `hasRole(agentRole: string)`: indica, de forma case-insensitive, se o papel está registrado;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;

@@ -30,6 +30,64 @@ describe('DelegationDetectorService', () => {
     });
   });
 
+  it('should detect delegate with role, project, and session mode new', () => {
+    const result = service.detect('Review diff.\n[DELEGATE:CODE_REVIEWER:my-app:new]');
+    expect(result).toEqual({
+      kind: 'delegate',
+      delegation: {
+        delegateToRole: 'CODE_REVIEWER',
+        projectName: 'my-app',
+        taskSpec: 'Review diff.',
+        sessionMode: 'new',
+      },
+    });
+  });
+
+  it('should detect delegate with role, project, and session mode resume', () => {
+    const result = service.detect('Continue task.\n[DELEGATE:DEVELOPER:my-app:resume]');
+    expect(result).toEqual({
+      kind: 'delegate',
+      delegation: {
+        delegateToRole: 'DEVELOPER',
+        projectName: 'my-app',
+        taskSpec: 'Continue task.',
+        sessionMode: 'resume',
+      },
+    });
+  });
+
+  it('should detect delegate with role and session mode without project folder', () => {
+    const resultColon = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER::new]');
+    expect(resultColon).toEqual({
+      kind: 'delegate',
+      delegation: {
+        delegateToRole: 'CODE_REVIEWER',
+        projectName: undefined,
+        taskSpec: 'Clean review.',
+        sessionMode: 'new',
+      },
+    });
+
+    const resultDirect = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER:new]');
+    expect(resultDirect).toEqual({
+      kind: 'delegate',
+      delegation: {
+        delegateToRole: 'CODE_REVIEWER',
+        projectName: undefined,
+        taskSpec: 'Clean review.',
+        sessionMode: 'new',
+      },
+    });
+  });
+
+  it('should reject delegation marker with invalid session mode', () => {
+    const result = service.detect('Task.\n[DELEGATE:DEVELOPER:my-app:invalid]');
+    expect(result).toEqual({
+      kind: 'invalid',
+      reason: expect.stringContaining('Session mode must be "new" or "resume"'),
+    });
+  });
+
   it('should detect done marker', () => {
     const result = service.detect('All finished.\n[DONE]');
     expect(result).toEqual({

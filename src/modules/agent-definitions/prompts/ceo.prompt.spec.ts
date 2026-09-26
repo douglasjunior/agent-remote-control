@@ -38,6 +38,7 @@ describe('ceo.prompt', () => {
     expect(CEO_TURN_REMINDER).toContain('strictly an orchestrator, planner, and reviewer');
     expect(CEO_TURN_REMINDER).toContain('NEVER execute technical tasks');
     expect(CEO_TURN_REMINDER).toContain('[DELEGATE:ROLE:project-folder]');
+    expect(CEO_TURN_REMINDER).toContain('[DELEGATE:ROLE:project-folder:new]');
     expect(CEO_TURN_REMINDER).toContain('[DONE]');
   });
 
