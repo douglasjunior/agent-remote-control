@@ -19,7 +19,6 @@ type ConversationRuntime = {
   tail: Promise<void>;
   pendingTurns: number;
   activeTurnsCount: number;
-  isCeoBusy: boolean;
   activeTurn: ActiveTurn | null;
   activeDelegations: Map<string, ActiveDelegation>;
   idleTimer: NodeJS.Timeout | null;
@@ -65,14 +64,12 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     runtime.pendingTurns++;
 
     const result = runtime.tail.then(async () => {
-      runtime.isCeoBusy = true;
       const turn = new ActiveTurn(runtime.agentPort);
       runtime.activeTurn = turn;
       try {
         return await work(runtime.agentPort, turn);
       } finally {
         runtime.activeTurn = null;
-        runtime.isCeoBusy = false;
         runtime.pendingTurns--;
         if (runtime.pendingTurns === 0 && runtime.activeTurnsCount === 0 && runtime.activeDelegations.size === 0) {
           this.scheduleExpiration(conversationKey, runtime);
@@ -131,18 +128,22 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     if (!runtime) {
       return false;
     }
-    let hadWork = false;
+    const cancelPromises: Promise<void>[] = [];
     if (runtime.activeTurn) {
-      hadWork = true;
-      await runtime.activeTurn.cancel();
+      cancelPromises.push(runtime.activeTurn.cancel());
     }
-    if (runtime.activeDelegations.size > 0) {
-      hadWork = true;
-      for (const delegation of Array.from(runtime.activeDelegations.values())) {
-        await delegation.turn.cancel();
-      }
+    for (const delegation of runtime.activeDelegations.values()) {
+      cancelPromises.push(delegation.turn.cancel());
     }
-    return hadWork;
+    if (cancelPromises.length === 0) {
+      return false;
+    }
+    const results = await Promise.allSettled(cancelPromises);
+    const rejected = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (rejected) {
+      throw rejected.reason;
+    }
+    return true;
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -166,7 +167,6 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
         tail: Promise.resolve(),
         pendingTurns: 0,
         activeTurnsCount: 0,
-        isCeoBusy: false,
         activeTurn: null,
         activeDelegations: new Map(),
         idleTimer: null,

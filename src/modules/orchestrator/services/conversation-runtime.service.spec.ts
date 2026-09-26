@@ -252,6 +252,68 @@ describe('ConversationRuntimeService', () => {
       await expect(turnDone).rejects.toBeInstanceOf(PromptCancelledError);
     });
 
+    it('should cancel active delegations concurrently and rethrow if any cancel rejects', async () => {
+      const cancelMock1 = vi.fn().mockRejectedValue(new Error('fail 1'));
+      const cancelMock2 = vi.fn().mockResolvedValue(undefined);
+      runtime.registerDelegation('a', {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'app',
+        taskSpec: 'task',
+        cwd: '/mock',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: cancelMock1 } as any,
+        steer: vi.fn(),
+      });
+      runtime.registerDelegation('a', {
+        role: 'CODE_REVIEWER',
+        roleName: 'Reviewer',
+        projectName: null,
+        taskSpec: 'review',
+        cwd: '/mock',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: cancelMock2 } as any,
+        steer: vi.fn(),
+      });
+
+      await expect(runtime.cancel('a')).rejects.toThrow('fail 1');
+      expect(cancelMock1).toHaveBeenCalled();
+      expect(cancelMock2).toHaveBeenCalled();
+    });
+
+    it('should cancel active delegations concurrently when all succeed', async () => {
+      const cancelMock1 = vi.fn().mockResolvedValue(undefined);
+      const cancelMock2 = vi.fn().mockResolvedValue(undefined);
+      runtime.registerDelegation('a', {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'app',
+        taskSpec: 'task',
+        cwd: '/mock',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: cancelMock1 } as any,
+        steer: vi.fn(),
+      });
+      runtime.registerDelegation('a', {
+        role: 'CODE_REVIEWER',
+        roleName: 'Reviewer',
+        projectName: null,
+        taskSpec: 'review',
+        cwd: '/mock',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: cancelMock2 } as any,
+        steer: vi.fn(),
+      });
+
+      await expect(runtime.cancel('a')).resolves.toBe(true);
+      expect(cancelMock1).toHaveBeenCalled();
+      expect(cancelMock2).toHaveBeenCalled();
+    });
+
     it('should disconnect active delegations on shutdown', async () => {
       const delegatePort = new StubAgentPort();
       delegatePort.connected = true;
