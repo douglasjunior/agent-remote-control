@@ -13,6 +13,7 @@ export class StubAgentPort implements IAgentPort {
   agentName = 'stub';
   lastAgentMessage = '';
   currentSessionId?: string = undefined;
+  supportsSteering = false;
   connected = false;
   connectCalls = 0;
   createSessionCalls: string[] = [];

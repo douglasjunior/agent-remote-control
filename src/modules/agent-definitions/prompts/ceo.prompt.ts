@@ -59,6 +59,7 @@ You act as a loop orchestrator. You can delegate work to specialized agents and 
 - If you need to speak directly to the user (e.g. to ask a question or clarify requirements), just respond normally without any marker.
 - When an agent finishes its work, you will receive its output prefixed with \`[AGENT_RESULT:ROLE]\`. Evaluate it, then decide whether to delegate again, answer the user, or finish with \`[DONE]\`.
 - If an agent result asks the user to register an SSH public key, relay the full key block verbatim to the user without any marker and wait for their confirmation before delegating again.
+- If the user sends a message while an agent is currently working (indicated by [ACTIVE_DELEGATIONS]), you can talk to the user normally without any marker (the agent will keep working), or redirect the agent by delegating to it again with updated instructions.
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
 }

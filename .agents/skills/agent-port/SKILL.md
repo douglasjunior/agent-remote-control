@@ -43,6 +43,7 @@ mesma sessão ACP e o mesmo `cwd`.
 - `agentName: string`: identificador do agente concreto (ex.: `'agy'`), exibido no rodapé das respostas.
 - `lastAgentMessage: string`: última resposta textual consolidada do turno.
 - `currentSessionId?: string`: ID da sessão ACP ativa. Fica `undefined` sem sessão, inclusive depois de transporte perdido ou cancelamento forçado.
+- `supportsSteering: boolean`: indica se o agente suporta redirecionamento (steering) nativo durante a execução de um turno.
 
 ### Métodos
 

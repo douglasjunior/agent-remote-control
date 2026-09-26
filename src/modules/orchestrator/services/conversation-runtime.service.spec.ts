@@ -185,4 +185,146 @@ describe('ConversationRuntimeService', () => {
     await vi.advanceTimersByTimeAsync(1);
     expect(created[1]!.closeSessionCalls).toBe(1);
   });
+
+  describe('active delegations', () => {
+    it('should register, find, get, and unregister active delegations', () => {
+      const delegatePort = new StubAgentPort();
+      const delegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+
+      runtime.registerDelegation('a', delegation);
+
+      expect(runtime.getActiveDelegations('a')).toEqual([delegation]);
+      expect(runtime.findActiveDelegation('a', 'developer')).toBe(delegation);
+      expect(runtime.findActiveDelegation('a', 'unknown')).toBeUndefined();
+      expect(runtime.getActiveDelegations('unknown')).toEqual([]);
+
+      runtime.unregisterDelegation('a', 'developer');
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+
+      runtime.unregisterDelegation('unknown', 'developer');
+      expect(runtime.getActiveDelegations('unknown')).toEqual([]);
+    });
+
+    it('should return CEO port for the given conversationKey', () => {
+      const ceoPort = runtime.getCeoPort('a');
+      expect(ceoPort).toBeDefined();
+      expect(runtime.getCeoPort('a')).toBe(ceoPort);
+    });
+
+    it('should cancel both active turn and active delegations', async () => {
+      const delegatePort = new StubAgentPort();
+      const cancelTurnMock = vi.fn().mockResolvedValue(undefined);
+      const delegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort,
+        turn: { cancel: cancelTurnMock } as any,
+        steer: vi.fn(),
+      };
+
+      runtime.registerDelegation('a', delegation);
+
+      const gate = deferred();
+      const turnDone = runtime.run('a', async (_port, turn) => {
+        await gate.promise;
+        turn.throwIfCancelled();
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      await expect(runtime.cancel('a')).resolves.toBe(true);
+      expect(cancelTurnMock).toHaveBeenCalled();
+
+      gate.resolve();
+      await expect(turnDone).rejects.toBeInstanceOf(PromptCancelledError);
+    });
+
+    it('should disconnect active delegations on shutdown', async () => {
+      const delegatePort = new StubAgentPort();
+      delegatePort.connected = true;
+      const delegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+
+      runtime.registerDelegation('a', delegation);
+      await runtime.onApplicationShutdown();
+
+      expect(delegatePort.connected).toBe(false);
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+
+    it('should not expire a session while an active delegation is registered', async () => {
+      const delegatePort = new StubAgentPort();
+      delegatePort.connected = true;
+      const delegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+
+      runtime.registerDelegation('a', delegation);
+      await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
+      expect(ports[0]!.closeSessionCalls).toBe(0);
+
+      runtime.unregisterDelegation('a', 'DEVELOPER');
+      await vi.advanceTimersByTimeAsync(IDLE_MS);
+      expect(ports[0]!.closeSessionCalls).toBe(1);
+    });
+
+    it('should schedule expiration when runOnCeo completes and no other turns or delegations are active', async () => {
+      await runtime.runOnCeo('a', async () => undefined);
+      await vi.advanceTimersByTimeAsync(IDLE_MS);
+      expect(ports[0]!.closeSessionCalls).toBe(1);
+    });
+
+    it('should close sessions and disconnect active delegations on expiration', async () => {
+      const delegatePort = new StubAgentPort();
+      delegatePort.connected = true;
+      const delegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+
+      runtime.registerDelegation('a', delegation);
+      await (runtime as any).expire('a', (runtime as any).getOrCreate('a'));
+
+      expect(delegatePort.closeSessionCalls).toBe(1);
+      expect(delegatePort.connected).toBe(false);
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+  });
 });

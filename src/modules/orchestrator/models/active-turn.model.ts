@@ -19,6 +19,10 @@ export class ActiveTurn {
     await this.activePort.cancel();
   }
 
+  reset(): void {
+    this.cancelled = false;
+  }
+
   throwIfCancelled(): void {
     if (this.cancelled) {
       throw new PromptCancelledError();
