@@ -349,7 +349,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('EACCES: permission denied');
-    expect(result.sessionId).toEqual(expect.any(String));
+    expect(result.sessionId).toBeUndefined();
     expect(stubAgentPort.promptCalls).toHaveLength(0);
   });
 

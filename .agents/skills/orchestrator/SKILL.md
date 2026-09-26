@@ -71,7 +71,7 @@ Representa o turno em execução de uma conversa:
 
 Estrutura imutável com o desfecho do turno:
 
-- `sessionId`: identificador da sessão processada;
+- `sessionId`: identificador da sessão processada; ausente quando o turno falha antes de abrir a sessão;
 - `response`: resposta textual final consolidada;
 - `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, ou `'failed'` se abortado por erro;
 - `usage`: dados opcionais de consumo de tokens (`AgentUsage`);
@@ -201,7 +201,7 @@ Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAge
 A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
 
 1. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(conversationKey, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
-2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'`.
+2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'` sem `sessionId`.
 3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
    2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
