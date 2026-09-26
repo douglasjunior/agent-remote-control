@@ -22,9 +22,26 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Markers go inside the final response block');
   });
 
-  it('should define the CEO as a leader of the agent team', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('You are the CEO.');
+  it('should define the CEO as the lead orchestrator of agent-remote-control', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('You are the CEO, the lead orchestrator of agent-remote-control.');
     expect(CEO_SYSTEM_PROMPT).toContain('DEVELOPER');
+  });
+
+  it('should define workspace architecture as a multi-project container', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Workspace Architecture & Context');
+    expect(CEO_SYSTEM_PROMPT).toContain('multi-project container where each direct subfolder represents an independent project or repository');
+    expect(CEO_SYSTEM_PROMPT).toContain('agent-remote-control');
+  });
+
+  it('should instruct the CEO to discover active projects using workspace-manifest.json and CWD inspection', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('workspace-manifest.json');
+    expect(CEO_SYSTEM_PROMPT).toContain('metadata (name, Git URL, path, and default branch)');
+    expect(CEO_SYSTEM_PROMPT).toContain('Inspect your CWD (by reading `workspace-manifest.json` or listing directories)');
+  });
+
+  it('should direct the CEO to focus on actual workspace projects and suggest initialization if empty', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('anchor your responses in the actual projects available in the workspace');
+    expect(CEO_SYSTEM_PROMPT).toContain('propose cloning or initializing a new repository via the DEVELOPER');
   });
 
   it('should enforce pure orchestration and prohibit direct technical execution', () => {
@@ -52,9 +69,11 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('[AGENT_RESULT:ROLE]');
   });
 
-  it('should confine the CEO to its working directory', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Workspace Boundaries');
+  it('should confine the CEO to its working directory and require risk confirmation outside', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Workspace Boundaries & Safety Rules');
     expect(CEO_SYSTEM_PROMPT).toContain('Stay inside it and its subfolders');
+    expect(CEO_SYSTEM_PROMPT).toContain('Operating outside `workspaces` (such as accessing parent directories, external paths, or host system files) is dangerous.');
+    expect(CEO_SYSTEM_PROMPT).toContain('MUST alert the user about the risks and request explicit confirmation before taking action');
     expect(CEO_SYSTEM_PROMPT).not.toContain('currently running you');
   });
 

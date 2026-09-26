@@ -25,7 +25,7 @@ describe('AgentRegistryService', () => {
       const promptMixed = service.getSystemPrompt('Ceo');
 
       expect(promptUpper).toBeDefined();
-      expect(promptUpper).toContain('You are the CEO.');
+      expect(promptUpper).toContain('You are the CEO, the lead orchestrator of agent-remote-control.');
       expect(promptMixed).toBe(promptUpper);
     });
 
