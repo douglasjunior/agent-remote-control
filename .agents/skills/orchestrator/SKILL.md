@@ -58,6 +58,7 @@ Encapsula os parâmetros para execução de uma rodada de interação:
 - `onActivity`: callback opcional `(activity: AgentActivity) => void` para consumo reativo de pensamentos e ferramentas;
 - `onTextChunk`: callback opcional `(chunk: string) => void` para streaming progressivo da resposta;
 - `onQueued`: callback opcional `() => void` chamado quando o turno entra na fila atrás de outro turno da mesma conversa.
+- `onDelegation`: callback opcional `(event: DelegationEvent) => void` (`delegation-event.model.ts`), chamado com `phase: 'started'` antes de o delegado trabalhar e `phase: 'finished'` quando ele conclui com sucesso; carrega `round`, `role`, `roleName` e `projectName?`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
@@ -208,7 +209,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). A sessão é por papel, e não por projeto: uma delegação a outro projeto retoma a mesma sessão com o novo `cwd`.
+   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). Registra `[Delegation Started]` (papel, projeto, `cwd` e prévia da tarefa) e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` (duração e tamanho da resposta) e emite `finished`. Cancelamento ou falha do delegado não emitem `finished`. A sessão é por papel, e não por projeto: uma delegação a outro projeto retoma a mesma sessão com o novo `cwd`.
    7. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` permanece em `agentSessions` para a próxima delegação ao mesmo papel, inclusive em rodadas seguintes do mesmo turno.
    8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
 4. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
@@ -224,7 +225,7 @@ Cada turno de agente (CEO ou delegado) executa internamente:
 4. Configuração: com `AgentSettings`, `setConfig({ modelId, effortId: effortId ?? undefined })`; sem settings, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Vale para o CEO e para os delegados.
 5. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.
 6. `turn.throwIfCancelled()` e drenagem de `prompt(text)`, despachando blocos `agent_message_chunk` para `request.onTextChunk`.
-7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados, registrada no log como `[Agent Response] Role=<ROLE>`.
+7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados, registrada no log como `[Agent Response] Role=<ROLE>, Length=<n>` com prévia de 100 caracteres em linha única.
 
 **Tratamento de Cancelamento e Falhas**: `PromptCancelledError` (ou erro com nome
 homônimo) lançado por qualquer agente ou pelo `ActiveTurn` retorna `status: 'cancelled'`. Demais
