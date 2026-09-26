@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 
 import { buildCeoSystemPrompt } from './ceo.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
 const developer: AgentDefinition = {
@@ -15,6 +16,11 @@ const developer: AgentDefinition = {
 const CEO_SYSTEM_PROMPT = buildCeoSystemPrompt([developer]);
 
 describe('ceo.prompt', () => {
+  it('should require the final answer and its markers inside the final response block', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+    expect(CEO_SYSTEM_PROMPT).toContain('Markers go inside the final response block');
+  });
+
   it('should define the CEO as a leader who delegates instead of executing work', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('You are the CEO.');
     expect(CEO_SYSTEM_PROMPT).toContain('You do not execute work yourself.');

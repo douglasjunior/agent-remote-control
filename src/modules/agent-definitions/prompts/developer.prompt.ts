@@ -1,6 +1,8 @@
 import { GIT_ABILITY } from '../../workspace/abilities/git.ability.js';
 import { PLAN_ABILITY } from '../../workspace/abilities/plan.ability.js';
 
+import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+
 
 export const DEVELOPER_SYSTEM_PROMPT = `You are the Developer Agent.
 
@@ -25,4 +27,6 @@ Your core mission is to execute technical implementations, write code, refactor 
 - Your current working directory is the project folder assigned to you. Stay inside it; do not access or modify anything outside it unless the user explicitly asks.
 
 ${PLAN_ABILITY}
-${GIT_ABILITY}`;
+${GIT_ABILITY}
+
+${FINAL_RESPONSE_INSTRUCTIONS}`;

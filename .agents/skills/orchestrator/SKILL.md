@@ -191,6 +191,9 @@ repositório dentro da pasta do projeto é responsabilidade do agente delegado.
 | *(nenhum)* | Encerra o loop e devolve a resposta integral do CEO |
 | *(inválido)* | Envia ao CEO o prompt de reparo com o motivo |
 
+A resposta classificada é o conteúdo do envelope `<final_response>`, extraído pelo demux, e por
+isso os marcadores ficam na última linha dele. O prompt de reparo reforça essa regra.
+
 O resultado do agente delegado volta ao CEO como `[AGENT_RESULT:ROLE]\n<resposta>`.
 
 ### Execução de Turno (`ExecuteAgentTurnUseCase`)

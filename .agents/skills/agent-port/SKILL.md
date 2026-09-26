@@ -106,7 +106,14 @@ O `AgentStreamDemux` decompõe as notificações brutas do ACP em eventos tipado
 
 - `agent_thought_chunk`: atividades `{ kind: 'thought', id, text }`.
 - `tool_call` e `tool_call_update`: atividades `{ kind: 'tool', toolCallId, title, status }`.
-- `agent_message_chunk`: acumulado e entregue como bloco final `AgentUpdate` no fechamento do `prompt()`. Respostas vazias não geram bloco.
+- `agent_message_chunk`: narrado como atividade `thought` e acumulado; no fechamento do `prompt()` vira o bloco final `AgentUpdate`. Respostas vazias não geram bloco.
+
+A resposta final é a mensagem que contém `<final_response>` (`constants/final-response.constant.ts`,
+ignorado em `agent_thought_chunk`). Quando esse envelope aparece, a entrada da mensagem no feed é
+fechada com a prosa anterior a ele (`final: true`) ou removida (`removed: true`) quando não há prosa,
+e a mensagem deixa de ser narrada. `takeFinalText()` e `lastAgentMessage` devolvem só o conteúdo dos
+envelopes (`splitFinalResponse`), que aceita envelope sem fechamento. Sem envelope, o texto final
+junta todas as mensagens que não são thought, o que cobre sessões retomadas de antes do envelope.
 
 ## Adaptadores ACP e Antigravity
 
