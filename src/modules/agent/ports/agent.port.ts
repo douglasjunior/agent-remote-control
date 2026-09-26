@@ -68,6 +68,7 @@ export interface IAgentPort {
   readonly agentName: string;
   readonly lastAgentMessage: string;
   readonly currentSessionId?: string;
+  readonly supportsSteering: boolean;
   getLastRoundUsage(): Promise<AgentUsage | undefined>;
   connect(): Promise<void>;
   createSession(cwd: string): Promise<void>;

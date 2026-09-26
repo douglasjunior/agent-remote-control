@@ -87,6 +87,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private steeringSupported = false;
   private loadSessionSupported = false;
 
+  get supportsSteering(): boolean {
+    return this.steeringSupported;
+  }
+
   constructor(preferredConfig: AgentConfig = {}) {
     this.preferredConfig = preferredConfig;
   }

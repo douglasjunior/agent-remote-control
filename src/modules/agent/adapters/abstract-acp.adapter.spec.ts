@@ -1550,7 +1550,9 @@ describe('AbstractAcpAdapter', () => {
 
     it('should fall back to prompt request when steering is not supported', async () => {
       const adapter = new TestAcpAdapter();
+      expect(adapter.supportsSteering).toBe(false);
       await adapter.connect();
+      expect(adapter.supportsSteering).toBe(false);
       await adapter.createSession('/repo');
 
       adapter.sendSteeringPrompt('redirect here');
@@ -1592,6 +1594,7 @@ describe('AbstractAcpAdapter', () => {
 
       const adapter = new TestAcpAdapter();
       await adapter.connect();
+      expect(adapter.supportsSteering).toBe(true);
       await adapter.createSession('/repo');
 
       acpHarness.connectionInstance?.steer.mockRejectedValueOnce(

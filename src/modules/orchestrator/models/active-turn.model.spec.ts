@@ -28,4 +28,14 @@ describe('ActiveTurn', () => {
 
     expect(() => turn.throwIfCancelled()).toThrow(PromptCancelledError);
   });
+
+  it('should clear cancelled state when reset is called', async () => {
+    const turn = new ActiveTurn(new StubAgentPort());
+    await turn.cancel();
+    expect(turn.isCancelled).toBe(true);
+
+    turn.reset();
+    expect(turn.isCancelled).toBe(false);
+    expect(() => turn.throwIfCancelled()).not.toThrow();
+  });
 });

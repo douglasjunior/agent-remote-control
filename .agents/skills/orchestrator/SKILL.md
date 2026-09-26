@@ -66,7 +66,22 @@ Representa o turno em execução de uma conversa:
 
 - `activate(agentPort)`: registra o agente que está rodando (CEO ou delegado);
 - `cancel()`: marca o turno como cancelado e chama `cancel()` no agente ativo;
+- `reset()`: redefine o estado de cancelamento para falso quando o turno de uma delegação é retomado após cancelamento por steering;
 - `throwIfCancelled()`: lança `PromptCancelledError` se o turno foi cancelado. O orquestrador o chama antes de `connect`, depois de `connect` e antes de cada `prompt`, para que um cancelamento pedido enquanto o agente ainda conecta interrompa o turno.
+
+### `ActiveDelegation` (`active-delegation.model.ts`)
+
+Representa uma delegação técnica atualmente em andamento em segundo plano:
+
+- `role`: papel do agente delegado;
+- `roleName`: nome legível do papel;
+- `projectName`: projeto/diretório alvo da tarefa ou `null`;
+- `taskSpec`: especificação corrente da tarefa delegada;
+- `cwd`: diretório de trabalho do delegado;
+- `startedAt`: timestamp de início;
+- `agentPort`: instância `IAgentPort` do agente delegado;
+- `turn`: instância `ActiveTurn` associada à execução do delegado;
+- `steer(newSpec)`: redireciona a execução da tarefa (via steering nativo ACP ou cancelamento com reprompt).
 
 ### `TurnResult` (`turn-result.model.ts`)
 
@@ -149,10 +164,12 @@ Mantém em memória o estado de execução de cada conversa, identificada por
 dentro da fila:
 
 - **Agente da conversa**: um `IAgentPort` criado pela `IAgentPortFactory` na primeira execução e reutilizado nos turnos seguintes;
-- **Fila de turnos**: `run(conversationKey, work, onQueued)` executa os turnos de uma mesma conversa um de cada vez, na ordem de chegada. Um turno que chega com outro em andamento chama `onQueued`. Uma falha não interrompe a fila;
-- **Turno ativo**: `cancel(conversationKey)` cancela o `ActiveTurn` em execução e devolve `false` quando não há turno em andamento. Turnos na fila não são afetados;
-- **Expiração por ociosidade**: sem turnos por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra o agente (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
-- **Shutdown**: `onApplicationShutdown` desconecta todos os agentes. Requer `app.enableShutdownHooks()` no bootstrap.
+- **Ciclo de vida e concorrência**: `beginTurn(conversationKey)` rastreia `activeTurnsCount` e previne expiração prematura; `runOnCeo(conversationKey, work, onQueued)` garante exclusão mútua apenas no uso da porta do CEO, liberando-a enquanto agentes delegados rodam em segundo plano;
+- **Fila de turnos do CEO**: turnos que chegam enquanto o CEO está ocupado chamam `onQueued` e aguardam a liberação da porta do CEO. Novas mensagens do usuário processam imediatamente pelo CEO mesmo com delegações ativas;
+- **Delegações ativas**: `registerDelegation()`, `unregisterDelegation()`, `getActiveDelegations()` e `findActiveDelegation()` mantêm o registro de especialistas em execução em segundo plano;
+- **Cancelamento**: `cancel(conversationKey)` cancela o `ActiveTurn` do CEO e todas as `activeDelegations` ativas da conversa. Devolve `false` quando não há trabalho em andamento;
+- **Expiração por ociosidade**: sem turnos e sem delegações por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra todos os agentes (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
+- **Shutdown**: `onApplicationShutdown` desconecta todos os agentes (CEO e delegados). Requer `app.enableShutdownHooks()` no bootstrap.
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
 
@@ -208,18 +225,22 @@ Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAge
 
 A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
 
-1. **Enfileiramento**: executa o turno via `ConversationRuntimeService.run(conversationKey, ...)`, que fornece o agente do CEO e o `ActiveTurn`.
-2. **Resolução de Sessão**: já dentro da fila, consulta `ISessionStorePort.findSession(channelId, threadId)`. Se inexistente, gera nova `SessionContext`; se existente, atualiza `updatedAt`. Salva no store. Resolver na fila garante que duas mensagens seguidas de uma conversa nova compartilhem a mesma sessão. Uma falha de leitura ou gravação retorna `status: 'failed'` sem `sessionId`.
-3. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
+1. **Ciclo de vida do Turno**: invoca `ConversationRuntimeService.beginTurn(conversationKey)`, garantindo rastreamento no contador de turnos ativos até o `finally`.
+2. **Exclusão mútua do CEO**: executa a rodada do CEO via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. A porta do CEO é liberada assim que o CEO decide delegar, permitindo que novas mensagens do usuário sejam atendidas enquanto especialistas trabalham em segundo plano.
+3. **Resolução de Sessão**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
+4. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
    2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`, cria novo `IAgentPort` pela fábrica e executa o turno com `taskSpec` no diretório validado do projeto (ou em `request.workspacePath` sem projeto). O modo efetivo de sessão é resolvido como `sessionMode ?? agentRegistry.getDefaultSessionMode(delegateToRole)`. Registra `[Delegation Started]` (papel, projeto, `cwd` e prévia da tarefa) e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` (duração e tamanho da resposta) e emite `finished`. Cancelamento ou falha do delegado não emitem `finished`.
-   7. No `finally`, executa `closeSession()` e `disconnect()` no agente delegado, ignorando falhas de encerramento. O `sessionId` gerado/usado permanece em `agentSessions` para a próxima delegação ao mesmo papel.
+   6. Nas demais rodadas, em `delegate`:
+      - Se o papel já possuir uma delegação ativa (`findActiveDelegation`), aplica steering chamando `await existing.steer(taskSpec)` e retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
+      - Caso contrário, cria `ActiveDelegation` e registra no runtime. Se `delegatePort.supportsSteering === true`, o método `steer` envia steering nativo ACP. Se `supportsSteering === false`, registra `pendingSteerSpec` e cancela a rodada corrente do delegado. O loop do delegado captura `PromptCancelledError`, reseta o turno com `delegationTurn.reset()`, define `effectiveSessionMode = 'resume'` e reprompta com o novo spec na mesma sessão.
+      - Registra `[Delegation Started]` e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` e emite `finished`.
+   7. No `finally` da delegação, remove do registro de delegações ativas e encerra o agente delegado (`closeSession()` + `disconnect()`).
    8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
-4. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
+5. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
 
 Cada turno de agente (CEO ou delegado) executa internamente:
 

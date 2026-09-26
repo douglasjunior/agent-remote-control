@@ -8,7 +8,8 @@ import {
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
-import type { ActiveTurn } from '../models/active-turn.model.js';
+import type { ActiveDelegation } from '../models/active-delegation.model.js';
+import { ActiveTurn } from '../models/active-turn.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -58,19 +59,21 @@ export class ExecuteAgentTurnUseCase {
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
-    return this.conversationRuntime.run(
-      buildConversationKey(request.channelId, request.threadId),
-      (agentPort, turn) => this.runTurn(agentPort, turn, request),
-      request.onQueued,
-    );
+    const conversationKey = buildConversationKey(request.channelId, request.threadId);
+    const endTurn = this.conversationRuntime.beginTurn(conversationKey);
+    try {
+      return await this.runTurn(conversationKey, request);
+    } finally {
+      endTurn();
+    }
   }
 
   private async runTurn(
-    ceoPort: IAgentPort,
-    turn: ActiveTurn,
+    conversationKey: string,
     request: TurnRequest,
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
+    const ceoPort = this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
       this.buildResult({
         sessionId: session?.sessionId,
@@ -83,11 +86,14 @@ export class ExecuteAgentTurnUseCase {
       });
 
     try {
-      session = await this.resolveSession(request);
-      this.logger.log(
-        `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
+      return await this.runDelegationLoop(
+        conversationKey,
+        request,
+        finish,
+        (resolved) => {
+          session = resolved;
+        },
       );
-      return await this.runDelegationLoop(session, ceoPort, turn, request, finish);
     } catch (error) {
       const sessionLabel = session?.sessionId ?? 'none';
       if (
@@ -108,15 +114,33 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async runDelegationLoop(
-    session: SessionContext,
-    ceoPort: IAgentPort,
-    turn: ActiveTurn,
+    conversationKey: string,
     request: TurnRequest,
     finish: (status: TurnStatus, response: string, errorMessage?: string) => Promise<TurnResult>,
+    onSessionResolved: (session: SessionContext) => void,
   ): Promise<TurnResult> {
+    let session: SessionContext | undefined;
     let prompt = request.prompt;
+
     for (let round = 1; ; round++) {
-      const { response, decision } = await this.runCeoTurn(ceoPort, prompt, request, turn, session);
+      const { response, decision } = await this.conversationRuntime.runOnCeo(
+        conversationKey,
+        async (ceoPort, turn) => {
+          if (!session) {
+            session = await this.resolveSession(request);
+            onSessionResolved(session);
+            this.logger.log(
+              `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
+            );
+            const activeDelegations = this.conversationRuntime.getActiveDelegations(conversationKey);
+            if (activeDelegations.length > 0) {
+              prompt = `${this.formatActiveDelegations(activeDelegations)}\n${prompt}`;
+            }
+          }
+          return this.runCeoTurn(ceoPort, prompt, request, turn, session);
+        },
+        round === 1 ? request.onQueued : undefined,
+      );
 
       if (decision.kind === 'invalid') {
         return finish('failed', response, `Invalid CEO response: ${decision.reason}`);
@@ -134,8 +158,15 @@ export class ExecuteAgentTurnUseCase {
         return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
       }
 
-      prompt = await this.delegate(session, decision.delegation, request, round, turn);
+      prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey);
     }
+  }
+
+  private formatActiveDelegations(delegations: readonly ActiveDelegation[]): string {
+    const lines = delegations.map(
+      delegation => `- Role: ${delegation.role}, Project: ${delegation.projectName ?? 'none'}, Task: "${delegation.taskSpec}"`,
+    );
+    return `[ACTIVE_DELEGATIONS]\n${lines.join('\n')}\n`;
   }
 
   private async resolveSession(request: TurnRequest): Promise<SessionContext> {
@@ -226,8 +257,17 @@ export class ExecuteAgentTurnUseCase {
     { delegateToRole, projectName, taskSpec, sessionMode, cwd }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
-    turn: ActiveTurn,
+    conversationKey: string,
   ): Promise<string> {
+    const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
+    if (existing) {
+      this.logger.log(
+        `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
+      );
+      await existing.steer(taskSpec);
+      return `[AGENT_RESULT:${delegateToRole}]\nSteering message sent to active agent.`;
+    }
+
     const delegatePort = this.agentPortFactory.create();
     const event = {
       round,
@@ -242,33 +282,80 @@ export class ExecuteAgentTurnUseCase {
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
-    const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+    let effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+    let currentTaskSpec = taskSpec;
+    let pendingSteerSpec: string | null = null;
+
+    const delegationTurn = new ActiveTurn(delegatePort);
+    const activeDelegation: ActiveDelegation = {
+      role: delegateToRole,
+      roleName: event.roleName,
+      projectName: projectName ?? null,
+      get taskSpec() {
+        return currentTaskSpec;
+      },
+      cwd,
+      startedAt,
+      agentPort: delegatePort,
+      turn: delegationTurn,
+      steer: async (newSpec: string) => {
+        if (delegatePort.supportsSteering) {
+          currentTaskSpec = newSpec;
+          delegatePort.sendSteeringPrompt(newSpec);
+        } else {
+          pendingSteerSpec = newSpec;
+          await delegationTurn.cancel();
+        }
+      },
+    };
+
+    this.conversationRuntime.registerDelegation(conversationKey, activeDelegation);
 
     try {
-      const response = await this.runAgentTurn(
-        delegatePort,
-        cwd,
-        delegateToRole,
-        taskSpec,
-        request,
-        turn,
-        session,
-        effectiveSessionMode,
-      );
-      const durationMs = Date.now() - startedAt;
-      this.logger.log(
-        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
-      );
-      request.onDelegation?.({
-        ...event,
-        phase: 'finished',
-        response,
-        agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
-        usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
-        durationMs,
-      });
-      return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
+      while (true) {
+        try {
+          const response = await this.runAgentTurn(
+            delegatePort,
+            cwd,
+            delegateToRole,
+            currentTaskSpec,
+            request,
+            delegationTurn,
+            session,
+            effectiveSessionMode,
+          );
+          const durationMs = Date.now() - startedAt;
+          this.logger.log(
+            `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+          );
+          request.onDelegation?.({
+            ...event,
+            phase: 'finished',
+            response,
+            agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
+            usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
+            durationMs,
+          });
+          return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
+        } catch (error) {
+          if (
+            (error instanceof PromptCancelledError || (error instanceof Error && error.name === 'PromptCancelledError'))
+            && pendingSteerSpec !== null
+          ) {
+            this.logger.log(
+              `[Delegation Steered via Reprompt] Role=${delegateToRole}, NewTask="${this.preview(pendingSteerSpec)}"`,
+            );
+            currentTaskSpec = pendingSteerSpec;
+            pendingSteerSpec = null;
+            effectiveSessionMode = 'resume';
+            delegationTurn.reset();
+            continue;
+          }
+          throw error;
+        }
+      }
     } finally {
+      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
