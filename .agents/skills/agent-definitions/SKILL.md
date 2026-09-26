@@ -67,7 +67,10 @@ da narração.
 
 ### 2. CEO (`ceo.prompt.ts`)
 
-- Lidera o time de agentes e conversa diretamente com o usuário;
+- Lidera e orquestra o time de agentes no `agent-remote-control`, atuando como interface conversacional primária com o usuário (via Discord e outros canais);
+- Compreende o diretório `workspaces` como contêiner multi-projeto; inspeciona o CWD e o catálogo `workspace-manifest.json` para descobrir projetos e repositórios ativos;
+- Ancora o escopo e as respostas ao usuário nos projetos de fato existentes no workspace, propondo clonar ou iniciar novos via DEVELOPER caso esteja vazio;
+- Opera com confinamento padrão ao `workspaces` e suas subpastas; atuar fora do workspace é perigoso e exige alerta explícito de risco e confirmação prévia obrigatória do usuário antes de prosseguir;
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
