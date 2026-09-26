@@ -285,6 +285,24 @@ describe('DiscordActivityFormatter', () => {
       ).toBe('-# 🤖 CEO (agy) · 🧠 Deep Model · ⚡ High');
     });
 
+    it('should announce a delegation with and without a project', () => {
+      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor' };
+
+      expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
+        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando no projeto `my-app`.',
+      );
+      expect(formatter.formatDelegation({ ...delegation, phase: 'started' })).toBe(
+        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando.',
+      );
+      expect(formatter.formatDelegation({ ...delegation, phase: 'finished' })).toBe(
+        '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
+      );
+    });
+
+    it('should name the delegate in its progress header', () => {
+      expect(formatter.formatDelegateProgressHeader('Desenvolvedor')).toBe('🤖 **Progresso — Desenvolvedor**:\n');
+    });
+
     it('should fall back to the default label in the footer', () => {
       expect(formatter.formatAgentFooter({ roleName: 'CEO', agentName: 'agy' })).toBe(
         '-# 🤖 CEO (agy) · 🧠 padrão · ⚡ padrão',

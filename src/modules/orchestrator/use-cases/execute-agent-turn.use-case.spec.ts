@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
@@ -158,6 +159,21 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(workspacePort.resolveRepositoryPath).not.toHaveBeenCalled();
     expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace']);
+  });
+
+  it('should notify when a delegation starts and finishes', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    delegateStubPort.mockResponses = ['Done.'];
+    agentRegistry.getDisplayName.mockImplementation((role: string) => `${role} name`);
+    const events: DelegationEvent[] = [];
+
+    await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+
+    const delegation = { round: 1, role: 'DEVELOPER', roleName: 'DEVELOPER name', projectName: 'my-app' };
+    expect(events).toEqual([
+      { ...delegation, phase: 'started' },
+      { ...delegation, phase: 'finished' },
+    ]);
   });
 
   it('should ensure each agent working directory exists before creating its session', async () => {
@@ -406,6 +422,16 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.status).toBe('cancelled');
     expect(delegateStubPort.closeSessionCalls).toBe(1);
     expect(delegateStubPort.connected).toBe(false);
+  });
+
+  it('should not report a finished delegation when the delegate is cancelled', async () => {
+    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
+    delegateStubPort.promptErrorToThrow = new PromptCancelledError();
+    const phases: string[] = [];
+
+    await useCase.execute(turnRequest({ onDelegation: event => phases.push(event.phase) }));
+
+    expect(phases).toEqual(['started']);
   });
 
   it('should stream text chunks and forward activities from every agent', async () => {

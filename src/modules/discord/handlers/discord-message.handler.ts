@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
 import { type ClientUser, Events, type Message } from 'discord.js';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
@@ -18,6 +19,14 @@ const DISCORD_MESSAGE_LIMIT = 2000;
 type SendableChannel = { send: (content: any) => Promise<any> };
 
 type Conversation = ConversationKey & { readonly target: SendableChannel };
+
+type ProgressMessage = { edit: (content: string) => Promise<unknown> };
+
+type Progress = {
+  readonly message: Promise<ProgressMessage>;
+  readonly feed: ActivityFeed;
+  readonly header: string;
+};
 
 @Injectable()
 export class DiscordMessageHandler implements OnModuleInit {
@@ -100,11 +109,15 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
       const { prompt } = resolution;
 
-      const progressMessage = await targetChannel.send(
+      const progressMessage: ProgressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
       );
-      const feed = new ActivityFeed();
       const throttler = new DiscordThrottler({ intervalMs: 1500 });
+      let progress: Progress = {
+        message: Promise.resolve(progressMessage),
+        feed: new ActivityFeed(),
+        header: PROGRESS_HEADER,
+      };
 
       const onActivity = (activity: AgentActivity): void => {
         const key = this.activityKey(activity);
@@ -122,22 +135,33 @@ export class DiscordMessageHandler implements OnModuleInit {
 
         const formatted = this.activityFormatter.formatActivity(activity);
         if (activity.kind === 'thought' && activity.removed) {
-          feed.remove(key);
+          progress.feed.remove(key);
         } else if (formatted) {
-          feed.upsert(key, formatted);
+          progress.feed.upsert(key, formatted);
         } else {
           return;
         }
 
-        throttler.schedule(async () => {
+        const current = progress;
+        throttler.schedule(() => this.renderProgress(current));
+      };
+
+      const onDelegation = (event: DelegationEvent): void => {
+        const previous = progress;
+        const header = event.phase === 'started'
+          ? this.activityFormatter.formatDelegateProgressHeader(event.roleName)
+          : PROGRESS_HEADER;
+        const message = previous.message.then(async (previousMessage) => {
+          await this.renderProgress(previous);
           try {
-            await progressMessage.edit(feed.render(PROGRESS_HEADER));
+            await targetChannel!.send(this.activityFormatter.formatDelegation(event));
+            return await targetChannel!.send(`${header}⏳ *Aguardando atividades...*`) as ProgressMessage;
           } catch (error) {
-            const message =
-              error instanceof Error ? error.message : String(error);
-            this.logger.warn(`Failed to update progress message: ${message}`);
+            this.logger.warn(`Failed to announce the delegation: ${this.describeError(error)}`);
+            return previousMessage;
           }
         });
+        progress = { message, feed: new ActivityFeed(), header };
       };
 
       const result = await this.orchestratorService.executeTurn({
@@ -148,6 +172,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         workspacePath: this.workspacePort.getBaseDirectory(),
         agentRole: 'CEO',
         onActivity,
+        onDelegation,
         onQueued: () => {
           void progressMessage
             .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
@@ -155,6 +180,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         },
       });
 
+      await progress.message;
       await throttler.flush();
       throttler.destroy();
 
@@ -172,6 +198,18 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       }
     }
+  }
+
+  private async renderProgress({ message, feed, header }: Progress): Promise<void> {
+    try {
+      await (await message).edit(feed.render(header));
+    } catch (error) {
+      this.logger.warn(`Failed to update progress message: ${this.describeError(error)}`);
+    }
+  }
+
+  private describeError(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private async acceptsMessage(message: Message, bot: ClientUser): Promise<boolean> {

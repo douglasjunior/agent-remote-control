@@ -420,6 +420,71 @@ describe('DiscordMessageHandler', () => {
       expect(lastEdit(progressMessage)).toBe('🤖 **Progresso do Agente**:\n✅ **Concluído**: `ls`');
     });
 
+    it('should announce delegations and give each agent its own progress message', async () => {
+      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn(async (content: string) => {
+          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+          sentMessages.push(sent);
+          return sent;
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', projectName: 'my-app' };
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' });
+        request.onDelegation?.({ ...delegation, phase: 'started' });
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
+        request.onDelegation?.({ ...delegation, phase: 'finished' });
+        request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' });
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      const contents = sentMessages.map(sent => sent.content);
+      expect(contents).toEqual([
+        '⏳ *Iniciando processamento...*',
+        '🔀 **Tarefa delegada** — agora é o agente **Desenvolvedor** que está trabalhando no projeto `my-app`.',
+        '🤖 **Progresso — Desenvolvedor**:\n⏳ *Aguardando atividades...*',
+        '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
+        '🤖 **Progresso do Agente**:\n⏳ *Aguardando atividades...*',
+        'Done.',
+      ]);
+      expect(lastEdit(sentMessages[0]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Planning*');
+      expect(lastEdit(sentMessages[2]!)).toBe('🤖 **Progresso — Desenvolvedor**:\n✅ **Concluído**: `ls`');
+      expect(lastEdit(sentMessages[4]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Reviewing*');
+    });
+
+    it('should keep the current progress message when a delegation cannot be announced', async () => {
+      const { message, progressMessage } = buildThreadMessage();
+      const send = (message.channel as unknown as { send: ReturnType<typeof vi.fn> }).send;
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        send.mockRejectedValueOnce(new Error('rate limited'));
+        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', phase: 'started' });
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso — Desenvolvedor**:\n✅ **Concluído**: `ls`');
+      expect(send).toHaveBeenLastCalledWith('Done.');
+    });
+
     it('should skip activities without formatted content', async () => {
       orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: '   ' }];
       const { message, progressMessage } = buildThreadMessage();

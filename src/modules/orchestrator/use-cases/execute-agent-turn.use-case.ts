@@ -26,6 +26,8 @@ import {
 import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 
+const LOG_PREVIEW_LENGTH = 100;
+
 type ValidatedDelegation = DelegationResult & { readonly cwd: string };
 
 type ValidatedDecision =
@@ -212,16 +214,24 @@ export class ExecuteAgentTurnUseCase {
 
   private async delegate(
     session: SessionContext,
-    { delegateToRole, taskSpec, cwd }: ValidatedDelegation,
+    { delegateToRole, projectName, taskSpec, cwd }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
     turn: ActiveTurn,
   ): Promise<string> {
     const delegatePort = this.agentPortFactory.create();
+    const event = {
+      round,
+      role: delegateToRole,
+      roleName: this.agentRegistry.getDisplayName(delegateToRole),
+      projectName,
+    };
+    const startedAt = Date.now();
 
     this.logger.log(
-      `[Delegation] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Cwd=${cwd}`,
+      `[Delegation Started] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole} (${event.roleName}), Project=${projectName ?? 'none'}, Cwd=${cwd}, Task="${this.preview(taskSpec)}"`,
     );
+    request.onDelegation?.({ ...event, phase: 'started' });
 
     try {
       const response = await this.runAgentTurn(
@@ -233,6 +243,10 @@ export class ExecuteAgentTurnUseCase {
         turn,
         session,
       );
+      this.logger.log(
+        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${((Date.now() - startedAt) / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+      );
+      request.onDelegation?.({ ...event, phase: 'finished' });
       return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
       await delegatePort.closeSession().catch(() => undefined);
@@ -291,11 +305,16 @@ export class ExecuteAgentTurnUseCase {
       }
 
       const response = agentPort.lastAgentMessage || accumulatedChunks;
-      this.logger.log(`[Agent Response] Role=${role}: ${response}`);
+      this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${this.preview(response)}"`);
       return response;
     } finally {
       unsubscribeActivity?.();
     }
+  }
+
+  private preview(text: string): string {
+    const singleLine = text.replace(/\s+/g, ' ').trim();
+    return singleLine.length > LOG_PREVIEW_LENGTH ? `${singleLine.slice(0, LOG_PREVIEW_LENGTH)}...` : singleLine;
   }
 
   private async resumeAgentSession(

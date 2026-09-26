@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
 import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 
 
@@ -38,6 +39,18 @@ export class DiscordActivityFormatter {
     }
 
     return null;
+  }
+
+  formatDelegation(event: DelegationEvent): string {
+    if (event.phase === 'finished') {
+      return `↩️ **${event.roleName} concluiu** — o CEO está revisando o resultado.`;
+    }
+    const project = event.projectName ? ` no projeto \`${event.projectName}\`` : '';
+    return `🔀 **Tarefa delegada** — agora é o agente **${event.roleName}** que está trabalhando${project}.`;
+  }
+
+  formatDelegateProgressHeader(roleName: string): string {
+    return `🤖 **Progresso — ${roleName}**:\n`;
   }
 
   formatAgentFooter(info: TurnAgentInfo, usage?: AgentUsage): string {
