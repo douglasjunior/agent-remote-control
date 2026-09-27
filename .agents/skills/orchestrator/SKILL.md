@@ -150,6 +150,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
+- `getDelegationContract(agentRole: string): DelegationContract`: parâmetros de marcador que o papel aceita (`project`, `sessionMode`); contrato vazio para papel desconhecido
 - `getTurnReminder(agentRole: string): string`: lembrete mandatório injetado ao final de cada prompt do turno (sempre string)
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
@@ -192,16 +193,20 @@ O CEO opera na raiz de workspaces (`IWorkspacePort.getBaseDirectory()`, padrão
 Cada agente delegado opera em `IWorkspacePort.resolveRepositoryPath(project)`:
 
 ```text
-./workspaces/                    ← cwd do CEO
-├── workspace-manifest.json
+./workspaces/                    ← cwd do CEO e do GIT_OPS sem pasta de projeto
+├── workspace-manifest.json      ← de→para URL/pasta, mantido pelo GIT_OPS
 ├── my-backend/                  ← cwd do agente delegado com [DELEGATE:ROLE:my-backend]
 └── my-frontend/
 ```
 
 Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureDirectory(cwd)`, pois o
 `agy` falha ao iniciar em diretório inexistente. `resolveRepositoryPath` e `ensureDirectory` rejeitam
-caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO. Clonar o
-repositório dentro da pasta do projeto é responsabilidade do agente delegado.
+caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO.
+
+`IWorkspacePort` expõe apenas `getBaseDirectory`, `resolveRepositoryPath` e `ensureDirectory`: a app
+resolve e cria diretórios, e não executa Git. Clonar, registrar o repositório no manifest e qualquer
+operação que alcance um remoto pertencem ao agente `GIT_OPS`, e a URL chega até ele pela especificação
+que o CEO escreve.
 
 ### Protocolo de Marcadores
 
@@ -231,7 +236,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 3. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
 4. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
-   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
+   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os parâmetros do marcador precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.

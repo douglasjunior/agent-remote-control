@@ -5,6 +5,7 @@ import {
   CODE_REVIEWER_TURN_REMINDER,
 } from '../prompts/code-reviewer.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from '../prompts/developer.prompt.js';
+import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from '../prompts/git-ops.prompt.js';
 import { TECH_LEAD_SYSTEM_PROMPT, TECH_LEAD_TURN_REMINDER } from '../prompts/tech-lead.prompt.js';
 
 
@@ -15,7 +16,18 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'Leads the agent team: talks with the user, scopes requests, delegates all hands-on work, and reviews results.',
     buildSystemPrompt: buildCeoSystemPrompt,
+    delegation: {},
     turnReminder: CEO_TURN_REMINDER,
+  },
+  {
+    role: 'GIT_OPS',
+    name: 'Git Ops Agent',
+    description:
+      'Owns every Git operation that reaches a remote: cloning and initializing repositories, fetch, pull, push, merge and rebase against remote branches, remote configuration, pull requests, and SSH key setup. Keeps the mapping from repository URL to project folder, so it also answers whether a repository is already in the workspace and under which folder. Delegate to it without a project folder to add or locate a repository, stating the full repository URL in the specification; it answers with the project folder it used, which is the folder the follow-up work belongs to. Delegate to it with a project folder for remote operations on a repository already there.',
+    buildSystemPrompt: () => GIT_OPS_SYSTEM_PROMPT,
+    defaultSessionMode: 'resume',
+    delegation: { project: 'optional', sessionMode: 'overridable' },
+    turnReminder: GIT_OPS_TURN_REMINDER,
   },
   {
     role: 'TECH_LEAD',
@@ -24,24 +36,27 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
       'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
     buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
+    delegation: { project: 'optional', sessionMode: 'overridable' },
     turnReminder: TECH_LEAD_TURN_REMINDER,
   },
   {
     role: 'DEVELOPER',
     name: 'Developer Agent',
     description:
-      'Senior software engineer for hands-on technical execution in a project folder: cloning and setting up repositories, implementation, refactoring, bug fixing, automated tests, and Git operations based on approved specifications and plans.',
+      'Senior software engineer for hands-on technical execution inside a project folder: implementation, refactoring, bug fixing, automated tests, and local Git work such as inspecting the working tree, creating local branches, and committing its own changes. It works only in a project folder that already holds the repository, and it does not reach remotes, so a repository still absent from the workspace has to be added before delegating to it.',
     buildSystemPrompt: () => DEVELOPER_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
+    delegation: { project: 'required', sessionMode: 'overridable' },
     turnReminder: DEVELOPER_TURN_REMINDER,
   },
   {
     role: 'CODE_REVIEWER',
     name: 'Code Reviewer Agent',
     description:
-      'Senior code reviewer for rigorous, unbiased inspection of diffs, branches, pull requests, and codebases against project conventions, security checklists, and functional correctness. Operates in a fresh session without prior implementation bias.',
+      'Senior code reviewer for rigorous, unbiased inspection of diffs, branches, pull requests, and codebases against project conventions, security checklists, and functional correctness. Always runs in a fresh session without prior implementation bias.',
     buildSystemPrompt: () => CODE_REVIEWER_SYSTEM_PROMPT,
     defaultSessionMode: 'new',
+    delegation: { project: 'required' },
     turnReminder: CODE_REVIEWER_TURN_REMINDER,
   },
 ];

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChildProcess } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import type { AgentConfig } from '../ports/agent.port.js';
@@ -8,6 +9,21 @@ import { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
 import { AbstractAcpAdapter } from './abstract-acp.adapter.js';
 
+
+const HOST_ONLY_ENV_VARS = new Set([
+  'DISCORD_BOT_TOKEN',
+  'DISCORD_GUILD_ID',
+  'WORKSPACE_DIR',
+  'DATA_DIR',
+  'SESSION_IDLE_TIMEOUT_MS',
+  'PORT',
+  'PWD',
+  'OLDPWD',
+  'INIT_CWD',
+  'PROJECT_CWD',
+]);
+
+const HOST_ONLY_ENV_PREFIX = 'npm_';
 
 @Injectable()
 export class AntigravityAdapter extends AbstractAcpAdapter {
@@ -24,9 +40,11 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
 
   protected spawnAgentProcess(): ChildProcess {
     const bridgeBin = this.resolveBridgeBin();
+    const cwd = tmpdir();
     return this.processRunner.spawn(process.execPath, [bridgeBin], {
+      cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: this.buildBridgeEnv(),
+      env: this.buildBridgeEnv(cwd),
     });
   }
 
@@ -48,14 +66,28 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
     );
   }
 
-  private buildBridgeEnv(): NodeJS.ProcessEnv {
-    if (process.env.AGY_PATH) {
-      return process.env;
+  private buildBridgeEnv(cwd: string): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (this.isHostOnlyVariable(key)) {
+        continue;
+      }
+      env[key] = value;
     }
-    const agyPath = this.fileSystem.resolveInPath('agy');
-    if (!agyPath) {
-      return process.env;
+
+    env.PWD = cwd;
+
+    if (!env.AGY_PATH) {
+      const agyPath = this.fileSystem.resolveInPath('agy');
+      if (agyPath) {
+        env.AGY_PATH = agyPath;
+      }
     }
-    return { ...process.env, AGY_PATH: agyPath };
+
+    return env;
+  }
+
+  private isHostOnlyVariable(key: string): boolean {
+    return HOST_ONLY_ENV_VARS.has(key) || key.startsWith(HOST_ONLY_ENV_PREFIX);
   }
 }

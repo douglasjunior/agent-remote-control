@@ -50,6 +50,7 @@ describe('AgentRegistryService', () => {
         name: 'Reviewer Agent',
         description: 'Reviews pull requests.',
         buildSystemPrompt: () => 'Reviewer prompt',
+        delegation: {},
         turnReminder: 'Reviewer turn reminder',
       });
 
@@ -80,6 +81,7 @@ describe('AgentRegistryService', () => {
         description: 'Testing specialist',
         buildSystemPrompt: () => 'You test things.',
         defaultModel: 'claude-3-5-sonnet',
+        delegation: {},
         turnReminder: 'Tester turn reminder',
       });
 
@@ -129,6 +131,27 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('getDelegationContract', () => {
+    it('should return the contract declared by the role in case-insensitive manner', () => {
+      expect(service.getDelegationContract('developer')).toEqual({
+        project: 'required',
+        sessionMode: 'overridable',
+      });
+      expect(service.getDelegationContract('GIT_OPS')).toEqual({
+        project: 'optional',
+        sessionMode: 'overridable',
+      });
+    });
+
+    it('should omit the session mode for a role that keeps it fixed', () => {
+      expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({ project: 'required' });
+    });
+
+    it('should return an empty contract for an unknown role', () => {
+      expect(service.getDelegationContract('UNKNOWN_ROLE')).toEqual({});
+    });
+  });
+
   describe('getTurnReminder', () => {
     it('should return turn reminder for CEO role in case-insensitive manner', () => {
       const reminderUpper = service.getTurnReminder('CEO');
@@ -170,6 +193,7 @@ describe('AgentRegistryService', () => {
         name: 'Custom Agent',
         description: 'Custom description',
         buildSystemPrompt: () => 'prompt',
+        delegation: {},
         turnReminder: 'Custom turn reminder',
       });
       expect(service.getTurnReminder('custom')).toBe('Custom turn reminder');
@@ -203,6 +227,7 @@ describe('AgentRegistryService', () => {
         name: 'Solution Architect',
         description: 'Architectural governance',
         buildSystemPrompt: () => 'Architect prompt',
+        delegation: {},
         turnReminder: 'Architect turn reminder',
       });
 
@@ -219,6 +244,7 @@ describe('AgentRegistryService', () => {
         name: 'Custom Developer',
         description: 'Overridden developer',
         buildSystemPrompt: () => 'Overridden prompt',
+        delegation: {},
         turnReminder: 'Overridden turn reminder',
       });
 

@@ -16,6 +16,7 @@ export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
     options?: ProcessSpawnOptions,
   ): ChildProcess {
     return spawn(command, [...args], {
+      cwd: options?.cwd,
       stdio: options?.stdio,
       env: options?.env,
       signal: options?.signal,

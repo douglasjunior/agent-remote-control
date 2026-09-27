@@ -2,7 +2,8 @@
 name: agent-definitions
 description: >
   Padrão para definição, parametrização e registro de personas de agentes de IA no sistema.
-  Governa os papéis AgentRole (CEO, DEVELOPER, CODE_REVIEWER e TECH_LEAD), o contrato AgentDefinition, a implementação
+  Governa os papéis AgentRole (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER e TECH_LEAD), o contrato AgentDefinition
+  com seu contrato de delegação, a implementação
   do AgentRegistryService (IAgentRegistryPort), os system prompts especializados e o
   direcionamento de tarefas. Use ao criar, modificar ou consultar personas e papéis de agentes.
 ---
@@ -27,12 +28,18 @@ agentes de desenvolvimento do sistema.
 A tipagem `AgentRole` define os papéis canônicos de agentes:
 
 ```typescript
-export type AgentRole = 'CEO' | 'DEVELOPER' | 'CODE_REVIEWER' | 'TECH_LEAD';
+export type AgentRole =
+  | 'CEO'
+  | 'GIT_OPS'
+  | 'DEVELOPER'
+  | 'CODE_REVIEWER'
+  | 'TECH_LEAD';
 ```
 
 - **`CEO`**: Líder do time de agentes. Conversa com o usuário, faz a triagem, delega todo o trabalho prático aos demais agentes e revisa os resultados.
 - **`TECH_LEAD`**: Especialista em planejamento técnico, exploração arquitetural, levantamento de impacto e especificação decomposta para o DEVELOPER. Atua de forma consultiva com alinhamento Human-in-the-loop em decisões críticas e trade-offs de design.
-- **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código, testes automatizados e operações de Git.
+- **`GIT_OPS`**: Dono de toda operação de Git que alcança um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único leitor e escritor.
+- **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código e testes automatizados. No Git opera só o lado local: inspeção da árvore de trabalho, branches locais e commit do próprio trabalho.
 - **`CODE_REVIEWER`**: Revisor de código crítico e independente, focado em inspecionar alterações e propor melhorias técnicas, aderência a convenções e prevenção de bugs sem viés de implementações anteriores.
 
 ### Contrato de Definição (`AgentDefinition`)
@@ -45,7 +52,21 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
 - `defaultModel`: modelo de linguagem padrão opcional associado à persona;
 - `defaultSessionMode`: modo de sessão padrão (`'resume' | 'new'`, padrão `'resume'`). Quando `'new'`, o orquestrador inicia sempre uma nova sessão ACP para o agente;
+- `delegation`: contrato de delegação do agente (`AgentDelegationContract`), declarando quais parâmetros do marcador ele aceita. `project` vale `'required'` ou `'optional'`; ausente, o agente não recebe pasta de projeto. `sessionMode` vale `'overridable'`; ausente, o modo fica fixo no `defaultSessionMode` e passar `:new` ou `:resume` é recusado. O conjunto é particular de cada agente, e um parâmetro novo se acrescenta aqui;
 - `turnReminder`: lembrete de turno obrigatório (`string`) injetado no prompt de cada rodada do agente.
+
+### Quem pode nomear quem
+
+Um prompt de agente executor descreve apenas a si mesmo. Ele recebe `team` em
+`buildSystemPrompt(team)` e o ignora, então não possui seção "Your Team" e nomear outro papel
+dentro dele cria referência a algo que o agente não conhece. Limites de escopo se escrevem no
+negativo sobre o próprio agente ("fora do seu escopo; devolva ao chamador"), nunca apontando o
+papel que assume a tarefa.
+
+Só o prompt do CEO enxerga o time, e mesmo nele o conhecimento sobre cada agente mora na
+`description` da definição, renderizada em "Your Team". As instruções genéricas do prompt do CEO
+não citam papéis: um agente novo passa a ser roteado escrevendo a própria `description`, sem
+editar o prompt do CEO.
 
 ## Prompts do Sistema Especializados
 
@@ -63,18 +84,18 @@ da narração.
 - Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
 - Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
 - Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
-- Incorpora diretamente as convenções e regras operacionais de Git (Conventional Commits em pt-BR, clones SSH, verificação de chaves e segurança); executa especificações técnicas e planos aprovados;
+- Incorpora as convenções de commit (Conventional Commits em pt-BR) e as regras de segurança do commit; declara operações que alcançam um remoto como fora do próprio escopo e as devolve ao chamador em vez de executá-las, sem nomear quem as executa;
 - Possui o lembrete `DEVELOPER_TURN_REMINDER` configurado em sua definição, reforçando a cada turno a aderência a convenções, testes automatizados e o envelope `<final_response>`.
 
 ### 2. CEO (`ceo.prompt.ts`)
 
 - Lidera e orquestra o time de agentes no `agent-remote-control`, atuando como interface conversacional primária com o usuário (via Discord e outros canais);
-- Compreende o diretório `workspaces` como contêiner multi-projeto; inspeciona o CWD e o catálogo `workspace-manifest.json` para descobrir projetos e repositórios ativos;
-- Ancora o escopo e as respostas ao usuário nos projetos de fato existentes no workspace, propondo clonar ou iniciar novos via DEVELOPER caso esteja vazio;
+- Compreende o diretório `workspaces` como contêiner multi-projeto; lista o CWD para descobrir os projetos ativos, já que cada subpasta direta é um projeto;
+- Ancora o escopo e as respostas ao usuário nos projetos de fato existentes no workspace, propondo clonar ou iniciar novos caso esteja vazio;
 - Opera com confinamento padrão ao `workspaces` e suas subpastas; atuar fora do workspace é perigoso e exige alerta explícito de risco e confirmação prévia obrigatória do usuário antes de prosseguir;
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
-- Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
+- Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome, descrição e formas de marcador aceitas de cada agente, estas derivadas do `delegation`. Por isso a `description` de cada definição deve dizer quando delegar a ele: as instruções genéricas do prompt do CEO não citam agentes, e cada agente se explica pela própria descrição;
 - Quando o usuário solicita planejamento, arquitetura, spikes ou investigações técnicas, delega ao `TECH_LEAD`. Após a aprovação do plano e alinhamento de decisões, delega a execução ao `DEVELOPER`;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
 - Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
@@ -101,6 +122,15 @@ da narração.
 - Produz planos estruturados entregues diretamente no chat (sem gerar arquivos em disco), contendo Visão Geral e Objetivos, Decisões Técnicas e Arquitetura, Análise de Impacto com caminhos reais de arquivos, Decomposição Sequencial de Tarefas para o DEVELOPER (com dependências explícitas e testes integrados em cada tarefa) e Critérios de Aceitação/Verificação com comandos concretos;
 - Opera por padrão em sessão persistida (`defaultSessionMode: 'resume'`) para sustentar refinamentos iterativos e alinhamentos conversacionais com o CEO ou usuário;
 - Possui o lembrete `TECH_LEAD_TURN_REMINDER` configurado em sua definição, reforçando o papel de planejamento, disciplina somente-leitura, HITL e tarefas com critérios verificáveis.
+
+### 5. Git Ops Agent (`git-ops.prompt.ts`)
+
+- Dono de toda operação de Git que alcança um remoto: clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH;
+- Deixa para o agente que implementa o lado local: staging, commit, branch local e inspeção da árvore de trabalho. Force push é proibido em qualquer circunstância;
+- Opera em um de dois diretórios, decididos pelo chamador: a raiz de workspaces, para clonar ou localizar um repositório, e uma pasta de projeto, para operações sobre aquele repositório. Por isso seu contrato declara `project: 'optional'`;
+- Único leitor e escritor do `workspace-manifest.json` na raiz de workspaces, um array JSON de `{ url, folder, defaultBranch }` que mapeia URL de repositório para pasta de projeto. Arquivo ausente significa workspace vazio;
+- Deriva o nome da pasta do último segmento da URL sem o sufixo `.git`, regra exata porque o chamador roteia o trabalho seguinte por esse nome e um nome diferente duplicaria o clone;
+- Relata no `GIT_OPS_TURN_REMINDER` a pasta de projeto usada, já que é assim que o CEO aprende para onde rotear a sequência.
 
 ## Serviço de Registro (`AgentRegistryService`)
 

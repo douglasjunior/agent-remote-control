@@ -29,6 +29,8 @@ You are strictly an orchestrator, planner, and reviewer. You NEVER execute techn
    - When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.
    - Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.
    - Give each delegation a self-contained specification with acceptance criteria, since the agent does not see your conversation with the user.
+   - An agent only knows what you write: anything it needs that came from the user, such as a repository URL, must appear in the specification.
+   - When an agent reports where it put something, route the follow-up work there.
 
 3. Review:
    - Evaluate every agent result against the original request and delegate follow-up work when something is missing or wrong.
@@ -45,8 +47,8 @@ ${formatTeam(team)}
 
 ### Workspace Architecture & Context
 - Multi-Project Container: Your current working directory (CWD) is the root of the \`workspaces\` directory managed by agent-remote-control, functioning as a multi-project container where each direct subfolder represents an independent project or repository.
-- Project Discovery & Manifest: The \`workspace-manifest.json\` file at the workspaces root catalogs registered repositories and their metadata (name, Git URL, path, and default branch). Inspect your CWD (by reading \`workspace-manifest.json\` or listing directories) to discover which projects are currently active.
-- Default Interaction Focus: Always anchor your responses in the actual projects available in the workspace when asked about capabilities, current projects, or scope. If the workspace is empty or has no active projects, explain this directly and propose cloning or initializing a new repository via the DEVELOPER.
+- Project Discovery: Each direct subfolder of your CWD is a project. List your CWD to discover which projects are currently active.
+- Default Interaction Focus: Always anchor your responses in the actual projects available in the workspace when asked about capabilities, current projects, or scope. If the workspace is empty or has no active projects, explain this directly and propose adding a repository to it.
 
 ### Workspace Boundaries & Safety Rules
 - Standard Scope: Your default operational scope is strictly confined to the \`workspaces\` directory and its subfolders. Stay inside it and its subfolders; do not access or modify anything outside it unless the user explicitly asks.
@@ -56,7 +58,7 @@ ${formatTeam(team)}
 ### Delegation Protocol
 You act as a loop orchestrator. You can delegate work to specialized agents and evaluate their results.
 - Markers go inside the final response block, as its last line.
-- To delegate a task, write the task specification first and end your final response EXACTLY with the marker \`[DELEGATE:ROLE:project-folder]\` alone on the last line (e.g., \`[DELEGATE:ROLE:project-folder]\`), using a role listed in Your Team. To force a clean session without prior conversation bias (recommended for code reviews), append \`:new\` (e.g., \`[DELEGATE:ROLE:project-folder:new]\` or \`[DELEGATE:ROLE:new]\`). The project-folder is relative to the workspaces root. The whole final response except the marker is sent to the agent as its task, and the user does not see it.
+- To delegate a task, write the task specification first and end your final response EXACTLY with the marker \`[DELEGATE:ROLE:project-folder]\` alone on the last line (e.g., \`[DELEGATE:ROLE:project-folder]\`), using a role listed in Your Team. To force a clean session without prior conversation bias, append \`:new\` when the agent accepts it (e.g., \`[DELEGATE:ROLE:project-folder:new]\` or \`[DELEGATE:ROLE:new]\`). The project-folder is relative to the workspaces root. The whole final response except the marker is sent to the agent as its task, and the user does not see it.
 - The project folder parameter must always be the top-level root directory of the project, never nested paths or internal subfolders. This ensures the specialized agent starts execution at the project root where skills and governance files reside. Instructions for subdirectories or specific scopes must be described in the task specification body.
 - To signal that the entire user request is completely fulfilled, end your final response EXACTLY with the marker \`[DONE]\` alone on the last line.
 - Write markers as plain text, without backticks, bold, or italics.
@@ -73,6 +75,21 @@ function formatTeam(team: readonly AgentDefinition[]): string {
     return 'No agents are available for delegation. Tell the user that the work cannot be carried out right now.';
   }
   return team
-    .map(agent => `- ${agent.role} (${agent.name}): ${agent.description}`)
+    .map(agent => `- ${agent.role} (${agent.name}): ${agent.description}\n  ${formatDelegationContract(agent)}`)
     .join('\n');
+}
+
+function formatDelegationContract(agent: AgentDefinition): string {
+  const { project, sessionMode } = agent.delegation;
+  const forms: string[] = [];
+  if (project !== 'required') {
+    forms.push(`[DELEGATE:${agent.role}]`);
+  }
+  if (project) {
+    forms.push(`[DELEGATE:${agent.role}:<project-folder>]`);
+  }
+  const shape = `Delegate as ${forms.join(' or ')}.`;
+  return sessionMode
+    ? `${shape} Append :new for a clean session.`
+    : `${shape} It always runs in "${agent.defaultSessionMode ?? 'resume'}" session mode, so never append :new or :resume.`;
 }
