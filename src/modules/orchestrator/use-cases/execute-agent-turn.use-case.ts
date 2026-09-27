@@ -275,11 +275,21 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<string> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
+      if (existing.agentPort.supportsSteering) {
+        this.logger.log(
+          `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
+        );
+        await existing.steer(taskSpec);
+        return `[AGENT_RESULT:${delegateToRole}]\nSteering message sent to active agent.`;
+      }
+
       this.logger.log(
-        `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
+        `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unsupported)`,
       );
-      await existing.steer(taskSpec);
-      return `[AGENT_RESULT:${delegateToRole}]\nSteering message sent to active agent.`;
+      await existing.turn.cancel();
+      await existing.agentPort.closeSession().catch(() => undefined);
+      await existing.agentPort.disconnect().catch(() => undefined);
+      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole);
     }
 
     const delegatePort = this.agentPortFactory.create();
@@ -296,9 +306,8 @@ export class ExecuteAgentTurnUseCase {
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
-    let effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+    const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
     let currentTaskSpec = taskSpec;
-    let pendingSteerSpec: string | null = null;
 
     const delegationTurn = new ActiveTurn(delegatePort);
     const activeDelegation: ActiveDelegation = {
@@ -306,19 +315,16 @@ export class ExecuteAgentTurnUseCase {
       roleName: event.roleName,
       projectName: projectName ?? null,
       get taskSpec() {
-        return pendingSteerSpec ?? currentTaskSpec;
+        return currentTaskSpec;
       },
       cwd,
       startedAt,
       agentPort: delegatePort,
       turn: delegationTurn,
       steer: async (newSpec: string) => {
+        currentTaskSpec = newSpec;
         if (delegatePort.supportsSteering) {
-          currentTaskSpec = newSpec;
           delegatePort.sendSteeringPrompt(newSpec);
-        } else {
-          pendingSteerSpec = newSpec;
-          await delegationTurn.cancel();
         }
       },
     };
@@ -326,58 +332,29 @@ export class ExecuteAgentTurnUseCase {
     this.conversationRuntime.registerDelegation(conversationKey, activeDelegation);
 
     try {
-      while (true) {
-        try {
-          const response = await this.runAgentTurn(
-            delegatePort,
-            cwd,
-            delegateToRole,
-            currentTaskSpec,
-            request,
-            delegationTurn,
-            session,
-            effectiveSessionMode,
-          );
-          if (pendingSteerSpec !== null) {
-            this.logger.log(
-              `[Delegation Steered via Reprompt] Role=${delegateToRole}, NewTask="${this.preview(pendingSteerSpec)}"`,
-            );
-            currentTaskSpec = pendingSteerSpec;
-            pendingSteerSpec = null;
-            effectiveSessionMode = 'resume';
-            delegationTurn.reset();
-            continue;
-          }
-          const durationMs = Date.now() - startedAt;
-          this.logger.log(
-            `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
-          );
-          request.onDelegation?.({
-            ...event,
-            phase: 'finished',
-            response,
-            agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
-            usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
-            durationMs,
-          });
-          return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
-        } catch (error) {
-          if (
-            (error instanceof PromptCancelledError || (error instanceof Error && error.name === 'PromptCancelledError'))
-            && pendingSteerSpec !== null
-          ) {
-            this.logger.log(
-              `[Delegation Steered via Reprompt] Role=${delegateToRole}, NewTask="${this.preview(pendingSteerSpec)}"`,
-            );
-            currentTaskSpec = pendingSteerSpec;
-            pendingSteerSpec = null;
-            effectiveSessionMode = 'resume';
-            delegationTurn.reset();
-            continue;
-          }
-          throw error;
-        }
-      }
+      const response = await this.runAgentTurn(
+        delegatePort,
+        cwd,
+        delegateToRole,
+        currentTaskSpec,
+        request,
+        delegationTurn,
+        session,
+        effectiveSessionMode,
+      );
+      const durationMs = Date.now() - startedAt;
+      this.logger.log(
+        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+      );
+      request.onDelegation?.({
+        ...event,
+        phase: 'finished',
+        response,
+        agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
+        usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
+        durationMs,
+      });
+      return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
       this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole);
       await delegatePort.closeSession().catch(() => undefined);

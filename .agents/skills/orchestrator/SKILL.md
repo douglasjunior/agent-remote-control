@@ -67,7 +67,7 @@ Representa o turno em execução de uma conversa:
 
 - `activate(agentPort)`: registra o agente que está rodando (CEO ou delegado);
 - `cancel()`: marca o turno como cancelado e chama `cancel()` no agente ativo;
-- `reset()`: redefine o estado de cancelamento para falso quando o turno de uma delegação é retomado após cancelamento por steering;
+- `reset()`: redefine o estado de cancelamento para falso;
 - `throwIfCancelled()`: lança `PromptCancelledError` se o turno foi cancelado. O orquestrador o chama antes de `connect`, depois de `connect` e antes de cada `prompt`, para que um cancelamento pedido enquanto o agente ainda conecta interrompa o turno.
 
 ### `ActiveDelegation` (`active-delegation.model.ts`)
@@ -82,7 +82,7 @@ Representa uma delegação técnica atualmente em andamento em segundo plano:
 - `startedAt`: timestamp de início;
 - `agentPort`: instância `IAgentPort` do agente delegado;
 - `turn`: instância `ActiveTurn` associada à execução do delegado;
-- `steer(newSpec)`: redireciona a execução da tarefa (via steering nativo ACP ou cancelamento com reprompt).
+- `steer(newSpec)`: redireciona a execução da tarefa via steering nativo ACP.
 
 ### `TurnResult` (`turn-result.model.ts`)
 
@@ -236,8 +236,10 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 4), porque o resultado não voltaria ao CEO.
    6. Nas demais rodadas, em `delegate`:
-      - Se o papel já possuir uma delegação ativa (`findActiveDelegation`), aplica steering chamando `await existing.steer(taskSpec)` e retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
-      - Caso contrário, cria `ActiveDelegation` e registra no runtime. Se `delegatePort.supportsSteering === true`, o método `steer` envia steering nativo ACP. Se `supportsSteering === false`, registra `pendingSteerSpec` e cancela a rodada corrente do delegado. O loop do delegado captura `PromptCancelledError`, reseta o turno com `delegationTurn.reset()`, define `effectiveSessionMode = 'resume'` e reprompta com o novo spec na mesma sessão.
+      - Quando o papel já possui delegação ativa (`findActiveDelegation`):
+        - Se `existing.agentPort.supportsSteering === true`: aplica steering nativo chamando `await existing.steer(taskSpec)` e retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
+        - Se `existing.agentPort.supportsSteering === false`: cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
+      - Cria `ActiveDelegation` e registra no runtime. Se `delegatePort.supportsSteering === true`, o método `steer` despacha `sendSteeringPrompt`.
       - Registra `[Delegation Started]` e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` e emite `finished`.
    7. No `finally` da delegação, remove do registro de delegações ativas e encerra o agente delegado (`closeSession()` + `disconnect()`).
    8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.

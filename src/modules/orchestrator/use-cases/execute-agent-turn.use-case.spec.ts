@@ -866,9 +866,9 @@ describe('ExecuteAgentTurnUseCase', () => {
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
         roleName: 'Developer',
-        projectName: 'frontend',
+        projectName: 'project-a',
         taskSpec: 'Run build and tests',
-        cwd: '/mock/workspace/frontend',
+        cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
         agentPort: activeDelegatePort,
         turn: { cancel: vi.fn() } as any,
@@ -891,20 +891,21 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.status).toBe('completed');
       expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: frontend, Task: "Run build and tests"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Task: "Run build and tests"');
       expect(stubAgentPort.promptCalls[0]).toContain('- Role: CODE_REVIEWER, Project: none, Task: "Review code"');
       expect(stubAgentPort.promptCalls[0]).toContain('How is it going?');
     });
 
     it('should steer active delegation when CEO delegates to an already active role with native steering', async () => {
+      delegateStubPort.supportsSteering = true;
       const steerSpy = vi.fn().mockResolvedValue(undefined);
       const conversationKey = buildConversationKey('ch-1');
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
         roleName: 'Developer',
-        projectName: 'my-app',
+        projectName: 'project-a',
         taskSpec: 'Original task',
-        cwd: '/mock/workspace/my-app',
+        cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
         agentPort: delegateStubPort,
         turn: { cancel: vi.fn() } as any,
@@ -912,7 +913,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
 
       stubAgentPort.mockResponses = [
-        'Change course.\n[DELEGATE:DEVELOPER:my-app]',
+        'Change course.\n[DELEGATE:DEVELOPER:project-a]',
         'Acknowledged.\n[DONE]',
       ];
 
@@ -926,7 +927,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should invoke sendSteeringPrompt when active delegation steer() is called and supportsSteering is true', async () => {
       delegateStubPort.supportsSteering = true;
       stubAgentPort.mockResponses = [
-        'Start building.\n[DELEGATE:DEVELOPER:my-app]',
+        'Start building.\n[DELEGATE:DEVELOPER:project-a]',
         'All done.\n[DONE]',
       ];
 
@@ -948,76 +949,48 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(capturedDelegation.taskSpec).toBe('Steered instruction');
     });
 
-    it('should cancel and reprompt on the resumed session when supportsSteering is false', async () => {
-      delegateStubPort.supportsSteering = false;
-      stubAgentPort.mockResponses = [
-        'Start initial task.\n[DELEGATE:DEVELOPER:my-app]',
-        'Great job.\n[DONE]',
-      ];
+    it('should cancel, close, unregister and recreate delegate in new directory when supportsSteering is false', async () => {
+      const firstDelegatePort = new StubAgentPort();
+      firstDelegatePort.supportsSteering = false;
+      const firstCancelSpy = vi.fn().mockResolvedValue(undefined);
+      const firstCloseSessionSpy = vi.spyOn(firstDelegatePort, 'closeSession').mockRejectedValueOnce(new Error('close failed'));
+      const firstDisconnectSpy = vi.spyOn(firstDelegatePort, 'disconnect');
+
+      workspacePort.resolveRepositoryPath.mockImplementation((proj: string) => `/mock/workspace/${proj}`);
 
       const conversationKey = buildConversationKey('ch-1');
-      let steerAttempted = false;
-      delegateStubPort.prompt = async function* (text: string) {
-        delegateStubPort.promptCalls.push(text);
-        if (!steerAttempted) {
-          steerAttempted = true;
-          const activeDelegation = runtime.findActiveDelegation(conversationKey, 'DEVELOPER');
-          if (activeDelegation) {
-            await activeDelegation.steer('Redirected task');
-            throw new PromptCancelledError();
-          }
-        }
-        const response = delegateStubPort.mockResponses.shift();
-        if (response) {
-          delegateStubPort.lastAgentMessage = response;
-          yield { kind: 'text', text: response };
-        }
-      };
-      delegateStubPort.mockResponses = ['Task done after reprompt.'];
+      runtime.registerDelegation(conversationKey, {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'project-a',
+        taskSpec: 'Old task in project-a',
+        cwd: '/mock/workspace/project-a',
+        startedAt: Date.now() - 5000,
+        agentPort: firstDelegatePort,
+        turn: { cancel: firstCancelSpy } as any,
+        steer: vi.fn(),
+      });
+
+      delegateStubPort.supportsSteering = false;
+      delegateStubPort.mockResponses = ['Completed task in project-b.'];
+
+      stubAgentPort.mockResponses = [
+        'Execute task in project-b.\n[DELEGATE:DEVELOPER:project-b]',
+        'All finished.\n[DONE]',
+      ];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
-      expect(delegateStubPort.promptCalls).toHaveLength(2);
-      expect(delegateStubPort.promptCalls[0]).toContain('Start initial task.');
-      expect(delegateStubPort.promptCalls[1]).toContain('Redirected task');
-    });
-
-    it('should reprompt on resumed session when agent completes before cancellation and expose pending taskSpec', async () => {
-      delegateStubPort.supportsSteering = false;
-      stubAgentPort.mockResponses = [
-        'Start initial task.\n[DELEGATE:DEVELOPER:my-app]',
-        'Great job.\n[DONE]',
-      ];
-
-      const conversationKey = buildConversationKey('ch-1');
-      let steerAttempted = false;
-      let observedPendingSpec: string | undefined;
-      delegateStubPort.prompt = async function* (text: string) {
-        delegateStubPort.promptCalls.push(text);
-        if (!steerAttempted) {
-          steerAttempted = true;
-          const activeDelegation = runtime.findActiveDelegation(conversationKey, 'DEVELOPER');
-          if (activeDelegation) {
-            await activeDelegation.steer('Redirected task');
-            observedPendingSpec = activeDelegation.taskSpec;
-          }
-        }
-        const response = delegateStubPort.mockResponses.shift();
-        if (response) {
-          delegateStubPort.lastAgentMessage = response;
-          yield { kind: 'text', text: response };
-        }
-      };
-      delegateStubPort.mockResponses = ['First round response', 'Task done after reprompt.'];
-
-      const result = await useCase.execute(turnRequest());
-
-      expect(result.status).toBe('completed');
-      expect(observedPendingSpec).toBe('Redirected task');
-      expect(delegateStubPort.promptCalls).toHaveLength(2);
-      expect(delegateStubPort.promptCalls[0]).toContain('Start initial task.');
-      expect(delegateStubPort.promptCalls[1]).toContain('Redirected task');
+      expect(result.response).toBe('All finished.');
+      expect(firstCancelSpy).toHaveBeenCalled();
+      expect(firstCloseSessionSpy).toHaveBeenCalled();
+      expect(firstDisconnectSpy).toHaveBeenCalled();
+      expect(workspacePort.resolveRepositoryPath).toHaveBeenCalledWith('project-b');
+      expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/project-b']);
+      expect(delegateStubPort.promptCalls[0]).toContain('Execute task in project-b.');
+      expect(stubAgentPort.promptCalls[1]).toContain('[AGENT_RESULT:DEVELOPER]\nCompleted task in project-b.');
+      expect(stubAgentPort.promptCalls[1]).not.toContain('Steering message sent to active agent.');
     });
   });
 });
