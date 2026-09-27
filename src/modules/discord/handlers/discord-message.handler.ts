@@ -10,13 +10,11 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordAttachmentService } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
-import { ActivityFeed } from '../utils/activity-feed.util.js';
 import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.js';
 
 
-const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DEFAULT_ATTACHMENT_PROMPT = 'O usuário enviou anexos. Analise os arquivos anexados.';
 
@@ -27,12 +25,21 @@ type SendableChannel = {
 
 type Conversation = ConversationKey & { readonly target: SendableChannel };
 
-type ProgressMessage = { edit: (content: string) => Promise<unknown> };
+type ProgressMessage = {
+  edit: (content: string) => Promise<unknown>;
+  delete?: () => Promise<void>;
+};
 
-type Progress = {
-  readonly message: Promise<ProgressMessage>;
-  readonly feed: ActivityFeed;
-  readonly header: string;
+type TrackedMessage = {
+  content?: string;
+  edit: (content: string) => Promise<unknown>;
+  delete?: () => Promise<unknown>;
+};
+
+type ThoughtTracker = {
+  messages: TrackedMessage[];
+  currentText: string;
+  isDeleted?: boolean;
 };
 
 @Injectable()
@@ -139,52 +146,105 @@ export class DiscordMessageHandler implements OnModuleInit {
       const progressMessage: ProgressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
       );
-      const throttler = new DiscordThrottler({ intervalMs: 1500 });
-      let progress: Progress = {
-        message: Promise.resolve(progressMessage),
-        feed: new ActivityFeed(),
-        header: PROGRESS_HEADER,
+      let cleanInitialProgressPromise: Promise<void> | null = null;
+      const cleanInitialProgress = (): Promise<void> => {
+        cleanInitialProgressPromise ??= progressMessage.delete?.().catch(() => undefined) ?? Promise.resolve();
+        return cleanInitialProgressPromise;
       };
+
+      const throttler = new DiscordThrottler({ intervalMs: 1500 });
+      const toolMessages = new Map<string, Promise<TrackedMessage | null>>();
+      const thoughtTrackers = new Map<string, ThoughtTracker>();
+      let delegationChain = Promise.resolve();
 
       const typing = new DiscordTypingIndicator(targetChannel);
       typing.start();
 
       const onActivity = (activity: AgentActivity): void => {
         typing.keepAlive();
-        const key = this.activityKey(activity);
-        if (!key) {
+        void cleanInitialProgress();
+
+        if (activity.kind === 'thought') {
+          if (activity.final) {
+            this.logger.log(`💭 [Agent Thought] ${activity.text.trim()}`);
+          }
+
+          if (activity.removed) {
+            const tracker = thoughtTrackers.get(activity.id);
+            if (tracker) {
+              tracker.isDeleted = true;
+              thoughtTrackers.delete(activity.id);
+              for (const msg of tracker.messages) {
+                if (typeof msg?.delete === 'function') {
+                  void msg.delete().catch(() => undefined);
+                }
+              }
+            }
+            return;
+          }
+
+          const formatted = this.activityFormatter.formatActivity(activity);
+          if (!formatted) {
+            return;
+          }
+
+          let tracker = thoughtTrackers.get(activity.id);
+          if (!tracker) {
+            tracker = { messages: [], currentText: '' };
+            thoughtTrackers.set(activity.id, tracker);
+          }
+          tracker.currentText = formatted;
+
+          throttler.schedule(async () => {
+            await this.syncThoughtMessages(thoughtTrackers, targetChannel!);
+          });
           return;
         }
 
-        if (activity.kind === 'thought' && activity.final) {
-          this.logger.log(`💭 [Agent Thought] ${activity.text.trim()}`);
-        } else if (activity.kind === 'tool') {
+        if (activity.kind === 'tool') {
           this.logger.log(
             `🔧 [Tool Call: ${activity.status}] ${activity.title} (callId: ${activity.toolCallId})`,
           );
-        }
 
-        const formatted = this.activityFormatter.formatActivity(activity);
-        if (activity.kind === 'thought' && activity.removed) {
-          progress.feed.remove(key);
-        } else if (formatted) {
-          progress.feed.upsert(key, formatted);
-        } else {
-          return;
-        }
+          const formatted = this.activityFormatter.formatActivity(activity);
+          if (!formatted) {
+            return;
+          }
 
-        const current = progress;
-        throttler.schedule(() => this.renderProgress(current));
+          if (activity.status === 'in_progress') {
+            const sendPromise = (targetChannel!.send(formatted) as Promise<TrackedMessage>).catch((error: unknown): null => {
+              this.logger.warn(`Failed to send tool call message: ${this.describeError(error)}`);
+              return null;
+            });
+            toolMessages.set(activity.toolCallId, sendPromise);
+            return;
+          }
+
+          if (activity.status === 'completed' || activity.status === 'failed') {
+            const prevPromise = toolMessages.get(activity.toolCallId);
+            const editPromise = (prevPromise ?? Promise.resolve<TrackedMessage | null>(null))
+              .then(async (msg): Promise<TrackedMessage | null> => {
+                if (msg && typeof msg.edit === 'function') {
+                  await msg.edit(formatted);
+                  return msg;
+                }
+                return (await targetChannel!.send(formatted)) as TrackedMessage;
+              })
+              .catch((error: unknown): null => {
+                this.logger.warn(`Failed to update tool call message: ${this.describeError(error)}`);
+                return null;
+              });
+            toolMessages.set(activity.toolCallId, editPromise);
+          }
+        }
       };
 
       const onDelegation = (event: DelegationEvent): void => {
         typing.keepAlive();
-        const previous = progress;
-        const header = event.phase === 'started'
-          ? this.activityFormatter.formatDelegateProgressHeader(event.roleName)
-          : PROGRESS_HEADER;
-        const message = previous.message.then(async (previousMessage) => {
-          await this.renderProgress(previous);
+        void cleanInitialProgress();
+
+        delegationChain = delegationChain.then(async () => {
+          await throttler.flush();
           try {
             if (event.phase === 'finished' && event.response.trim()) {
               await this.sendChunks(
@@ -194,13 +254,10 @@ export class DiscordMessageHandler implements OnModuleInit {
               );
             }
             await targetChannel!.send(this.activityFormatter.formatDelegation(event));
-            return await targetChannel!.send(`${header}⏳ *Aguardando atividades...*`) as ProgressMessage;
           } catch (error) {
             this.logger.warn(`Failed to announce the delegation: ${this.describeError(error)}`);
-            return previousMessage;
           }
         });
-        progress = { message, feed: new ActivityFeed(), header };
       };
 
       let result: TurnResult;
@@ -225,9 +282,11 @@ export class DiscordMessageHandler implements OnModuleInit {
         typing.stop();
       }
 
-      await progress.message;
+      await cleanInitialProgress();
+      await delegationChain;
       await throttler.flush();
       throttler.destroy();
+      await Promise.all(Array.from(toolMessages.values()).map(p => p.catch(() => undefined)));
 
       await this.sendTurnResult(targetChannel, result);
     } catch (error) {
@@ -245,11 +304,53 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
   }
 
-  private async renderProgress({ message, feed, header }: Progress): Promise<void> {
-    try {
-      await (await message).edit(feed.render(header));
-    } catch (error) {
-      this.logger.warn(`Failed to update progress message: ${this.describeError(error)}`);
+  private async syncThoughtMessages(
+    thoughtTrackers: Map<string, ThoughtTracker>,
+    targetChannel: SendableChannel,
+  ): Promise<void> {
+    for (const tracker of thoughtTrackers.values()) {
+      if (tracker.isDeleted) {
+        continue;
+      }
+      const chunks = this.activityFormatter.splitMessage(
+        tracker.currentText,
+        DISCORD_MESSAGE_LIMIT,
+      );
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i]!;
+        const existingMessage = tracker.messages[i];
+        if (existingMessage) {
+          if (
+            existingMessage.content !== chunk
+            && typeof existingMessage.edit === 'function'
+          ) {
+            try {
+              await existingMessage.edit(chunk);
+              existingMessage.content = chunk;
+            } catch (error) {
+              this.logger.warn(`Failed to update thought message: ${this.describeError(error)}`);
+            }
+          }
+        } else {
+          try {
+            const sent = (await targetChannel.send(chunk)) as TrackedMessage | null | undefined;
+            if (tracker.isDeleted) {
+              if (typeof sent?.delete === 'function') {
+                void sent.delete().catch(() => undefined);
+              }
+              break;
+            }
+            if (!sent) {
+              break;
+            }
+            sent.content ??= chunk;
+            tracker.messages.push(sent);
+          } catch (error) {
+            this.logger.warn(`Failed to send thought message: ${this.describeError(error)}`);
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -359,15 +460,5 @@ export class DiscordMessageHandler implements OnModuleInit {
   private cleanPrompt(content: string, botId: string): string {
     const mentionRegex = new RegExp(`<@!?${botId}>`, 'g');
     return content.replace(mentionRegex, '').trim();
-  }
-
-  private activityKey(activity: AgentActivity): string | null {
-    if (activity.kind === 'thought') {
-      return `thought:${activity.id}`;
-    }
-    if (activity.kind === 'tool') {
-      return `tool:${activity.toolCallId}`;
-    }
-    return null;
   }
 }

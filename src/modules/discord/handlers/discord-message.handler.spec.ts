@@ -61,15 +61,7 @@ class MockOrchestratorService {
     status: 'completed',
   };
 
-  public activitiesToEmit: AgentActivity[] = [
-    { kind: 'thought', id: '1', text: 'Thinking about the request' },
-    {
-      kind: 'tool',
-      title: 'Running bash command',
-      toolCallId: 'call-1',
-      status: 'in_progress',
-    },
-  ];
+  public activitiesToEmit: AgentActivity[] = [];
 
   public queued = false;
   public activeSelection = false;
@@ -301,7 +293,16 @@ describe('DiscordMessageHandler', () => {
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
 
-  it('should update progress message when activities are emitted', async () => {
+  it('should send messages when activities are emitted', async () => {
+    orchestratorService.activitiesToEmit = [
+      { kind: 'thought', id: '1', text: 'Thinking about the request' },
+      {
+        kind: 'tool',
+        title: 'Running bash command',
+        toolCallId: 'call-1',
+        status: 'in_progress',
+      },
+    ];
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
@@ -324,10 +325,9 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
     await vi.runAllTimersAsync();
 
-    expect(progressMessage.edit).toHaveBeenCalled();
-    const editCalls = progressMessage.edit.mock.calls.map(call => call[0]);
-    expect(editCalls.some((c: string) => c.includes('Thinking about the request'))).toBe(true);
-    expect(editCalls.some((c: string) => c.includes('Running bash command'))).toBe(true);
+    const sendCalls = (mockThread.send as any).mock.calls.map((call: any) => call[0]);
+    expect(sendCalls.some((c: string) => typeof c === 'string' && c.includes('Thinking about the request'))).toBe(true);
+    expect(sendCalls.some((c: string) => typeof c === 'string' && c.includes('Running bash command'))).toBe(true);
   });
 
   it('should ignore @everyone and role mentions when checking for the bot mention', async () => {
@@ -400,15 +400,24 @@ describe('DiscordMessageHandler', () => {
   });
 
   describe('progress feed', () => {
-    const buildThreadMessage = () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    it('should replace a growing thought in place instead of appending each update', async () => {
+      orchestratorService.activitiesToEmit = [
+        { kind: 'thought', id: 't1', text: 'Hello' },
+        { kind: 'thought', id: 't1', text: 'Hello there' },
+        { kind: 'thought', id: 't1', text: 'Hello there, friend', final: true },
+      ];
+      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
         isDMBased: vi.fn().mockReturnValue(false),
         isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+          sentMessages.push(sent);
+          return sent;
+        }),
       } as unknown as ThreadChannel;
       const message = {
         author: { bot: false, id: 'user-42' },
@@ -418,43 +427,75 @@ describe('DiscordMessageHandler', () => {
         mentions: { has: vi.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
-      return { message, progressMessage };
-    };
-
-    const lastEdit = (progressMessage: { edit: ReturnType<typeof vi.fn> }): string =>
-      progressMessage.edit.mock.calls.at(-1)![0] as string;
-
-    it('should replace a growing thought in place instead of appending each update', async () => {
-      orchestratorService.activitiesToEmit = [
-        { kind: 'thought', id: 't1', text: 'Hello' },
-        { kind: 'thought', id: 't1', text: 'Hello there' },
-        { kind: 'thought', id: 't1', text: 'Hello there, friend', final: true },
-      ];
-      const { message, progressMessage } = buildThreadMessage();
 
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Hello there, friend*');
+      const thoughtMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Hello'));
+      expect(thoughtMsg).toBeDefined();
+      expect(thoughtMsg!.edit).toHaveBeenCalledWith('> 💭 *Hello there, friend*');
     });
 
     it('should update tool calls in place and drop removed thoughts', async () => {
-      orchestratorService.activitiesToEmit = [
-        { kind: 'thought', id: 't1', text: 'Draft' },
-        { kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' },
-        { kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' },
-        { kind: 'thought', id: 't1', text: 'Draft', removed: true },
-        { kind: 'cancelled', id: 'x' },
-      ];
-      const { message, progressMessage } = buildThreadMessage();
+      const sentMessages: {
+        content: string;
+        edit: ReturnType<typeof vi.fn>;
+        delete: ReturnType<typeof vi.fn>;
+      }[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          const sent = {
+            content,
+            edit: vi.fn().mockResolvedValue(undefined),
+            delete: vi.fn().mockResolvedValue(undefined),
+          };
+          sentMessages.push(sent);
+          return sent;
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      vi.spyOn(orchestratorService, 'executeTurn').mockImplementation(async (req) => {
+        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft' });
+        await vi.advanceTimersByTimeAsync(1500);
+        req.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
+        req.onActivity?.({
+          kind: 'tool',
+          toolCallId: 'c1',
+          title: 'ls',
+          status: 'completed',
+          details: 'file1.txt',
+        });
+        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft', removed: true });
+        req.onActivity?.({ kind: 'cancelled', id: 'x' });
+        return orchestratorService.mockResult;
+      });
 
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso do Agente**:\n✅ **Concluído**: `ls`');
+      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Executando'));
+      expect(toolMsg).toBeDefined();
+      expect(toolMsg!.edit).toHaveBeenCalledWith('✅ **Concluído**: `ls`\n```\nfile1.txt\n```');
+
+      const thoughtMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Draft'));
+      expect(thoughtMsg).toBeDefined();
+      expect(thoughtMsg!.delete).toHaveBeenCalled();
     });
 
-    it('should announce delegations and give each agent its own progress message', async () => {
+    it('should announce delegations and deliver thoughts and tool calls as individual messages', async () => {
       const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
       const mockThread = {
         id: 'thread-1',
@@ -475,10 +516,16 @@ describe('DiscordMessageHandler', () => {
         mentions: { has: vi.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
-      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', projectName: 'my-app' };
+      const delegation = {
+        round: 1,
+        role: 'DEVELOPER',
+        roleName: 'Desenvolvedor',
+        projectName: 'my-app',
+      };
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' });
         request.onDelegation?.({ ...delegation, phase: 'started' });
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
         request.onDelegation?.({
           ...delegation,
@@ -495,26 +542,52 @@ describe('DiscordMessageHandler', () => {
       await vi.runAllTimersAsync();
 
       const contents = sentMessages.map(sent => sent.content);
-      expect(contents).toEqual([
-        '⏳ *Iniciando processamento...*',
+      expect(contents).toContain('⏳ *Iniciando processamento...*');
+      expect(contents).toContain(
         '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
-        '🤖 **Progresso — Desenvolvedor**:\n⏳ *Aguardando atividades...*',
+      );
+      expect(contents).toContain(
         '📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nListed files.\n-# 🤖 Desenvolvedor (agy) · 🧠 padrão · ⚡ padrão · ⏱️ 3.0s',
+      );
+      expect(contents).toContain(
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
-        '🤖 **Progresso do Agente**:\n⏳ *Aguardando atividades...*',
-        'Done.',
-      ]);
-      expect(lastEdit(sentMessages[0]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Planning*');
-      expect(lastEdit(sentMessages[2]!)).toBe('🤖 **Progresso — Desenvolvedor**:\n✅ **Concluído**: `ls`');
-      expect(lastEdit(sentMessages[5]!)).toBe('🤖 **Progresso do Agente**:\n> 💭 *Reviewing*');
+      );
+      expect(contents).toContain('Done.');
     });
 
-    it('should keep the current progress message when a delegation cannot be announced', async () => {
-      const { message, progressMessage } = buildThreadMessage();
-      const send = (message.channel as unknown as { send: ReturnType<typeof vi.fn> }).send;
+    it('should proceed gracefully when a delegation cannot be announced', async () => {
+      const send = vi.fn().mockImplementation(async (content: string) => ({
+        content,
+        edit: vi.fn().mockResolvedValue(undefined),
+      }));
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
       orchestratorService.executeTurn = async (request: TurnRequest) => {
-        send.mockRejectedValueOnce(new Error('rate limited'));
-        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', phase: 'started' });
+        send.mockImplementation(async (content: string) => {
+          if (typeof content === 'string' && content.includes('delegada')) {
+            throw new Error('rate limited');
+          }
+          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        });
+        request.onDelegation?.({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          phase: 'started',
+        });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
         return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
       };
@@ -522,43 +595,200 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(lastEdit(progressMessage)).toBe('🤖 **Progresso — Desenvolvedor**:\n✅ **Concluído**: `ls`');
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
 
+    it('should delete initial progress message only once when onActivity and onDelegation fire concurrently', async () => {
+      let resolveDelete!: () => void;
+      const deletePromise = new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      });
+      const deleteFn = vi.fn().mockImplementation(() => deletePromise);
+      const send = vi.fn().mockImplementation(async (content: string) => ({
+        content,
+        edit: vi.fn().mockResolvedValue(undefined),
+        delete: deleteFn,
+      }));
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'Thinking' });
+        request.onDelegation?.({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          phase: 'started',
+        });
+        resolveDelete();
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(deleteFn).toHaveBeenCalledTimes(1);
+    });
+
     it('should skip activities without formatted content', async () => {
-      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: '   ' }];
-      const { message, progressMessage } = buildThreadMessage();
+      orchestratorService.activitiesToEmit = [
+        { kind: 'thought', id: 't1', text: '   ' },
+        { kind: 'tool', toolCallId: 't2', title: 'ls', status: 'unknown' as any },
+      ];
+      const sendMock = vi.fn().mockResolvedValue({
+        edit: vi.fn().mockResolvedValue(undefined),
+      });
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: sendMock,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
 
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(progressMessage.edit).not.toHaveBeenCalled();
+      const sentContents = sendMock.mock.calls.map(c => c[0]);
+      expect(sentContents.some(c => typeof c === 'string' && c.startsWith('> 💭'))).toBe(false);
     });
 
-    it('should keep the progress message within the Discord length limit', async () => {
-      const longText = 'x'.repeat(5000);
-      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longText }];
-      const { message, progressMessage } = buildThreadMessage();
+    it('should split thoughts exceeding 2000 characters into multiple messages', async () => {
+      const longLines = Array.from({ length: 60 }, (_, i) => `Thought line ${i + 1} with lots of details to extend length`);
+      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
+      const sentMessages: { content: string }[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+          sentMessages.push(sent);
+          return sent;
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
 
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(lastEdit(progressMessage).length).toBeLessThanOrEqual(2000);
+      const thoughtMessages = sentMessages.filter(
+        m => typeof m.content === 'string' && (m.content.startsWith('> 💭') || m.content.startsWith('> *')),
+      );
+      expect(thoughtMessages.length).toBeGreaterThan(1);
+      expect(thoughtMessages.every(m => m.content.length <= 2000)).toBe(true);
+    });
+
+    it('should send completed tool call directly when not preceded by in_progress', async () => {
+      orchestratorService.activitiesToEmit = [{ kind: 'tool', toolCallId: 'direct-1', title: 'pwd', status: 'completed' }];
+      const sentMessages: { content: string }[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+          sentMessages.push(sent);
+          return sent;
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(sentMessages.some(m => typeof m.content === 'string' && m.content.includes('✅ **Concluído**: `pwd`'))).toBe(true);
+    });
+
+    it('should format failed tool call with details', async () => {
+      orchestratorService.activitiesToEmit = [
+        { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'in_progress' },
+        { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'failed', details: 'exit code 1' },
+      ];
+      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+          sentMessages.push(sent);
+          return sent;
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Executando'));
+      expect(toolMsg).toBeDefined();
+      expect(toolMsg!.edit).toHaveBeenCalledWith('❌ **Falhou**: `npm build`\n```\nexit code 1\n```');
     });
   });
 
-  it('should swallow error when progress message update fails', async () => {
-    const progressMessage = {
-      edit: vi.fn().mockRejectedValue(new Error('Discord API Error')),
-    };
+  it('should swallow error when tool call message update fails', async () => {
+    orchestratorService.activitiesToEmit = [
+      { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
+      { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
+    ];
+    const mockMsg = { edit: vi.fn().mockRejectedValue(new Error('Discord API Error')) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
       isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: vi.fn().mockResolvedValue(mockMsg),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -574,17 +804,19 @@ describe('DiscordMessageHandler', () => {
     await vi.runAllTimersAsync();
   });
 
-  it('should log warning when progress message update throws a non-Error string', async () => {
-    const progressMessage = {
-      edit: vi.fn().mockRejectedValue('String error from Discord API'),
-    };
+  it('should log warning when tool message edit throws a non-Error string', async () => {
+    orchestratorService.activitiesToEmit = [
+      { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
+      { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
+    ];
+    const mockMsg = { edit: vi.fn().mockRejectedValue('String error from Discord API') };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
       isDMBased: vi.fn().mockReturnValue(false),
       isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: vi.fn().mockResolvedValue(mockMsg),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -598,6 +830,244 @@ describe('DiscordMessageHandler', () => {
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
     await vi.runAllTimersAsync();
+  });
+
+  it('should log warning when tool message initial send fails', async () => {
+    orchestratorService.activitiesToEmit = [{ kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' }];
+    let sendCount = 0;
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async () => {
+        sendCount++;
+        if (sendCount === 2) {
+          throw new Error('Send failed');
+        }
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+  });
+
+  it('should log warning when thought message send fails', async () => {
+    orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: 'Hello' }];
+    let sendCount = 0;
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async () => {
+        sendCount++;
+        if (sendCount === 2) {
+          throw new Error('Thought send failed');
+        }
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+  });
+
+  it('should log warning when thought message edit fails', async () => {
+    orchestratorService.activitiesToEmit = [
+      { kind: 'thought', id: 't1', text: 'Hello' },
+      { kind: 'thought', id: 't1', text: 'Hello world' },
+    ];
+    const mockMsg = { edit: vi.fn().mockRejectedValue(new Error('Edit failed')), content: '' };
+    let sendCount = 0;
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async () => {
+        sendCount++;
+        if (sendCount === 2) {
+          return mockMsg;
+        }
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Update me',
+      content: 'Update me',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await expect(handler.handleMessage(message)).resolves.toBeUndefined();
+    await vi.runAllTimersAsync();
+  });
+
+  it('should abort subsequent chunks when an intermediate thought chunk send fails', async () => {
+    const longLines = Array.from({ length: 90 }, (_, i) => `Thought line ${i + 1} with lots of details to extend length`);
+    orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
+    const sentChunks: string[] = [];
+    let thoughtSendCalls = 0;
+
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async (content: string) => {
+        if (content.startsWith('> 💭') || content.startsWith('> *')) {
+          thoughtSendCalls++;
+          if (thoughtSendCalls === 1) {
+            sentChunks.push(content);
+            return { content, edit: vi.fn().mockResolvedValue(undefined) };
+          }
+          if (thoughtSendCalls === 2) {
+            throw new Error('Rate limit on chunk 2');
+          }
+          sentChunks.push(content);
+          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        }
+        return { delete: vi.fn().mockResolvedValue(undefined) };
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Split failure',
+      content: 'Split failure',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+    await vi.runAllTimersAsync();
+
+    expect(sentChunks).toHaveLength(1);
+    expect(thoughtSendCalls).toBe(2);
+  });
+
+  it('should clean up in-flight thought message if activity was removed during send', async () => {
+    let resolveSend!: (msg: unknown) => void;
+    const sendDeferred = new Promise((resolve) => {
+      resolveSend = resolve;
+    });
+
+    const mockDeletedMsg = {
+      content: 'thinking slow',
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+
+    let sendCalls = 0;
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async () => {
+        sendCalls++;
+        if (sendCalls === 1) {
+          return { delete: vi.fn().mockResolvedValue(undefined) };
+        }
+        return sendDeferred;
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Race condition',
+      content: 'Race condition',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    vi.spyOn(orchestratorService, 'executeTurn').mockImplementation(async (req) => {
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' });
+      await vi.advanceTimersByTimeAsync(1500);
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true });
+      resolveSend(mockDeletedMsg);
+      await sendDeferred;
+      return orchestratorService.mockResult;
+    });
+
+    await handler.handleMessage(message);
+    await vi.runAllTimersAsync();
+
+    expect(mockDeletedMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should ignore deleted trackers and handle null sent message in syncThoughtMessages', async () => {
+    const deletedTracker = {
+      messages: [],
+      currentText: 'Deleted text',
+      isDeleted: true,
+    };
+    const nullSendTracker = {
+      messages: [],
+      currentText: 'Null send text',
+    };
+    const trackers = new Map([
+      ['del', deletedTracker],
+      ['nullSend', nullSendTracker],
+    ]);
+    const mockChannel = {
+      send: vi.fn().mockResolvedValue(null),
+    };
+
+    await (handler as any).syncThoughtMessages(trackers, mockChannel);
+
+    expect(mockChannel.send).toHaveBeenCalledTimes(1);
+    expect(nullSendTracker.messages).toHaveLength(0);
+  });
+
+  it('should handle in-flight removed thought when sent message has no delete method', async () => {
+    const tracker: any = {
+      messages: [],
+      currentText: 'No delete method text',
+      isDeleted: false,
+    };
+    const trackers = new Map([['t1', tracker]]);
+    const mockMsgWithoutDelete = { content: 'test', edit: vi.fn() };
+    const mockChannel = {
+      send: vi.fn().mockImplementation(async () => {
+        tracker.isDeleted = true;
+        return mockMsgWithoutDelete;
+      }),
+    };
+
+    await (handler as any).syncThoughtMessages(trackers, mockChannel);
+
+    expect(tracker.messages).toHaveLength(0);
   });
 
   it('should split long responses into multiple chunks', async () => {
