@@ -107,4 +107,13 @@ describe('ceo.prompt', () => {
   it('should state that no agent is available when the team is empty', () => {
     expect(buildCeoSystemPrompt([])).toContain('No agents are available for delegation.');
   });
+
+  it('should instruct the CEO to delegate planning and architectural design to TECH_LEAD before DEVELOPER', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.',
+    );
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.',
+    );
+  });
 });
