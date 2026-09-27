@@ -116,4 +116,10 @@ describe('ceo.prompt', () => {
       'Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.',
     );
   });
+
+  it('should instruct the CEO to delegate reviews to CODE_REVIEWER with :new and resume to publish comments', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'When requesting code reviews, delegate to the CODE_REVIEWER in a clean session (`:new`) to avoid prior context bias. When the user approves publishing the review findings as PR comments, delegate back to the CODE_REVIEWER in the existing session (`resume`) to reuse the already mapped inspection context.',
+    );
+  });
 });

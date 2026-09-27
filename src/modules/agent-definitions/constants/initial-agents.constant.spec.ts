@@ -21,4 +21,9 @@ describe('initial-agents.constant', () => {
       expect(definition.buildSystemPrompt([])).toBeTruthy();
     }
   });
+
+  it('should describe CODE_REVIEWER as inspecting diffs and publishing review comments on PRs/MRs', () => {
+    const codeReviewer = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CODE_REVIEWER');
+    expect(codeReviewer?.description).toContain('publishing review comments on PRs/MRs when requested');
+  });
 });

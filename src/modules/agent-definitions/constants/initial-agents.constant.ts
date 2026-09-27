@@ -39,7 +39,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     role: 'CODE_REVIEWER',
     name: 'Code Reviewer Agent',
     description:
-      'Senior code reviewer for rigorous, unbiased inspection of diffs, branches, pull requests, and codebases against project conventions, security checklists, and functional correctness. Operates in a fresh session without prior implementation bias.',
+      'Senior code reviewer for rigorous, unbiased inspection of diffs, branches, pull requests, and codebases against project conventions, security checklists, and functional correctness, publishing review comments on PRs/MRs when requested. Operates in a fresh session without prior implementation bias.',
     buildSystemPrompt: () => CODE_REVIEWER_SYSTEM_PROMPT,
     defaultSessionMode: 'new',
     turnReminder: CODE_REVIEWER_TURN_REMINDER,

@@ -76,6 +76,7 @@ da narração.
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
 - Quando o usuário solicita planejamento, arquitetura, spikes ou investigações técnicas, delega ao `TECH_LEAD`. Após a aprovação do plano e alinhamento de decisões, delega a execução ao `DEVELOPER`;
+- Quando o usuário solicita revisão de código, delega ao `CODE_REVIEWER` em sessão limpa (`:new`) para evitar viés de contexto prévio; quando o usuário aprova a publicação dos achados no PR, delega de volta ao `CODE_REVIEWER` na sessão existente (`resume`) para reaproveitar o contexto de inspeção já mapeado;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
 - Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
 - Possui o lembrete `CEO_TURN_REMINDER` configurado em sua definição, reforçando o papel de orquestração pura e o contrato dos marcadores a cada turno;
@@ -85,11 +86,17 @@ da narração.
 ### 3. Code Reviewer Agent (`code-reviewer.prompt.ts`)
 
 - Atua como revisor de código e auditor sênior estritamente opinativo, focado em segurança, boas práticas, legibilidade, concisão e prevenção de regressões;
-- Nunca implementa correções nem edita arquivos de código diretamente: aponta achados com severidade (`CRITICAL`, `MAJOR`, `MINOR`, `SUGGESTION`), linha/arquivo e sugestão concisa de solução;
+- Não implementa correções em código de produção nem cria commits no repositório: aponta achados com severidade (`CRITICAL`, `MAJOR`, `MINOR`, `SUGGESTION`), linha/arquivo e sugestão concisa de solução;
+- Tem autorização e responsabilidade para executar ferramentas MCP e comandos CLI para inspecionar o repositório e publicar comentários no PR/MR quando solicitado;
 - Quando a revisão envolve um Pull Request (PR), sugere proativamente ao final do relatório a publicação dos achados como comentários no PR e solicita ao usuário que indique quais achados (por número, severidade ou todos) deseja publicar;
+- Na publicação de comentários em PR/MR sob demanda, detecta automaticamente o provedor via `git remote -v` (GitHub, GitLab, Azure DevOps ou Bitbucket) e adota a hierarquia estrita de ferramentas `MCP -> CLI Oficial -> Sem Fallback`:
+  1. **MCP (Model Context Protocol):** Primeira opção. Utiliza ferramentas MCP disponíveis para o provedor (ex.: Azure DevOps MCP como `repo_pull_request_thread_write`, GitHub MCP, etc.);
+  2. **CLI Oficial:** Segunda opção. Na ausência de ferramentas MCP, utiliza CLIs oficiais autenticadas (`gh`, `glab`, `az`);
+  3. **Sem Fallback Arbitrário:** Quando nem MCP nem CLI oficial estiverem disponíveis ou autenticados para o provedor, não executa chamadas manuais (`curl`, scripts ad-hoc ou requisições REST cruas) e relata a ausência de ferramental ao usuário;
+- Ancora comentários pontuais inline na linha exata da nova versão no diff (`side: RIGHT` / `new_line` / `rightFileStart`, informando path e commit SHA) e comentários gerais/arquiteturais na discussão principal do PR/MR;
 - Executa ferramentas de leitura, linter ou testes apenas para inspeção quando necessário;
 - Opera por padrão em sessão nova (`defaultSessionMode: 'new'`) para auditar código sem viés de implementações anteriores ou contexto prévio acumulado;
-- Possui o lembrete `CODE_REVIEWER_TURN_REMINDER` configurado em sua definição, reforçando que é apenas revisor e não executor.
+- Possui o lembrete `CODE_REVIEWER_TURN_REMINDER` configurado em sua definição, reforçando o foco exclusivo em auditoria, o fluxo de publicação de achados e a hierarquia de ferramentas.
 
 ### 4. Tech Lead Agent (`tech-lead.prompt.ts`)
 
