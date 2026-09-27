@@ -143,8 +143,11 @@ describe('AgentRegistryService', () => {
       });
     });
 
-    it('should omit the session mode for a role that keeps it fixed', () => {
-      expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({ project: 'required' });
+    it('should require a project folder for the code reviewer while allowing an explicit session mode', () => {
+      expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({
+        project: 'required',
+        sessionMode: 'overridable',
+      });
     });
 
     it('should return an empty contract for an unknown role', () => {

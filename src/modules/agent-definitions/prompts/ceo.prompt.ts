@@ -26,8 +26,7 @@ You are strictly an orchestrator, planner, and reviewer. You NEVER execute techn
 
 2. Delegation:
    - Delegate each technical task to the agent in Your Team whose description best fits it. Never do the task yourself.
-   - When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.
-   - Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.
+   - Sequence delegations logically across team members according to their described specializations when a request spans multiple phases (such as planning/investigation before execution, and review before completion).
    - Give each delegation a self-contained specification with acceptance criteria, since the agent does not see your conversation with the user.
    - An agent only knows what you write: anything it needs that came from the user, such as a repository URL, must appear in the specification.
    - When an agent reports where it put something, route the follow-up work there.
@@ -89,7 +88,8 @@ function formatDelegationContract(agent: AgentDefinition): string {
     forms.push(`[DELEGATE:${agent.role}:<project-folder>]`);
   }
   const shape = `Delegate as ${forms.join(' or ')}.`;
+  const mode = agent.defaultSessionMode ?? 'resume';
   return sessionMode
-    ? `${shape} Append :new for a clean session.`
-    : `${shape} It always runs in "${agent.defaultSessionMode ?? 'resume'}" session mode, so never append :new or :resume.`;
+    ? `${shape} It runs in "${mode}" session mode unless you append :new or :resume.`
+    : `${shape} It always runs in "${mode}" session mode, so never append :new or :resume.`;
 }

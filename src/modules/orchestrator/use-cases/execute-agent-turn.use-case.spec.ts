@@ -278,12 +278,12 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should repair a delegation carrying a session mode the role keeps fixed', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:CODE_REVIEWER:my-app:new]', 'Ok, asking you first.'];
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app:new]', 'Ok, asking you first.'];
 
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Role "CODE_REVIEWER" does not take a session mode. Use [DELEGATE:CODE_REVIEWER:my-app] without ":new".',
+        'Role "DEVELOPER" does not take a session mode. Use [DELEGATE:DEVELOPER:my-app] without ":new".',
       );
       expect(delegateStubPort.promptCalls).toHaveLength(0);
     });

@@ -126,10 +126,10 @@ describe('ceo.prompt', () => {
     const prompt = buildCeoSystemPrompt([developer, gitOps]);
 
     expect(prompt).toContain(
-      'Delegate as [DELEGATE:DEVELOPER:<project-folder>]. Append :new for a clean session.',
+      'Delegate as [DELEGATE:DEVELOPER:<project-folder>]. It runs in "resume" session mode unless you append :new or :resume.',
     );
     expect(prompt).toContain(
-      'Delegate as [DELEGATE:GIT_OPS] or [DELEGATE:GIT_OPS:<project-folder>]. Append :new for a clean session.',
+      'Delegate as [DELEGATE:GIT_OPS] or [DELEGATE:GIT_OPS:<project-folder>]. It runs in "resume" session mode unless you append :new or :resume.',
     );
   });
 
@@ -153,12 +153,20 @@ describe('ceo.prompt', () => {
     expect(buildCeoSystemPrompt([])).toContain('No agents are available for delegation.');
   });
 
-  it('should instruct the CEO to delegate planning and architectural design to TECH_LEAD before DEVELOPER', () => {
+  it('should instruct the CEO to delegate based on Your Team descriptions and sequence across phases without hardcoded roles in delegation section', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.',
+      'Delegate each technical task to the agent in Your Team whose description best fits it. Never do the task yourself.',
     );
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.',
+      'Sequence delegations logically across team members according to their described specializations when a request spans multiple phases (such as planning/investigation before execution, and review before completion).',
     );
+
+    const delegationSection = CEO_SYSTEM_PROMPT.slice(
+      CEO_SYSTEM_PROMPT.indexOf('2. Delegation:'),
+      CEO_SYSTEM_PROMPT.indexOf('3. Review:'),
+    );
+    expect(delegationSection).not.toContain('TECH_LEAD');
+    expect(delegationSection).not.toContain('DEVELOPER');
+    expect(delegationSection).not.toContain('CODE_REVIEWER');
   });
 });
