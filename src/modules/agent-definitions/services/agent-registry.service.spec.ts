@@ -20,6 +20,15 @@ describe('AgentRegistryService', () => {
       expect(promptLower).toBe(promptUpper);
     });
 
+    it('should return specialized system prompt for TECH_LEAD role in case-insensitive manner', () => {
+      const promptUpper = service.getSystemPrompt('TECH_LEAD');
+      const promptLower = service.getSystemPrompt('tech_lead');
+
+      expect(promptUpper).toBeDefined();
+      expect(promptUpper).toContain('Tech Lead Agent');
+      expect(promptLower).toBe(promptUpper);
+    });
+
     it('should return specialized system prompt for CEO role in case-insensitive manner', () => {
       const promptUpper = service.getSystemPrompt('CEO');
       const promptMixed = service.getSystemPrompt('Ceo');
@@ -82,6 +91,7 @@ describe('AgentRegistryService', () => {
     it('should return the definition name for a registered role', () => {
       expect(service.getDisplayName('ceo')).toBe('CEO');
       expect(service.getDisplayName('DEVELOPER')).toBe('Developer Agent');
+      expect(service.getDisplayName('TECH_LEAD')).toBe('Tech Lead Agent');
     });
 
     it('should fall back to the role for an unknown agent', () => {
@@ -92,6 +102,7 @@ describe('AgentRegistryService', () => {
   describe('hasRole', () => {
     it('should report whether a role is registered, ignoring case', () => {
       expect(service.hasRole('developer')).toBe(true);
+      expect(service.hasRole('tech_lead')).toBe(true);
       expect(service.hasRole('AUDITOR')).toBe(false);
     });
   });
@@ -100,6 +111,11 @@ describe('AgentRegistryService', () => {
     it('should return resume for DEVELOPER role in case-insensitive manner', () => {
       expect(service.getDefaultSessionMode('developer')).toBe('resume');
       expect(service.getDefaultSessionMode('DEVELOPER')).toBe('resume');
+    });
+
+    it('should return resume for TECH_LEAD role in case-insensitive manner', () => {
+      expect(service.getDefaultSessionMode('tech_lead')).toBe('resume');
+      expect(service.getDefaultSessionMode('TECH_LEAD')).toBe('resume');
     });
 
     it('should return new for CODE_REVIEWER role in case-insensitive manner', () => {
@@ -121,6 +137,15 @@ describe('AgentRegistryService', () => {
       expect(reminderUpper).toBeDefined();
       expect(reminderLower).toBe(reminderUpper);
       expect(reminderUpper).toContain('strictly an orchestrator');
+    });
+
+    it('should return turn reminder for TECH_LEAD role in case-insensitive manner', () => {
+      const reminderUpper = service.getTurnReminder('TECH_LEAD');
+      const reminderLower = service.getTurnReminder('tech_lead');
+
+      expect(reminderUpper).toBeDefined();
+      expect(reminderLower).toBe(reminderUpper);
+      expect(reminderUpper).toContain('Tech Lead and software architect');
     });
 
     it('should return turn reminder for DEVELOPER role in case-insensitive manner', () => {

@@ -841,8 +841,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         '- Name: notes.txt\n  Size: 256 bytes\n  Type: text/plain\n  Path: /tmp/attachments/notes.txt',
       );
       expect(stubAgentPort.promptCalls[0]).toContain(
-        'Use the view_file tool to view and inspect these attachments.',
+        'Inspect these files using your available tools as needed.',
       );
+      expect(stubAgentPort.promptCalls[0]).not.toContain('view_file');
       expect(stubAgentPort.promptCalls[0]).toContain('Please review these files.');
     });
 
