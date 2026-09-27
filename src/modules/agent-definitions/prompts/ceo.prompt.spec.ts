@@ -108,18 +108,20 @@ describe('ceo.prompt', () => {
     expect(buildCeoSystemPrompt([])).toContain('No agents are available for delegation.');
   });
 
-  it('should instruct the CEO to delegate planning and architectural design to TECH_LEAD before DEVELOPER', () => {
+  it('should instruct the CEO to delegate based on Your Team descriptions and sequence across phases without hardcoded roles in delegation section', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.',
+      'Delegate each technical task to the agent in Your Team whose description best fits it. Never do the task yourself.',
     );
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.',
+      'Sequence delegations logically across team members according to their described specializations when a request spans multiple phases (such as planning/investigation before execution, and review before completion).',
     );
-  });
 
-  it('should instruct the CEO to delegate reviews to CODE_REVIEWER with :new and resume to publish comments', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain(
-      'When requesting code reviews, delegate to the CODE_REVIEWER in a clean session (`:new`) to avoid prior context bias. When the user approves publishing the review findings as PR comments, delegate back to the CODE_REVIEWER in the existing session (`resume`) to reuse the already mapped inspection context.',
+    const delegationSection = CEO_SYSTEM_PROMPT.slice(
+      CEO_SYSTEM_PROMPT.indexOf('2. Delegation:'),
+      CEO_SYSTEM_PROMPT.indexOf('3. Review:'),
     );
+    expect(delegationSection).not.toContain('TECH_LEAD');
+    expect(delegationSection).not.toContain('DEVELOPER');
+    expect(delegationSection).not.toContain('CODE_REVIEWER');
   });
 });
