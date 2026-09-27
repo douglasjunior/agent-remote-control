@@ -598,6 +598,51 @@ describe('DiscordMessageHandler', () => {
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
 
+    it('should delete initial progress message only once when onActivity and onDelegation fire concurrently', async () => {
+      let resolveDelete!: () => void;
+      const deletePromise = new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      });
+      const deleteFn = vi.fn().mockImplementation(() => deletePromise);
+      const send = vi.fn().mockImplementation(async (content: string) => ({
+        content,
+        edit: vi.fn().mockResolvedValue(undefined),
+        delete: deleteFn,
+      }));
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'Thinking' });
+        request.onDelegation?.({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          phase: 'started',
+        });
+        resolveDelete();
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(deleteFn).toHaveBeenCalledTimes(1);
+    });
+
     it('should skip activities without formatted content', async () => {
       orchestratorService.activitiesToEmit = [
         { kind: 'thought', id: 't1', text: '   ' },

@@ -47,18 +47,6 @@ export class DiscordActivityFormatter {
     return null;
   }
 
-  formatThought(text: string): string[] {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      return [];
-    }
-    const lines = trimmed.split('\n');
-    const formatted = lines
-      .map((line, index) => (index === 0 ? `> 💭 *${line}*` : `> *${line}*`))
-      .join('\n');
-    return this.splitMessage(formatted, 2000);
-  }
-
   private formatToolDetails(details?: string): string | null {
     if (!details) {
       return null;
@@ -90,10 +78,6 @@ export class DiscordActivityFormatter {
 
   formatDelegateFooter(event: DelegationEvent & { phase: 'finished' }): string {
     return `${this.formatAgentFooter(event.agentInfo, event.usage)} · ⏱️ ${(event.durationMs / 1000).toFixed(1)}s`;
-  }
-
-  formatDelegateProgressHeader(roleName: string): string {
-    return `🤖 **Progresso — ${roleName}**:\n`;
   }
 
   formatAgentFooter(info: TurnAgentInfo, usage?: AgentUsage): string {
