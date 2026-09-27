@@ -27,11 +27,17 @@ type Conversation = ConversationKey & { readonly target: SendableChannel };
 
 type ProgressMessage = {
   edit: (content: string) => Promise<unknown>;
+  delete?: () => Promise<void>;
+};
+
+type TrackedMessage = {
+  content?: string;
+  edit: (content: string) => Promise<unknown>;
   delete?: () => Promise<unknown>;
 };
 
 type ThoughtTracker = {
-  messages: any[];
+  messages: TrackedMessage[];
   currentText: string;
 };
 
@@ -139,13 +145,10 @@ export class DiscordMessageHandler implements OnModuleInit {
       const progressMessage: ProgressMessage = await targetChannel.send(
         '⏳ *Iniciando processamento...*',
       );
-      let initialProgressCleaned = false;
-      const cleanInitialProgress = async (): Promise<void> => {
-        if (initialProgressCleaned) {
-          return;
-        }
-        initialProgressCleaned = true;
-        await progressMessage.delete?.().catch(() => undefined);
+      let cleanInitialProgressPromise: Promise<void> | null = null;
+      const cleanInitialProgress = (): Promise<void> => {
+        cleanInitialProgressPromise ??= progressMessage.delete?.().catch(() => undefined) ?? Promise.resolve();
+        return cleanInitialProgressPromise;
       };
 
       const throttler = new DiscordThrottler({ intervalMs: 1500 });
@@ -310,21 +313,22 @@ export class DiscordMessageHandler implements OnModuleInit {
       );
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i]!;
-        if (tracker.messages[i]) {
+        const existingMessage = tracker.messages[i];
+        if (existingMessage) {
           if (
-            tracker.messages[i].content !== chunk
-            && typeof tracker.messages[i].edit === 'function'
+            existingMessage.content !== chunk
+            && typeof existingMessage.edit === 'function'
           ) {
             try {
-              await tracker.messages[i].edit(chunk);
-              tracker.messages[i].content = chunk;
+              await existingMessage.edit(chunk);
+              existingMessage.content = chunk;
             } catch (error) {
               this.logger.warn(`Failed to update thought message: ${this.describeError(error)}`);
             }
           }
         } else {
           try {
-            const sent = await targetChannel.send(chunk);
+            const sent = (await targetChannel.send(chunk)) as TrackedMessage | null | undefined;
             if (sent) {
               sent.content ??= chunk;
               tracker.messages.push(sent);

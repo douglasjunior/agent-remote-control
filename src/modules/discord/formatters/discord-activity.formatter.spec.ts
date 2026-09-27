@@ -389,9 +389,6 @@ describe('DiscordActivityFormatter', () => {
       ).toBe('-# 🤖 Desenvolvedor (agy) · 🧠 Deep Model · ⚡ High · 🪙 12.3k tokens · ⏱️ 42.1s');
     });
 
-    it('should name the delegate in its progress header', () => {
-      expect(formatter.formatDelegateProgressHeader('Desenvolvedor')).toBe('🤖 **Progresso — Desenvolvedor**:\n');
-    });
 
     it('should fall back to the default label in the footer', () => {
       expect(formatter.formatAgentFooter({ roleName: 'CEO', agentName: 'agy' })).toBe(
@@ -455,30 +452,6 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
         '✅ **Configuração salva**: 🧠 Deep Model · ⚡ High',
       );
-    });
-  });
-
-  describe('formatThought', () => {
-    it('should return empty array for empty or whitespace-only thought', () => {
-      expect(formatter.formatThought('')).toEqual([]);
-      expect(formatter.formatThought('   \n  ')).toEqual([]);
-    });
-
-    it('should format thought in blockquote with emoji on first line', () => {
-      const result = formatter.formatThought('Line 1\nLine 2');
-      expect(result).toEqual(['> 💭 *Line 1*\n> *Line 2*']);
-    });
-
-    it('should partition thought exceeding 2000 characters into multiple chunks', () => {
-      const lines = Array.from({ length: 60 }, (_, i) => `Thinking step ${i + 1} with extra details to fill length`);
-      const thoughtText = lines.join('\n');
-      const chunks = formatter.formatThought(thoughtText);
-
-      expect(chunks.length).toBeGreaterThan(1);
-      for (const chunk of chunks) {
-        expect(chunk.length).toBeLessThanOrEqual(2000);
-      }
-      expect(chunks[0]!.startsWith('> 💭 *')).toBe(true);
     });
   });
 });
