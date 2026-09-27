@@ -29,6 +29,12 @@ describe('AgentRegistryService', () => {
       expect(promptMixed).toBe(promptUpper);
     });
 
+    it('should include root directory guideline for delegations in the CEO system prompt', () => {
+      const prompt = service.getSystemPrompt('CEO');
+      expect(prompt).toContain('top-level root directory of the project');
+      expect(prompt).toContain('never nested paths or internal subfolders');
+    });
+
     it('should give the CEO its team of every other registered agent', () => {
       service.registerDefinition({
         role: 'REVIEWER',
