@@ -18,6 +18,7 @@ export type AgentActivity =
     readonly title: string;
     readonly status: AgentToolStatus;
     readonly result?: string;
+    readonly details?: string;
   };
 
 export type AgentUsage = {

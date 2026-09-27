@@ -29,16 +29,51 @@ export class DiscordActivityFormatter {
       switch (activity.status) {
         case 'in_progress':
           return `⏳ **Executando**: \`${activity.title}\``;
-        case 'completed':
-          return `✅ **Concluído**: \`${activity.title}\``;
-        case 'failed':
-          return `❌ **Falhou**: \`${activity.title}\``;
+        case 'completed': {
+          const header = `✅ **Concluído**: \`${activity.title}\``;
+          const details = this.formatToolDetails(activity.details);
+          return details ? `${header}\n${details}` : header;
+        }
+        case 'failed': {
+          const header = `❌ **Falhou**: \`${activity.title}\``;
+          const details = this.formatToolDetails(activity.details);
+          return details ? `${header}\n${details}` : header;
+        }
         default:
           return null;
       }
     }
 
     return null;
+  }
+
+  formatThought(text: string): string[] {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return [];
+    }
+    const lines = trimmed.split('\n');
+    const formatted = lines
+      .map((line, index) => (index === 0 ? `> 💭 *${line}*` : `> *${line}*`))
+      .join('\n');
+    return this.splitMessage(formatted, 2000);
+  }
+
+  private formatToolDetails(details?: string): string | null {
+    if (!details) {
+      return null;
+    }
+    const trimmed = details.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const lines = trimmed.split('\n');
+    if (lines.length <= 5) {
+      return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
+    }
+    const firstFive = lines.slice(0, 5);
+    const remaining = lines.length - 5;
+    return `\`\`\`\n${firstFive.join('\n')}\n... (+${remaining} linhas)\n\`\`\``;
   }
 
   formatDelegation(event: DelegationEvent): string {
