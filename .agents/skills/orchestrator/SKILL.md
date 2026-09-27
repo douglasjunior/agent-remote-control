@@ -154,7 +154,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
-prompts completos de cada papel (`CEO`, `DEVELOPER`, `CODE_REVIEWER`), fornece lembretes de turno e devolve um prompt genérico para
+prompts completos de cada papel (`CEO`, `TECH_LEAD`, `DEVELOPER`, `CODE_REVIEWER`), fornece lembretes de turno e devolve um prompt genérico para
 papéis desconhecidos.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
