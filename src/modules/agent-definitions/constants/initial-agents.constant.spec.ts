@@ -27,11 +27,14 @@ describe('initial-agents.constant', () => {
     });
   });
 
-  it('should keep the code reviewer session mode fixed so it cannot be resumed', () => {
+  it('should review in a fresh session by default while still allowing an explicit resume', () => {
     const reviewer = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CODE_REVIEWER');
 
     expect(reviewer?.defaultSessionMode).toBe('new');
-    expect(reviewer?.delegation.sessionMode).toBeUndefined();
+    expect(reviewer?.delegation).toEqual({
+      project: 'required',
+      sessionMode: 'overridable',
+    });
   });
 
   it('should have valid names, descriptions, and system prompts for each agent', () => {
@@ -41,5 +44,10 @@ describe('initial-agents.constant', () => {
       expect(definition.turnReminder).toBeTruthy();
       expect(definition.buildSystemPrompt([])).toBeTruthy();
     }
+  });
+
+  it('should describe CODE_REVIEWER as inspecting diffs and publishing review comments on PRs/MRs', () => {
+    const codeReviewer = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CODE_REVIEWER');
+    expect(codeReviewer?.description).toContain('publishing review comments on PRs/MRs when requested');
   });
 });
