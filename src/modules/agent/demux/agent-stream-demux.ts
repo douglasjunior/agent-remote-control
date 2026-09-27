@@ -137,6 +137,28 @@ function meaningfulLines(text: string): string[] {
   return lines;
 }
 
+export function extractToolDetails(
+  content: readonly ToolCallContent[] | null | undefined,
+): string | undefined {
+  if (!content) {
+    return undefined;
+  }
+
+  const parts: string[] = [];
+  for (const item of content) {
+    if (item.type !== 'content' || item.content.type !== 'text') {
+      continue;
+    }
+
+    const text = item.content.text.trim();
+    if (text.length > 0) {
+      parts.push(text);
+    }
+  }
+
+  return parts.length > 0 ? parts.join('\n') : undefined;
+}
+
 export function extractToolResultSummary(
   content: readonly ToolCallContent[] | null | undefined,
 ): string | undefined {
@@ -350,6 +372,8 @@ export class AgentStreamDemux {
 
   private dispatchTool(toolFields: ParsedToolCallFields): void {
     const previous = this.toolState.get(toolFields.toolCallId);
+    const details =
+      extractToolDetails(toolFields.content) ?? previous?.details;
     const result =
       extractToolResultSummary(toolFields.content) ?? previous?.result;
     const merged: ToolActivity = {
@@ -358,6 +382,7 @@ export class AgentStreamDemux {
       title: toolFields.title ?? previous?.title ?? toolFields.toolCallId,
       status: toolFields.status ?? previous?.status ?? 'pending',
       result,
+      details,
     };
 
     this.toolState.set(toolFields.toolCallId, merged);

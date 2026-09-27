@@ -10,6 +10,7 @@ import {
   AgentStreamDemux,
   extractAgentTextChunk,
   extractToolCallFields,
+  extractToolDetails,
   extractToolResultSummary,
   splitFinalResponse,
 } from './agent-stream-demux.js';
@@ -284,6 +285,7 @@ describe('AgentStreamDemux', () => {
       title: 'Read a.ts',
       status: 'completed',
       result: 'file contents',
+      details: 'file contents',
     });
   });
 
@@ -720,3 +722,59 @@ describe('extractToolResultSummary', () => {
     expect(summary).toBe('l1\nl2\nl3\nl4\nl5\n...');
   });
 });
+
+describe('extractToolDetails', () => {
+  it('should return undefined when content is empty, null or undefined', () => {
+    expect(extractToolDetails(null)).toBeUndefined();
+    expect(extractToolDetails(undefined)).toBeUndefined();
+    expect(extractToolDetails([])).toBeUndefined();
+  });
+
+  it('should ignore non-text content items', () => {
+    expect(
+      extractToolDetails([{ type: 'diff', path: 'a.txt', newText: 'b' } as unknown as any]),
+    ).toBeUndefined();
+  });
+
+  it('should extract full details without truncating lines', () => {
+    const lines = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join('\n');
+    const details = extractToolDetails([
+      {
+        type: 'content',
+        content: {
+          type: 'text',
+          text: lines,
+        },
+      },
+    ]);
+
+    expect(details).toBe(lines);
+  });
+
+  it('should concatenate multiple text items separated by newline', () => {
+    const details = extractToolDetails([
+      {
+        type: 'content',
+        content: { type: 'text', text: 'first part' },
+      },
+      {
+        type: 'content',
+        content: { type: 'text', text: 'second part' },
+      },
+    ]);
+
+    expect(details).toBe('first part\nsecond part');
+  });
+
+  it('should skip whitespace-only text items', () => {
+    const details = extractToolDetails([
+      {
+        type: 'content',
+        content: { type: 'text', text: '   ' },
+      },
+    ]);
+
+    expect(details).toBeUndefined();
+  });
+});
+

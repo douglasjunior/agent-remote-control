@@ -85,6 +85,64 @@ describe('DiscordActivityFormatter', () => {
       expect(result).toBe('❌ **Falhou**: `git push`');
     });
 
+    it('should format tool completed status with up to 5 lines of details in a code block', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git diff',
+        status: 'completed',
+        details: 'line 1\nline 2\nline 3',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('✅ **Concluído**: `git diff`\n```\nline 1\nline 2\nline 3\n```');
+    });
+
+    it('should format tool completed status with more than 5 lines truncating with ... (+N linhas)', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git status',
+        status: 'completed',
+        details: 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe(
+        '✅ **Concluído**: `git status`\n```\nl1\nl2\nl3\nl4\nl5\n... (+3 linhas)\n```',
+      );
+    });
+
+    it('should format tool failed status with details in a code block', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-3',
+        title: 'build',
+        status: 'failed',
+        details: 'error line 1\nerror line 2',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('❌ **Falhou**: `build`\n```\nerror line 1\nerror line 2\n```');
+    });
+
+    it('should ignore whitespace-only details when formatting completed tool', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git log',
+        status: 'completed',
+        details: '   \n  ',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('✅ **Concluído**: `git log`');
+    });
+
     it('should return null for unhandled tool status', () => {
       const activity = {
         kind: 'tool',
@@ -397,6 +455,30 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
         '✅ **Configuração salva**: 🧠 Deep Model · ⚡ High',
       );
+    });
+  });
+
+  describe('formatThought', () => {
+    it('should return empty array for empty or whitespace-only thought', () => {
+      expect(formatter.formatThought('')).toEqual([]);
+      expect(formatter.formatThought('   \n  ')).toEqual([]);
+    });
+
+    it('should format thought in blockquote with emoji on first line', () => {
+      const result = formatter.formatThought('Line 1\nLine 2');
+      expect(result).toEqual(['> 💭 *Line 1*\n> *Line 2*']);
+    });
+
+    it('should partition thought exceeding 2000 characters into multiple chunks', () => {
+      const lines = Array.from({ length: 60 }, (_, i) => `Thinking step ${i + 1} with extra details to fill length`);
+      const thoughtText = lines.join('\n');
+      const chunks = formatter.formatThought(thoughtText);
+
+      expect(chunks.length).toBeGreaterThan(1);
+      for (const chunk of chunks) {
+        expect(chunk.length).toBeLessThanOrEqual(2000);
+      }
+      expect(chunks[0]!.startsWith('> 💭 *')).toBe(true);
     });
   });
 });

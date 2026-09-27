@@ -9,6 +9,7 @@ import type {
   PromptResponse,
   SessionConfigOption,
   StopReason,
+  ToolCallContent,
 } from '@agentclientprotocol/sdk';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { homedir } from 'node:os';
@@ -422,6 +423,7 @@ export class AgyBridgeServer {
             toolCallId,
             title,
             status: 'in_progress',
+            content: this.formatToolPayloadContent(update.tool_info?.parameters),
           },
         });
       } else if (update.state === 'DONE') {
@@ -432,14 +434,7 @@ export class AgyBridgeServer {
             toolCallId,
             title,
             status: 'completed',
-            content: update.tool_info?.output
-              ? [
-                {
-                  type: 'content',
-                  content: { type: 'text', text: update.tool_info.output },
-                },
-              ]
-              : undefined,
+            content: this.formatToolPayloadContent(update.tool_info?.output),
           },
         });
       } else if (update.state === 'ERROR') {
@@ -451,18 +446,29 @@ export class AgyBridgeServer {
             toolCallId,
             title,
             status: 'failed',
-            content: errorMessage
-              ? [
-                {
-                  type: 'content',
-                  content: { type: 'text', text: errorMessage },
-                },
-              ]
-              : undefined,
+            content: this.formatToolPayloadContent(
+              errorMessage ?? update.tool_info?.error,
+            ),
           },
         });
       }
     }
+  }
+
+  private formatToolPayloadContent(data: unknown): ToolCallContent[] | undefined {
+    if (data === undefined || data === null) {
+      return undefined;
+    }
+    const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    if (!text || (typeof data === 'object' && Object.keys(data as object).length === 0)) {
+      return undefined;
+    }
+    return [
+      {
+        type: 'content',
+        content: { type: 'text', text },
+      },
+    ];
   }
 
   private settlePrompt(run: AgyRun, result: AgyResultEvent['result']): void {
@@ -647,9 +653,7 @@ export class AgyBridgeServer {
         const cmd = getStringParam('CommandLine', 'command');
         if (cmd) {
           const singleLine = cmd.replace(/[\r\n]+/g, ' ').trim();
-          return singleLine.length > 60
-            ? `Run ${singleLine.slice(0, 59)}…`
-            : `Run ${singleLine}`;
+          return `Run ${singleLine}`;
         }
         return 'Run command';
       }

@@ -106,7 +106,7 @@ próximo `connect()` sobe um processo novo.
 O `AgentStreamDemux` decompõe as notificações brutas do ACP em eventos tipados:
 
 - `agent_thought_chunk`: atividades `{ kind: 'thought', id, text }`.
-- `tool_call` e `tool_call_update`: atividades `{ kind: 'tool', toolCallId, title, status }`.
+- `tool_call` e `tool_call_update`: atividades `{ kind: 'tool', toolCallId, title, status, details? }`. Os detalhes da ferramenta (argumentos, parâmetros de execução, saída ou erros) são extraídos integralmente do payload ACP sem truncamento prematuro.
 - `agent_message_chunk`: narrado como atividade `thought` e acumulado; no fechamento do `prompt()` vira o bloco final `AgentUpdate`. Respostas vazias não geram bloco.
 
 A resposta final é a mensagem que contém `<final_response>` (`constants/final-response.constant.ts`,
