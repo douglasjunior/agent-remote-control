@@ -173,7 +173,7 @@ export class ExecuteAgentTurnUseCase {
       attachment => `- Name: ${attachment.name}\n  Size: ${attachment.size} bytes\n  Type: ${attachment.contentType}\n  Path: ${attachment.path}`,
     );
 
-    return `[ATTACHMENTS]\n${lines.join('\n')}\nUse the view_file tool to view and inspect these attachments.\n\n${prompt}`;
+    return `[ATTACHMENTS]\n${lines.join('\n')}\nInspect these files using your available tools as needed.\n\n${prompt}`;
   }
 
   private formatActiveDelegations(delegations: readonly ActiveDelegation[]): string {

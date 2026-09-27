@@ -4,12 +4,13 @@ import { INITIAL_AGENT_DEFINITIONS } from './initial-agents.constant.js';
 
 
 describe('initial-agents.constant', () => {
-  it('should contain definitions for CEO, DEVELOPER, and CODE_REVIEWER roles', () => {
+  it('should contain definitions for CEO, TECH_LEAD, DEVELOPER, and CODE_REVIEWER roles', () => {
     const roles = INITIAL_AGENT_DEFINITIONS.map(def => def.role);
     expect(roles).toContain('CEO');
+    expect(roles).toContain('TECH_LEAD');
     expect(roles).toContain('DEVELOPER');
     expect(roles).toContain('CODE_REVIEWER');
-    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(3);
+    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(4);
   });
 
   it('should have valid names, descriptions, and system prompts for each agent', () => {

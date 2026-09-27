@@ -12,8 +12,8 @@ O código é estruturado em módulos verticais autônomos em `src/modules/`:
 
 - **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux` e o adaptador concreto `AntigravityAdapter` integrado à ponte `AgyBridgeServer` (Google Antigravity CLI).
 - **`orchestrator`** (`src/modules/orchestrator`): motor de orquestração agnóstico a canais. Contém os casos de uso `ExecuteAgentTurnUseCase` e `CancelAgentTurnUseCase`, gerenciamento de persistência de sessões (`ISessionStorePort`) e coordenação reativa de eventos.
-- **`agent-definitions`** (`src/modules/agent-definitions`): registro e parametrização de personas de agentes (`AgentRegistryService`). Define papéis como **CEO / Router** (triagem e direcionamento de intenções) e **Developer** (análise e modificação de código).
-- **`workspace`** (`src/modules/workspace`): gerenciamento de repositórios e habilidades operacionais dos agentes (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`, habilidades de Git e Plan Mode).
+- **`agent-definitions`** (`src/modules/agent-definitions`): registro e parametrização de personas de agentes (`AgentRegistryService`). Define papéis como **CEO** (orquestração e triagem), **Tech Lead** (planejamento técnico e arquitetura), **Developer** (implementação e testes) e **Code Reviewer** (revisão independente de código).
+- **`workspace`** (`src/modules/workspace`): gerenciamento de repositórios e workspaces (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
 - **`discord`** (`src/modules/discord`): adaptador primário de entrada via Bot do Discord (Discord.js). Gerencia threads de contexto, transmissão de atividades em tempo real (pensamentos e chamadas de ferramentas) e entrega de respostas finais formatadas.
 
 A governança do projeto e regras técnicas adicionais estão documentadas em [`.agents/skills/`](.agents/skills/) e em [`AGENTS.md`](AGENTS.md).
@@ -33,15 +33,15 @@ sequenceDiagram
     participant AgentRegistry as AgentRegistryService
     participant AgentPort as IAgentPort (AntigravityAdapter)
     participant Demux as AgentStreamDemux
-    participant Workspace as Workspace / Git Abilities
+    participant Workspace as Workspace (Files / Git)
     participant AgentBridge as AgyBridgeServer / ACP CLI
 
     Usuario->>DiscordBot: Envia mensagem (@bot ou comando)
     DiscordBot->>DiscordBot: Cria / associa Thread da sessão no Discord
     DiscordBot->>Orchestrator: execute({ channelId, threadId, prompt, onActivity })
 
-    Orchestrator->>AgentRegistry: getSystemPrompt('CEO' ou 'DEVELOPER')
-    AgentRegistry-->>Orchestrator: Retorna instruções do agente e habilidades
+    Orchestrator->>AgentRegistry: getSystemPrompt('CEO', 'TECH_LEAD', 'DEVELOPER', ...)
+    AgentRegistry-->>Orchestrator: Retorna instruções do agente e lembretes de turno
 
     Orchestrator->>AgentPort: connect() & createSession(workspacePath)
     AgentPort->>AgentBridge: Inicia subprocesso ACP / handshake de sessão
@@ -55,7 +55,7 @@ sequenceDiagram
         alt Bloco de Pensamento (Thought)
             Demux-->>DiscordBot: Emite atividade: thought
             DiscordBot->>Usuario: Atualiza embed de raciocínio na Thread
-        else Chamada de Ferramenta (Tool Call / Git / Plan)
+        else Chamada de Ferramenta (Tool Call / Git / Arquivos)
             Demux-->>DiscordBot: Emite atividade: tool (in_progress)
             DiscordBot->>Usuario: Exibe status da ferramenta (ex.: "Executando git clone...")
             AgentBridge->>Workspace: Executa comando (clone / checkout / edição)
