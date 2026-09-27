@@ -39,6 +39,7 @@ type TrackedMessage = {
 type ThoughtTracker = {
   messages: TrackedMessage[];
   currentText: string;
+  isDeleted?: boolean;
 };
 
 @Injectable()
@@ -152,7 +153,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       };
 
       const throttler = new DiscordThrottler({ intervalMs: 1500 });
-      const toolMessages = new Map<string, Promise<any>>();
+      const toolMessages = new Map<string, Promise<TrackedMessage | null>>();
       const thoughtTrackers = new Map<string, ThoughtTracker>();
       let delegationChain = Promise.resolve();
 
@@ -171,6 +172,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           if (activity.removed) {
             const tracker = thoughtTrackers.get(activity.id);
             if (tracker) {
+              tracker.isDeleted = true;
               thoughtTrackers.delete(activity.id);
               for (const msg of tracker.messages) {
                 if (typeof msg?.delete === 'function') {
@@ -210,7 +212,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           }
 
           if (activity.status === 'in_progress') {
-            const sendPromise = targetChannel!.send(formatted).catch((error: unknown) => {
+            const sendPromise = (targetChannel!.send(formatted) as Promise<TrackedMessage>).catch((error: unknown): null => {
               this.logger.warn(`Failed to send tool call message: ${this.describeError(error)}`);
               return null;
             });
@@ -220,15 +222,15 @@ export class DiscordMessageHandler implements OnModuleInit {
 
           if (activity.status === 'completed' || activity.status === 'failed') {
             const prevPromise = toolMessages.get(activity.toolCallId);
-            const editPromise = (prevPromise ?? Promise.resolve(null))
-              .then(async (msg) => {
+            const editPromise = (prevPromise ?? Promise.resolve<TrackedMessage | null>(null))
+              .then(async (msg): Promise<TrackedMessage | null> => {
                 if (msg && typeof msg.edit === 'function') {
                   await msg.edit(formatted);
                   return msg;
                 }
-                return await targetChannel!.send(formatted);
+                return (await targetChannel!.send(formatted)) as TrackedMessage;
               })
-              .catch((error: unknown) => {
+              .catch((error: unknown): null => {
                 this.logger.warn(`Failed to update tool call message: ${this.describeError(error)}`);
                 return null;
               });
@@ -307,6 +309,9 @@ export class DiscordMessageHandler implements OnModuleInit {
     targetChannel: SendableChannel,
   ): Promise<void> {
     for (const tracker of thoughtTrackers.values()) {
+      if (tracker.isDeleted) {
+        continue;
+      }
       const chunks = this.activityFormatter.splitMessage(
         tracker.currentText,
         DISCORD_MESSAGE_LIMIT,
@@ -329,12 +334,20 @@ export class DiscordMessageHandler implements OnModuleInit {
         } else {
           try {
             const sent = (await targetChannel.send(chunk)) as TrackedMessage | null | undefined;
-            if (sent) {
-              sent.content ??= chunk;
-              tracker.messages.push(sent);
+            if (tracker.isDeleted) {
+              if (typeof sent?.delete === 'function') {
+                void sent.delete().catch(() => undefined);
+              }
+              break;
             }
+            if (!sent) {
+              break;
+            }
+            sent.content ??= chunk;
+            tracker.messages.push(sent);
           } catch (error) {
             this.logger.warn(`Failed to send thought message: ${this.describeError(error)}`);
+            break;
           }
         }
       }

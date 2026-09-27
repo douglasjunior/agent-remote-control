@@ -929,6 +929,147 @@ describe('DiscordMessageHandler', () => {
     await vi.runAllTimersAsync();
   });
 
+  it('should abort subsequent chunks when an intermediate thought chunk send fails', async () => {
+    const longLines = Array.from({ length: 90 }, (_, i) => `Thought line ${i + 1} with lots of details to extend length`);
+    orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
+    const sentChunks: string[] = [];
+    let thoughtSendCalls = 0;
+
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async (content: string) => {
+        if (content.startsWith('> 💭') || content.startsWith('> *')) {
+          thoughtSendCalls++;
+          if (thoughtSendCalls === 1) {
+            sentChunks.push(content);
+            return { content, edit: vi.fn().mockResolvedValue(undefined) };
+          }
+          if (thoughtSendCalls === 2) {
+            throw new Error('Rate limit on chunk 2');
+          }
+          sentChunks.push(content);
+          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        }
+        return { delete: vi.fn().mockResolvedValue(undefined) };
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Split failure',
+      content: 'Split failure',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+    await vi.runAllTimersAsync();
+
+    expect(sentChunks).toHaveLength(1);
+    expect(thoughtSendCalls).toBe(2);
+  });
+
+  it('should clean up in-flight thought message if activity was removed during send', async () => {
+    let resolveSend!: (msg: unknown) => void;
+    const sendDeferred = new Promise((resolve) => {
+      resolveSend = resolve;
+    });
+
+    const mockDeletedMsg = {
+      content: 'thinking slow',
+      edit: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+
+    let sendCalls = 0;
+    const mockThread = {
+      id: 'thread-1',
+      parentId: 'channel-1',
+      ownerId: 'bot-123',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async () => {
+        sendCalls++;
+        if (sendCalls === 1) {
+          return { delete: vi.fn().mockResolvedValue(undefined) };
+        }
+        return sendDeferred;
+      }),
+    } as unknown as ThreadChannel;
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Race condition',
+      content: 'Race condition',
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: mockThread,
+    } as unknown as Message;
+
+    vi.spyOn(orchestratorService, 'executeTurn').mockImplementation(async (req) => {
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' });
+      await vi.advanceTimersByTimeAsync(1500);
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true });
+      resolveSend(mockDeletedMsg);
+      await sendDeferred;
+      return orchestratorService.mockResult;
+    });
+
+    await handler.handleMessage(message);
+    await vi.runAllTimersAsync();
+
+    expect(mockDeletedMsg.delete).toHaveBeenCalled();
+  });
+
+  it('should ignore deleted trackers and handle null sent message in syncThoughtMessages', async () => {
+    const deletedTracker = {
+      messages: [],
+      currentText: 'Deleted text',
+      isDeleted: true,
+    };
+    const nullSendTracker = {
+      messages: [],
+      currentText: 'Null send text',
+    };
+    const trackers = new Map([
+      ['del', deletedTracker],
+      ['nullSend', nullSendTracker],
+    ]);
+    const mockChannel = {
+      send: vi.fn().mockResolvedValue(null),
+    };
+
+    await (handler as any).syncThoughtMessages(trackers, mockChannel);
+
+    expect(mockChannel.send).toHaveBeenCalledTimes(1);
+    expect(nullSendTracker.messages).toHaveLength(0);
+  });
+
+  it('should handle in-flight removed thought when sent message has no delete method', async () => {
+    const tracker: any = {
+      messages: [],
+      currentText: 'No delete method text',
+      isDeleted: false,
+    };
+    const trackers = new Map([['t1', tracker]]);
+    const mockMsgWithoutDelete = { content: 'test', edit: vi.fn() };
+    const mockChannel = {
+      send: vi.fn().mockImplementation(async () => {
+        tracker.isDeleted = true;
+        return mockMsgWithoutDelete;
+      }),
+    };
+
+    await (handler as any).syncThoughtMessages(trackers, mockChannel);
+
+    expect(tracker.messages).toHaveLength(0);
+  });
+
   it('should split long responses into multiple chunks', async () => {
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {

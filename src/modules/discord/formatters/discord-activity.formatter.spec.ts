@@ -115,6 +115,49 @@ describe('DiscordActivityFormatter', () => {
       );
     });
 
+    it('should truncate single-line details exceeding max length with ellipsis', () => {
+      const longText = 'x'.repeat(2500);
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-long',
+        title: 'git diff',
+        status: 'completed',
+        details: longText,
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      const expectedContent = `${'x'.repeat(1797)}...`;
+      expect(result).toBe(`✅ **Concluído**: \`git diff\`\n\`\`\`\n${expectedContent}\n\`\`\``);
+      expect(result!.length).toBeLessThanOrEqual(2000);
+    });
+
+    it('should truncate when first 5 lines exceed max length while preserving line suffix', () => {
+      const longLines = [
+        'a'.repeat(400),
+        'b'.repeat(400),
+        'c'.repeat(400),
+        'd'.repeat(400),
+        'e'.repeat(400),
+        'f',
+        'g',
+        'h',
+      ].join('\n');
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-multi-long',
+        title: 'git status',
+        status: 'completed',
+        details: longLines,
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toContain('... (+3 linhas)\n```');
+      expect(result).toContain('...');
+      expect(result!.length).toBeLessThanOrEqual(2000);
+    });
+
     it('should format tool failed status with details in a code block', () => {
       const activity: AgentActivity = {
         kind: 'tool',
