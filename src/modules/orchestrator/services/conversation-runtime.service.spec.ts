@@ -215,6 +215,37 @@ describe('ConversationRuntimeService', () => {
       expect(runtime.getActiveDelegations('unknown')).toEqual([]);
     });
 
+    it('should ignore unregisterDelegation when delegation parameter does not match current active delegation', () => {
+      const delegatePort1 = new StubAgentPort();
+      const delegatePort2 = new StubAgentPort();
+      const delegation1 = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'my-app',
+        taskSpec: 'Build it',
+        cwd: '/mock/my-app',
+        startedAt: Date.now(),
+        agentPort: delegatePort1,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+      const delegation2 = {
+        ...delegation1,
+        agentPort: delegatePort2,
+        taskSpec: 'Build it new',
+      };
+
+      runtime.registerDelegation('a', delegation1);
+      runtime.registerDelegation('a', delegation2);
+
+      runtime.unregisterDelegation('a', 'developer', delegation1);
+      expect(runtime.getActiveDelegations('a')).toEqual([delegation2]);
+      expect(runtime.findActiveDelegation('a', 'DEVELOPER')).toBe(delegation2);
+
+      runtime.unregisterDelegation('a', 'developer', delegation2);
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+
     it('should return CEO port for the given conversationKey', () => {
       const ceoPort = runtime.getCeoPort('a');
       expect(ceoPort).toBeDefined();

@@ -992,5 +992,46 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).toContain('[AGENT_RESULT:DEVELOPER]\nCompleted task in project-b.');
       expect(stubAgentPort.promptCalls[1]).not.toContain('Steering message sent to active agent.');
     });
+
+    it('should not remove a newer active delegation when a previous delegation completes its finally block', async () => {
+      const conversationKey = buildConversationKey('ch-1');
+      const newerDelegatePort = new StubAgentPort();
+      const newerDelegation = {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'project-new',
+        taskSpec: 'Concurrent newer task',
+        cwd: '/mock/workspace/project-new',
+        startedAt: Date.now(),
+        agentPort: newerDelegatePort,
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+
+      const unregisterSpy = vi.spyOn(runtime, 'unregisterDelegation');
+
+      delegateStubPort.prompt = async function* () {
+        runtime.registerDelegation(conversationKey, newerDelegation);
+        yield textChunk('Original delegation finished');
+      };
+
+      stubAgentPort.mockResponses = [
+        'Run initial task.\n[DELEGATE:DEVELOPER:project-a]',
+        'Done.\n[DONE]',
+      ];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(unregisterSpy).toHaveBeenCalledWith(
+        conversationKey,
+        'DEVELOPER',
+        expect.objectContaining({
+          role: 'DEVELOPER',
+          taskSpec: 'Run initial task.',
+        }),
+      );
+      expect(runtime.findActiveDelegation(conversationKey, 'DEVELOPER')).toBe(newerDelegation);
+    });
   });
 });
