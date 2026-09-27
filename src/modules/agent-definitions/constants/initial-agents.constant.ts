@@ -21,7 +21,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     role: 'TECH_LEAD',
     name: 'Tech Lead Agent',
     description:
-      'Senior technical lead and software architect for deep technical planning, architecture analysis, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
+      'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
     buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
     turnReminder: TECH_LEAD_TURN_REMINDER,
@@ -30,7 +30,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     role: 'DEVELOPER',
     name: 'Developer Agent',
     description:
-      'Senior software engineer for any hands-on technical work in a project folder: cloning and setting up repositories, codebase analysis, planning, implementation, refactoring, bug fixing, automated tests, and Git operations.',
+      'Senior software engineer for hands-on technical execution in a project folder: cloning and setting up repositories, implementation, refactoring, bug fixing, automated tests, and Git operations based on approved specifications and plans.',
     buildSystemPrompt: () => DEVELOPER_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
     turnReminder: DEVELOPER_TURN_REMINDER,

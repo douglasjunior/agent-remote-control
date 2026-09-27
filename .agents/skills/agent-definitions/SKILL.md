@@ -63,7 +63,7 @@ da narração.
 - Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
 - Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
 - Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
-- Incorpora as habilidades de Git (`GIT_ABILITY`) e Planejamento (`PLAN_ABILITY`);
+- Incorpora diretamente as convenções e regras operacionais de Git (Conventional Commits em pt-BR, clones SSH, verificação de chaves e segurança); executa especificações técnicas e planos aprovados;
 - Possui o lembrete `DEVELOPER_TURN_REMINDER` configurado em sua definição, reforçando a cada turno a aderência a convenções, testes automatizados e o envelope `<final_response>`.
 
 ### 2. CEO (`ceo.prompt.ts`)
@@ -75,11 +75,12 @@ da narração.
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome e descrição de cada agente. Por isso a `description` de cada definição deve dizer quando delegar a ele;
+- Quando o usuário solicita planejamento, arquitetura, spikes ou investigações técnicas, delega ao `TECH_LEAD`. Após a aprovação do plano e alinhamento de decisões, delega a execução ao `DEVELOPER`;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
-- Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem as habilidades e arquivos de governança; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
+- Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
 - Possui o lembrete `CEO_TURN_REMINDER` configurado em sua definição, reforçando o papel de orquestração pura e o contrato dos marcadores a cada turno;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
-- Não incorpora habilidades de execução (`PLAN_ABILITY`, `GIT_ABILITY`), pois as instruções delas são de quem executa.
+- Não realiza execução técnica direta, pois a implementação cabe exclusivamente aos agentes especialistas do time.
 
 ### 3. Code Reviewer Agent (`code-reviewer.prompt.ts`)
 
@@ -93,10 +94,11 @@ da narração.
 ### 4. Tech Lead Agent (`tech-lead.prompt.ts`)
 
 - Atua como arquiteto de software e líder técnico responsável por análise profunda de requisitos, exploração de arquitetura e levantamento prévio de impacto no repositório;
+- Persona analítica e de uso geral: responde a consultas arquiteturais, investigações, análise de trade-offs de bibliotecas/tecnologias e elaboração de planos de implementação;
 - Opera sob disciplina estritamente somente-leitura: não altera arquivos, não gera código de produção e não realiza commits ou patches diretamente;
 - Adota abordagem consultiva com alinhamento Human-in-the-Loop (HITL): ao identificar ambiguidades, trade-offs arquiteturais relevantes ou dependências não consolidadas, formula opções estruturadas com prós e contras, apresenta recomendação justificada e solicita alinhamento antes de consolidar o plano;
 - Prioriza documentação autoritativa (skills locais, guias arquiteturais) e mapeia divergências (drift) para decisão explícita;
-- Produz planos estruturados contendo Visão Geral e Objetivos, Decisões Técnicas e Arquitetura, Análise de Impacto com caminhos reais de arquivos, Decomposição Sequencial de Tarefas para o DEVELOPER (com dependências explícitas e testes integrados em cada tarefa) e Critérios de Aceitação/Verificação com comandos concretos;
+- Produz planos estruturados entregues diretamente no chat (sem gerar arquivos em disco), contendo Visão Geral e Objetivos, Decisões Técnicas e Arquitetura, Análise de Impacto com caminhos reais de arquivos, Decomposição Sequencial de Tarefas para o DEVELOPER (com dependências explícitas e testes integrados em cada tarefa) e Critérios de Aceitação/Verificação com comandos concretos;
 - Opera por padrão em sessão persistida (`defaultSessionMode: 'resume'`) para sustentar refinamentos iterativos e alinhamentos conversacionais com o CEO ou usuário;
 - Possui o lembrete `TECH_LEAD_TURN_REMINDER` configurado em sua definição, reforçando o papel de planejamento, disciplina somente-leitura, HITL e tarefas com critérios verificáveis.
 

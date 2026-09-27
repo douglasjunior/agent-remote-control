@@ -10,15 +10,21 @@ import {
 describe('tech-lead.prompt', () => {
   it('should define tech lead agent role and its core principles', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Tech Lead Agent');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('general-purpose analytical agent');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Technical Planning & Architecture');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Read-Only Exploration & Non-Execution');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Human-in-the-Loop (HITL) & Decision Discipline');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Actionable Specification & Plan Structure');
   });
 
+  it('should instruct delivering plans directly in conversation without creating spec files on disk', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Deliver plans and specifications directly as structured text in the conversation');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT create spec files on disk such as spec.md, plan.md, or tasks.md');
+  });
+
   it('should prohibit modifying code files and enforce read-only exploration', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('strictly planning, specification, and architecture');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, or implement production changes');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('strictly planning, specification, investigation, and architecture');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, create git commits, or implement production changes');
   });
 
   it('should instruct consultative alignment and options with pros and cons on design decisions', () => {

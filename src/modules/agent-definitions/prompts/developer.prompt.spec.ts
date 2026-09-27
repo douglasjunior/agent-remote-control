@@ -9,11 +9,16 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Developer Agent');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Repository Boundaries');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Technical Execution');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Execute approved technical plans and specifications faithfully');
   });
 
-  it('should integrate abilities into Developer prompt', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Plan Mode & Codebase Inspection');
+  it('should embed Git version control and commit conventions directly in Developer prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Git Version Control & Commit Conventions');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits format in Portuguese (pt-BR)');
+  });
+
+  it('should not contain plan ability since planning belongs to Tech Lead', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('Plan Mode & Codebase Inspection');
   });
 
   it('should require the final answer inside the final response block', () => {
