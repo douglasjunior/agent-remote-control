@@ -5,6 +5,7 @@ import {
   CODE_REVIEWER_TURN_REMINDER,
 } from '../prompts/code-reviewer.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from '../prompts/developer.prompt.js';
+import { TECH_LEAD_SYSTEM_PROMPT, TECH_LEAD_TURN_REMINDER } from '../prompts/tech-lead.prompt.js';
 
 
 export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
@@ -15,6 +16,15 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
       'Leads the agent team: talks with the user, scopes requests, delegates all hands-on work, and reviews results.',
     buildSystemPrompt: buildCeoSystemPrompt,
     turnReminder: CEO_TURN_REMINDER,
+  },
+  {
+    role: 'TECH_LEAD',
+    name: 'Tech Lead Agent',
+    description:
+      'Senior technical lead and software architect for deep technical planning, architecture analysis, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
+    buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
+    defaultSessionMode: 'resume',
+    turnReminder: TECH_LEAD_TURN_REMINDER,
   },
   {
     role: 'DEVELOPER',
