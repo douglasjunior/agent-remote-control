@@ -10,6 +10,7 @@ import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.mo
 const FENCE_PATTERN = /^```\w*/;
 const CLOSE_FENCE = '\n```';
 const DEFAULT_LABEL = 'padrão';
+const MAX_TOOL_DETAILS_LENGTH = 1800;
 
 @Injectable()
 export class DiscordActivityFormatter {
@@ -56,12 +57,15 @@ export class DiscordActivityFormatter {
       return null;
     }
     const lines = trimmed.split('\n');
-    if (lines.length <= 5) {
-      return `\`\`\`\n${lines.join('\n')}\n\`\`\``;
+    const hasMoreLines = lines.length > 5;
+    const selectedLines = hasMoreLines ? lines.slice(0, 5) : lines;
+    const lineSuffix = hasMoreLines ? `\n... (+${lines.length - 5} linhas)` : '';
+    const availableLength = MAX_TOOL_DETAILS_LENGTH - lineSuffix.length;
+    let content = selectedLines.join('\n');
+    if (content.length > availableLength) {
+      content = `${content.slice(0, availableLength - 3).trimEnd()}...`;
     }
-    const firstFive = lines.slice(0, 5);
-    const remaining = lines.length - 5;
-    return `\`\`\`\n${firstFive.join('\n')}\n... (+${remaining} linhas)\n\`\`\``;
+    return `\`\`\`\n${content}${lineSuffix}\n\`\`\``;
   }
 
   formatDelegation(event: DelegationEvent): string {
