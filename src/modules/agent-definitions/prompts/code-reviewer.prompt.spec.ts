@@ -16,9 +16,17 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Findings Structure');
   });
 
-  it('should prohibit inventing problems and modifying code files', () => {
+  it('should prohibit inventing problems, modifying production code files, or creating commits', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Do NOT invent problems.');
-    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('do NOT modify code files directly.');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
+      'do NOT modify production code files directly or create commits in the repository.',
+    );
+  });
+
+  it('should authorize MCP tools and CLI commands to inspect and publish PR comments within repository boundaries', () => {
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
+      'authorized and expected to use MCP tools and CLI commands to inspect the repository and to publish review comments on PRs/MRs when requested.',
+    );
   });
 
   it('should require the final answer inside the final response block', () => {
@@ -29,13 +37,19 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('project folder assigned to you. Stay inside it');
   });
 
-  it('should define CODE_REVIEWER_TURN_REMINDER with objective review, findings format, and final response instructions', () => {
+  it('should define CODE_REVIEWER_TURN_REMINDER with objective review, findings format, PR publishing, and final response instructions', () => {
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('independent, unbiased code reviewer');
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('Never invent problems');
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('<final_response>');
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain(
+      'When reviewing a Pull Request (PR) with identified findings, proactively suggest publishing them as PR comments',
+    );
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain(
+      'strict tool hierarchy (MCP -> Official CLI -> No Fallback)',
+    );
   });
 
-  it('should instruct the agent to suggest publishing PR comments when reviewing a Pull Request with findings', () => {
+  it('should instruct multi-provider PR comment publishing with strict tool hierarchy and anchoring rules', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Pull Request (PR) Comment Publishing');
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
       'When reviewing a Pull Request (PR) and findings are identified',
@@ -46,8 +60,17 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(
       'ask the user to reply indicating which specific findings',
     );
-    expect(CODE_REVIEWER_TURN_REMINDER).toContain(
-      'When reviewing a Pull Request (PR) with identified findings, proactively suggest publishing them as PR comments',
-    );
+
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Multi-Provider Detection: Inspect `git remote -v`');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('GitHub, GitLab, Azure DevOps, or Bitbucket');
+
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Strict Tool Hierarchy (MCP -> Official CLI -> No Fallback)');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('MCP (Model Context Protocol): Primary choice.');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Official CLI: Secondary choice.');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('No Fallback: If neither MCP tools nor an official CLI are available');
+
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Inline on Diff: Point findings with a valid file and line in the diff must be anchored to the exact line of the new version');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('side: RIGHT');
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('General Discussion: Use general PR/MR discussion thread comments only for global');
   });
 });
