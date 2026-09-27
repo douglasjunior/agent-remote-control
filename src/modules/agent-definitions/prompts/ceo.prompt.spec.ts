@@ -11,6 +11,7 @@ const developer: AgentDefinition = {
   name: 'Developer Agent',
   description: 'Writes code.',
   buildSystemPrompt: () => 'dev',
+  delegation: { project: 'required', sessionMode: 'overridable' },
   turnReminder: 'dev reminder',
 };
 
@@ -33,15 +34,20 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('agent-remote-control');
   });
 
-  it('should instruct the CEO to discover active projects using workspace-manifest.json and CWD inspection', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('workspace-manifest.json');
-    expect(CEO_SYSTEM_PROMPT).toContain('metadata (name, Git URL, path, and default branch)');
-    expect(CEO_SYSTEM_PROMPT).toContain('Inspect your CWD (by reading `workspace-manifest.json` or listing directories)');
+  it('should instruct the CEO to discover active projects by listing its CWD', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Each direct subfolder of your CWD is a project');
+    expect(CEO_SYSTEM_PROMPT).toContain('List your CWD to discover which projects are currently active');
+  });
+
+  it('should require everything an agent needs to be written into the specification', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'An agent only knows what you write: anything it needs that came from the user, such as a repository URL, must appear in the specification.',
+    );
   });
 
   it('should direct the CEO to focus on actual workspace projects and suggest initialization if empty', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('anchor your responses in the actual projects available in the workspace');
-    expect(CEO_SYSTEM_PROMPT).toContain('propose cloning or initializing a new repository via the DEVELOPER');
+    expect(CEO_SYSTEM_PROMPT).toContain('propose adding a repository to it');
   });
 
   it('should enforce pure orchestration and prohibit direct technical execution', () => {
@@ -96,12 +102,51 @@ describe('ceo.prompt', () => {
       name: 'Reviewer Agent',
       description: 'Reviews code.',
       buildSystemPrompt: () => 'rev',
+      delegation: { project: 'required' },
+      defaultSessionMode: 'new',
       turnReminder: 'rev reminder',
     };
 
     const prompt = buildCeoSystemPrompt([developer, reviewer]);
 
-    expect(prompt).toContain('- DEVELOPER (Developer Agent): Writes code.\n- REVIEWER (Reviewer Agent): Reviews code.');
+    expect(prompt).toContain('- DEVELOPER (Developer Agent): Writes code.');
+    expect(prompt).toContain('- REVIEWER (Reviewer Agent): Reviews code.');
+  });
+
+  it('should state the accepted marker shape of each team member', () => {
+    const gitOps: AgentDefinition = {
+      role: 'GIT_OPS',
+      name: 'Git Ops Agent',
+      description: 'Runs git.',
+      buildSystemPrompt: () => 'git',
+      delegation: { project: 'optional', sessionMode: 'overridable' },
+      turnReminder: 'git reminder',
+    };
+
+    const prompt = buildCeoSystemPrompt([developer, gitOps]);
+
+    expect(prompt).toContain(
+      'Delegate as [DELEGATE:DEVELOPER:<project-folder>]. Append :new for a clean session.',
+    );
+    expect(prompt).toContain(
+      'Delegate as [DELEGATE:GIT_OPS] or [DELEGATE:GIT_OPS:<project-folder>]. Append :new for a clean session.',
+    );
+  });
+
+  it('should forbid a session mode for a team member whose mode is fixed', () => {
+    const reviewer: AgentDefinition = {
+      role: 'REVIEWER',
+      name: 'Reviewer Agent',
+      description: 'Reviews code.',
+      buildSystemPrompt: () => 'rev',
+      delegation: { project: 'required' },
+      defaultSessionMode: 'new',
+      turnReminder: 'rev reminder',
+    };
+
+    expect(buildCeoSystemPrompt([reviewer])).toContain(
+      'Delegate as [DELEGATE:REVIEWER:<project-folder>]. It always runs in "new" session mode, so never append :new or :resume.',
+    );
   });
 
   it('should state that no agent is available when the team is empty', () => {

@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
-import type { IAgentRegistryPort } from '../../orchestrator/ports/agent-registry.port.js';
+import type {
+  DelegationContract,
+  IAgentRegistryPort,
+} from '../../orchestrator/ports/agent-registry.port.js';
 import { INITIAL_AGENT_DEFINITIONS } from '../constants/initial-agents.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 
@@ -38,6 +41,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
 
   getDefaultSessionMode(agentRole: string): 'resume' | 'new' {
     return this.getDefinition(agentRole)?.defaultSessionMode ?? 'resume';
+  }
+
+  getDelegationContract(agentRole: string): DelegationContract {
+    return this.getDefinition(agentRole)?.delegation ?? {};
   }
 
   getTurnReminder(agentRole: string): string {

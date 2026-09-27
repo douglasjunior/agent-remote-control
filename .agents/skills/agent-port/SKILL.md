@@ -125,7 +125,10 @@ O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e pro
 
 - Resolução do binário do bridge (`agy-acp-bridge.js` compilado ou `agy-acp-bridge.ts` em desenvolvimento).
 - Injeção de `AGY_PATH` via `IFileSystemPort.resolveInPath('agy')` quando ausente do ambiente.
-- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`.
+- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`, em `tmpdir()`. O bridge sobe no `connect()`, antes de a sessão existir, então não há `cwd` de sessão a adotar.
+- Isolamento do ambiente do bridge: credenciais e configuração da aplicação hospedeira (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), as variáveis que revelam o diretório da aplicação (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) e as do prefixo `npm_` ficam de fora. `PWD` é reescrito com o `cwd` do subprocesso. O restante do ambiente segue adiante, porque o agente depende dele para operar (`PATH`, `HOME`, `SSH_AUTH_SOCK`).
+
+O diretório onde o agente trabalha é o `cwd` da sessão, e não o do bridge: `createSession(cwd)` e `loadSession(cwd, id)` recebem o caminho, e o bridge sobe cada processo `agy` nele, com `PWD` alinhado.
 
 O bridge `agy-acp-bridge.ts` anuncia `loadSession: true`. O `session/load` reinicia o `agy`
 com `--conversation <sessionId>` e adota esse ID; o histórico fica guardado no próprio agy e

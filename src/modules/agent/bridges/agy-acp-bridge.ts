@@ -320,7 +320,7 @@ export class AgyBridgeServer {
     const proc = spawn(agyBin, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: process.env,
+      env: { ...process.env, PWD: cwd },
     });
 
     if (!proc.stdout || !proc.stdin) {

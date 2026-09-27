@@ -216,6 +216,7 @@ describe('AgyBridgeServer', () => {
         expect.objectContaining({
           cwd: '/test/cwd',
           stdio: ['pipe', 'pipe', 'pipe'],
+          env: expect.objectContaining({ PWD: '/test/cwd' }),
         }),
       );
 

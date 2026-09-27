@@ -5,7 +5,10 @@ import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
-import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import {
+  type DelegationContract,
+  IAgentRegistryPort,
+} from '../ports/agent-registry.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
@@ -30,6 +33,10 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDisplayName = vi.fn((role: string) => role);
   hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER'].includes(role));
   getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
+  getDelegationContract = vi.fn(
+    () => ({ project: 'optional', sessionMode: 'overridable' }) as DelegationContract,
+  );
+
   getTurnReminder = vi.fn().mockReturnValue('');
 }
 
@@ -37,10 +44,6 @@ class StubWorkspacePort implements IWorkspacePort {
   getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
   resolveRepositoryPath = vi.fn().mockReturnValue('/mock/workspace/my-app');
   ensureDirectory = vi.fn().mockResolvedValue(undefined);
-  registerRepository = vi.fn();
-  getRepository = vi.fn();
-  listRepositories = vi.fn();
-  hasRepository = vi.fn();
 }
 
 function textChunk(text: string): AgentUpdate {
@@ -245,6 +248,45 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
     expect(stubAgentPort.promptCalls).toHaveLength(10);
     expect(delegateStubPort.promptCalls).toHaveLength(9);
+  });
+
+  describe('delegation contract', () => {
+    it('should repair a delegation missing a project folder the role requires', async () => {
+      agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Role "DEVELOPER" requires a project folder. Use [DELEGATE:DEVELOPER:<project-folder>].',
+      );
+    });
+
+    it('should repair a delegation carrying a project folder the role does not take', async () => {
+      agentRegistry.getDelegationContract.mockReturnValueOnce({});
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok, asking you first.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Role "DEVELOPER" does not take a project folder. Use [DELEGATE:DEVELOPER].',
+      );
+      expect(delegateStubPort.promptCalls).toHaveLength(0);
+    });
+
+    it('should repair a delegation carrying a session mode the role keeps fixed', async () => {
+      agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:CODE_REVIEWER:my-app:new]', 'Ok, asking you first.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Role "CODE_REVIEWER" does not take a session mode. Use [DELEGATE:CODE_REVIEWER:my-app] without ":new".',
+      );
+      expect(delegateStubPort.promptCalls).toHaveLength(0);
+    });
   });
 
   describe('delegation repair', () => {

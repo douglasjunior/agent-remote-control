@@ -15,7 +15,10 @@ import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
-import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import {
+  type DelegationContract,
+  IAgentRegistryPort,
+} from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
@@ -250,6 +253,15 @@ export class ExecuteAgentTurnUseCase {
       };
     }
 
+    const violation = this.checkDelegationContract(
+      delegateToRole,
+      this.agentRegistry.getDelegationContract(delegateToRole),
+      decision.delegation,
+    );
+    if (violation) {
+      return { kind: 'invalid', reason: violation };
+    }
+
     if (!projectName) {
       return { kind: 'delegate', delegation: { ...decision.delegation, cwd: request.workspacePath } };
     }
@@ -264,6 +276,25 @@ export class ExecuteAgentTurnUseCase {
         reason: `Invalid project folder "${projectName}": ${message}. Use a folder name relative to the workspaces root.`,
       };
     }
+  }
+
+  // TODO: devemos pensar numa forma melhor e mais genéricas de validar os parâmetros de delegação
+  // talvez cada agente ter um zod schema que valide seus parâmetros, não sei ainda...
+  private checkDelegationContract(
+    role: string,
+    contract: DelegationContract,
+    { projectName, sessionMode }: DelegationResult,
+  ): string | undefined {
+    if (projectName && !contract.project) {
+      return `Role "${role}" does not take a project folder. Use [DELEGATE:${role}].`;
+    }
+    if (!projectName && contract.project === 'required') {
+      return `Role "${role}" requires a project folder. Use [DELEGATE:${role}:<project-folder>].`;
+    }
+    if (sessionMode && !contract.sessionMode) {
+      return `Role "${role}" does not take a session mode. Use [DELEGATE:${role}${projectName ? `:${projectName}` : ''}] without ":${sessionMode}".`;
+    }
+    return undefined;
   }
 
   private async delegate(

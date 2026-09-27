@@ -12,9 +12,22 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Execute approved technical plans and specifications faithfully');
   });
 
-  it('should embed Git version control and commit conventions directly in Developer prompt', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Git Version Control & Commit Conventions');
+  it('should embed commit conventions directly in Developer prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits format in Portuguese (pt-BR)');
+  });
+
+  it('should keep the developer on the local side of Git', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(
+      'You own the local side of Git: inspecting the working tree, creating and switching local branches, staging, and committing your own work.',
+    );
+  });
+
+  it('should put operations that reach a remote outside its scope without naming another agent', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Operations that reach a remote are outside your scope');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('state that in your final response and stop there');
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('GIT_OPS');
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('ssh-keygen');
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('git clone');
   });
 
   it('should not contain plan ability since planning belongs to Tech Lead', () => {

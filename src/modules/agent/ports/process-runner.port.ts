@@ -7,6 +7,7 @@ export type ProcessRunResult = {
 };
 
 export type ProcessSpawnOptions = {
+  readonly cwd?: string;
   readonly stdio?: StdioOptions;
   readonly env?: NodeJS.ProcessEnv;
   readonly signal?: AbortSignal;

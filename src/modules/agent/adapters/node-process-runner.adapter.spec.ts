@@ -35,18 +35,20 @@ describe('NodeProcessRunnerAdapter', () => {
   });
 
   describe('spawn', () => {
-    it('should delegate to spawn passing through stdio, env and signal', () => {
+    it('should delegate to spawn passing through cwd, stdio, env and signal', () => {
       const adapter = new NodeProcessRunnerAdapter();
       const signal = AbortSignal.timeout(1000);
       const env = { CUSTOM: '1' } as NodeJS.ProcessEnv;
 
       adapter.spawn('agy', ['--version'], {
+        cwd: '/test/cwd',
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
         signal,
       });
 
       expect(spawnMock).toHaveBeenCalledWith('agy', ['--version'], {
+        cwd: '/test/cwd',
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
         signal,
@@ -59,6 +61,7 @@ describe('NodeProcessRunnerAdapter', () => {
       adapter.spawn('git', ['status']);
 
       expect(spawnMock).toHaveBeenCalledWith('git', ['status'], {
+        cwd: undefined,
         stdio: undefined,
         env: undefined,
         signal: undefined,
