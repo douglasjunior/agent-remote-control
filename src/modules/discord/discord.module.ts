@@ -7,6 +7,7 @@ import { WorkspaceModule } from '../workspace/workspace.module.js';
 import { DiscordActivityFormatter } from './formatters/discord-activity.formatter.js';
 import { DiscordInteractionHandler } from './handlers/discord-interaction.handler.js';
 import { DiscordMessageHandler } from './handlers/discord-message.handler.js';
+import { DiscordAttachmentService } from './services/discord-attachment.service.js';
 import { DiscordClientService } from './services/discord-client.service.js';
 
 
@@ -14,6 +15,7 @@ import { DiscordClientService } from './services/discord-client.service.js';
   imports: [AgentModule, OrchestratorModule, WorkspaceModule],
   providers: [
     DiscordClientService,
+    DiscordAttachmentService,
     DiscordMessageHandler,
     DiscordInteractionHandler,
     DiscordActivityFormatter,

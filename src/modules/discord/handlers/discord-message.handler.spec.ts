@@ -4,15 +4,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { ConversationInputResolution } from '../../orchestrator/models/agent-config-outcome.model.js';
+import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import {
+  type AttachmentValidationResult,
+  type DiscordAttachment,
+  DiscordAttachmentService,
+} from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 
 import { DiscordMessageHandler } from './discord-message.handler.js';
 
+
+class MockDiscordAttachmentService {
+  public validationResult: AttachmentValidationResult = { valid: true };
+  public downloadedAttachments: TurnAttachment[] = [
+    {
+      name: 'diagram.png',
+      path: '/tmp/attachments/diagram.png',
+      contentType: 'image/png',
+      size: 1024,
+    },
+  ];
+
+  public downloadError: Error | null = null;
+
+  validateAttachments = vi.fn().mockImplementation((_attachments: readonly DiscordAttachment[]) => this.validationResult);
+  downloadAttachments = vi.fn().mockImplementation(async () => {
+    if (this.downloadError) {
+      throw this.downloadError;
+    }
+    return this.downloadedAttachments;
+  });
+}
 
 class MockDiscordClientService {
   public mockClient = {
@@ -90,6 +118,7 @@ describe('DiscordMessageHandler', () => {
   let handler: DiscordMessageHandler;
   let discordClientService: MockDiscordClientService;
   let orchestratorService: MockOrchestratorService;
+  let attachmentService: MockDiscordAttachmentService;
   let workspacePort: MockWorkspacePort;
 
   beforeEach(async () => {
@@ -108,6 +137,10 @@ describe('DiscordMessageHandler', () => {
           useClass: MockOrchestratorService,
         },
         {
+          provide: DiscordAttachmentService,
+          useClass: MockDiscordAttachmentService,
+        },
+        {
           provide: IWorkspacePort,
           useClass: MockWorkspacePort,
         },
@@ -117,6 +150,7 @@ describe('DiscordMessageHandler', () => {
     handler = module.get<DiscordMessageHandler>(DiscordMessageHandler);
     discordClientService = module.get(DiscordClientService);
     orchestratorService = module.get(OrchestratorService);
+    attachmentService = module.get(DiscordAttachmentService);
     workspacePort = module.get(IWorkspacePort);
   });
 
@@ -1419,6 +1453,129 @@ describe('DiscordMessageHandler', () => {
       const callCount = sendTyping.mock.calls.length;
       vi.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(callCount);
+    });
+  });
+
+  describe('attachments handling', () => {
+    const createAttachment = (name: string, contentType = 'image/png'): DiscordAttachment => ({
+      name,
+      url: `https://cdn.discordapp.com/attachments/1/2/${name}`,
+      contentType,
+      size: 1024,
+    });
+
+    const createThreadMessageWithAttachments = (
+      content: string,
+      attachmentsList: DiscordAttachment[],
+    ) => {
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+      const send = vi.fn().mockResolvedValue(progressMessage);
+      const mockThread = {
+        id: 'thread-att-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      } as unknown as ThreadChannel;
+
+      const attachmentsMap = new Map(
+        attachmentsList.map((att, idx) => [`id-${idx}`, att]),
+      );
+
+      const message = {
+        author: { bot: false, id: 'user-42', username: 'alice' },
+        channelId: 'channel-1',
+        cleanContent: content,
+        content,
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+        attachments: attachmentsMap,
+      } as unknown as Message;
+
+      return { message, mockThread, send };
+    };
+
+    it('should process message with only attachments using default prompt', async () => {
+      const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('diagram.png')]);
+
+      await handler.handleMessage(message);
+
+      expect(attachmentService.validateAttachments).toHaveBeenCalledWith([expect.objectContaining({ name: 'diagram.png' })]);
+      expect(attachmentService.downloadAttachments).toHaveBeenCalledWith(
+        'channel-1:thread-att-1',
+        [expect.objectContaining({ name: 'diagram.png' })],
+      );
+      expect(orchestratorService.lastRequest).toMatchObject({
+        channelId: 'channel-1',
+        threadId: 'thread-att-1',
+        prompt: 'O usuário enviou anexos. Analise os arquivos anexados.',
+        attachments: [
+          expect.objectContaining({
+            name: 'diagram.png',
+            path: '/tmp/attachments/diagram.png',
+          }),
+        ],
+      });
+      expect(mockThread.send).toHaveBeenCalledWith('Hello from agent!');
+    });
+
+    it('should process message with both text prompt and attachments', async () => {
+      const { message } = createThreadMessageWithAttachments('Analise a imagem', [createAttachment('schema.png')]);
+
+      await handler.handleMessage(message);
+
+      expect(orchestratorService.lastRequest).toMatchObject({
+        channelId: 'channel-1',
+        threadId: 'thread-att-1',
+        prompt: 'Analise a imagem',
+        attachments: [
+          expect.objectContaining({
+            name: 'diagram.png',
+            path: '/tmp/attachments/diagram.png',
+          }),
+        ],
+      });
+    });
+
+    it('should reject message with invalid attachments and not invoke executeTurn', async () => {
+      attachmentService.validationResult = {
+        valid: false,
+        reason: '⚠️ O arquivo "virus.exe" possui um formato não suportado ou incompatível com as ferramentas do agente.',
+      };
+
+      const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('virus.exe', 'application/x-msdownload')]);
+
+      await handler.handleMessage(message);
+
+      expect(mockThread.send).toHaveBeenCalledWith(
+        '⚠️ O arquivo "virus.exe" possui um formato não suportado ou incompatível com as ferramentas do agente.',
+      );
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should report error to channel when attachment download fails', async () => {
+      attachmentService.downloadError = new Error('Falha no download da CDN do Discord');
+
+      const { message, mockThread } = createThreadMessageWithAttachments('Ver anexo', [createAttachment('broken.png')]);
+
+      await handler.handleMessage(message);
+
+      expect(mockThread.send).toHaveBeenCalledWith(
+        '❌ **Ocorreu um erro ao processar sua solicitação:** Falha no download da CDN do Discord',
+      );
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should send greeting when prompt is empty and attachments map is empty', async () => {
+      const { message, mockThread } = createThreadMessageWithAttachments('', []);
+
+      await handler.handleMessage(message);
+
+      expect(mockThread.send).toHaveBeenCalledWith(
+        'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+      );
+      expect(orchestratorService.lastRequest).toBeUndefined();
     });
   });
 });
