@@ -2,7 +2,7 @@
 name: agent-definitions
 description: >
   Padrão para definição, parametrização e registro de personas de agentes de IA no sistema.
-  Governa os papéis AgentRole (CEO e DEVELOPER), o contrato AgentDefinition, a implementação
+  Governa os papéis AgentRole (CEO, DEVELOPER e CODE_REVIEWER), o contrato AgentDefinition, a implementação
   do AgentRegistryService (IAgentRegistryPort), os system prompts especializados e o
   direcionamento de tarefas. Use ao criar, modificar ou consultar personas e papéis de agentes.
 ---
