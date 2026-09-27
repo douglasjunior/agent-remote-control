@@ -289,7 +289,7 @@ export class ExecuteAgentTurnUseCase {
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);
-      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole);
+      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole, existing);
     }
 
     const delegatePort = this.agentPortFactory.create();
@@ -356,7 +356,7 @@ export class ExecuteAgentTurnUseCase {
       });
       return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
     } finally {
-      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole);
+      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }

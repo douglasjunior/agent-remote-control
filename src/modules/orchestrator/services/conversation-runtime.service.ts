@@ -105,10 +105,17 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     runtime.activeDelegations.set(delegation.role.toUpperCase(), delegation);
   }
 
-  unregisterDelegation(conversationKey: string, role: string): void {
+  unregisterDelegation(conversationKey: string, role: string, delegation?: ActiveDelegation): void {
     const runtime = this.runtimes.get(conversationKey);
     if (!runtime) return;
-    runtime.activeDelegations.delete(role.toUpperCase());
+    const roleKey = role.toUpperCase();
+    if (delegation) {
+      const current = runtime.activeDelegations.get(roleKey);
+      if (current !== delegation) {
+        return;
+      }
+    }
+    runtime.activeDelegations.delete(roleKey);
     if (runtime.pendingTurns === 0 && runtime.activeTurnsCount === 0 && runtime.activeDelegations.size === 0) {
       this.scheduleExpiration(conversationKey, runtime);
     }
