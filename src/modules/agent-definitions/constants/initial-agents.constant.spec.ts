@@ -46,6 +46,15 @@ describe('initial-agents.constant', () => {
     }
   });
 
+  it('should route project documented commands to DEVELOPER and keep them away from GIT_OPS', () => {
+    const byRole = new Map(INITIAL_AGENT_DEFINITIONS.map(def => [def.role, def]));
+
+    expect(byRole.get('DEVELOPER')?.description).toContain('runs the commands a project documents for itself');
+    expect(byRole.get('GIT_OPS')?.description).toContain(
+      'It does not run project scripts, even when they clone or fetch internally.',
+    );
+  });
+
   it('should describe CODE_REVIEWER as inspecting diffs and publishing review comments on PRs/MRs', () => {
     const codeReviewer = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CODE_REVIEWER');
     expect(codeReviewer?.description).toContain('publishing review comments on PRs/MRs when requested');

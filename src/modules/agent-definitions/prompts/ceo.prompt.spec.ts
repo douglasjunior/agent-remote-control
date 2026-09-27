@@ -30,23 +30,44 @@ describe('ceo.prompt', () => {
 
   it('should define workspace architecture as a multi-project container', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Workspace Architecture & Context');
-    expect(CEO_SYSTEM_PROMPT).toContain('multi-project container where each direct subfolder represents an independent project or repository');
+    expect(CEO_SYSTEM_PROMPT).toContain('multi-project container where each direct subfolder is an independent project or repository');
     expect(CEO_SYSTEM_PROMPT).toContain('agent-remote-control');
   });
 
   it('should instruct the CEO to discover active projects by listing its CWD', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Each direct subfolder of your CWD is a project');
-    expect(CEO_SYSTEM_PROMPT).toContain('List your CWD to discover which projects are currently active');
+    expect(CEO_SYSTEM_PROMPT).toContain('List your CWD to discover the active projects.');
   });
 
-  it('should require everything an agent needs to be written into the specification', () => {
+  it('should require everything an agent needs from the user and earlier agent results in the specification', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'An agent only knows what you write: anything it needs that came from the user, such as a repository URL, must appear in the specification.',
+      'An agent only knows what you write, so the specification carries everything it needs from the conversation',
     );
+    expect(CEO_SYSTEM_PROMPT).toContain('details from the user, such as a repository URL');
+    expect(CEO_SYSTEM_PROMPT).toContain('verbatim, commands or verified facts from earlier agent results');
+    expect(CEO_TURN_REMINDER).toContain('Carry commands and verified facts from agent results verbatim');
+  });
+
+  it('should prefer the project documented commands over manual reproduction of their steps', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'ask for that command instead of a manual reproduction of its steps',
+    );
+    expect(CEO_TURN_REMINDER).toContain('prefer the project\'s documented commands over manual steps');
+  });
+
+  it('should answer questions about its own decisions without delegating unless it lacks the information', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'When the user questions one of your decisions, explain your reasoning in the same turn; delegate only if the answer needs information you do not have yet.',
+    );
+    expect(CEO_TURN_REMINDER).toContain('answer it yourself unless you lack the information');
+  });
+
+  it('should stop delegating when the user tells it to stop', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('mean stop delegating and reply to the user\'s last question');
+    expect(CEO_TURN_REMINDER).toContain('When told to stop, stop delegating.');
   });
 
   it('should direct the CEO to focus on actual workspace projects and suggest initialization if empty', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('anchor your responses in the actual projects available in the workspace');
+    expect(CEO_SYSTEM_PROMPT).toContain('Anchor your answers about capabilities, current projects, or scope in the projects actually present.');
     expect(CEO_SYSTEM_PROMPT).toContain('propose adding a repository to it');
   });
 
@@ -81,7 +102,7 @@ describe('ceo.prompt', () => {
 
   it('should confine the CEO to its working directory and require risk confirmation outside', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Workspace Boundaries & Safety Rules');
-    expect(CEO_SYSTEM_PROMPT).toContain('Stay inside it and its subfolders');
+    expect(CEO_SYSTEM_PROMPT).toContain('Stay inside the `workspaces` directory and its subfolders.');
     expect(CEO_SYSTEM_PROMPT).toContain('Operating outside `workspaces` (such as accessing parent directories, external paths, or host system files) is dangerous.');
     expect(CEO_SYSTEM_PROMPT).toContain('MUST alert the user about the risks and request explicit confirmation before taking action');
     expect(CEO_SYSTEM_PROMPT).not.toContain('currently running you');
@@ -155,7 +176,7 @@ describe('ceo.prompt', () => {
 
   it('should instruct the CEO to delegate based on Your Team descriptions and sequence across phases without hardcoded roles in delegation section', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'Delegate each technical task to the agent in Your Team whose description best fits it. Never do the task yourself.',
+      'Delegate each technical task to the agent in Your Team whose description best fits it.',
     );
     expect(CEO_SYSTEM_PROMPT).toContain(
       'Sequence delegations logically across team members according to their described specializations when a request spans multiple phases (such as planning/investigation before execution, and review before completion).',

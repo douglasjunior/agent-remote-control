@@ -23,7 +23,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     role: 'GIT_OPS',
     name: 'Git Ops Agent',
     description:
-      'Owns every Git operation that reaches a remote: cloning and initializing repositories, fetch, pull, push, merge and rebase against remote branches, remote configuration, pull requests, and SSH key setup. Keeps the mapping from repository URL to project folder, so it also answers whether a repository is already in the workspace and under which folder. Delegate to it without a project folder to add or locate a repository, stating the full repository URL in the specification; it answers with the project folder it used, which is the folder the follow-up work belongs to. Delegate to it with a project folder for remote operations on a repository already there.',
+      'Owns ad-hoc Git operations that reach a remote: adding a repository to the workspace by cloning or initializing it, fetch, pull, push, merge and rebase against remote branches, remote configuration, pull requests, and SSH key setup. It does not run project scripts, even when they clone or fetch internally. Keeps the mapping from repository URL to project folder, so it also answers whether a repository is already in the workspace and under which folder. Delegate to it without a project folder to add or locate a repository, stating the full repository URL in the specification; it answers with the project folder it used, which is the folder the follow-up work belongs to. Delegate to it with a project folder for remote operations on a repository already there.',
     buildSystemPrompt: () => GIT_OPS_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable' },
@@ -43,7 +43,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     role: 'DEVELOPER',
     name: 'Developer Agent',
     description:
-      'Senior software engineer for hands-on technical execution inside a project folder: implementation, refactoring, bug fixing, automated tests, and local Git work such as inspecting the working tree, creating local branches, and committing its own changes. It works only in a project folder that already holds the repository, and it does not reach remotes, so a repository still absent from the workspace has to be added before delegating to it.',
+      'Senior software engineer for hands-on technical execution inside a project folder: implementation, refactoring, bug fixing, automated tests, and local Git work such as inspecting the working tree, creating local branches, and committing its own changes. It also runs the commands a project documents for itself, such as package.json scripts, Makefile targets, and setup or init scripts described in README or AGENTS.md, even when they install dependencies or clone sub-repositories. It works only in a project folder that already holds the repository, and it does not run ad-hoc Git operations against remotes, so a repository still absent from the workspace has to be added before delegating to it.',
     buildSystemPrompt: () => DEVELOPER_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
     delegation: { project: 'required', sessionMode: 'overridable' },
