@@ -22,12 +22,20 @@ describe('developer.prompt', () => {
     );
   });
 
-  it('should put operations that reach a remote outside its scope without naming another agent', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Operations that reach a remote are outside your scope');
+  it('should put ad-hoc Git operations against a remote outside its scope without naming another agent', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Ad-hoc Git operations against a remote are outside your scope');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('state that in your final response and stop there');
     expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('GIT_OPS');
     expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('ssh-keygen');
     expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('git clone');
+  });
+
+  it('should run the project documented commands even when they reach the network', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(
+      'The project\'s own commands are within your scope even when they reach the network',
+    );
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('run it instead of reproducing its steps manually');
+    expect(DEVELOPER_TURN_REMINDER).toContain('Prefer the commands the project documents');
   });
 
   it('should not contain plan ability since planning belongs to Tech Lead', () => {

@@ -204,9 +204,10 @@ Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureD
 caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO.
 
 `IWorkspacePort` expõe apenas `getBaseDirectory`, `resolveRepositoryPath` e `ensureDirectory`: a app
-resolve e cria diretórios, e não executa Git. Clonar, registrar o repositório no manifest e qualquer
-operação que alcance um remoto pertencem ao agente `GIT_OPS`, e a URL chega até ele pela especificação
-que o CEO escreve.
+resolve e cria diretórios, e não executa Git. Clonar um repositório no workspace, registrá-lo no manifest
+e as demais operações avulsas de Git contra um remoto pertencem ao agente `GIT_OPS`, e a URL chega até ele
+pela especificação que o CEO escreve. Scripts do próprio projeto que clonam sub-repositórios, como um
+`init`, são executados pelo `DEVELOPER`.
 
 ### Protocolo de Marcadores
 

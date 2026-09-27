@@ -38,8 +38,8 @@ export type AgentRole =
 
 - **`CEO`**: Líder do time de agentes. Conversa com o usuário, faz a triagem, delega todo o trabalho prático aos demais agentes e revisa os resultados.
 - **`TECH_LEAD`**: Especialista em planejamento técnico, exploração arquitetural, levantamento de impacto e especificação decomposta para o DEVELOPER. Atua de forma consultiva com alinhamento Human-in-the-loop em decisões críticas e trade-offs de design.
-- **`GIT_OPS`**: Dono de toda operação de Git que alcança um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único leitor e escritor.
-- **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código e testes automatizados. No Git opera só o lado local: inspeção da árvore de trabalho, branches locais e commit do próprio trabalho.
+- **`GIT_OPS`**: Dono das operações avulsas de Git que alcançam um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único leitor e escritor. Não executa scripts do projeto, mesmo quando eles clonam ou fazem fetch internamente.
+- **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código e testes automatizados. No Git opera só o lado local: inspeção da árvore de trabalho, branches locais e commit do próprio trabalho. Executa os comandos que o projeto documenta (scripts do `package.json`, alvos de Makefile, scripts de setup ou init do README/AGENTS.md), mesmo quando instalam dependências ou clonam sub-repositórios.
 - **`CODE_REVIEWER`**: Revisor de código crítico e independente, focado em inspecionar alterações e propor melhorias técnicas, aderência a convenções e prevenção de bugs sem viés de implementações anteriores.
 
 ### Contrato de Definição (`AgentDefinition`)
@@ -84,7 +84,8 @@ da narração.
 - Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
 - Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
 - Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
-- Incorpora as convenções de commit (Conventional Commits em pt-BR) e as regras de segurança do commit; declara operações que alcançam um remoto como fora do próprio escopo e as devolve ao chamador em vez de executá-las, sem nomear quem as executa;
+- Usa o comando que o projeto documenta para a tarefa em vez de reproduzir seus passos manualmente, inclusive quando o comando acessa a rede, como instalação de dependências ou script de init que clona sub-repositórios;
+- Incorpora as convenções de commit (Conventional Commits em pt-BR) e as regras de segurança do commit; declara operações avulsas de Git contra um remoto como fora do próprio escopo e as devolve ao chamador em vez de executá-las, sem nomear quem as executa;
 - Possui o lembrete `DEVELOPER_TURN_REMINDER` configurado em sua definição, reforçando a cada turno a aderência a convenções, testes automatizados e o envelope `<final_response>`.
 
 ### 2. CEO (`ceo.prompt.ts`)
@@ -96,10 +97,12 @@ da narração.
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
 - Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome, descrição e formas de marcador aceitas de cada agente, estas derivadas do `delegation`. A seção de delegação é agnóstica a papéis fixos: o roteamento de tarefas e o sequenciamento em fases (como planejamento antes da execução e revisão antes da conclusão) são orientados exclusivamente pelas especializações descritas dinamicamente no catálogo "Your Team". Por isso a `description` de cada definição deve dizer quando delegar a ele;
+- Copia literalmente para a próxima especificação os comandos recomendados e os fatos já verificados que vêm nos resultados dos agentes, e pede o comando documentado pelo projeto em vez da reprodução manual dos seus passos;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
 - Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
 - Possui o lembrete `CEO_TURN_REMINDER` configurado em sua definição, reforçando o papel de orquestração pura e o contrato dos marcadores a cada turno;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
+- Quando o usuário questiona uma decisão do próprio CEO, responde no mesmo turno com o contexto que já tem, e só delega se a resposta depender de informação que ainda não possui; quando o usuário pede para parar, para de delegar;
 - Não realiza execução técnica direta, pois a implementação cabe exclusivamente aos agentes especialistas do time.
 
 ### 3. Code Reviewer Agent (`code-reviewer.prompt.ts`)
