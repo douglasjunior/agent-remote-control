@@ -202,6 +202,12 @@ describe('DiscordAttachmentService', () => {
 
       expect(mkdir).toHaveBeenCalled();
       expect(writeFile).toHaveBeenCalled();
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        'https://cdn.discordapp.com/attachments/1/2/report.pdf',
+        {
+          signal: expect.any(AbortSignal),
+        },
+      );
       expect(results).toHaveLength(1);
       expect(results[0]).toMatchObject({
         name: 'report.pdf',
@@ -211,6 +217,52 @@ describe('DiscordAttachmentService', () => {
       });
       expect(results[0]!.path).toContain('report.pdf');
       expect(results[0]!.path).toContain('ch-1_th-1');
+    });
+
+    it('should configure fetch request with timeout abort signal', async () => {
+      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+      const fileBytes = Buffer.from('test');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        arrayBuffer: async () => fileBytes.buffer,
+      } as Response);
+
+      await service.downloadAttachments('ch-1', [
+        {
+          name: 'test.txt',
+          url: 'https://cdn.discordapp.com/attachments/1/2/test.txt',
+          contentType: 'text/plain',
+          size: 4,
+        },
+      ]);
+
+      expect(timeoutSpy).toHaveBeenCalledWith(60_000);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://cdn.discordapp.com/attachments/1/2/test.txt',
+        {
+          signal: expect.any(AbortSignal),
+        },
+      );
+    });
+
+    it('should throw error when download aborts due to timeout', async () => {
+      const timeoutError = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
+
+      const attachments: DiscordAttachment[] = [
+        {
+          name: 'large.mp4',
+          url: 'https://cdn.discordapp.com/attachments/1/2/large.mp4',
+          contentType: 'video/mp4',
+          size: 50 * 1024 * 1024,
+        },
+      ];
+
+      await expect(service.downloadAttachments('ch-1', attachments)).rejects.toThrow(
+        'Falha ao baixar o anexo "large.mp4": The operation was aborted due to timeout',
+      );
     });
 
     it('should sanitize path traversal characters in attachment names', async () => {

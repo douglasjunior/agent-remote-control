@@ -19,6 +19,7 @@ export type AttachmentValidationResult =
   | { readonly valid: false; readonly reason: string };
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 60_000;
 
 const BLOCKED_EXTENSIONS = new Set([
   '.exe', '.bin', '.dll', '.so', '.dylib', '.class', '.pyc', '.pyo',
@@ -187,7 +188,9 @@ export class DiscordAttachmentService {
 
     try {
       this.logger.log(`[Attachment Downloading] "${rawName}" from ${attachment.url} to ${destinationPath}`);
-      const response = await fetch(attachment.url);
+      const response = await fetch(attachment.url, {
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText}`);
       }
