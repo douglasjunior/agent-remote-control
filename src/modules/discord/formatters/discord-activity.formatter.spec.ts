@@ -85,6 +85,107 @@ describe('DiscordActivityFormatter', () => {
       expect(result).toBe('❌ **Falhou**: `git push`');
     });
 
+    it('should format tool completed status with up to 5 lines of details in a code block', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git diff',
+        status: 'completed',
+        details: 'line 1\nline 2\nline 3',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('✅ **Concluído**: `git diff`\n```\nline 1\nline 2\nline 3\n```');
+    });
+
+    it('should format tool completed status with more than 5 lines truncating with ... (+N linhas)', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git status',
+        status: 'completed',
+        details: 'l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe(
+        '✅ **Concluído**: `git status`\n```\nl1\nl2\nl3\nl4\nl5\n... (+3 linhas)\n```',
+      );
+    });
+
+    it('should truncate single-line details exceeding max length with ellipsis', () => {
+      const longText = 'x'.repeat(2500);
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-long',
+        title: 'git diff',
+        status: 'completed',
+        details: longText,
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      const expectedContent = `${'x'.repeat(1797)}...`;
+      expect(result).toBe(`✅ **Concluído**: \`git diff\`\n\`\`\`\n${expectedContent}\n\`\`\``);
+      expect(result!.length).toBeLessThanOrEqual(2000);
+    });
+
+    it('should truncate when first 5 lines exceed max length while preserving line suffix', () => {
+      const longLines = [
+        'a'.repeat(400),
+        'b'.repeat(400),
+        'c'.repeat(400),
+        'd'.repeat(400),
+        'e'.repeat(400),
+        'f',
+        'g',
+        'h',
+      ].join('\n');
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-multi-long',
+        title: 'git status',
+        status: 'completed',
+        details: longLines,
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toContain('... (+3 linhas)\n```');
+      expect(result).toContain('...');
+      expect(result!.length).toBeLessThanOrEqual(2000);
+    });
+
+    it('should format tool failed status with details in a code block', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-3',
+        title: 'build',
+        status: 'failed',
+        details: 'error line 1\nerror line 2',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('❌ **Falhou**: `build`\n```\nerror line 1\nerror line 2\n```');
+    });
+
+    it('should ignore whitespace-only details when formatting completed tool', () => {
+      const activity: AgentActivity = {
+        kind: 'tool',
+        toolCallId: 'call-2',
+        title: 'git log',
+        status: 'completed',
+        details: '   \n  ',
+      };
+
+      const result = formatter.formatActivity(activity);
+
+      expect(result).toBe('✅ **Concluído**: `git log`');
+    });
+
     it('should return null for unhandled tool status', () => {
       const activity = {
         kind: 'tool',
@@ -331,9 +432,6 @@ describe('DiscordActivityFormatter', () => {
       ).toBe('-# 🤖 Desenvolvedor (agy) · 🧠 Deep Model · ⚡ High · 🪙 12.3k tokens · ⏱️ 42.1s');
     });
 
-    it('should name the delegate in its progress header', () => {
-      expect(formatter.formatDelegateProgressHeader('Desenvolvedor')).toBe('🤖 **Progresso — Desenvolvedor**:\n');
-    });
 
     it('should fall back to the default label in the footer', () => {
       expect(formatter.formatAgentFooter({ roleName: 'CEO', agentName: 'agy' })).toBe(

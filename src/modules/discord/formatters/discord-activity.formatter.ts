@@ -10,6 +10,7 @@ import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.mo
 const FENCE_PATTERN = /^```\w*/;
 const CLOSE_FENCE = '\n```';
 const DEFAULT_LABEL = 'padrão';
+const MAX_TOOL_DETAILS_LENGTH = 1800;
 
 @Injectable()
 export class DiscordActivityFormatter {
@@ -29,16 +30,42 @@ export class DiscordActivityFormatter {
       switch (activity.status) {
         case 'in_progress':
           return `⏳ **Executando**: \`${activity.title}\``;
-        case 'completed':
-          return `✅ **Concluído**: \`${activity.title}\``;
-        case 'failed':
-          return `❌ **Falhou**: \`${activity.title}\``;
+        case 'completed': {
+          const header = `✅ **Concluído**: \`${activity.title}\``;
+          const details = this.formatToolDetails(activity.details);
+          return details ? `${header}\n${details}` : header;
+        }
+        case 'failed': {
+          const header = `❌ **Falhou**: \`${activity.title}\``;
+          const details = this.formatToolDetails(activity.details);
+          return details ? `${header}\n${details}` : header;
+        }
         default:
           return null;
       }
     }
 
     return null;
+  }
+
+  private formatToolDetails(details?: string): string | null {
+    if (!details) {
+      return null;
+    }
+    const trimmed = details.trim();
+    if (!trimmed) {
+      return null;
+    }
+    const lines = trimmed.split('\n');
+    const hasMoreLines = lines.length > 5;
+    const selectedLines = hasMoreLines ? lines.slice(0, 5) : lines;
+    const lineSuffix = hasMoreLines ? `\n... (+${lines.length - 5} linhas)` : '';
+    const availableLength = MAX_TOOL_DETAILS_LENGTH - lineSuffix.length;
+    let content = selectedLines.join('\n');
+    if (content.length > availableLength) {
+      content = `${content.slice(0, availableLength - 3).trimEnd()}...`;
+    }
+    return `\`\`\`\n${content}${lineSuffix}\n\`\`\``;
   }
 
   formatDelegation(event: DelegationEvent): string {
@@ -55,10 +82,6 @@ export class DiscordActivityFormatter {
 
   formatDelegateFooter(event: DelegationEvent & { phase: 'finished' }): string {
     return `${this.formatAgentFooter(event.agentInfo, event.usage)} · ⏱️ ${(event.durationMs / 1000).toFixed(1)}s`;
-  }
-
-  formatDelegateProgressHeader(roleName: string): string {
-    return `🤖 **Progresso — ${roleName}**:\n`;
   }
 
   formatAgentFooter(info: TurnAgentInfo, usage?: AgentUsage): string {

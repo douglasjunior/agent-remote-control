@@ -710,6 +710,32 @@ describe('AgyBridgeServer', () => {
       lastSpawnedProc?.stdout.emit(
         'data',
         Buffer.from(
+          '{"event":"step_update","step_update":{"conversation_id":"conv-123","step_index":4,"state":"ACTIVE","step_type":"tool","tool_name":"run_command","tool_info":{"name":"run_command","parameters":{"CommandLine":"git status"}}}}\n',
+        ),
+      );
+
+      expect(client.notify).toHaveBeenCalledWith('session/update', {
+        sessionId: 'conv-123',
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'step_4',
+          title: 'Run git status',
+          status: 'in_progress',
+          content: [
+            {
+              type: 'content',
+              content: {
+                type: 'text',
+                text: JSON.stringify({ CommandLine: 'git status' }, null, 2),
+              },
+            },
+          ],
+        },
+      });
+
+      lastSpawnedProc?.stdout.emit(
+        'data',
+        Buffer.from(
           '{"event":"result","result":{"conversation_id":"conv-123","status":"SUCCESS","response":"Done","num_turns":1,"usage":{"input_tokens":100,"output_tokens":50,"thinking_tokens":10,"cache_read_tokens":5,"total_tokens":165}}}\n',
         ),
       );
@@ -1184,7 +1210,7 @@ describe('AgyBridgeServer', () => {
         expect.objectContaining({
           update: expect.objectContaining({
             sessionUpdate: 'tool_call',
-            title: `Run ${'a'.repeat(59)}…`,
+            title: `Run ${'a'.repeat(70)}`,
           }),
         }),
       );

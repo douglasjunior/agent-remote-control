@@ -133,28 +133,11 @@ envio falhar, a falha só é registrada em log.
 Durante a execução do turno, atividades do agente são capturadas via callback `onActivity`
 e formatadas pelo `DiscordActivityFormatter`:
 
-- **Pensamentos (`thought`)**: formatados como bloco de citação do Discord com emoji:
-  `> 💭 *<texto>*`.
-- **Ferramentas (`tool`)**:
-  - Em andamento: `⏳ **Executando**: \`<title>\``;
-  - Sucesso: `✅ **Concluído**: \`<title>\``;
-  - Falha: `❌ **Falhou**: \`<title>\``.
-- **Mensagem de progresso**: as atividades são agrupadas em uma mensagem de progresso dedicada
-  na thread, mantida pelo `ActivityFeed` (`utils/activity-feed.util.ts`):
-  - Atividades são *upserts* por chave (`thought:<id>`, `tool:<toolCallId>`). Um `thought` chega
-    com o texto acumulado a cada chunk e um `tool` a cada mudança de status; ambos atualizam a
-    própria entrada. `thought` com `removed` remove a entrada; o demux remove assim a mensagem que
-    carrega o envelope `<final_response>`, para que a resposta final não apareça também no progresso.
-  - `render(header)` exibe as 8 entradas mais recentes que couberem em 2000 caracteres
-    (limite de conteúdo do Discord), preservando o final de uma entrada maior que o limite.
-  - O log registra cada `thought` uma única vez, ao receber `final`.
-- **Delegação**: `onDelegation` encerra a mensagem de progresso atual com o estado final do
-  feed, envia o aviso de `formatDelegation(event)` e abre uma nova mensagem de progresso com feed
-  vazio. No `started`, o aviso diz qual agente assumiu, com nome e papel (ex.: `DEVELOPER`), e o projeto e o cabeçalho vira
-  `formatDelegateProgressHeader(roleName)`; no `finished`, a resposta do delegado é publicada com `formatDelegateResult(event)` e o rodapé `formatDelegateFooter(event)` (o mesmo de `formatAgentFooter` com agente, modelo, effort e tokens do delegado, mais `· ⏱️ <duração>`), particionada como as respostas finais, e o aviso diz que o CEO está revisando e o
-  cabeçalho volta a `🤖 **Progresso do Agente**:`. Esses envios são encadeados na ordem dos
-  eventos, e o handler aguarda a cadeia antes do `flush()` final. Se o envio falhar, o progresso
-  segue na mensagem anterior.
+- **Pensamentos (`thought`)**: entregues de forma integral (sem limite de 5 linhas), formatados como bloco de citação do Discord com emoji (`> 💭 *<texto>*`), particionados em blocos de até 2.000 caracteres via `splitMessage`. Atualizações em tempo real são sincronizadas no canal substituindo/editando as mensagens existentes via `DiscordThrottler` (intervalo de 1.500ms contra rate limits 429).
+- **Ferramentas (`tool`)**: cada chamada de ferramenta gera mensagens individuais na thread:
+  - No início (`in_progress`): envia mensagem `⏳ **Executando**: \`<title>\``.
+  - Na conclusão (`completed` ou `failed`): edita essa mesma mensagem para `✅ **Concluído**: \`<title>\`` ou `❌ **Falhou**: \`<title>\``, acompanhada de bloco de código com até 5 linhas de detalhes (argumentos ou saída). Se os detalhes tiverem mais de 5 linhas, exibe as 5 primeiras seguidas por `... (+N linhas)`.
+- **Delegação**: `onDelegation` libera o throttler pendente (`flush()`), envia o anúncio de `formatDelegation(event)` na ordem dos eventos. No `started`, o aviso diz qual agente assumiu, com nome e papel (ex.: `DEVELOPER`), e o projeto; no `finished`, a resposta do delegado é publicada com `formatDelegateResult(event)` e o rodapé `formatDelegateFooter(event)` (o mesmo de `formatAgentFooter` com agente, modelo, effort e tokens do delegado, mais `· ⏱️ <duração>`), particionada como as respostas finais, e o aviso diz que o CEO está revisando. Se o anúncio falhar, o erro é registrado em log e o fluxo prossegue.
 
 ## Indicador de Digitação e Watchdog de Inatividade
 
