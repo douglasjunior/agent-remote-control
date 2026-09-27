@@ -56,6 +56,8 @@ describe('ceo.prompt', () => {
     expect(CEO_TURN_REMINDER).toContain('NEVER execute technical tasks');
     expect(CEO_TURN_REMINDER).toContain('[DELEGATE:ROLE:project-folder]');
     expect(CEO_TURN_REMINDER).toContain('[DELEGATE:ROLE:project-folder:new]');
+    expect(CEO_TURN_REMINDER).toContain('top-level root directory of the project');
+    expect(CEO_TURN_REMINDER).toContain('never nested paths or internal subfolders');
     expect(CEO_TURN_REMINDER).toContain('[DONE]');
   });
 
@@ -65,6 +67,8 @@ describe('ceo.prompt', () => {
 
   it('should describe the delegation marker protocol', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('[DELEGATE:ROLE:project-folder]');
+    expect(CEO_SYSTEM_PROMPT).toContain('top-level root directory of the project');
+    expect(CEO_SYSTEM_PROMPT).toContain('never nested paths or internal subfolders');
     expect(CEO_SYSTEM_PROMPT).toContain('[DONE]');
     expect(CEO_SYSTEM_PROMPT).toContain('[AGENT_RESULT:ROLE]');
   });
