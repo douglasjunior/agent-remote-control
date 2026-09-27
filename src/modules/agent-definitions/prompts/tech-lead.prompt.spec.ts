@@ -1,0 +1,56 @@
+import { describe, expect, it } from 'vitest';
+
+import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import {
+  TECH_LEAD_SYSTEM_PROMPT,
+  TECH_LEAD_TURN_REMINDER,
+} from './tech-lead.prompt.js';
+
+
+describe('tech-lead.prompt', () => {
+  it('should define tech lead agent role and its core principles', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Tech Lead Agent');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Technical Planning & Architecture');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Read-Only Exploration & Non-Execution');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Human-in-the-Loop (HITL) & Decision Discipline');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Actionable Specification & Plan Structure');
+  });
+
+  it('should prohibit modifying code files and enforce read-only exploration', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('strictly planning, specification, and architecture');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, or implement production changes');
+  });
+
+  it('should instruct consultative alignment and options with pros and cons on design decisions', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Do NOT make silent assumptions or arbitrarily elect a solution');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Formulate structured options outlining trade-offs, pros, and cons');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Provide a clear, justified technical recommendation');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Seek alignment from the caller');
+  });
+
+  it('should specify plan structure with affected files, developer tasks with dependencies, and verification criteria', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Overview & Objectives');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Architecture & Technical Decisions');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Impact Analysis & Affected Areas');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Phased Developer Task Breakdown');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Verification & Acceptance Criteria');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Depends on: T1');
+  });
+
+  it('should require the final answer inside the final response block', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+  });
+
+  it('should confine the tech lead to its project folder', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('project folder assigned to you. Stay inside it');
+  });
+
+  it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, HITL alignment, and final response instructions', () => {
+    expect(TECH_LEAD_TURN_REMINDER).toContain('Tech Lead and software architect');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('Do NOT implement production code or modify files directly');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('Human-in-the-loop');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('present options with pros/cons and a recommendation');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('affected files, sequential tasks for the Developer, and concrete verification criteria');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>');
+  });
+});
