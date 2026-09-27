@@ -809,6 +809,56 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
   });
 
+  describe('incoming attachments prompt enrichment', () => {
+    it('should enrich CEO prompt with [ATTACHMENTS] inventory when attachments are present', async () => {
+      stubAgentPort.mockResponses = ['I have analyzed the attachments.'];
+
+      const attachments = [
+        {
+          name: 'diagram.png',
+          path: '/tmp/attachments/diagram.png',
+          contentType: 'image/png',
+          size: 1024,
+        },
+        {
+          name: 'notes.txt',
+          path: '/tmp/attachments/notes.txt',
+          contentType: 'text/plain',
+          size: 256,
+        },
+      ];
+
+      const result = await useCase.execute(
+        turnRequest({ prompt: 'Please review these files.', attachments }),
+      );
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[0]).toContain('[ATTACHMENTS]');
+      expect(stubAgentPort.promptCalls[0]).toContain(
+        '- Name: diagram.png\n  Size: 1024 bytes\n  Type: image/png\n  Path: /tmp/attachments/diagram.png',
+      );
+      expect(stubAgentPort.promptCalls[0]).toContain(
+        '- Name: notes.txt\n  Size: 256 bytes\n  Type: text/plain\n  Path: /tmp/attachments/notes.txt',
+      );
+      expect(stubAgentPort.promptCalls[0]).toContain(
+        'Use the view_file tool to view and inspect these attachments.',
+      );
+      expect(stubAgentPort.promptCalls[0]).toContain('Please review these files.');
+    });
+
+    it('should not enrich prompt when attachments array is empty', async () => {
+      stubAgentPort.mockResponses = ['No attachments.'];
+
+      const result = await useCase.execute(
+        turnRequest({ prompt: 'Hello world', attachments: [] }),
+      );
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[0]).not.toContain('[ATTACHMENTS]');
+      expect(stubAgentPort.promptCalls[0]).toContain('Hello world');
+    });
+  });
+
   describe('active delegations and transparent steering', () => {
     it('should prepend [ACTIVE_DELEGATIONS] block to CEO prompt when active delegations exist', async () => {
       const activeDelegatePort = new StubAgentPort();

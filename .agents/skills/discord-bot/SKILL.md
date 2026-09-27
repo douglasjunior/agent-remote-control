@@ -110,6 +110,20 @@ trazer o stderr completo do agente:
 
 Quando `TurnResult.attachments` contiver arquivos locais existentes, eles são enviados no parâmetro `files` da última mensagem enviada.
 
+## Recepção e Armazenamento de Anexos
+
+O bot aceita arquivos anexados diretamente nas mensagens do Discord através de `DiscordAttachmentService`:
+
+- **Mensagens apenas com anexos**: Mensagens sem texto mas com anexos são processadas normalmente com o prompt padrão `O usuário enviou anexos. Analise os arquivos anexados.`, sem descarte por "Empty Prompt".
+- **Validação prévia de compatibilidade**:
+  - Aceita múltiplos formatos legíveis pelas ferramentas do agente (imagens `.png`, `.jpg`, `.webp`, `.gif`, documentos `.pdf`, textos e código `.txt`, `.md`, `.json`, `.ts`, `.py`, etc., áudio, vídeo e arquivos de configuração como `Dockerfile` e `.env`).
+  - Limite máximo de 100 MB por anexo.
+  - Bloqueia arquivos binários executáveis ou não analisáveis (`.exe`, `.bin`, `.dll`, `.so`, `.zip`, etc.). Ao identificar arquivo incompatível, interrompe o fluxo imediatamente e envia aviso amigável no canal antes de iniciar o turno.
+- **Armazenamento temporário seguro**:
+  - Anexos válidos são baixados da CDN do Discord para diretório temporário do sistema operacional (`os.tmpdir()/agent-remote-control/attachments/<conversationKey>`).
+  - Higienização contra *path traversal* via `path.basename` e prefixo único com timestamp e identificador aleatório.
+  - Encaminhamento estruturado como `TurnAttachment[]` no campo `attachments` de `TurnRequest` ao invocar `orchestratorService.executeTurn`.
+
 Uma exceção durante o processamento da mensagem é informada com
 `❌ **Ocorreu um erro ao processar sua solicitação:** <mensagem>`, também particionada; se esse
 envio falhar, a falha só é registrada em log.

@@ -3,10 +3,12 @@ import { type ClientUser, Events, type Message } from 'discord.js';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import { DiscordAttachmentService } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { ActivityFeed } from '../utils/activity-feed.util.js';
 import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
@@ -16,6 +18,7 @@ import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.j
 
 const PROGRESS_HEADER = '🤖 **Progresso do Agente**:\n';
 const DISCORD_MESSAGE_LIMIT = 2000;
+const DEFAULT_ATTACHMENT_PROMPT = 'O usuário enviou anexos. Analise os arquivos anexados.';
 
 type SendableChannel = {
   send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
@@ -40,6 +43,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     private readonly discordClientService: DiscordClientService,
     private readonly orchestratorService: OrchestratorService,
     private readonly activityFormatter: DiscordActivityFormatter,
+    private readonly attachmentService: DiscordAttachmentService,
     @Inject(IWorkspacePort)
     private readonly workspacePort: IWorkspacePort,
   ) {}
@@ -73,10 +77,12 @@ export class DiscordMessageHandler implements OnModuleInit {
       targetChannel = conversation.target;
 
       const rawPrompt = this.cleanPrompt(message.content, clientUser.id);
+      const attachments = message.attachments ? Array.from(message.attachments.values()) : [];
+      const hasAttachments = attachments.length > 0;
       const authorName = message.author?.username ?? 'user';
       const authorId = message.author?.id ?? 'unknown';
 
-      if (!rawPrompt) {
+      if (!rawPrompt && !hasAttachments) {
         this.logger.log(
           `[Empty Prompt] Received empty message from @${authorName} in channel=${channelId}, thread=${threadId ?? 'none'}`,
         );
@@ -86,14 +92,31 @@ export class DiscordMessageHandler implements OnModuleInit {
         return;
       }
 
+      let turnAttachments: TurnAttachment[] | undefined;
+      if (hasAttachments) {
+        const validation = this.attachmentService.validateAttachments(attachments);
+        if (!validation.valid) {
+          await targetChannel.send(validation.reason);
+          return;
+        }
+
+        const conversationKey = `${channelId}${threadId ? `:${threadId}` : ''}`;
+        turnAttachments = await this.attachmentService.downloadAttachments(
+          conversationKey,
+          attachments,
+        );
+      }
+
+      const promptText = rawPrompt || DEFAULT_ATTACHMENT_PROMPT;
+
       this.logger.log(
-        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"`,
+        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${promptText.slice(0, 100)}${promptText.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
       const resolution = await this.orchestratorService.resolveInput({
         channelId,
         threadId,
-        prompt: rawPrompt,
+        prompt: promptText,
       });
 
       if (resolution.kind === 'selection') {
@@ -189,6 +212,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           prompt,
           workspacePath: this.workspacePort.getBaseDirectory(),
           agentRole: 'CEO',
+          ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
           onActivity,
           onDelegation,
           onQueued: () => {

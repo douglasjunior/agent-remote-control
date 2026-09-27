@@ -12,6 +12,7 @@ import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
+import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
@@ -118,7 +119,7 @@ export class ExecuteAgentTurnUseCase {
     onSessionResolved: (session: SessionContext) => void,
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
-    let prompt = request.prompt;
+    let prompt = this.enrichPromptWithAttachments(request.prompt, request.attachments);
 
     for (let round = 1; ; round++) {
       const { response, decision } = await this.conversationRuntime.runOnCeo(
@@ -158,6 +159,21 @@ export class ExecuteAgentTurnUseCase {
 
       prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey);
     }
+  }
+
+  private enrichPromptWithAttachments(
+    prompt: string,
+    attachments?: readonly TurnAttachment[],
+  ): string {
+    if (!attachments || attachments.length === 0) {
+      return prompt;
+    }
+
+    const lines = attachments.map(
+      attachment => `- Name: ${attachment.name}\n  Size: ${attachment.size} bytes\n  Type: ${attachment.contentType}\n  Path: ${attachment.path}`,
+    );
+
+    return `[ATTACHMENTS]\n${lines.join('\n')}\nUse the view_file tool to view and inspect these attachments.\n\n${prompt}`;
   }
 
   private formatActiveDelegations(delegations: readonly ActiveDelegation[]): string {
