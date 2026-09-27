@@ -24,10 +24,9 @@ agent-remote-control/
 │   │   ├── agent-definitions/      # Catálogo de agentes (CEO, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts e registry
 │   │   ├── discord/                # Bot do Discord: handlers, formatters e utils de progresso
 │   │   ├── orchestrator/           # Turnos, fila por conversa, delegação e cancelamento
-│   │   └── workspace/              # Diretório de workspaces, manifest e habilidades (abilities)
+│   │   └── workspace/              # Diretório de workspaces e manifest
 │   │
 │   │   Pastas internas de um módulo (cada módulo usa apenas as que precisa):
-│   │       ├── abilities/          # Blocos de instruções reutilizáveis injetados em prompts
 │   │       ├── adapters/           # Adaptadores secundários/tecnológicos (*.adapter.ts)
 │   │       ├── bridges/            # Processos ponte entre protocolos (ex.: ACP ↔ agy)
 │   │       ├── constants/          # Constantes de domínio

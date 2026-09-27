@@ -110,7 +110,10 @@ describe('ceo.prompt', () => {
 
   it('should instruct the CEO to delegate planning and architectural design to TECH_LEAD before DEVELOPER', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(
-      'delegate first to the TECH_LEAD before delegating hands-on coding to the DEVELOPER',
+      'When the user requests a plan, architectural design, technical investigation, spikes, or complex solution analysis, delegate to the TECH_LEAD first.',
+    );
+    expect(CEO_SYSTEM_PROMPT).toContain(
+      'Once the technical plan is established, design decisions are aligned, and the proposal is approved, delegate the implementation execution to the DEVELOPER.',
     );
   });
 });
