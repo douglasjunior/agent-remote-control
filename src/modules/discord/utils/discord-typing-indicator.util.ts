@@ -25,6 +25,17 @@ export class DiscordTypingIndicator {
     this.idleTimeoutMs = options?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
   }
 
+  /** Keeps the channel typing while `work` runs, such as the agent probes of a selection. */
+  static async during<T>(channel: TypingChannel, work: () => Promise<T>): Promise<T> {
+    const typing = new DiscordTypingIndicator(channel);
+    typing.start();
+    try {
+      return await work();
+    } finally {
+      typing.stop();
+    }
+  }
+
   start(): void {
     this.stop();
     this.isRunning = true;

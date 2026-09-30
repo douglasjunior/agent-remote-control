@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
@@ -11,18 +11,20 @@ const IDLE_MS = 1000;
 
 describe('ConversationRuntimeService', () => {
   let ports: StubAgentPort[];
+  let factory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
+
+  const buildTrackedFactory = (): StubAgentPortFactory => new StubAgentPortFactory((agentId) => {
+    const port = new StubAgentPort();
+    port.agentName = agentId;
+    ports.push(port);
+    return port;
+  });
 
   beforeEach(() => {
     vi.useFakeTimers();
     ports = [];
-    const factory: IAgentPortFactory = {
-      create: () => {
-        const port = new StubAgentPort();
-        ports.push(port);
-        return port;
-      },
-    };
+    factory = buildTrackedFactory();
     runtime = new ConversationRuntimeService(factory, IDLE_MS);
   });
 
@@ -42,13 +44,13 @@ describe('ConversationRuntimeService', () => {
   it('should reuse one agent port per session and isolate different sessions', async () => {
     const seen: unknown[] = [];
 
-    await runtime.run('a', async (port) => {
+    await runtime.run('a', 'stub', async (port) => {
       seen.push(port);
     });
-    await runtime.run('a', async (port) => {
+    await runtime.run('a', 'stub', async (port) => {
       seen.push(port);
     });
-    await runtime.run('b', async (port) => {
+    await runtime.run('b', 'stub', async (port) => {
       seen.push(port);
     });
 
@@ -62,12 +64,12 @@ describe('ConversationRuntimeService', () => {
     const first = deferred();
     const onQueued = vi.fn();
 
-    const one = runtime.run('a', async () => {
+    const one = runtime.run('a', 'stub', async () => {
       order.push('one:start');
       await first.promise;
       order.push('one:end');
     });
-    const two = runtime.run('a', async () => {
+    const two = runtime.run('a', 'stub', async () => {
       order.push('two');
     }, onQueued);
 
@@ -84,16 +86,16 @@ describe('ConversationRuntimeService', () => {
   it('should not notify onQueued when the session is idle', async () => {
     const onQueued = vi.fn();
 
-    await runtime.run('a', async () => undefined, onQueued);
+    await runtime.run('a', 'stub', async () => undefined, onQueued);
 
     expect(onQueued).not.toHaveBeenCalled();
   });
 
   it('should keep the queue running after a failed turn', async () => {
-    const failing = runtime.run('a', async () => {
+    const failing = runtime.run('a', 'stub', async () => {
       throw new Error('boom');
     });
-    const next = runtime.run('a', async () => 'ok');
+    const next = runtime.run('a', 'stub', async () => 'ok');
 
     await expect(failing).rejects.toThrow('boom');
     await expect(next).resolves.toBe('ok');
@@ -101,7 +103,7 @@ describe('ConversationRuntimeService', () => {
 
   it('should cancel only the turn in progress', async () => {
     const gate = deferred();
-    const turnDone = runtime.run('a', async (_port, turn) => {
+    const turnDone = runtime.run('a', 'stub', async (_port, turn) => {
       await gate.promise;
       turn.throwIfCancelled();
     });
@@ -117,22 +119,22 @@ describe('ConversationRuntimeService', () => {
   });
 
   it('should expire an idle session by closing its agent', async () => {
-    await runtime.run('a', async () => undefined);
+    await runtime.run('a', 'stub', async () => undefined);
 
     await vi.advanceTimersByTimeAsync(IDLE_MS);
 
     expect(ports[0]!.closeSessionCalls).toBe(1);
     expect(ports[0]!.connected).toBe(false);
 
-    await runtime.run('a', async () => undefined);
+    await runtime.run('a', 'stub', async () => undefined);
     expect(ports).toHaveLength(2);
   });
 
   it('should restart the idle countdown when a new turn arrives', async () => {
-    await runtime.run('a', async () => undefined);
+    await runtime.run('a', 'stub', async () => undefined);
     await vi.advanceTimersByTimeAsync(IDLE_MS - 1);
 
-    await runtime.run('a', async () => undefined);
+    await runtime.run('a', 'stub', async () => undefined);
     await vi.advanceTimersByTimeAsync(IDLE_MS - 1);
 
     expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -142,7 +144,7 @@ describe('ConversationRuntimeService', () => {
 
   it('should not expire a session while a turn is running', async () => {
     const gate = deferred();
-    const running = runtime.run('a', async () => gate.promise);
+    const running = runtime.run('a', 'stub', async () => gate.promise);
 
     await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
     expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -152,8 +154,8 @@ describe('ConversationRuntimeService', () => {
   });
 
   it('should disconnect every agent on application shutdown', async () => {
-    await runtime.run('a', async () => undefined);
-    await runtime.run('b', async () => undefined);
+    await runtime.run('a', 'stub', async () => undefined);
+    await runtime.run('b', 'stub', async () => undefined);
 
     await runtime.onApplicationShutdown();
 
@@ -164,26 +166,108 @@ describe('ConversationRuntimeService', () => {
 
   it('should read the idle timeout from SESSION_IDLE_TIMEOUT_MS or default to 30 minutes', async () => {
     process.env.SESSION_IDLE_TIMEOUT_MS = '50';
-    const created: StubAgentPort[] = [];
-    const trackingFactory: IAgentPortFactory = {
-      create: () => {
-        const port = new StubAgentPort();
-        created.push(port);
-        return port;
-      },
-    };
+    const created = ports;
+    const trackingFactory = factory;
     const envRuntime = new ConversationRuntimeService(trackingFactory);
-    await envRuntime.run('a', async () => undefined);
+    await envRuntime.run('a', 'stub', async () => undefined);
     await vi.advanceTimersByTimeAsync(50);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
     delete process.env.SESSION_IDLE_TIMEOUT_MS;
     const defaultRuntime = new ConversationRuntimeService(trackingFactory);
-    await defaultRuntime.run('b', async () => undefined);
+    await defaultRuntime.run('b', 'stub', async () => undefined);
     await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
     expect(created[1]!.closeSessionCalls).toBe(0);
     await vi.advanceTimersByTimeAsync(1);
     expect(created[1]!.closeSessionCalls).toBe(1);
+  });
+
+  describe('CEO port', () => {
+    it('should create the CEO port lazily with the requested agent', async () => {
+      expect(runtime.getCeoPort('a')).toBeUndefined();
+      expect(factory.createdAgentIds).toEqual([]);
+
+      await runtime.run('a', 'other', async (port) => {
+        expect(port.agentName).toBe('other');
+      });
+
+      expect(factory.createdAgentIds).toEqual(['other']);
+      expect(runtime.getCeoPort('a')).toBe(ports[0]);
+    });
+
+    it('should reuse the CEO port while the agent stays the same', async () => {
+      await runtime.run('a', 'other', async () => undefined);
+      await runtime.runOnCeo('a', 'other', async () => undefined);
+
+      expect(ports).toHaveLength(1);
+      expect(factory.createdAgentIds).toEqual(['other']);
+    });
+
+    it('should close and disconnect the previous CEO port when the agent changes', async () => {
+      await runtime.run('a', 'first', async (port) => {
+        (port as StubAgentPort).connected = true;
+      });
+
+      let current: unknown;
+      await runtime.run('a', 'second', async (port) => {
+        current = port;
+      });
+
+      expect(ports).toHaveLength(2);
+      expect(ports[0]!.closeSessionCalls).toBe(1);
+      expect(ports[0]!.connected).toBe(false);
+      expect(current).toBe(ports[1]);
+      expect(ports[1]!.agentName).toBe('second');
+      expect(runtime.getCeoPort('a')).toBe(ports[1]);
+    });
+
+    it('should ignore failures while disposing the previous CEO port', async () => {
+      await runtime.run('a', 'first', async () => undefined);
+      ports[0]!.closeSession = async () => {
+        throw new Error('close failed');
+      };
+      ports[0]!.disconnect = async () => {
+        throw new Error('disconnect failed');
+      };
+
+      await expect(runtime.run('a', 'second', async port => port.agentName)).resolves.toBe('second');
+      expect(runtime.getCeoPort('a')).toBe(ports[1]);
+    });
+
+    it('should switch the agent only after the queued turn of the previous agent finishes', async () => {
+      const gate = deferred();
+      const order: string[] = [];
+
+      const first = runtime.run('a', 'first', async () => {
+        order.push('first:start');
+        await gate.promise;
+        order.push(`first:closed=${ports[0]!.closeSessionCalls}`);
+      });
+      const second = runtime.run('a', 'second', async () => {
+        order.push(`second:firstClosed=${ports[0]!.closeSessionCalls}`);
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(order).toEqual(['first:start']);
+
+      gate.resolve();
+      await Promise.all([first, second]);
+
+      expect(order).toEqual(['first:start', 'first:closed=0', 'second:firstClosed=1']);
+    });
+
+    it('should keep the queue running when creating the CEO port fails', async () => {
+      const failingFactory = new StubAgentPortFactory((agentId) => {
+        if (agentId === 'broken') {
+          throw new Error('cannot create');
+        }
+        return buildTrackedFactory().create(agentId);
+      });
+      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+
+      await expect(runtime.run('a', 'broken', async () => 'never')).rejects.toThrow('cannot create');
+      await expect(runtime.run('a', 'fine', async port => port.agentName)).resolves.toBe('fine');
+    });
   });
 
   describe('active delegations', () => {
@@ -246,12 +330,6 @@ describe('ConversationRuntimeService', () => {
       expect(runtime.getActiveDelegations('a')).toEqual([]);
     });
 
-    it('should return CEO port for the given conversationKey', () => {
-      const ceoPort = runtime.getCeoPort('a');
-      expect(ceoPort).toBeDefined();
-      expect(runtime.getCeoPort('a')).toBe(ceoPort);
-    });
-
     it('should cancel both active turn and active delegations', async () => {
       const delegatePort = new StubAgentPort();
       const cancelTurnMock = vi.fn().mockResolvedValue(undefined);
@@ -270,7 +348,7 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', delegation);
 
       const gate = deferred();
-      const turnDone = runtime.run('a', async (_port, turn) => {
+      const turnDone = runtime.run('a', 'stub', async (_port, turn) => {
         await gate.promise;
         turn.throwIfCancelled();
       });
@@ -382,6 +460,7 @@ describe('ConversationRuntimeService', () => {
         steer: vi.fn(),
       };
 
+      await runtime.run('a', 'stub', async () => undefined);
       runtime.registerDelegation('a', delegation);
       await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
       expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -392,7 +471,7 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should schedule expiration when runOnCeo completes and no other turns or delegations are active', async () => {
-      await runtime.runOnCeo('a', async () => undefined);
+      await runtime.runOnCeo('a', 'stub', async () => undefined);
       await vi.advanceTimersByTimeAsync(IDLE_MS);
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
@@ -418,6 +497,54 @@ describe('ConversationRuntimeService', () => {
       expect(delegatePort.closeSessionCalls).toBe(1);
       expect(delegatePort.connected).toBe(false);
       expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+  });
+
+  describe('teardown failures', () => {
+    const failingPort = (): StubAgentPort => {
+      const port = new StubAgentPort();
+      port.closeSession = async () => {
+        throw new Error('close failed');
+      };
+      port.disconnect = async () => {
+        throw new Error('disconnect failed');
+      };
+      return port;
+    };
+
+    const registerDelegationOn = (port: StubAgentPort) => runtime.registerDelegation('a', {
+      role: 'DEVELOPER',
+      roleName: 'Developer',
+      projectName: null,
+      taskSpec: 'task',
+      cwd: '/mock',
+      startedAt: Date.now(),
+      agentPort: port,
+      turn: { cancel: vi.fn() } as any,
+      steer: vi.fn(),
+    });
+
+    it('should tear down every agent on shutdown even when disconnecting fails', async () => {
+      const failingFactory = new StubAgentPortFactory(failingPort);
+      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      await runtime.run('a', 'stub', async () => undefined);
+      registerDelegationOn(failingPort());
+
+      await expect(runtime.onApplicationShutdown()).resolves.toBeUndefined();
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+
+    it('should expire an idle session even when closing its agents fails', async () => {
+      const failingFactory = new StubAgentPortFactory(failingPort);
+      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      await runtime.run('a', 'stub', async () => undefined);
+      registerDelegationOn(failingPort());
+      runtime.unregisterDelegation('unknown', 'DEVELOPER');
+
+      await (runtime as any).expire('a', (runtime as any).getOrCreate('a'));
+
+      expect(runtime.getActiveDelegations('a')).toEqual([]);
+      expect(runtime.getCeoPort('a')).toBeUndefined();
     });
   });
 });

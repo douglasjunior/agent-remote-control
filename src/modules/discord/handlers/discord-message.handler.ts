@@ -120,11 +120,12 @@ export class DiscordMessageHandler implements OnModuleInit {
         `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${promptText.slice(0, 100)}${promptText.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
-      const resolution = await this.orchestratorService.resolveInput({
-        channelId,
-        threadId,
-        prompt: promptText,
-      });
+      const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
+        this.orchestratorService.resolveInput({
+          channelId,
+          threadId,
+          prompt: promptText,
+        }));
 
       if (resolution.kind === 'selection') {
         await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));

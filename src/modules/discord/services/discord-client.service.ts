@@ -73,6 +73,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           name: 'model',
           description: 'Escolhe o modelo e o effort usados pelos agentes',
         },
+        {
+          name: 'agent',
+          description: 'Troca o agente de IA (Antigravity, Claude Code...)',
+        },
       ];
 
       const guildId = process.env.DISCORD_GUILD_ID;

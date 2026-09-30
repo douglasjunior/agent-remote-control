@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../src/app.module.js';
-import { IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
+import { type AgentProviderInfo, IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
 import {
   type AgentActivity,
   type AgentEffortState,
@@ -25,8 +25,21 @@ import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-sto
 
 const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ padrão · 🪙 150 tokens';
 
+const AGENTS: readonly AgentProviderInfo[] = [
+  { agentId: 'agy', displayName: 'Antigravity' },
+  { agentId: 'claude', displayName: 'Claude Code' },
+];
+
+function agentFactory(create: (agentId: string) => Partial<IAgentPort> | undefined): IAgentPortFactory {
+  return {
+    defaultAgentId: 'agy',
+    listAgents: () => AGENTS,
+    create: agentId => create(agentId) as IAgentPort,
+  };
+}
+
 class E2EAgentFake implements Partial<IAgentPort> {
-  readonly agentName = 'agy';
+  agentName = 'agy';
   lastAgentMessage = 'Implementation completed successfully.';
   currentSessionId?: string;
   readonly sessionCwds: string[] = [];
@@ -146,6 +159,11 @@ class BlockingAgentFake extends E2EAgentFake {
 class SelectableAgentFake extends E2EAgentFake {
   override lastAgentMessage = 'Built it.';
 
+  constructor(agentId = 'agy') {
+    super();
+    this.agentName = agentId;
+  }
+
   override getAvailableModels(): AgentModelState {
     return {
       availableModels: [
@@ -174,6 +192,8 @@ function seedAgentSettings(dataDir: string): void {
   writeFileSync(
     join(dataDir, 'agent-settings.json'),
     JSON.stringify({
+      agentId: 'agy',
+      agentName: 'Antigravity',
       modelId: 'fast',
       modelName: 'Fast Model',
       effortId: null,
@@ -250,7 +270,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({ create: () => fakeAgent })
+      .useValue(agentFactory(() => fakeAgent))
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -319,7 +339,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(storedSession).not.toBeNull();
     expect(storedSession?.userId).toBe('discord-user-777');
     expect(storedSession?.agentRole).toBe('CEO');
-    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', sessionId: 'e2e-session-123' }]);
+    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123' }]);
     expect(readFileSync(join(dataDir, 'sessions.json'), 'utf-8')).toContain('e2e-session-123');
 
     await app.close();
@@ -334,7 +354,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({ create: () => fakeAgent })
+      .useValue(agentFactory(() => fakeAgent))
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -419,7 +439,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({ create: () => agents.shift() })
+      .useValue(agentFactory(() => agents.shift()))
       .compile();
 
     const app = moduleFixture.createNestApplication();
@@ -472,19 +492,17 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await app.close();
   });
 
-  it('should ask for model and effort on the first message and then run the pending prompt', async () => {
+  it('should ask for agent, model and effort on the first message and then run the pending prompt', async () => {
     const agents: SelectableAgentFake[] = [];
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({
-        create: () => {
-          const agent = new SelectableAgentFake();
-          agents.push(agent);
-          return agent;
-        },
-      })
+      .useValue(agentFactory((agentId) => {
+        const agent = new SelectableAgentFake(agentId);
+        agents.push(agent);
+        return agent;
+      }))
       .compile();
     const app = moduleFixture.createNestApplication();
     await app.init();
@@ -507,11 +525,16 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     } as unknown as Message);
 
     expect(sent.at(-1)).toBe(
-      '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+      '🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Antigravity\n**2.** Claude Code',
     );
 
     await messageHandler.handleMessage(threadReply(thread, 'abc'));
     expect(sent.at(-1)).toMatch(/^⚠️ Opção inválida\. Responda apenas com um número de 1 a 2\./);
+
+    await messageHandler.handleMessage(threadReply(thread, '2'));
+    expect(sent.at(-1)).toBe(
+      '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+    );
 
     await messageHandler.handleMessage(threadReply(thread, '2'));
     expect(sent.at(-1)).toBe(
@@ -520,10 +543,12 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
-    expect(sent).toContain('✅ **Configuração salva**: 🧠 Model Two · ⚡ Low');
-    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (agy) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
-    expect(agents.some(agent => agent.prompts.some(prompt => prompt.includes('Build it')))).toBe(true);
+    expect(sent).toContain('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
+    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (claude) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
+    expect(agents.some(agent => agent.agentName === 'claude' && agent.prompts.some(prompt => prompt.includes('Build it')))).toBe(true);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
+      agentId: 'claude',
+      agentName: 'Claude Code',
       modelId: 'two',
       modelName: 'Model Two',
       effortId: 'low',
@@ -539,7 +564,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({ create: () => new SelectableAgentFake() })
+      .useValue(agentFactory(agentId => new SelectableAgentFake(agentId)))
       .compile();
     const app = moduleFixture.createNestApplication();
     await app.init();
@@ -568,13 +593,13 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
 
     expect(editReply).toHaveBeenCalledWith({
-      content: '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+      content: '🧠 **Escolha o modelo do Antigravity** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
     });
 
     const sent: string[] = [];
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
-    expect(sent).toEqual(['✅ **Configuração salva**: 🧠 Model One · ⚡ padrão']);
+    expect(sent).toEqual(['✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão']);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
 
     await app.close();
@@ -586,7 +611,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
-      .useValue({ create: () => new SelectableAgentFake() })
+      .useValue(agentFactory(agentId => new SelectableAgentFake(agentId)))
       .compile();
     const app = moduleFixture.createNestApplication();
     await app.init();
@@ -615,7 +640,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     };
     await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
 
-    expect(sent).toEqual(['🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two']);
+    expect(sent).toEqual(['🧠 **Escolha o modelo do Antigravity** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two']);
 
     const channelChatter = {
       author: { bot: false, id: 'discord-user-888' },
@@ -631,8 +656,70 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
-    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🧠 Model One · ⚡ padrão');
+    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão');
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
+
+    await app.close();
+  });
+
+  it('should switch the agent through the /agent slash command in a bot-owned thread', async () => {
+    seedAgentSettings(dataDir);
+    const createdAgentIds: string[] = [];
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue(agentFactory((agentId) => {
+        createdAgentIds.push(agentId);
+        return new SelectableAgentFake(agentId);
+      }))
+      .compile();
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const interactionHandler = moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler);
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler);
+    (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
+      id: 'bot-e2e-id',
+    };
+
+    const sent: string[] = [];
+    const selectionThread = buildThread('thread-agent', 'channel-general', sent);
+    const startThread = vi.fn().mockResolvedValue(selectionThread);
+    const interaction = {
+      isChatInputCommand: vi.fn().mockReturnValue(true),
+      commandName: 'agent',
+      channelId: 'channel-general',
+      inGuild: vi.fn().mockReturnValue(true),
+      channel: { id: 'channel-general', isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      user: { username: 'alice', id: 'discord-user-777' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn().mockResolvedValue({ startThread }),
+    };
+    await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o agente na thread abaixo.' });
+    expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de agente', autoArchiveDuration: 60 });
+    expect(sent).toEqual(['🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Antigravity\n**2.** Claude Code']);
+
+    await messageHandler.handleMessage(threadReply(selectionThread, '2'));
+    expect(sent.at(-1)).toBe(
+      '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+    );
+
+    await messageHandler.handleMessage(threadReply(selectionThread, '1'));
+
+    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model One · ⚡ padrão');
+    expect(createdAgentIds).toContain('claude');
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
+      agentId: 'claude',
+      agentName: 'Claude Code',
+      modelId: 'one',
+    });
 
     await app.close();
   });

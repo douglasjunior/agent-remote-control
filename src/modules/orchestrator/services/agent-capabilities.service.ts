@@ -1,11 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
-import type {
-  AgentEffortState,
-  AgentModelState,
-  IAgentPort,
-} from '../../agent/ports/agent.port.js';
+import {
+  type AgentProviderInfo,
+  IAgentPortFactory,
+} from '../../agent/ports/agent-port-factory.port.js';
+import type { IAgentPort } from '../../agent/ports/agent.port.js';
+import type { SelectedValue, SelectionOption } from '../models/agent-config-selection.model.js';
+import type { AgentSettings } from '../models/agent-settings.model.js';
 
 
 @Injectable()
@@ -15,16 +16,49 @@ export class AgentCapabilitiesService {
     private readonly agentPortFactory: IAgentPortFactory,
   ) {}
 
-  listModels(): Promise<AgentModelState | null> {
-    return this.withProbe(async port => port.getAvailableModels());
+  resolveAgent(settings: AgentSettings | null): SelectedValue {
+    if (settings) {
+      return { id: settings.agentId, name: settings.agentName };
+    }
+    const agentId = this.agentPortFactory.defaultAgentId;
+    const agent = this.agentPortFactory.listAgents().find(provider => provider.agentId === agentId);
+    return { id: agentId, name: agent?.displayName ?? agentId };
   }
 
-  listEfforts(modelId: string): Promise<AgentEffortState | null> {
-    return this.withProbe(port => port.getAvailableEffortsForModel(modelId));
+  listAgentOptions(): readonly SelectionOption[] {
+    return this.agentPortFactory.listAgents().map((agent: AgentProviderInfo, position) => ({
+      index: position + 1,
+      id: agent.agentId,
+      label: agent.displayName,
+    }));
   }
 
-  private async withProbe<T>(read: (port: IAgentPort) => Promise<T>): Promise<T> {
-    const port = this.agentPortFactory.create();
+  listModelOptions(agentId: string): Promise<readonly SelectionOption[]> {
+    return this.withProbe(agentId, async (port) => {
+      const models = port.getAvailableModels();
+      return (models?.availableModels ?? []).map((model, position) => ({
+        index: position + 1,
+        id: model.modelId,
+        label: model.displayName,
+        description: model.description,
+      }));
+    });
+  }
+
+  listEffortOptions(agentId: string, modelId: string): Promise<readonly SelectionOption[]> {
+    return this.withProbe(agentId, async (port) => {
+      const efforts = await port.getAvailableEffortsForModel(modelId);
+      return (efforts?.availableEfforts ?? []).map((effort, position) => ({
+        index: position + 1,
+        id: effort.effortId,
+        label: effort.name,
+        description: effort.description,
+      }));
+    });
+  }
+
+  private async withProbe<T>(agentId: string, read: (port: IAgentPort) => Promise<T>): Promise<T> {
+    const port = this.agentPortFactory.create(agentId);
     try {
       await port.connect();
       return await read(port);

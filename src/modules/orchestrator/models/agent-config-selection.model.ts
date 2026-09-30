@@ -5,11 +5,14 @@ export type SelectionOption = {
   readonly description?: string;
 };
 
+export type SelectedValue = { readonly id: string; readonly name: string };
+
 export type AgentConfigSelection = {
   readonly channelId: string;
   readonly threadId?: string;
-  readonly step: 'model' | 'effort';
+  readonly step: 'agent' | 'model' | 'effort';
   readonly options: readonly SelectionOption[];
-  readonly selectedModel?: { readonly id: string; readonly name: string };
+  readonly selectedAgent?: SelectedValue;
+  readonly selectedModel?: SelectedValue;
   readonly pendingPrompt?: string;
 };

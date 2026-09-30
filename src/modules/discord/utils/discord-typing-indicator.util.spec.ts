@@ -204,4 +204,34 @@ describe('DiscordTypingIndicator', () => {
       indicator.stop();
     }).not.toThrow();
   });
+
+  describe('during', () => {
+    it('keeps typing while the work runs and stops when it resolves', async () => {
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      let resolveWork: (value: string) => void = () => undefined;
+      const work = new Promise<string>((resolve) => {
+        resolveWork = resolve;
+      });
+
+      const result = DiscordTypingIndicator.during({ sendTyping }, () => work);
+      vi.advanceTimersByTime(8000);
+      expect(sendTyping).toHaveBeenCalledTimes(2);
+
+      resolveWork('done');
+      await expect(result).resolves.toBe('done');
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops typing when the work fails', async () => {
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+
+      await expect(
+        DiscordTypingIndicator.during({ sendTyping }, () => Promise.reject(new Error('probe failed'))),
+      ).rejects.toThrow('probe failed');
+
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(1);
+    });
+  });
 });

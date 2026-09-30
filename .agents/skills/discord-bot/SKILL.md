@@ -2,8 +2,8 @@
 name: discord-bot
 description: >
   Bot do Discord como adaptador primário de entrada para agentes de IA. Governa os
-  comandos /model e /cancel, a seleção numerada de modelo/effort, o rodapé de agente
-  nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
+  comandos /agent, /model e /cancel, a seleção numerada de agente/modelo/effort, o rodapé
+  de agente nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
   threads por conversa, streaming de atividades, indicador de digitação com watchdog,
   throttling contra 429 e particionamento em 2000 caracteres. Use ao trabalhar com mensagens,
   interações, formatação ou eventos do Discord.
@@ -35,7 +35,7 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   - `Partials.Channel` e `Partials.Message`: garantem recepção de eventos em canais de DM não cacheados previamente.
 - **Permissões do Bot (Permissions Integer)**:
   - O conjunto padrão de permissões de texto e canais totaliza o inteiro `380104727616` na calculadora de permissões do Discord.
-- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra `/cancel` e `/model`. Com `DISCORD_GUILD_ID` e a guilda encontrada, registra só na guilda e limpa os comandos globais (`application.commands.set([])`), porque o Discord exibiria cada comando duplicado. Sem a variável, ou com a guilda não encontrada, registra só globalmente.
+- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra `/cancel`, `/model` e `/agent`. Com `DISCORD_GUILD_ID` e a guilda encontrada, registra só na guilda e limpa os comandos globais (`application.commands.set([])`), porque o Discord exibiria cada comando duplicado. Sem a variável, ou com a guilda não encontrada, registra só globalmente.
 - **Tolerância a ausência de token**: Se a variável `DISCORD_BOT_TOKEN` não estiver definida
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.
   A aplicação deve inicializar normalmente em ambientes de CI e testes unitários.
@@ -62,12 +62,12 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
      faria qualquer anúncio no servidor abrir uma sessão de agente.
    - Em DM: toda mensagem é aceita.
    - Em threads: responde se a thread for gerenciada pelo bot (`channel.ownerId === clientUser.id`),
-     se o bot for mencionado no corpo da mensagem ou se houver seleção de modelo aberta na
-     thread (`hasActiveConfigSelection(parentId, threadId)`, aberta por `/model` numa thread
-     que não é do bot).
-   - Mensagens sem menção em canal comum são sempre ignoradas. A seleção de `/model` num canal
-     comum acontece numa thread do bot, então nenhuma conversa solta do canal é tratada como
-     resposta.
+     se o bot for mencionado no corpo da mensagem ou se houver seleção de configuração aberta na
+     thread (`hasActiveConfigSelection(parentId, threadId)`, aberta por `/agent` ou `/model` numa
+     thread que não é do bot).
+   - Mensagens sem menção em canal comum são sempre ignoradas. A seleção de `/agent` ou `/model`
+     num canal comum acontece numa thread do bot, então nenhuma conversa solta do canal é tratada
+     como resposta.
 3. **Criação de thread**: Ao receber uma menção em canal normal, o handler cria uma nova
    thread a partir da mensagem (`message.startThread({ name, autoArchiveDuration: 60 })`).
    O título da thread utiliza os primeiros 50 caracteres do prompt.
@@ -81,17 +81,30 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
    orquestrador. Via `onQueued`, a mensagem de progresso exibe
    `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`.
 
-## Resolução da Entrada e Seleção de Modelo
+## Resolução da Entrada e Seleção de Agente e Modelo
 
-Antes de executar o turno, o handler chama `OrchestratorService.resolveInput({ channelId, threadId, prompt })`:
+Antes de executar o turno, o handler chama `OrchestratorService.resolveInput({ channelId, threadId, prompt })`
+dentro de `DiscordTypingIndicator.during(canal, ...)`, porque responder uma seleção sobe um agente
+descartável para listar modelos ou efforts e leva alguns segundos:
 
-- `selection`: envia `formatSelection` (lista numerada de modelos ou de efforts) e encerra;
+- `selection`: envia `formatSelection` (lista numerada de agentes, modelos ou efforts) e encerra;
 - `invalid`: envia `formatInvalidSelection` (faixa válida seguida da lista) e encerra;
 - `configured`: envia `formatConfigured` e encerra;
 - `execute`: se trouxer `configured`, envia a confirmação e executa o `prompt` resolvido (o prompt pendente da primeira mensagem).
 
 A seleção começa sozinha na primeira mensagem enquanto não houver configuração salva, e é
-reaberta com `/model`. O estado fica por conversa (canal + thread).
+reaberta com `/agent` (a partir do agente) ou `/model` (modelo e effort do agente atual). O
+estado fica por conversa (canal + thread).
+
+O cabeçalho de `formatSelection` depende do passo (`AgentConfigSelection.step`):
+
+- `agent`: `🤖 **Escolha o agente** respondendo com o número da opção:`;
+- `model`: `🧠 **Escolha o modelo do <selectedAgent.name>** respondendo com o número da opção:`,
+  ou `🧠 **Escolha o modelo do agente** ...` sem `selectedAgent`;
+- `effort`: `⚡ **Escolha o effort para <selectedModel.name>** respondendo com o número da opção:`.
+
+`formatConfigured(settings)` confirma com `✅ **Configuração salva**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
+com `padrão` quando o modelo ou o effort são nulos.
 
 ## Rodapé das Respostas
 
@@ -145,6 +158,7 @@ Durante a execução de um turno em `DiscordMessageHandler`, o feedback visual d
 
 - **Disparo inicial e repetição periódica**: ao iniciar o processamento de um turno, `start()` dispara `sendTyping()` imediatamente no canal e agenda repetições a cada `8000ms` (padrão de `intervalMs`). Rejeições e exceções em `sendTyping()` são suprimidas silenciosamente.
 - **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity` e `onDelegation` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
+- **Espera curta**: `DiscordTypingIndicator.during(canal, work)` mantém a digitação enquanto `work` roda e chama `stop()` no `finally`, para esperas fora de um turno, como a consulta de agentes, modelos e efforts de uma seleção.
 - **Encerramento no ciclo de vida**: `stop()` cancela os timers de repetição e de inatividade. O método é invocado em bloco `finally` logo após `executeTurn`, garantindo encerramento em conclusões com sucesso, cancelamentos e falhas.
 
 ## Throttling e Coalescing contra Rate Limit (HTTP 429)
@@ -177,9 +191,10 @@ são particionados por `DiscordActivityFormatter.splitMessage(content, maxLength
 
 Comandos de barra são interceptados por `DiscordInteractionHandler`:
 
-- **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada, `🛑 **Seleção de modelo cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
+- **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada (de agente, modelo ou effort), `🛑 **Seleção cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
 - **/model**: `deferReply()` público. As opções são respondidas por mensagem na conversa, por isso a resposta é pública:
-  - Em canal de guilda: `editReply('🧵 Escolha o modelo na thread abaixo.')`, thread criada a partir desse aviso (`startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` e `formatSelection` particionado dentro da thread. A thread é do bot, então as respostas entram sem menção e, depois de configurar, ela segue como uma conversa normal. Se a thread não puder ser criada, responde `❌ **Falha ao abrir a seleção de modelo**: <erro>`.
-  - Em DM ou thread: `startConfigSelection` com a chave da conversa atual e `editReply(formatSelection)`.
+  - Em canal de guilda: `editReply('🧵 Escolha o modelo na thread abaixo.')`, thread criada a partir desse aviso (`startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` com o indicador de digitação na thread (`DiscordTypingIndicator.during`) e `formatSelection` particionado dentro da thread. A thread é do bot, então as respostas entram sem menção e, depois de configurar, ela segue como uma conversa normal. Se a thread não puder ser criada, responde `❌ **Falha ao abrir a seleção de modelo**: <erro>`.
+  - Em DM ou thread: `startConfigSelection` com a chave da conversa atual e `editReply(formatSelection)`; a resposta adiada já exibe "pensando..." durante a consulta.
   - Com `unavailable`, publica `ℹ️ O agente atual não expõe modelos para seleção.` no mesmo destino das opções.
+- **/agent**: mesmo fluxo de `/model`, com `startAgentSelection(channelId, threadId?)`, que abre a seleção no passo `agent`; escolhido o agente, seguem modelo e effort pela mesma resposta numerada. Em canal de guilda o aviso é `🧵 Escolha o agente na thread abaixo.` e a thread se chama `Seleção de agente`. A falha responde `❌ **Falha ao abrir a seleção de agente**: <erro>` e `unavailable` publica `ℹ️ Nenhum agente disponível para seleção.`
 - **Respostas protegidas**: toda resposta passa por um único método que usa `editReply` quando a interação foi adiada, `followUp` quando já respondida e `reply` nos demais casos, e apenas loga falhas de envio. O listener de `InteractionCreate` encadeia `.catch(...)` com log, e `main.ts` registra `process.on('unhandledRejection')` como rede de segurança: uma rejeição sem tratamento derrubaria o processo.

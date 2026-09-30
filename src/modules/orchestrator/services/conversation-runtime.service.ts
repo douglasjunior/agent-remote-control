@@ -15,7 +15,7 @@ import { ActiveTurn } from '../models/active-turn.model.js';
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 type ConversationRuntime = {
-  readonly agentPort: IAgentPort;
+  agentPort: IAgentPort | null;
   tail: Promise<void>;
   pendingTurns: number;
   activeTurnsCount: number;
@@ -42,15 +42,21 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
 
   run<T>(
     conversationKey: string,
+    agentId: string,
     work: (agentPort: IAgentPort, turn: ActiveTurn) => Promise<T>,
     onQueued?: () => void,
   ): Promise<T> {
     const endTurn = this.beginTurn(conversationKey);
-    return this.runOnCeo(conversationKey, work, onQueued).finally(endTurn);
+    return this.runOnCeo(conversationKey, agentId, work, onQueued).finally(endTurn);
   }
 
+  /**
+   * The CEO port is resolved inside the queue: switching agents disposes the previous port only
+   * after the turns already using it have finished.
+   */
   runOnCeo<T>(
     conversationKey: string,
+    agentId: string,
     work: (agentPort: IAgentPort, turn: ActiveTurn) => Promise<T>,
     onQueued?: () => void,
   ): Promise<T> {
@@ -64,10 +70,11 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     runtime.pendingTurns++;
 
     const result = runtime.tail.then(async () => {
-      const turn = new ActiveTurn(runtime.agentPort);
-      runtime.activeTurn = turn;
       try {
-        return await work(runtime.agentPort, turn);
+        const agentPort = await this.ensureCeoPort(conversationKey, runtime, agentId);
+        const turn = new ActiveTurn(agentPort);
+        runtime.activeTurn = turn;
+        return await work(agentPort, turn);
       } finally {
         runtime.activeTurn = null;
         runtime.pendingTurns--;
@@ -95,8 +102,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     };
   }
 
-  getCeoPort(conversationKey: string): IAgentPort {
-    return this.getOrCreate(conversationKey).agentPort;
+  getCeoPort(conversationKey: string): IAgentPort | undefined {
+    return this.runtimes.get(conversationKey)?.agentPort ?? undefined;
   }
 
   registerDelegation(conversationKey: string, delegation: ActiveDelegation): void {
@@ -162,7 +169,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
         await delegation.agentPort.disconnect().catch(() => undefined);
       }
       runtime.activeDelegations.clear();
-      await runtime.agentPort.disconnect().catch(() => undefined);
+      await runtime.agentPort?.disconnect().catch(() => undefined);
     }));
   }
 
@@ -170,7 +177,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     let runtime = this.runtimes.get(conversationKey);
     if (!runtime) {
       runtime = {
-        agentPort: this.agentPortFactory.create(),
+        agentPort: null,
         tail: Promise.resolve(),
         pendingTurns: 0,
         activeTurnsCount: 0,
@@ -206,7 +213,29 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
       await delegation.agentPort.disconnect().catch(() => undefined);
     }
     runtime.activeDelegations.clear();
-    await runtime.agentPort.closeSession().catch(() => undefined);
-    await runtime.agentPort.disconnect().catch(() => undefined);
+    await runtime.agentPort?.closeSession().catch(() => undefined);
+    await runtime.agentPort?.disconnect().catch(() => undefined);
+  }
+
+  private async ensureCeoPort(
+    conversationKey: string,
+    runtime: ConversationRuntime,
+    agentId: string,
+  ): Promise<IAgentPort> {
+    const current = runtime.agentPort;
+    if (current?.agentName === agentId) {
+      return current;
+    }
+
+    if (current) {
+      this.logger.log(`[CEO Agent Switched] Conversation=${conversationKey}, From=${current.agentName}, To=${agentId}`);
+      runtime.agentPort = null;
+      await current.closeSession().catch(() => undefined);
+      await current.disconnect().catch(() => undefined);
+    }
+
+    const agentPort = this.agentPortFactory.create(agentId);
+    runtime.agentPort = agentPort;
+    return agentPort;
   }
 }

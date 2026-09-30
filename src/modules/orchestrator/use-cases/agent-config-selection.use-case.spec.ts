@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { AgentProviderInfo } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.port.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
-import { createAgentCapabilities } from '../testing/stub-agent-capabilities.js';
+import type { AgentSettings } from '../models/agent-settings.model.js';
+import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
+import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
+import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { CancelAgentConfigSelectionUseCase } from './cancel-agent-config-selection.use-case.js';
 import { ResolveConversationInputUseCase } from './resolve-conversation-input.use-case.js';
@@ -19,6 +23,11 @@ const MODELS: AgentModelState = {
   currentModelId: 'fast',
 };
 
+const OTHER_MODELS: AgentModelState = {
+  availableModels: [{ modelId: 'opus', name: 'opus', displayName: 'Opus' }],
+  currentModelId: 'opus',
+};
+
 const DEEP_EFFORTS: AgentEffortState = {
   availableEfforts: [
     { effortId: 'low', name: 'Low' },
@@ -27,17 +36,48 @@ const DEEP_EFFORTS: AgentEffortState = {
   currentEffortId: 'low',
 };
 
+const SINGLE_AGENT: AgentProviderInfo[] = [{ agentId: 'stub', displayName: 'Stub Agent' }];
+
+const TWO_AGENTS: AgentProviderInfo[] = [
+  { agentId: 'stub', displayName: 'Stub Agent' },
+  { agentId: 'other', displayName: 'Other Agent' },
+];
+
+const settingsOf = (overrides: Partial<AgentSettings> = {}): AgentSettings => ({
+  agentId: 'stub',
+  agentName: 'Stub Agent',
+  modelId: 'fast',
+  modelName: 'Fast Model',
+  effortId: null,
+  effortName: null,
+  updatedAt: '',
+  ...overrides,
+});
+
 describe('agent configuration selection', () => {
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let settingsStore: StubAgentSettingsStore;
+  let factory: StubAgentPortFactory;
   let start: StartAgentConfigSelectionUseCase;
   let submit: SubmitAgentConfigSelectionUseCase;
   let resolve: ResolveConversationInputUseCase;
   let cancel: CancelAgentConfigSelectionUseCase;
 
-  const build = (models: AgentModelState | null, efforts: Record<string, AgentEffortState | null> = {}) => {
-    const capabilities = createAgentCapabilities(models, efforts);
-    start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore);
+  const build = (
+    modelsByAgent: Record<string, AgentModelState | null>,
+    efforts: Record<string, AgentEffortState | null> = {},
+    agents: AgentProviderInfo[] = SINGLE_AGENT,
+  ) => {
+    factory = new StubAgentPortFactory((agentId) => {
+      const port = new StubAgentPort();
+      port.agentName = agentId;
+      port.modelsToReturn = modelsByAgent[agentId] ?? null;
+      port.effortsByModel = efforts;
+      return port;
+    });
+    factory.agents = agents;
+    const capabilities = new AgentCapabilitiesService(factory);
+    start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
     submit = new SubmitAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
     resolve = new ResolveConversationInputUseCase(selectionStore, settingsStore, start, submit);
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
@@ -46,102 +86,289 @@ describe('agent configuration selection', () => {
   beforeEach(() => {
     selectionStore = new InMemoryAgentConfigSelectionStoreAdapter();
     settingsStore = new StubAgentSettingsStore();
-    build(MODELS, { deep: DEEP_EFFORTS, fast: null });
+    build({ stub: MODELS, other: OTHER_MODELS }, { deep: DEEP_EFFORTS, fast: null });
   });
 
   describe('StartAgentConfigSelectionUseCase', () => {
-    it('should list the models as numbered options', async () => {
-      const result = await start.execute({ channelId: 'ch-1', threadId: 'th-1' });
+    describe('model step', () => {
+      it('should list the models of the factory default agent when there are no settings', async () => {
+        const result = await start.execute({ channelId: 'ch-1', threadId: 'th-1', step: 'model' });
 
-      expect(result).toEqual({
-        kind: 'selection',
-        selection: {
-          channelId: 'ch-1',
-          threadId: 'th-1',
-          step: 'model',
-          options: [
-            { index: 1, id: 'fast', label: 'Fast Model', description: 'Quick answers' },
-            { index: 2, id: 'deep', label: 'Deep Model', description: undefined },
-          ],
-          pendingPrompt: undefined,
-        },
+        expect(result).toEqual({
+          kind: 'selection',
+          selection: {
+            channelId: 'ch-1',
+            threadId: 'th-1',
+            step: 'model',
+            options: [
+              { index: 1, id: 'fast', label: 'Fast Model', description: 'Quick answers' },
+              { index: 2, id: 'deep', label: 'Deep Model', description: undefined },
+            ],
+            selectedAgent: { id: 'stub', name: 'Stub Agent' },
+            pendingPrompt: undefined,
+          },
+        });
+        await expect(selectionStore.find('ch-1', 'th-1')).resolves.not.toBeNull();
+        expect(factory.createdAgentIds).toEqual(['stub']);
       });
-      await expect(selectionStore.find('ch-1', 'th-1')).resolves.not.toBeNull();
+
+      it('should list the models of the agent persisted in the settings', async () => {
+        settingsStore.settings = settingsOf({ agentId: 'other', agentName: 'Other Agent' });
+
+        const result = await start.execute({ channelId: 'ch-1', step: 'model' });
+
+        expect(result).toMatchObject({
+          kind: 'selection',
+          selection: {
+            step: 'model',
+            selectedAgent: { id: 'other', name: 'Other Agent' },
+            options: [{ index: 1, id: 'opus', label: 'Opus' }],
+          },
+        });
+        expect(factory.createdAgentIds).toEqual(['other']);
+      });
+
+      it.each([
+        ['no model option', null],
+        ['an empty model list', { availableModels: [], currentModelId: '' }],
+      ])('should be unavailable when the agent exposes %s', async (_label, models) => {
+        build({ stub: models });
+
+        await expect(start.execute({ channelId: 'ch-1', step: 'model' })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+      });
     });
 
-    it.each([
-      ['no model option', null],
-      ['an empty model list', { availableModels: [], currentModelId: '' }],
-    ])('should be unavailable when the agent exposes %s', async (_label, models) => {
-      build(models);
+    describe('agent step', () => {
+      it('should list the agents as numbered options when there is more than one', async () => {
+        build({ stub: MODELS, other: OTHER_MODELS }, {}, TWO_AGENTS);
 
-      await expect(start.execute({ channelId: 'ch-1' })).resolves.toEqual({ kind: 'unavailable' });
-      await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+        const result = await start.execute({
+          channelId: 'ch-1',
+          threadId: 'th-1',
+          step: 'agent',
+          pendingPrompt: 'Build it',
+        });
+
+        expect(result).toEqual({
+          kind: 'selection',
+          selection: {
+            channelId: 'ch-1',
+            threadId: 'th-1',
+            step: 'agent',
+            options: [
+              { index: 1, id: 'stub', label: 'Stub Agent' },
+              { index: 2, id: 'other', label: 'Other Agent' },
+            ],
+            pendingPrompt: 'Build it',
+          },
+        });
+        await expect(selectionStore.find('ch-1', 'th-1')).resolves.toMatchObject({ step: 'agent' });
+        expect(factory.createdAgentIds).toEqual([]);
+      });
+
+      it('should be unavailable when no agent is listed', async () => {
+        build({}, {}, []);
+
+        await expect(start.execute({ channelId: 'ch-1', step: 'agent' })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+      });
+
+      it('should go straight to the model step when there is exactly one agent', async () => {
+        const result = await start.execute({ channelId: 'ch-1', step: 'agent', pendingPrompt: 'Hi' });
+
+        expect(result).toMatchObject({
+          kind: 'selection',
+          selection: {
+            step: 'model',
+            selectedAgent: { id: 'stub', name: 'Stub Agent' },
+            pendingPrompt: 'Hi',
+            options: [{ id: 'fast' }, { id: 'deep' }],
+          },
+        });
+        await expect(selectionStore.find('ch-1')).resolves.toMatchObject({ step: 'model' });
+      });
+
+      it('should be unavailable when the only agent exposes no models', async () => {
+        build({ stub: null });
+
+        await expect(start.execute({ channelId: 'ch-1', step: 'agent' })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+      });
     });
   });
 
   describe('SubmitAgentConfigSelectionUseCase', () => {
-    beforeEach(async () => {
-      await start.execute({ channelId: 'ch-1' });
-    });
-
-    it.each(['abc', '0', '3', '1.5', ''])('should reject %j without changing the state', async (input) => {
-      const before = await selectionStore.find('ch-1');
-
-      const outcome = await submit.execute({ channelId: 'ch-1', input });
-
-      expect(outcome).toEqual({ kind: 'invalid', selection: before });
-      await expect(selectionStore.find('ch-1')).resolves.toEqual(before);
-      expect(settingsStore.saved).toHaveLength(0);
-    });
-
-    it('should advance to the effort step and then save the settings', async () => {
-      const effortStep = await submit.execute({ channelId: 'ch-1', input: ' 2 ' });
-
-      expect(effortStep).toEqual({
-        kind: 'selection',
-        selection: expect.objectContaining({
-          step: 'effort',
-          selectedModel: { id: 'deep', name: 'Deep Model' },
-          options: [
-            { index: 1, id: 'low', label: 'Low', description: undefined },
-            { index: 2, id: 'high', label: 'High', description: 'Thorough' },
-          ],
-        }),
+    describe('model and effort steps', () => {
+      beforeEach(async () => {
+        await start.execute({ channelId: 'ch-1', step: 'model' });
       });
 
-      const configured = await submit.execute({ channelId: 'ch-1', input: '2' });
+      it.each(['abc', '0', '3', '1.5', ''])('should reject %j without changing the state', async (input) => {
+        const before = await selectionStore.find('ch-1');
 
-      expect(configured).toEqual({
-        kind: 'configured',
-        settings: {
-          modelId: 'deep',
-          modelName: 'Deep Model',
-          effortId: 'high',
-          effortName: 'High',
-          updatedAt: expect.any(String),
-        },
-        pendingPrompt: undefined,
+        const outcome = await submit.execute({ channelId: 'ch-1', input });
+
+        expect(outcome).toEqual({ kind: 'invalid', selection: before });
+        await expect(selectionStore.find('ch-1')).resolves.toEqual(before);
+        expect(settingsStore.saved).toHaveLength(0);
       });
-      expect(settingsStore.settings?.modelId).toBe('deep');
-      await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+
+      it('should advance to the effort step and then save the settings with the agent', async () => {
+        const effortStep = await submit.execute({ channelId: 'ch-1', input: ' 2 ' });
+
+        expect(effortStep).toEqual({
+          kind: 'selection',
+          selection: expect.objectContaining({
+            step: 'effort',
+            selectedAgent: { id: 'stub', name: 'Stub Agent' },
+            selectedModel: { id: 'deep', name: 'Deep Model' },
+            options: [
+              { index: 1, id: 'low', label: 'Low', description: undefined },
+              { index: 2, id: 'high', label: 'High', description: 'Thorough' },
+            ],
+          }),
+        });
+
+        const configured = await submit.execute({ channelId: 'ch-1', input: '2' });
+
+        expect(configured).toEqual({
+          kind: 'configured',
+          settings: {
+            agentId: 'stub',
+            agentName: 'Stub Agent',
+            modelId: 'deep',
+            modelName: 'Deep Model',
+            effortId: 'high',
+            effortName: 'High',
+            updatedAt: expect.any(String),
+          },
+          pendingPrompt: undefined,
+        });
+        expect(settingsStore.settings?.modelId).toBe('deep');
+        await expect(selectionStore.find('ch-1')).resolves.toBeNull();
+      });
+
+      it('should save the model without effort when it has no effort options', async () => {
+        const outcome = await submit.execute({ channelId: 'ch-1', input: '1' });
+
+        expect(outcome).toMatchObject({
+          kind: 'configured',
+          settings: { agentId: 'stub', modelId: 'fast', effortId: null, effortName: null },
+        });
+      });
+
+      it('should save the model without effort when its effort list is empty', async () => {
+        build({ stub: MODELS }, { deep: { availableEfforts: [], currentEffortId: '' } });
+        await start.execute({ channelId: 'ch-1', step: 'model' });
+
+        await expect(submit.execute({ channelId: 'ch-1', input: '2' })).resolves.toMatchObject({
+          kind: 'configured',
+          settings: { modelId: 'deep', effortId: null },
+        });
+      });
+
+      it('should probe efforts on the agent that owns the selection', async () => {
+        settingsStore.settings = settingsOf({ agentId: 'other', agentName: 'Other Agent' });
+        await start.execute({ channelId: 'ch-2', step: 'model' });
+        factory.createdAgentIds.length = 0;
+
+        await submit.execute({ channelId: 'ch-2', input: '1' });
+
+        expect(factory.createdAgentIds).toEqual(['other']);
+        expect(settingsStore.saved.at(-1)).toMatchObject({ agentId: 'other', modelId: 'opus' });
+      });
+
+      it.each(['model', 'effort'] as const)('should fail when the %s step has no agent', async (step) => {
+        await selectionStore.save({
+          channelId: 'ch-broken',
+          step,
+          options: [{ index: 1, id: 'fast', label: 'Fast Model' }],
+        });
+
+        await expect(submit.execute({ channelId: 'ch-broken', input: '1' })).rejects.toThrow(
+          `Agent configuration selection at step "${step}" has no agent.`,
+        );
+        expect(settingsStore.saved).toHaveLength(0);
+      });
     });
 
-    it('should save the model without effort when it has no effort options', async () => {
-      const outcome = await submit.execute({ channelId: 'ch-1', input: '1' });
-
-      expect(outcome).toMatchObject({
-        kind: 'configured',
-        settings: { modelId: 'fast', effortId: null, effortName: null },
+    describe('agent step', () => {
+      beforeEach(async () => {
+        build({ stub: MODELS, other: OTHER_MODELS }, { deep: DEEP_EFFORTS }, TWO_AGENTS);
+        await start.execute({ channelId: 'ch-1', step: 'agent', pendingPrompt: 'Build it' });
       });
-    });
 
-    it('should save the model without effort when its effort list is empty', async () => {
-      build(MODELS, { deep: { availableEfforts: [], currentEffortId: '' } });
+      it('should reject an unknown agent number', async () => {
+        await expect(submit.execute({ channelId: 'ch-1', input: '3' })).resolves.toMatchObject({
+          kind: 'invalid',
+          selection: { step: 'agent' },
+        });
+      });
 
-      await expect(submit.execute({ channelId: 'ch-1', input: '2' })).resolves.toMatchObject({
-        kind: 'configured',
-        settings: { modelId: 'deep', effortId: null },
+      it('should advance to the model step listing the models of the chosen agent', async () => {
+        const outcome = await submit.execute({ channelId: 'ch-1', input: '2' });
+
+        expect(outcome).toEqual({
+          kind: 'selection',
+          selection: {
+            channelId: 'ch-1',
+            threadId: undefined,
+            step: 'model',
+            selectedAgent: { id: 'other', name: 'Other Agent' },
+            options: [{ index: 1, id: 'opus', label: 'Opus', description: undefined }],
+            pendingPrompt: 'Build it',
+          },
+        });
+        await expect(selectionStore.find('ch-1')).resolves.toMatchObject({ step: 'model' });
+        expect(factory.createdAgentIds).toEqual(['other']);
+      });
+
+      it('should complete the whole agent, model and effort flow', async () => {
+        await submit.execute({ channelId: 'ch-1', input: '1' });
+        await submit.execute({ channelId: 'ch-1', input: '2' });
+
+        const outcome = await submit.execute({ channelId: 'ch-1', input: '1' });
+
+        expect(outcome).toMatchObject({
+          kind: 'configured',
+          settings: {
+            agentId: 'stub',
+            agentName: 'Stub Agent',
+            modelId: 'deep',
+            effortId: 'low',
+          },
+          pendingPrompt: 'Build it',
+        });
+      });
+
+      it('should save only the agent when it exposes no models', async () => {
+        build({ stub: MODELS, other: null }, {}, TWO_AGENTS);
+        await start.execute({ channelId: 'ch-2', step: 'agent', pendingPrompt: 'Go' });
+
+        const outcome = await submit.execute({ channelId: 'ch-2', input: '2' });
+
+        expect(outcome).toEqual({
+          kind: 'configured',
+          settings: {
+            agentId: 'other',
+            agentName: 'Other Agent',
+            modelId: null,
+            modelName: null,
+            effortId: null,
+            effortName: null,
+            updatedAt: expect.any(String),
+          },
+          pendingPrompt: 'Go',
+        });
+        await expect(selectionStore.find('ch-2')).resolves.toBeNull();
+        expect(settingsStore.settings?.agentId).toBe('other');
       });
     });
 
@@ -153,10 +380,24 @@ describe('agent configuration selection', () => {
   });
 
   describe('ResolveConversationInputUseCase', () => {
-    it('should start a selection keeping the prompt when there are no settings', async () => {
+    it('should start the model step of the only agent keeping the prompt when there are no settings', async () => {
       const resolution = await resolve.execute({ channelId: 'ch-1', threadId: 'th-1', prompt: 'Build it' });
 
-      expect(resolution).toMatchObject({ kind: 'selection', selection: { pendingPrompt: 'Build it' } });
+      expect(resolution).toMatchObject({
+        kind: 'selection',
+        selection: { step: 'model', selectedAgent: { id: 'stub' }, pendingPrompt: 'Build it' },
+      });
+    });
+
+    it('should start the agent step keeping the prompt when several agents are available', async () => {
+      build({ stub: MODELS, other: OTHER_MODELS }, {}, TWO_AGENTS);
+
+      const resolution = await resolve.execute({ channelId: 'ch-1', prompt: 'Build it' });
+
+      expect(resolution).toMatchObject({
+        kind: 'selection',
+        selection: { step: 'agent', pendingPrompt: 'Build it' },
+      });
     });
 
     it('should execute the pending prompt once the selection is configured', async () => {
@@ -173,12 +414,12 @@ describe('agent configuration selection', () => {
       expect(resolution).toEqual({
         kind: 'execute',
         prompt: 'Build it',
-        configured: expect.objectContaining({ modelId: 'deep', effortId: 'low' }),
+        configured: expect.objectContaining({ agentId: 'stub', modelId: 'deep', effortId: 'low' }),
       });
     });
 
     it('should return configured when the selection had no pending prompt', async () => {
-      await start.execute({ channelId: 'ch-1' });
+      await start.execute({ channelId: 'ch-1', step: 'model' });
 
       await expect(resolve.execute({ channelId: 'ch-1', prompt: '1' })).resolves.toEqual({
         kind: 'configured',
@@ -187,13 +428,16 @@ describe('agent configuration selection', () => {
     });
 
     it('should execute directly when settings already exist', async () => {
-      settingsStore.settings = {
-        modelId: 'fast',
-        modelName: 'Fast Model',
-        effortId: null,
-        effortName: null,
-        updatedAt: '',
-      };
+      settingsStore.settings = settingsOf();
+
+      await expect(resolve.execute({ channelId: 'ch-1', prompt: 'Hi' })).resolves.toEqual({
+        kind: 'execute',
+        prompt: 'Hi',
+      });
+    });
+
+    it('should execute directly when no agent is available', async () => {
+      build({}, {}, []);
 
       await expect(resolve.execute({ channelId: 'ch-1', prompt: 'Hi' })).resolves.toEqual({
         kind: 'execute',
@@ -202,7 +446,7 @@ describe('agent configuration selection', () => {
     });
 
     it('should execute directly when the agent exposes no models', async () => {
-      build(null);
+      build({ stub: null });
 
       await expect(resolve.execute({ channelId: 'ch-1', prompt: 'Hi' })).resolves.toEqual({
         kind: 'execute',
@@ -213,7 +457,7 @@ describe('agent configuration selection', () => {
 
   describe('CancelAgentConfigSelectionUseCase', () => {
     it('should remove an active selection and report it', async () => {
-      await start.execute({ channelId: 'ch-1' });
+      await start.execute({ channelId: 'ch-1', step: 'model' });
 
       await expect(cancel.execute('ch-1')).resolves.toBe(true);
       await expect(cancel.execute('ch-1')).resolves.toBe(false);

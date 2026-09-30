@@ -1611,6 +1611,8 @@ describe('DiscordMessageHandler', () => {
       options: [{ index: 1, id: 'm1', label: 'Model 1' }],
     };
     const settings = {
+      agentId: 'claude',
+      agentName: 'Claude Code',
       modelId: 'm1',
       modelName: 'Model 1',
       effortId: null,
@@ -1660,7 +1662,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
@@ -1670,7 +1672,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send.mock.calls[0]![0]).toBe('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(send.mock.calls[0]![0]).toBe('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
       expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
     });
 
@@ -1698,7 +1700,7 @@ describe('DiscordMessageHandler', () => {
 
       expect(orchestratorService.selectionLookups).toEqual([{ channelId: 'channel-1', threadId: 'thread-9' }]);
       expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: 'thread-9', prompt: '1' }]);
-      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🧠 Model 1 · ⚡ padrão');
+      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
     });
 
     it('should ignore messages without mention in an unmanaged thread without a selection', async () => {
@@ -1767,11 +1769,46 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(message);
 
-      expect(typingCallsDuringTurn).toBe(1);
+      expect(typingCallsDuringTurn).toBe(2);
       const callsAfterTurn = sendTyping.mock.calls.length;
 
       vi.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(callsAfterTurn);
+    });
+
+    it('should show typing while the input is resolved and stop after answering a selection', async () => {
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      let typingCallsDuringResolution = 0;
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockResolvedValue(undefined),
+        sendTyping,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: '2',
+        content: '2',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+      orchestratorService.resolveInput = async () => {
+        typingCallsDuringResolution = sendTyping.mock.calls.length;
+        return {
+          kind: 'selection',
+          selection: { channelId: 'channel-1', threadId: 'thread-1', step: 'agent', options: [] },
+        };
+      };
+
+      await handler.handleMessage(message);
+
+      expect(typingCallsDuringResolution).toBe(1);
+      vi.advanceTimersByTime(20000);
+      expect(sendTyping).toHaveBeenCalledTimes(1);
     });
 
     it('should keep typing indicator alive on activity', async () => {

@@ -9,6 +9,8 @@ import { JsonAgentSettingsStoreAdapter } from './json-agent-settings-store.adapt
 
 
 const SETTINGS: AgentSettings = {
+  agentId: 'claude',
+  agentName: 'Claude Code',
   modelId: 'm1',
   modelName: 'Model 1',
   effortId: 'high',
@@ -44,12 +46,14 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   it('should normalize missing optional fields', async () => {
     writeFileSync(
       join(rootDir, 'agent-settings.json'),
-      JSON.stringify({ modelId: 'm1', modelName: 'Model 1' }),
+      JSON.stringify({ agentId: 'claude' }),
     );
 
     await expect(new JsonAgentSettingsStoreAdapter(rootDir).load()).resolves.toEqual({
-      modelId: 'm1',
-      modelName: 'Model 1',
+      agentId: 'claude',
+      agentName: 'claude',
+      modelId: null,
+      modelName: null,
       effortId: null,
       effortName: null,
       updatedAt: '',
@@ -59,8 +63,8 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   it.each([
     ['invalid JSON', '{not json'],
     ['null', 'null'],
-    ['missing model', JSON.stringify({ modelName: 'Model 1' })],
-    ['missing model name', JSON.stringify({ modelId: 'm1' })],
+    ['missing agent', JSON.stringify({ modelId: 'm1', modelName: 'Model 1' })],
+    ['non-string agent', JSON.stringify({ agentId: 42 })],
   ])('should return null for %s', async (_label, content) => {
     writeFileSync(join(rootDir, 'agent-settings.json'), content);
 

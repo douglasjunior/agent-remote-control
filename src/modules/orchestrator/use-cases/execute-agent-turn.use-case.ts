@@ -10,6 +10,8 @@ import {
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentSession } from '../models/agent-session.model.js';
+import type { AgentSettings } from '../models/agent-settings.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
@@ -77,11 +79,14 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
-    const ceoPort = this.conversationRuntime.getCeoPort(conversationKey);
+    let ceoPort: IAgentPort | undefined;
+    let agentId = this.agentPortFactory.defaultAgentId;
+    const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
       this.buildResult({
         sessionId: session?.sessionId,
-        ceoPort,
+        ceoPort: currentCeoPort(),
+        agentId,
         role: request.agentRole,
         status,
         response,
@@ -90,12 +95,19 @@ export class ExecuteAgentTurnUseCase {
       });
 
     try {
+      agentId = (await this.settingsStore.load())?.agentId ?? agentId;
       return await this.runDelegationLoop(
         conversationKey,
+        agentId,
         request,
         finish,
-        (resolved) => {
-          session = resolved;
+        {
+          onSessionResolved: (resolved) => {
+            session = resolved;
+          },
+          onCeoPort: (port) => {
+            ceoPort = port;
+          },
         },
       );
     } catch (error) {
@@ -105,21 +117,25 @@ export class ExecuteAgentTurnUseCase {
         || (error instanceof Error && error.name === 'PromptCancelledError')
       ) {
         this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${sessionLabel}`);
-        return finish('cancelled', ceoPort.lastAgentMessage || '');
+        return finish('cancelled', currentCeoPort()?.lastAgentMessage ?? '');
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Turn Failed] Session=${sessionLabel}: ${errorMessage}`);
 
-      return finish('failed', ceoPort.lastAgentMessage || '', errorMessage);
+      return finish('failed', currentCeoPort()?.lastAgentMessage ?? '', errorMessage);
     }
   }
 
   private async runDelegationLoop(
     conversationKey: string,
+    agentId: string,
     request: TurnRequest,
     finish: (status: TurnStatus, response: string, errorMessage?: string) => Promise<TurnResult>,
-    onSessionResolved: (session: SessionContext) => void,
+    observers: {
+      readonly onSessionResolved: (session: SessionContext) => void;
+      readonly onCeoPort: (ceoPort: IAgentPort) => void;
+    },
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let prompt = this.enrichPromptWithAttachments(request.prompt, request.attachments);
@@ -127,10 +143,12 @@ export class ExecuteAgentTurnUseCase {
     for (let round = 1; ; round++) {
       const { response, decision } = await this.conversationRuntime.runOnCeo(
         conversationKey,
+        agentId,
         async (ceoPort, turn) => {
+          observers.onCeoPort(ceoPort);
           if (!session) {
             session = await this.resolveSession(request);
-            onSessionResolved(session);
+            observers.onSessionResolved(session);
             this.logger.log(
               `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
             );
@@ -160,7 +178,7 @@ export class ExecuteAgentTurnUseCase {
         return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
       }
 
-      prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey);
+      prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey, agentId);
     }
   }
 
@@ -303,6 +321,7 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
+    agentId: string,
   ): Promise<string> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
@@ -323,7 +342,7 @@ export class ExecuteAgentTurnUseCase {
       this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole, existing);
     }
 
-    const delegatePort = this.agentPortFactory.create();
+    const delegatePort = this.agentPortFactory.create(agentId);
     const event = {
       round,
       role: delegateToRole,
@@ -419,7 +438,8 @@ export class ExecuteAgentTurnUseCase {
         const latest = await this.findLatestSession(session);
         const storedSessionId = sessionMode === 'new'
           ? undefined
-          : latest.agentSessions.find(agentSession => agentSession.role === role)?.sessionId;
+          : latest.agentSessions.find(agentSession =>
+            agentSession.role === role && agentSession.agentId === agentPort.agentName)?.sessionId;
         const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
@@ -428,7 +448,7 @@ export class ExecuteAgentTurnUseCase {
         }
         const { currentSessionId } = agentPort;
         if (currentSessionId && currentSessionId !== storedSessionId) {
-          await this.bindAgentSession(latest, role, currentSessionId);
+          await this.bindAgentSession(latest, { role, agentId: agentPort.agentName, sessionId: currentSessionId });
         }
       }
 
@@ -479,17 +499,19 @@ export class ExecuteAgentTurnUseCase {
     return await this.sessionStore.findSession(session.channelId, session.threadId) ?? session;
   }
 
-  private async bindAgentSession(session: SessionContext, role: string, sessionId: string): Promise<void> {
+  private async bindAgentSession(session: SessionContext, binding: AgentSession): Promise<void> {
+    const others = session.agentSessions.filter(agentSession =>
+      agentSession.role !== binding.role || agentSession.agentId !== binding.agentId);
     await this.sessionStore.saveSession({
       ...session,
-      agentSessions: [...session.agentSessions.filter(agentSession => agentSession.role !== role), { role, sessionId }],
+      agentSessions: [...others, binding],
       updatedAt: new Date(),
     });
   }
 
   private async applyAgentConfig(agentPort: IAgentPort, role: string): Promise<void> {
-    const settings = await this.settingsStore.load();
-    if (settings) {
+    const settings = await this.findAgentSettings(agentPort);
+    if (settings?.modelId) {
       await agentPort.setConfig({
         modelId: settings.modelId,
         effortId: settings.effortId ?? undefined,
@@ -503,9 +525,16 @@ export class ExecuteAgentTurnUseCase {
     }
   }
 
+  /** Settings saved for another agent carry model ids that this agent does not know. */
+  private async findAgentSettings(agentPort: IAgentPort): Promise<AgentSettings | undefined> {
+    const settings = await this.settingsStore.load();
+    return settings?.agentId === agentPort.agentName ? settings : undefined;
+  }
+
   private async buildResult(input: {
     sessionId?: string;
-    ceoPort: IAgentPort;
+    ceoPort?: IAgentPort;
+    agentId: string;
     role: string;
     status: TurnStatus;
     response: string;
@@ -518,14 +547,16 @@ export class ExecuteAgentTurnUseCase {
       response: input.response,
       status: input.status,
       errorMessage: input.errorMessage,
-      agentInfo: await this.buildAgentInfo(input.ceoPort, input.role),
-      usage: await input.ceoPort.getLastRoundUsage().catch(() => undefined),
+      agentInfo: input.ceoPort
+        ? await this.buildAgentInfo(input.ceoPort, input.role)
+        : { roleName: this.agentRegistry.getDisplayName(input.role), agentName: input.agentId },
+      usage: await input.ceoPort?.getLastRoundUsage().catch(() => undefined),
       ...(attachments.length > 0 ? { attachments } : {}),
     };
   }
 
   private async buildAgentInfo(agentPort: IAgentPort, role: string): Promise<TurnAgentInfo> {
-    const settings = await this.settingsStore.load();
+    const settings = await this.findAgentSettings(agentPort);
     return {
       roleName: this.agentRegistry.getDisplayName(role),
       agentName: agentPort.agentName,

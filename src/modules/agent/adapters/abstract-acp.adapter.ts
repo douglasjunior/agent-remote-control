@@ -34,11 +34,26 @@ import { ResumedSession, type SessionHandle } from './resumed-session.js';
 
 
 type SessionConfigOptionSelect = SessionConfigOption & { type: 'select' };
-type ConfigCategory = 'model' | 'thought_level' | 'permissions';
+type ConfigCategory = 'model' | 'thought_level' | 'mode' | 'permissions';
 
 const CANCEL_ESCALATION_MS = 5_000;
 const CANCEL_FORCE_GRACE_MS = 15_000;
 const STEERING_METHOD = '_session/steering';
+
+const HOST_ONLY_ENV_VARS = new Set([
+  'DISCORD_BOT_TOKEN',
+  'DISCORD_GUILD_ID',
+  'WORKSPACE_DIR',
+  'DATA_DIR',
+  'SESSION_IDLE_TIMEOUT_MS',
+  'PORT',
+  'PWD',
+  'OLDPWD',
+  'INIT_CWD',
+  'PROJECT_CWD',
+]);
+
+const HOST_ONLY_ENV_PREFIX = 'npm_';
 
 const PERMISSION_ALLOW_PREFERENCE: readonly PermissionOption['kind'][] = [
   'allow_always',
@@ -125,6 +140,22 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
           ? option.description
           : undefined,
     };
+  }
+
+  /**
+   * Environment for the agent subprocess without the host application's credentials and
+   * directory, with `PWD` pointing at the subprocess `cwd`.
+   */
+  protected buildAgentEnv(cwd: string): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    for (const [key, value] of Object.entries(process.env)) {
+      if (HOST_ONLY_ENV_VARS.has(key) || key.startsWith(HOST_ONLY_ENV_PREFIX)) {
+        continue;
+      }
+      env[key] = value;
+    }
+    env.PWD = cwd;
+    return env;
   }
 
   protected async collectFallbackUsage(
