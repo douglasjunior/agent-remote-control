@@ -29,7 +29,17 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     },
   };
 
+  agentSelectionResult: StartAgentConfigSelectionResult = {
+    kind: 'selection',
+    selection: {
+      channelId: 'channel-123',
+      step: 'agent',
+      options: [{ index: 1, id: 'claude', label: 'Claude Code' }],
+    },
+  };
+
   startedSelections: { channelId: string; threadId?: string }[] = [];
+  startedAgentSelections: { channelId: string; threadId?: string }[] = [];
 
   async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
     if (this.throwError) {
@@ -50,6 +60,14 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     }
     this.startedSelections.push({ channelId, threadId });
     return this.selectionResult;
+  }
+
+  async startAgentSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
+    if (this.throwError) {
+      throw new Error('registry down');
+    }
+    this.startedAgentSelections.push({ channelId, threadId });
+    return this.agentSelectionResult;
   }
 }
 
@@ -159,6 +177,7 @@ describe('DiscordInteractionHandler', () => {
 
     expect(orchestratorService.cancelledChannelId).toBeUndefined();
     expect(orchestratorService.startedSelections).toHaveLength(0);
+    expect(orchestratorService.startedAgentSelections).toHaveLength(0);
   });
 
   describe('/cancel', () => {
@@ -199,7 +218,7 @@ describe('DiscordInteractionHandler', () => {
       expect(orchestratorService.cancelledThreadId).toBe('thread-777');
     });
 
-    it('should confirm when only a model selection was cancelled', async () => {
+    it('should confirm when only a selection was cancelled', async () => {
       orchestratorService.hasActiveTurn = false;
       orchestratorService.hasActiveSelection = true;
       const interaction = buildInteraction();
@@ -207,7 +226,7 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '🛑 **Seleção de modelo cancelada.**',
+        content: '🛑 **Seleção cancelada.**',
         ephemeral: true,
       });
     });
@@ -292,6 +311,22 @@ describe('DiscordInteractionHandler', () => {
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
 
+    it('should show typing in the new thread while the options are loaded', async () => {
+      let typingCallsDuringLoad = 0;
+      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined), sendTyping };
+      const startConfigSelection = orchestratorService.startConfigSelection.bind(orchestratorService);
+      orchestratorService.startConfigSelection = async (channelId: string, threadId?: string) => {
+        typingCallsDuringLoad = sendTyping.mock.calls.length;
+        return startConfigSelection(channelId, threadId);
+      };
+
+      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+
+      expect(typingCallsDuringLoad).toBe(1);
+      expect(thread.send).toHaveBeenCalledWith(optionsText);
+    });
+
     it('should explain inside the new thread when the agent exposes no models', async () => {
       orchestratorService.selectionResult = { kind: 'unavailable' };
       const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
@@ -342,6 +377,72 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.editReply).toHaveBeenCalledWith({
         content: '❌ **Falha ao abrir a seleção de modelo**: agent down',
+      });
+    });
+  });
+
+  describe('/agent', () => {
+    const optionsText = '🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Claude Code';
+
+    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+      commandName: 'agent',
+      editReply: vi.fn().mockResolvedValue({ startThread }),
+    });
+
+    it('should open the agent selection in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'agent-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const startThread = vi.fn().mockResolvedValue(thread);
+      const interaction = guildChannelInteraction(startThread);
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.deferReply).toHaveBeenCalledWith();
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o agente na thread abaixo.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de agente', autoArchiveDuration: 60 });
+      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'channel-123', threadId: 'agent-thread' }]);
+      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(thread.send).toHaveBeenCalledWith(optionsText);
+    });
+
+    it('should explain inside the new thread when no agent is available', async () => {
+      orchestratorService.agentSelectionResult = { kind: 'unavailable' };
+      const thread = { id: 'agent-thread', send: vi.fn().mockResolvedValue(undefined) };
+
+      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+
+      expect(thread.send).toHaveBeenCalledWith('ℹ️ Nenhum agente disponível para seleção.');
+    });
+
+    it('should publish the agent options in the current thread', async () => {
+      const interaction = buildInteraction({
+        commandName: 'agent',
+        channelId: 'thread-1',
+        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
+    });
+
+    it('should publish the agent options in a direct message', async () => {
+      const interaction = buildInteraction({ commandName: 'agent', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'dm-1', threadId: undefined }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
+    });
+
+    it('should report failures starting the agent selection', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({ commandName: 'agent', inGuild: false, channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Falha ao abrir a seleção de agente**: registry down',
       });
     });
   });

@@ -90,8 +90,23 @@ describe('OrchestratorService', () => {
 
     await expect(service.startConfigSelection('ch-1', 'th-1')).resolves.toEqual({ kind: 'unavailable' });
     await expect(service.cancelConfigSelection('ch-1', 'th-1')).resolves.toBe(true);
-    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({ channelId: 'ch-1', threadId: 'th-1' });
+    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
+      channelId: 'ch-1',
+      threadId: 'th-1',
+      step: 'model',
+    });
     expect(mockCancelSelectionUseCase.execute).toHaveBeenCalledWith('ch-1', 'th-1');
+  });
+
+  it('should start the agent selection at the agent step', async () => {
+    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+
+    await expect(service.startAgentSelection('ch-1', 'th-1')).resolves.toEqual({ kind: 'unavailable' });
+    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
+      channelId: 'ch-1',
+      threadId: 'th-1',
+      step: 'agent',
+    });
   });
 
   it('should report whether a configuration selection is active', async () => {

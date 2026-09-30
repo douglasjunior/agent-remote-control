@@ -43,7 +43,7 @@ export class ResolveConversationInputUseCase {
       return { kind: 'execute', prompt };
     }
 
-    const started = await this.startSelection.execute({ channelId, threadId, pendingPrompt: prompt });
+    const started = await this.startSelection.execute({ channelId, threadId, pendingPrompt: prompt, step: 'agent' });
     if (started.kind === 'unavailable') {
       return { kind: 'execute', prompt };
     }

@@ -35,12 +35,14 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
   private async read(): Promise<AgentSettings | null> {
     try {
       const parsed = JSON.parse(await readFile(this.filePath, 'utf-8')) as Partial<AgentSettings> | null;
-      if (typeof parsed?.modelId !== 'string' || typeof parsed.modelName !== 'string') {
+      if (typeof parsed?.agentId !== 'string') {
         return null;
       }
       return {
-        modelId: parsed.modelId,
-        modelName: parsed.modelName,
+        agentId: parsed.agentId,
+        agentName: parsed.agentName ?? parsed.agentId,
+        modelId: parsed.modelId ?? null,
+        modelName: parsed.modelName ?? null,
         effortId: parsed.effortId ?? null,
         effortName: parsed.effortName ?? null,
         updatedAt: parsed.updatedAt ?? '',

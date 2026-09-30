@@ -90,9 +90,7 @@ export class DiscordActivityFormatter {
   }
 
   formatSelection(selection: AgentConfigSelection): string {
-    const header = selection.step === 'model'
-      ? '🧠 **Escolha o modelo do agente** respondendo com o número da opção:'
-      : `⚡ **Escolha o effort para ${selection.selectedModel?.name}** respondendo com o número da opção:`;
+    const header = this.formatSelectionHeader(selection);
     const options = selection.options.map(option =>
       option.description
         ? `**${option.index}.** ${option.label} — ${option.description}`
@@ -105,7 +103,19 @@ export class DiscordActivityFormatter {
   }
 
   formatConfigured(settings: AgentSettings): string {
-    return `✅ **Configuração salva**: 🧠 ${settings.modelName} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+    return `✅ **Configuração salva**: 🤖 ${settings.agentName} · 🧠 ${settings.modelName ?? DEFAULT_LABEL} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  private formatSelectionHeader(selection: AgentConfigSelection): string {
+    if (selection.step === 'agent') {
+      return '🤖 **Escolha o agente** respondendo com o número da opção:';
+    }
+    if (selection.step === 'model') {
+      return selection.selectedAgent
+        ? `🧠 **Escolha o modelo do ${selection.selectedAgent.name}** respondendo com o número da opção:`
+        : '🧠 **Escolha o modelo do agente** respondendo com o número da opção:';
+    }
+    return `⚡ **Escolha o effort para ${selection.selectedModel?.name}** respondendo com o número da opção:`;
   }
 
   private formatTokenCount(tokens: number): string {

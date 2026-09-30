@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 
-import { AntigravityPortFactoryAdapter } from './adapters/antigravity-port-factory.adapter.js';
+import { AcpAgentPortFactoryAdapter } from './adapters/acp-agent-port-factory.adapter.js';
 import { NodeFileSystemAdapter } from './adapters/node-file-system.adapter.js';
 import { NodeProcessRunnerAdapter } from './adapters/node-process-runner.adapter.js';
 import { AgentModule } from './agent.module.js';
@@ -20,7 +20,7 @@ describe('AgentModule', () => {
     const processRunner = module.get<IProcessRunnerPort>(IProcessRunnerPort);
     const fileSystem = module.get<IFileSystemPort>(IFileSystemPort);
 
-    expect(agentFactory).toBeInstanceOf(AntigravityPortFactoryAdapter);
+    expect(agentFactory).toBeInstanceOf(AcpAgentPortFactoryAdapter);
     expect(processRunner).toBeInstanceOf(NodeProcessRunnerAdapter);
     expect(fileSystem).toBeInstanceOf(NodeFileSystemAdapter);
   });

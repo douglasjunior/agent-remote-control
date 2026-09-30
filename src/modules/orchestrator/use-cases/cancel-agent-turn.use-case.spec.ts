@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { CancelAgentTurnUseCase } from './cancel-agent-turn.use-case.js';
@@ -14,22 +14,27 @@ describe('CancelAgentTurnUseCase', () => {
 
   beforeEach(() => {
     agentPort = new StubAgentPort();
-    const factory: IAgentPortFactory = { create: () => agentPort };
+    const factory = new StubAgentPortFactory(() => agentPort);
     runtime = new ConversationRuntimeService(factory, 60_000);
     useCase = new CancelAgentTurnUseCase(runtime);
   });
 
-  const runBlockingTurn = (): { finish: () => void; done: Promise<void> } => {
+  const runBlockingTurn = (): { started: Promise<void>; finish: () => void; done: Promise<void> } => {
     let finish: () => void = () => undefined;
-    const done = runtime.run('ch-1:th-1', () => new Promise<void>((resolve) => {
+    let markStarted: () => void = () => undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const done = runtime.run('ch-1:th-1', 'stub', () => new Promise<void>((resolve) => {
       finish = resolve;
+      markStarted();
     }));
-    return { finish: () => finish(), done };
+    return { started, finish: () => finish(), done };
   };
 
   it('should cancel the turn in progress and report it', async () => {
     const turn = runBlockingTurn();
-    await Promise.resolve();
+    await turn.started;
 
     await expect(useCase.execute('ch-1', 'th-1')).resolves.toBe(true);
 
@@ -45,7 +50,7 @@ describe('CancelAgentTurnUseCase', () => {
 
   it('should ignore turns of other threads in the same channel', async () => {
     const turn = runBlockingTurn();
-    await Promise.resolve();
+    await turn.started;
 
     await expect(useCase.execute('ch-1', 'th-2')).resolves.toBe(false);
 
@@ -59,7 +64,7 @@ describe('CancelAgentTurnUseCase', () => {
       throw new Error('cancel failed');
     };
     const turn = runBlockingTurn();
-    await Promise.resolve();
+    await turn.started;
 
     await expect(useCase.execute('ch-1', 'th-1')).rejects.toThrow('cancel failed');
     turn.finish();

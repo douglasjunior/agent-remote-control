@@ -462,6 +462,34 @@ describe('DiscordActivityFormatter', () => {
       );
     });
 
+    it('should list the agent options', () => {
+      expect(formatter.formatSelection({
+        channelId: 'ch-1',
+        step: 'agent',
+        options: [
+          { index: 1, id: 'agy', label: 'Antigravity' },
+          { index: 2, id: 'claude', label: 'Claude Code' },
+        ],
+      })).toBe(
+        [
+          '🤖 **Escolha o agente** respondendo com o número da opção:',
+          '**1.** Antigravity',
+          '**2.** Claude Code',
+        ].join('\n'),
+      );
+    });
+
+    it('should name the selected agent in the model step', () => {
+      const text = formatter.formatSelection({
+        ...selection,
+        selectedAgent: { id: 'claude', name: 'Claude Code' },
+      });
+
+      expect(text.split('\n')[0]).toBe(
+        '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:',
+      );
+    });
+
     it('should name the selected model in the effort step', () => {
       const text = formatter.formatSelection({
         ...selection,
@@ -482,6 +510,8 @@ describe('DiscordActivityFormatter', () => {
 
     it('should confirm the saved settings', () => {
       const settings = {
+        agentId: 'claude',
+        agentName: 'Claude Code',
         modelId: 'deep',
         modelName: 'Deep Model',
         effortId: null,
@@ -490,10 +520,13 @@ describe('DiscordActivityFormatter', () => {
       };
 
       expect(formatter.formatConfigured(settings)).toBe(
-        '✅ **Configuração salva**: 🧠 Deep Model · ⚡ padrão',
+        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 Deep Model · ⚡ padrão',
       );
       expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
-        '✅ **Configuração salva**: 🧠 Deep Model · ⚡ High',
+        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
+      );
+      expect(formatter.formatConfigured({ ...settings, modelId: null, modelName: null })).toBe(
+        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 padrão · ⚡ padrão',
       );
     });
   });

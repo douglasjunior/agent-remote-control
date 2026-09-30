@@ -23,6 +23,7 @@ describe('StubAgentPort', () => {
     expect(received).toEqual([activity]);
 
     unsubscribe();
+    unsubscribe();
     stub.emitActivity({ kind: 'cancelled', id: 'cancel-1' });
     expect(received).toHaveLength(1);
   });
@@ -46,5 +47,24 @@ describe('StubAgentPort', () => {
 
     expect(stub.getAvailableModels()).toBeNull();
     expect(await stub.getAvailableEffortsForModel('model-1')).toBeNull();
+  });
+
+  it('should yield the configured updates when there is no mock response', async () => {
+    const stub = new StubAgentPort();
+    stub.updatesToYield = [{ kind: 'text', text: 'chunk' }];
+
+    const updates: unknown[] = [];
+    for await (const update of stub.prompt('hi')) {
+      updates.push(update);
+    }
+
+    expect(updates).toEqual([{ kind: 'text', text: 'chunk' }]);
+  });
+
+  it('should fail the prompt with the configured error', async () => {
+    const stub = new StubAgentPort();
+    stub.errorToThrowOnPrompt = new Error('prompt failed');
+
+    await expect(stub.prompt('hi').next()).rejects.toThrow('prompt failed');
   });
 });

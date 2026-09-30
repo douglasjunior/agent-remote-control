@@ -5,8 +5,8 @@ description: >
   Adapters. Define o contrato IAgentPort, o ciclo de vida da sessão (connect,
   createSession, loadSession, prompt, cancel, closeSession), a retomada via session/load,
   a detecção de transporte perdido, a escada de cancelamento com e sem steering, o demux
-  de streaming e o AntigravityAdapter. Use ao implementar, estender ou consumir agentes,
-  bridges ACP, processos e streams.
+  de streaming, a fábrica multi-agente e os adapters AntigravityAdapter e ClaudeCodeAdapter.
+  Use ao implementar, estender ou consumir agentes, bridges ACP, processos e streams.
 ---
 
 # Porta do Agente e Integração ACP
@@ -26,13 +26,22 @@ o núcleo da aplicação dos detalhes técnicos de comunicação com agentes de 
 Cada instância de `IAgentPort` representa um subprocesso de agente com uma única sessão
 ACP. Consumidores obtêm instâncias pela fábrica `IAgentPortFactory`
 (`src/modules/agent/ports/agent-port-factory.port.ts`), registrada no `AgentModule` com
-`AntigravityPortFactoryAdapter`:
+`AcpAgentPortFactoryAdapter`:
 
 ```ts
 @Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory
 
-const agentPort = this.agentPortFactory.create();
+const agentPort = this.agentPortFactory.create('claude');
 ```
+
+A fábrica expõe:
+
+- `defaultAgentId: string`: agente usado enquanto não há escolha salva (`'agy'`);
+- `listAgents(): readonly AgentProviderInfo[]`: catálogo (`agentId`, `displayName`) na ordem de exibição — `agy` (Antigravity) e `claude` (Claude Code);
+- `create(agentId: string): IAgentPort`: instância nova do agente; lança `Unknown agent "<id>". Available agents: ...` para um ID fora do catálogo.
+
+O `agentId` do catálogo é igual ao `agentName` da porta criada, e é por ele que o orquestrador
+compara a porta viva com o agente escolhido.
 
 O `AgentModule` exporta a fábrica e as portas de infraestrutura `IProcessRunnerPort` e
 `IFileSystemPort`. Um `IAgentPort` singleton faria todas as conversas compartilharem a
@@ -40,7 +49,7 @@ mesma sessão ACP e o mesmo `cwd`.
 
 ### Propriedades
 
-- `agentName: string`: identificador do agente concreto (ex.: `'agy'`), exibido no rodapé das respostas.
+- `agentName: string`: identificador do agente concreto (`'agy'` ou `'claude'`), igual ao `agentId` da fábrica e exibido no rodapé das respostas.
 - `lastAgentMessage: string`: última resposta textual consolidada do turno.
 - `currentSessionId?: string`: ID da sessão ACP ativa. Fica `undefined` sem sessão, inclusive depois de transporte perdido ou cancelamento forçado.
 - `supportsSteering: boolean`: indica se o agente suporta redirecionamento (steering) nativo durante a execução de um turno.
@@ -116,17 +125,27 @@ e a mensagem deixa de ser narrada. `takeFinalText()` e `lastAgentMessage` devolv
 envelopes (`splitFinalResponse`), que aceita envelope sem fechamento. Sem envelope, o texto final
 junta todas as mensagens que não são thought, o que cobre sessões retomadas de antes do envelope.
 
-## Adaptadores ACP e Antigravity
+## Adaptadores ACP
 
 A classe base `AbstractAcpAdapter` implementa o protocolo ACP, as sessões e a integração
-com o demux.
+com o demux. Ela também provê `buildAgentEnv(cwd)`, o ambiente isolado de todo subprocesso de
+agente: credenciais e configuração da aplicação hospedeira (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
+`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), as variáveis que revelam o
+diretório da aplicação (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) e as do prefixo `npm_` ficam de
+fora, e `PWD` é reescrito com o `cwd` do subprocesso. O restante do ambiente segue adiante, porque o
+agente depende dele para operar (`PATH`, `HOME`, `SSH_AUTH_SOCK`, credenciais do próprio agente).
+
+Os `sessionConfigPresets()` de um adapter são aplicados a toda sessão criada ou carregada, por
+categoria de opção (`model`, `thought_level`, `mode`, `permissions`). Um preset cujo valor o agente
+não publica é registrado em log e ignorado.
+
+### `AntigravityAdapter`
 
 O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e provê:
 
 - Resolução do binário do bridge (`agy-acp-bridge.js` compilado ou `agy-acp-bridge.ts` em desenvolvimento).
 - Injeção de `AGY_PATH` via `IFileSystemPort.resolveInPath('agy')` quando ausente do ambiente.
-- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`, em `tmpdir()`. O bridge sobe no `connect()`, antes de a sessão existir, então não há `cwd` de sessão a adotar.
-- Isolamento do ambiente do bridge: credenciais e configuração da aplicação hospedeira (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), as variáveis que revelam o diretório da aplicação (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) e as do prefixo `npm_` ficam de fora. `PWD` é reescrito com o `cwd` do subprocesso. O restante do ambiente segue adiante, porque o agente depende dele para operar (`PATH`, `HOME`, `SSH_AUTH_SOCK`).
+- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`, em `tmpdir()`, com `buildAgentEnv`. O bridge sobe no `connect()`, antes de a sessão existir, então não há `cwd` de sessão a adotar.
 
 O diretório onde o agente trabalha é o `cwd` da sessão, e não o do bridge: `createSession(cwd)` e `loadSession(cwd, id)` recebem o caminho, e o bridge sobe cada processo `agy` nele, com `PWD` alinhado.
 
@@ -143,9 +162,22 @@ com `--conversation`, mesmo que o anterior ainda não tenha saído, e o processo
 recebe `SIGTERM`. Assim, um `exit` atrasado do processo antigo não cancela nem rejeita o prompt
 novo.
 
+### `ClaudeCodeAdapter`
+
+O `ClaudeCodeAdapter` (`agentName = 'claude'`) integra o Claude Code CLI pelo adaptador ACP oficial
+`@agentclientprotocol/claude-agent-acp` (dependência do projeto), sem bridge próprio:
+
+- Executa `node <claude-agent-acp>/dist/index.js`, resolvido com `createRequire(import.meta.url)`, em `tmpdir()` e com `buildAgentEnv`.
+- Injeta `CLAUDE_CODE_EXECUTABLE` via `IFileSystemPort.resolveInPath('claude')` quando ausente do ambiente, para usar o CLI instalado (e o login dele). Sem `claude` no `PATH`, o Claude Agent SDK usa o binário embutido.
+- Preset de sessão `mode = bypassPermissions`: ninguém responde pedidos de permissão numa sessão remota. O Claude Code não oferece esse modo para processo `root` sem `IS_SANDBOX=1`; nesse caso a sessão segue no modo padrão do usuário e os pedidos de permissão são aprovados pelo handler do `AbstractAcpAdapter`.
+- O agente anuncia `loadSession` e `_meta.steering.supported`, então retomada, steering (`_session/steering`) e a escada de cancelamento com steering valem sem código específico. O `session/load` reenvia o histórico antes de responder e não restaura modelo, effort nem modo; o `applySessionConfig` do adapter base os reaplica.
+- As opções publicadas são `model` (aliases como `opus`, `sonnet`, `haiku` e IDs completos), `effort` (categoria `thought_level`, ausente em modelos sem effort, como `haiku`), `mode` e `fast`. Os efforts dependem do modelo e são lidos pela sessão de sondagem de `getAvailableEffortsForModel`.
+- A sessão carrega as configurações do usuário do Claude Code (`~/.claude/settings.json`, `CLAUDE.md`, hooks, skills), já que o SDK roda com `settingSources` de usuário, projeto e local.
+
 ## Regras Prescritivas
 
-- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias via `@Inject(IAgentPortFactory)` e `create()`.
+- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias via `@Inject(IAgentPortFactory)` e `create(agentId)`.
+- **Novo agente entra pela fábrica**: um adapter novo herda de `AbstractAcpAdapter`, usa `buildAgentEnv` no spawn e é registrado no catálogo do `AcpAgentPortFactoryAdapter` com `agentId` igual ao seu `agentName`.
 - **Proibido acoplar o núcleo ao SDK do ACP**: casos de uso manipulam exclusivamente os tipos de `agent.port.ts`.
 - **Isolamento de I/O em adaptadores concretos**: sistema de arquivos e processos passam por `IFileSystemPort` e `IProcessRunnerPort`.
 - **Limpeza de recursos obrigatória**: garanta `closeSession()` ou `disconnect()` em blocos `finally` ou no descarte de recursos de orquestração.

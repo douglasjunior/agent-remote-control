@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import type { AgentSession } from '../models/agent-session.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { ISessionStorePort } from '../ports/session-store.port.js';
 import { resolveDataDirectory } from '../utils/data-directory.util.js';
@@ -9,8 +10,10 @@ import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 const SESSIONS_FILENAME = 'sessions.json';
 
+type StoredAgentSession = Omit<AgentSession, 'agentId'> & { readonly agentId?: string };
+
 type StoredSession = Omit<SessionContext, 'agentSessions' | 'createdAt' | 'updatedAt'> & {
-  readonly agentSessions?: SessionContext['agentSessions'];
+  readonly agentSessions?: readonly StoredAgentSession[];
   readonly createdAt: string;
   readonly updatedAt: string;
 };
@@ -66,7 +69,9 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
       for (const item of items) {
         sessions.set(item.sessionId, {
           ...item,
-          agentSessions: item.agentSessions ?? [],
+          agentSessions: (item.agentSessions ?? []).filter(
+            (agentSession): agentSession is AgentSession => typeof agentSession.agentId === 'string',
+          ),
           createdAt: new Date(item.createdAt),
           updatedAt: new Date(item.updatedAt),
         });

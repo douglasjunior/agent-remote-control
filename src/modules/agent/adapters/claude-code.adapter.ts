@@ -1,0 +1,65 @@
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { ChildProcess } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { tmpdir } from 'node:os';
+
+import type { AgentConfig } from '../ports/agent.port.js';
+import { IFileSystemPort } from '../ports/file-system.port.js';
+import { IProcessRunnerPort } from '../ports/process-runner.port.js';
+
+import {
+  AbstractAcpAdapter,
+  type SessionConfigPreset,
+} from './abstract-acp.adapter.js';
+
+
+const CLAUDE_AGENT_ACP_ENTRY = '@agentclientprotocol/claude-agent-acp/dist/index.js';
+
+/**
+ * Sessions of the remote-controlled agent have no one to answer permission prompts, so they
+ * run with `bypassPermissions`, the same full-access behavior of the agy bridge.
+ */
+const SESSION_PRESETS: readonly SessionConfigPreset[] = [{ category: 'mode', value: 'bypassPermissions' }];
+
+@Injectable()
+export class ClaudeCodeAdapter extends AbstractAcpAdapter {
+  readonly agentName = 'claude';
+
+  constructor(
+    @Inject(IFileSystemPort) private readonly fileSystem: IFileSystemPort,
+    @Inject(IProcessRunnerPort)
+    private readonly processRunner: IProcessRunnerPort,
+    @Optional() preferredConfig?: AgentConfig,
+  ) {
+    super(preferredConfig ?? {});
+  }
+
+  protected spawnAgentProcess(): ChildProcess {
+    const cwd = tmpdir();
+    return this.processRunner.spawn(process.execPath, [this.resolveAgentEntry()], {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: this.buildClaudeEnv(cwd),
+    });
+  }
+
+  protected override sessionConfigPresets(): readonly SessionConfigPreset[] {
+    return SESSION_PRESETS;
+  }
+
+  private resolveAgentEntry(): string {
+    return createRequire(import.meta.url).resolve(CLAUDE_AGENT_ACP_ENTRY);
+  }
+
+  /** Points the Claude Agent SDK at the installed `claude` CLI instead of its bundled binary. */
+  private buildClaudeEnv(cwd: string): NodeJS.ProcessEnv {
+    const env = this.buildAgentEnv(cwd);
+    if (!env.CLAUDE_CODE_EXECUTABLE) {
+      const claudePath = this.fileSystem.resolveInPath('claude');
+      if (claudePath) {
+        env.CLAUDE_CODE_EXECUTABLE = claudePath;
+      }
+    }
+    return env;
+  }
+}

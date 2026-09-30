@@ -42,7 +42,11 @@ export class OrchestratorService {
   }
 
   startConfigSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
-    return this.startAgentConfigSelectionUseCase.execute({ channelId, threadId });
+    return this.startAgentConfigSelectionUseCase.execute({ channelId, threadId, step: 'model' });
+  }
+
+  startAgentSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
+    return this.startAgentConfigSelectionUseCase.execute({ channelId, threadId, step: 'agent' });
   }
 
   cancelConfigSelection(channelId: string, threadId?: string): Promise<boolean> {

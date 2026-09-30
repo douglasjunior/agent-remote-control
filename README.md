@@ -10,7 +10,7 @@ O sistema desacopla totalmente as regras de negócio dos detalhes tecnológicos 
 
 O código é estruturado em módulos verticais autônomos em `src/modules/`:
 
-- **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux` e o adaptador concreto `AntigravityAdapter` integrado à ponte `AgyBridgeServer` (Google Antigravity CLI).
+- **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux`, a fábrica `AcpAgentPortFactoryAdapter` e os adaptadores concretos `AntigravityAdapter` (ponte `AgyBridgeServer` para o Google Antigravity CLI) e `ClaudeCodeAdapter` (Claude Code CLI pelo adaptador ACP oficial `@agentclientprotocol/claude-agent-acp`).
 - **`orchestrator`** (`src/modules/orchestrator`): motor de orquestração agnóstico a canais. Contém os casos de uso `ExecuteAgentTurnUseCase` e `CancelAgentTurnUseCase`, gerenciamento de persistência de sessões (`ISessionStorePort`) e coordenação reativa de eventos.
 - **`agent-definitions`** (`src/modules/agent-definitions`): registro e parametrização de personas de agentes (`AgentRegistryService`). Define papéis como **CEO** (orquestração e triagem), **Tech Lead** (planejamento técnico e arquitetura), **Developer** (implementação e testes) e **Code Reviewer** (revisão independente de código).
 - **`workspace`** (`src/modules/workspace`): gerenciamento de repositórios e workspaces (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
@@ -31,10 +31,10 @@ sequenceDiagram
     participant DiscordBot as Discord Bot Handler
     participant Orchestrator as ExecuteAgentTurnUseCase
     participant AgentRegistry as AgentRegistryService
-    participant AgentPort as IAgentPort (AntigravityAdapter)
+    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter)
     participant Demux as AgentStreamDemux
     participant Workspace as Workspace (Files / Git)
-    participant AgentBridge as AgyBridgeServer / ACP CLI
+    participant AgentBridge as AgyBridgeServer / claude-agent-acp
 
     Usuario->>DiscordBot: Envia mensagem (@bot ou comando)
     DiscordBot->>DiscordBot: Cria / associa Thread da sessão no Discord
@@ -77,7 +77,9 @@ sequenceDiagram
 
 - **Node.js** `>=24`
 - **Yarn** `1.22+`
-- **Google Antigravity CLI** (`agy` disponível no `PATH` global da máquina)
+- Ao menos um agente instalado e autenticado:
+  - **Google Antigravity CLI** (`agy` disponível no `PATH` global da máquina);
+  - **Claude Code CLI** (`claude` disponível no `PATH`, instalado e autenticado pelo usuário). O adaptador ACP oficial `@agentclientprotocol/claude-agent-acp` já vem nas dependências e usa o `claude` do `PATH`; sem ele, recorre ao binário embutido no Claude Agent SDK. As sessões do Claude Code carregam as configurações do usuário (`~/.claude/settings.json`, `CLAUDE.md`, hooks e skills) e rodam em modo `bypassPermissions`, que o Claude Code recusa quando o processo roda como `root` sem `IS_SANDBOX=1`.
 - **Git** instalado e configurado
 
 ---
@@ -105,9 +107,10 @@ Parâmetros suportados:
 | `DISCORD_BOT_TOKEN` | Token secreto do bot | Aba **Bot** > Seção *Token* > Botão **Redefinir token** (*Reset Token*) | *(Obrigatório)* |
 | `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
 | `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
-| `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o modelo/effort escolhidos) | Configuração local da máquina | `./data` |
+| `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o agente, o modelo e o effort escolhidos) | Configuração local da máquina | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
 | `AGY_PATH` | Caminho para o executável `agy` | Executável no `PATH` global | `agy` |
+| `CLAUDE_CODE_EXECUTABLE` | Caminho para o executável `claude` usado pelo agente Claude Code | Executável no `PATH` global | `claude` do `PATH` ou binário embutido no SDK |
 | `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
 
 ---
@@ -138,7 +141,7 @@ Para que o bot do Discord consiga autenticar, escutar mensagens, responder em ca
 2. Ative a opção **Modo de Desenvolvedor**.
 3. Feche as configurações.
 4. Na barra lateral esquerda do Discord, clique com o **botão direito** no ícone do seu servidor e selecione **Copiar ID do Servidor**.
-5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Com a variável definida, os comandos `/cancel` e `/model` são registrados só neste servidor, com efeito imediato; sem ela, o registro é global).*
+5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Com a variável definida, os comandos `/cancel`, `/model` e `/agent` são registrados só neste servidor, com efeito imediato; sem ela, o registro é global).*
 
 ### Passo 4: Convidar o Bot para o Servidor
 1. No Developer Portal, vá em **OAuth2 > URL Generator**.
@@ -170,12 +173,12 @@ O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu 
 - **Em Canais de Servidor**:
   - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
   - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
-- **Escolha de Modelo e Effort**:
-  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os modelos numerados. Responda com o número da opção e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
-  - Digite `/model` para trocar a escolha a qualquer momento. A configuração é global e vale para todas as conversas.
-  - Toda resposta termina com um rodapé indicando o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (agy) · 🧠 Gemini 3.8 Flash · ⚡ padrão`.
+- **Escolha de Agente, Modelo e Effort**:
+  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os agentes numerados (Antigravity e Claude Code). Responda com o número do agente, depois com o número do modelo e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
+  - Digite `/agent` para trocar de agente (seguido da escolha de modelo e effort dele) e `/model` para trocar só o modelo e o effort do agente atual. A configuração é global e vale para todas as conversas; cada conversa guarda a sessão de cada agente, então voltar a um agente retoma a conversa que ele já tinha.
+  - Toda resposta termina com um rodapé indicando o papel, o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
 - **Cancelamento de Turno**:
-  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução ou encerrar uma seleção de modelo em andamento.
+  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução ou encerrar uma seleção de agente ou modelo em andamento.
 
 ---
 

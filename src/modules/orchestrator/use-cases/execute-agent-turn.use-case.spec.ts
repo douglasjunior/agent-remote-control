@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import type { AgentSettings } from '../models/agent-settings.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import {
@@ -13,6 +13,7 @@ import { ConversationRuntimeService } from '../services/conversation-runtime.ser
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
+import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { buildConversationKey } from '../utils/conversation-key.util.js';
@@ -59,6 +60,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let agentRegistry: StubAgentRegistryPort;
   let workspacePort: StubWorkspacePort;
   let delegationDetector: DelegationDetectorService;
+  let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
 
   beforeEach(() => {
@@ -71,16 +73,18 @@ describe('ExecuteAgentTurnUseCase', () => {
     delegationDetector = new DelegationDetectorService();
 
     let createCount = 0;
-    const portFactory: IAgentPortFactory = {
-      create: () => {
-        createCount++;
-        return createCount === 1 ? stubAgentPort : delegateStubPort;
-      },
-    };
+    portFactory = new StubAgentPortFactory(() => {
+      createCount++;
+      return createCount === 1 ? stubAgentPort : delegateStubPort;
+    });
 
-    runtime = new ConversationRuntimeService(portFactory, 60_000);
+    wire(portFactory);
+  });
+
+  const wire = (factory: StubAgentPortFactory) => {
+    runtime = new ConversationRuntimeService(factory, 60_000);
     useCase = new ExecuteAgentTurnUseCase(
-      portFactory,
+      factory,
       sessionStore,
       agentRegistry,
       workspacePort,
@@ -88,7 +92,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       delegationDetector,
       runtime,
     );
-  });
+  };
 
   const turnRequest = (overrides: Partial<TurnRequest> = {}): TurnRequest => ({
     channelId: 'ch-1',
@@ -418,9 +422,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     const first = useCase.execute(turnRequest({ threadId: 'th-1', prompt: 'one' }));
     await firstStarted;
     const second = useCase.execute(turnRequest({ threadId: 'th-1', prompt: 'two', onQueued }));
-    await new Promise(resolve => setImmediate(resolve));
+    await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
-    expect(onQueued).toHaveBeenCalledTimes(1);
     expect(stubAgentPort.promptCalls).toHaveLength(1);
 
     releaseFirst();
@@ -596,7 +599,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   describe('agent session recovery', () => {
     const persistedSession = () =>
-      sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }] }));
+      sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }] }));
     const storedAgentSessions = async () => (await sessionStore.findSession('ch-1'))?.agentSessions;
 
     it('should persist the agent session id created for a new conversation', async () => {
@@ -604,7 +607,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       await useCase.execute(turnRequest());
 
-      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'session-1' }]);
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1' }]);
     });
 
     it('should resume the persisted agent session without resending the system prompt', async () => {
@@ -617,7 +620,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual(['Continue']);
-      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'conv-old' }]);
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }]);
     });
 
     it('should create a new session and store its id when the load fails', async () => {
@@ -629,7 +632,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
       expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\nContinue']);
-      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', sessionId: 'session-1' }]);
+      expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1' }]);
     });
 
     it('should persist the delegate session id alongside the CEO session id', async () => {
@@ -640,14 +643,14 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(delegateStubPort.loadSessionCalls).toHaveLength(0);
       expect(await storedAgentSessions()).toEqual([
-        { role: 'CEO', sessionId: 'session-1' },
-        { role: 'DEVELOPER', sessionId: 'session-1' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1' },
+        { role: 'DEVELOPER', agentId: 'stub', sessionId: 'session-1' },
       ]);
     });
 
     it('should resume the stored delegate session without resending the system prompt', async () => {
       await sessionStore.saveSession(buildSessionContext({
-        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'DEVELOPER', sessionId: 'dev-old' }],
+        agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old' }],
       }));
       stubAgentPort.mockResponses = ['Fix it.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
       delegateStubPort.mockResponses = ['Fixed.'];
@@ -658,14 +661,14 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.createSessionCalls).toHaveLength(0);
       expect(delegateStubPort.promptCalls).toEqual(['Fix it.']);
       expect(await storedAgentSessions()).toEqual([
-        { role: 'CEO', sessionId: 'conv-old' },
-        { role: 'DEVELOPER', sessionId: 'dev-old' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'conv-old' },
+        { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old' },
       ]);
     });
 
     it('should start a fresh delegate session when sessionMode is new in delegation marker', async () => {
       await sessionStore.saveSession(buildSessionContext({
-        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'DEVELOPER', sessionId: 'dev-old' }],
+        agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old' }],
       }));
       stubAgentPort.mockResponses = ['Fix it from scratch.\n[DELEGATE:DEVELOPER:my-app:new]', 'Ok.\n[DONE]'];
       delegateStubPort.mockResponses = ['Fixed.'];
@@ -676,14 +679,14 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
       expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nFix it from scratch.']);
       expect(await storedAgentSessions()).toEqual([
-        { role: 'CEO', sessionId: 'conv-old' },
-        { role: 'DEVELOPER', sessionId: 'session-1' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'conv-old' },
+        { role: 'DEVELOPER', agentId: 'stub', sessionId: 'session-1' },
       ]);
     });
 
     it('should start a fresh delegate session when persona defaults to new session mode', async () => {
       await sessionStore.saveSession(buildSessionContext({
-        agentSessions: [{ role: 'CEO', sessionId: 'conv-old' }, { role: 'CODE_REVIEWER', sessionId: 'rev-old' }],
+        agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }, { role: 'CODE_REVIEWER', agentId: 'stub', sessionId: 'rev-old' }],
       }));
       stubAgentPort.mockResponses = ['Review it.\n[DELEGATE:CODE_REVIEWER:my-app]', 'Ok.\n[DONE]'];
       delegateStubPort.mockResponses = ['Reviewed.'];
@@ -694,8 +697,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
       expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nReview it.']);
       expect(await storedAgentSessions()).toEqual([
-        { role: 'CEO', sessionId: 'conv-old' },
-        { role: 'CODE_REVIEWER', sessionId: 'session-1' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'conv-old' },
+        { role: 'CODE_REVIEWER', agentId: 'stub', sessionId: 'session-1' },
       ]);
     });
 
@@ -717,9 +720,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should replace only the delegate role session when its load fails', async () => {
       await sessionStore.saveSession(buildSessionContext({
         agentSessions: [
-          { role: 'CEO', sessionId: 'conv-old' },
-          { role: 'DEVELOPER', sessionId: 'dev-old' },
-          { role: 'REVIEWER', sessionId: 'rev-old' },
+          { role: 'CEO', agentId: 'stub', sessionId: 'conv-old' },
+          { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old' },
+          { role: 'REVIEWER', agentId: 'stub', sessionId: 'rev-old' },
         ],
       }));
       delegateStubPort.loadSessionResult = false;
@@ -730,9 +733,9 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nGo.']);
       expect(await storedAgentSessions()).toEqual([
-        { role: 'CEO', sessionId: 'conv-old' },
-        { role: 'REVIEWER', sessionId: 'rev-old' },
-        { role: 'DEVELOPER', sessionId: 'session-1' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'conv-old' },
+        { role: 'REVIEWER', agentId: 'stub', sessionId: 'rev-old' },
+        { role: 'DEVELOPER', agentId: 'stub', sessionId: 'session-1' },
       ]);
     });
 
@@ -756,7 +759,9 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   describe('agent settings', () => {
-    const settings = {
+    const settings: AgentSettings = {
+      agentId: 'stub',
+      agentName: 'Stub Agent',
       modelId: 'm-fast',
       modelName: 'Fast Model',
       effortId: 'high',
@@ -826,6 +831,202 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.agentInfo?.modelName).toBe('Model Two');
       expect(result.agentInfo?.effortName).toBeUndefined();
+    });
+  });
+
+  describe('agent selection', () => {
+    const settingsOf = (overrides: Partial<AgentSettings> = {}): AgentSettings => ({
+      agentId: 'other',
+      agentName: 'Other Agent',
+      modelId: 'opus',
+      modelName: 'Opus',
+      effortId: null,
+      effortName: null,
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+    const storedAgentSessions = async () => (await sessionStore.findSession('ch-1'))?.agentSessions;
+
+    it('should run the CEO and create delegates with the agent of the settings', async () => {
+      settingsStore.settings = settingsOf();
+      stubAgentPort.agentName = 'other';
+      delegateStubPort.agentName = 'other';
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+      const events: DelegationEvent[] = [];
+
+      const result = await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+
+      expect(portFactory.createdAgentIds).toEqual(['other', 'other']);
+      expect(stubAgentPort.configCalls).toContainEqual({ modelId: 'opus', effortId: undefined });
+      expect(delegateStubPort.configCalls).toEqual([{ modelId: 'opus', effortId: undefined }]);
+      expect(result.agentInfo).toMatchObject({ agentName: 'other', modelName: 'Opus' });
+      expect(events.find(event => event.phase === 'finished')).toMatchObject({
+        agentInfo: { agentName: 'other', modelName: 'Opus' },
+      });
+    });
+
+    it('should use the factory default agent when there are no settings', async () => {
+      portFactory.defaultAgentId = 'fallback';
+      stubAgentPort.agentName = 'fallback';
+      delegateStubPort.agentName = 'fallback';
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(portFactory.createdAgentIds).toEqual(['fallback', 'fallback']);
+      expect(result.agentInfo?.agentName).toBe('fallback');
+    });
+
+    it('should apply the role default model when the settings carry only the agent', async () => {
+      settingsStore.settings = settingsOf({ agentId: 'stub', modelId: null, modelName: null });
+      stubAgentPort.modelsToReturn = {
+        availableModels: [{ modelId: 'current', name: 'current', displayName: 'Current Model' }],
+        currentModelId: 'current',
+      };
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.configCalls).toEqual([{ modelId: 'mock-model-v1' }]);
+      expect(result.agentInfo).toEqual({
+        roleName: 'CEO',
+        agentName: 'stub',
+        modelName: 'Current Model',
+        effortName: undefined,
+      });
+    });
+
+    it('should ignore settings saved for a different agent than the one running', async () => {
+      settingsStore.settings = settingsOf({ effortId: 'high', effortName: 'High' });
+      stubAgentPort.modelsToReturn = {
+        availableModels: [{ modelId: 'current', name: 'current', displayName: 'Current Model' }],
+        currentModelId: 'current',
+      };
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.agentName).toBe('stub');
+      expect(stubAgentPort.configCalls).toEqual([{ modelId: 'mock-model-v1' }]);
+      expect(result.agentInfo).toEqual({
+        roleName: 'CEO',
+        agentName: 'stub',
+        modelName: 'Current Model',
+        effortName: undefined,
+      });
+    });
+
+    it('should fail with the selected agent in the footer when the turn fails before any CEO port exists', async () => {
+      settingsStore.load = async () => {
+        throw new Error('settings unreadable');
+      };
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toEqual({
+        sessionId: undefined,
+        response: '',
+        status: 'failed',
+        errorMessage: 'settings unreadable',
+        agentInfo: { roleName: 'CEO', agentName: 'stub' },
+        usage: undefined,
+      });
+      expect(portFactory.createdAgentIds).toHaveLength(0);
+    });
+
+    it('should persist the session ids under the agent that created them', async () => {
+      settingsStore.settings = settingsOf();
+      stubAgentPort.agentName = 'other';
+      delegateStubPort.agentName = 'other';
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'other', sessionId: 'session-1' },
+        { role: 'DEVELOPER', agentId: 'other', sessionId: 'session-1' },
+      ]);
+    });
+
+    it('should not resume a session stored for another agent and keep its entry', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [{ role: 'CEO', agentId: 'agy', sessionId: 'agy-old' }],
+      }));
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.loadSessionCalls).toHaveLength(0);
+      expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'agy', sessionId: 'agy-old' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1' },
+      ]);
+    });
+
+    it('should resume the session of the running agent among several stored agents', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [
+          { role: 'CEO', agentId: 'agy', sessionId: 'agy-old' },
+          { role: 'CEO', agentId: 'stub', sessionId: 'stub-old' },
+        ],
+      }));
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'stub-old' }]);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'agy', sessionId: 'agy-old' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'stub-old' },
+      ]);
+    });
+
+    it('should replace only the entry of the same role and agent when a session is rebound', async () => {
+      await sessionStore.saveSession(buildSessionContext({
+        agentSessions: [
+          { role: 'CEO', agentId: 'agy', sessionId: 'agy-old' },
+          { role: 'CEO', agentId: 'stub', sessionId: 'stub-old' },
+        ],
+      }));
+      stubAgentPort.loadSessionResult = false;
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'agy', sessionId: 'agy-old' },
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1' },
+      ]);
+    });
+
+    it('should switch the CEO agent between turns keeping both agents sessions', async () => {
+      const portsByAgent = new Map<string, StubAgentPort>();
+      const switchingFactory = new StubAgentPortFactory((agentId) => {
+        const port = new StubAgentPort();
+        port.agentName = agentId;
+        port.mockResponses = [`reply from ${agentId}`];
+        portsByAgent.set(agentId, port);
+        return port;
+      });
+      wire(switchingFactory);
+
+      const first = await useCase.execute(turnRequest());
+      settingsStore.settings = settingsOf({ modelId: null, modelName: null });
+      const second = await useCase.execute(turnRequest({ prompt: 'Again' }));
+
+      expect(first.response).toBe('reply from stub');
+      expect(second.response).toBe('reply from other');
+      expect(second.agentInfo?.agentName).toBe('other');
+      expect(portsByAgent.get('stub')!.closeSessionCalls).toBe(1);
+      expect(portsByAgent.get('stub')!.connected).toBe(false);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1' },
+        { role: 'CEO', agentId: 'other', sessionId: 'session-1' },
+      ]);
     });
   });
 
@@ -1075,6 +1276,119 @@ describe('ExecuteAgentTurnUseCase', () => {
         }),
       );
       expect(runtime.findActiveDelegation(conversationKey, 'DEVELOPER')).toBe(newerDelegation);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should return cancelled with an empty response when cancelled before any CEO port exists', async () => {
+      settingsStore.load = async () => {
+        throw new PromptCancelledError();
+      };
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({
+        status: 'cancelled',
+        response: '',
+        agentInfo: { roleName: 'CEO', agentName: 'stub' },
+      });
+      expect(portFactory.createdAgentIds).toHaveLength(0);
+    });
+
+    it('should omit the project in the repair hint when a session mode is sent without a project', async () => {
+      agentRegistry.getDelegationContract.mockReturnValueOnce({});
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER::new]', 'Ok, asking you first.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Role "DEVELOPER" does not take a session mode. Use [DELEGATE:DEVELOPER] without ":new".',
+      );
+    });
+
+    it('should log a shortened preview of long delegation tasks without altering the task', async () => {
+      const longTask = `Implement ${'a very long feature '.repeat(10)}`.trim();
+      stubAgentPort.mockResponses = [`${longTask}\n[DELEGATE:DEVELOPER:my-app]`, 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls).toEqual([`Mock system prompt.\n\n${longTask}`]);
+    });
+
+    it('should bind the agent session using the in-memory session when the store no longer holds it', async () => {
+      const findSession = sessionStore.findSession.bind(sessionStore);
+      let lookups = 0;
+      sessionStore.findSession = async (channelId, threadId) => {
+        lookups++;
+        return lookups === 1 ? findSession(channelId, threadId) : null;
+      };
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      const saved = await findSession('ch-1');
+      expect(saved?.agentSessions).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1' }]);
+    });
+
+    it('should ignore failures while closing the delegate after it finishes', async () => {
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+      delegateStubPort.closeSession = async () => {
+        throw new Error('close failed');
+      };
+      delegateStubPort.disconnect = async () => {
+        throw new Error('disconnect failed');
+      };
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Ok.' });
+    });
+
+    it('should ignore failures while disposing a delegate that cannot be steered', async () => {
+      const staleDelegatePort = new StubAgentPort();
+      staleDelegatePort.closeSession = async () => {
+        throw new Error('close failed');
+      };
+      staleDelegatePort.disconnect = async () => {
+        throw new Error('disconnect failed');
+      };
+      runtime.registerDelegation(buildConversationKey('ch-1'), {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: null,
+        taskSpec: 'Old task',
+        cwd: '/mock/workspace',
+        startedAt: Date.now(),
+        agentPort: staleDelegatePort,
+        turn: { cancel: vi.fn().mockResolvedValue(undefined) } as any,
+        steer: vi.fn(),
+      });
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Ok.' });
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
+    });
+
+    it('should record the new task without steering a delegate whose agent lacks steering', async () => {
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      let captured: { taskSpec: string } | undefined;
+      delegateStubPort.prompt = async function* () {
+        const active = runtime.findActiveDelegation(buildConversationKey('ch-1'), 'DEVELOPER');
+        await active?.steer('Updated task');
+        captured = active;
+        yield textChunk('Done.');
+      };
+
+      await useCase.execute(turnRequest());
+
+      expect(captured?.taskSpec).toBe('Updated task');
+      expect(delegateStubPort.steeringPrompts).toHaveLength(0);
     });
   });
 });
