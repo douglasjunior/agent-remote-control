@@ -51,11 +51,8 @@ function createMockClientContext(): AgentContext {
 }
 
 describe('AgyBridgeServer', () => {
-  const originalAgyPath = process.env.AGY_PATH;
-
   beforeEach(() => {
     vi.useFakeTimers();
-    delete process.env.AGY_PATH;
     lastSpawnedProc = null;
     mockSpawn.mockImplementation(() => {
       const proc = createMockChildProcess();
@@ -80,11 +77,6 @@ describe('AgyBridgeServer', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
-    if (originalAgyPath !== undefined) {
-      process.env.AGY_PATH = originalAgyPath;
-    } else {
-      delete process.env.AGY_PATH;
-    }
   });
 
   describe('initialize', () => {
@@ -383,24 +375,6 @@ describe('AgyBridgeServer', () => {
 
       const response = await sessionPromise;
       expect(response.sessionId).toBe('conv-split-123');
-    });
-
-    it('should use AGY_PATH when set in environment', async () => {
-      process.env.AGY_PATH = '/custom/bin/agy';
-      const server = new AgyBridgeServer();
-      const sessionPromise = server.newSession({ cwd: '/test/cwd' });
-      expect(mockSpawn).toHaveBeenCalledWith(
-        '/custom/bin/agy',
-        expect.any(Array),
-        expect.any(Object),
-      );
-      lastSpawnedProc?.stdout.emit(
-        'data',
-        Buffer.from(
-          '{"event":"init","conversation_id":"conv-123","init":{"model":"gemini-3.8-flash-low","cwd":"/test/cwd","tools":[]}}\n',
-        ),
-      );
-      await sessionPromise;
     });
 
     it('should return empty options when stdout contains only whitespace or blank lines', async () => {

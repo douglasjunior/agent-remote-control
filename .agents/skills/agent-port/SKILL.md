@@ -60,7 +60,7 @@ mesma sessão ACP e o mesmo `cwd`.
 - `createSession(cwd: string): Promise<void>`: cria uma sessão (`session/new`) vinculada ao diretório informado.
 - `loadSession(cwd: string, sessionId: string): Promise<boolean>`: retoma uma sessão existente via `session/load`. Retorna `false`, sem lançar, quando o agente não anuncia `loadSession` ou quando o load falha; retorna `true` com `currentSessionId` definido.
 - `prompt(text: string): AsyncGenerator<AgentUpdate>`: envia um turno e entrega o bloco final consolidado.
-- `sendSteeringPrompt(text: string): void`: redireciona o turno em andamento. Usa `_session/steering` quando suportado, ou `session/prompt` como fallback.
+- `sendSteeringPrompt(text: string): Promise<boolean>`: injeta texto no prompt em andamento. Com steering, envia `_session/steering` com `_meta.steering.idleBehavior = 'promptRequired'` e resolve `true` só com `outcome: 'injected'`; sem prompt em andamento (`promptRequired`), sem sessão ou com erro, resolve `false` e o texto não é entregue, então o chamador decide o que fazer com ele. Sem steering, dispara `session/prompt` como fallback e resolve `true`.
 - `cancel(): Promise<void>`: interrompe o prompt em andamento pela escada de cancelamento. Sem prompt em andamento é no-op, para que um cancelamento tardio não aborte o turno seguinte.
 - `closeSession(): Promise<void>`: encerra a sessão ativa, preservando a conexão.
 - `disconnect(): Promise<void>`: descarta a sessão, encerra o subprocesso e limpa as opções em cache.
@@ -144,7 +144,6 @@ não publica é registrado em log e ignorado.
 O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e provê:
 
 - Resolução do binário do bridge (`agy-acp-bridge.js` compilado ou `agy-acp-bridge.ts` em desenvolvimento).
-- Injeção de `AGY_PATH` via `IFileSystemPort.resolveInPath('agy')` quando ausente do ambiente.
 - Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`, em `tmpdir()`, com `buildAgentEnv`. O bridge sobe no `connect()`, antes de a sessão existir, então não há `cwd` de sessão a adotar.
 
 O diretório onde o agente trabalha é o `cwd` da sessão, e não o do bridge: `createSession(cwd)` e `loadSession(cwd, id)` recebem o caminho, e o bridge sobe cada processo `agy` nele, com `PWD` alinhado.
@@ -168,7 +167,7 @@ O `ClaudeCodeAdapter` (`agentName = 'claude'`) integra o Claude Code CLI pelo ad
 `@agentclientprotocol/claude-agent-acp` (dependência do projeto), sem bridge próprio:
 
 - Executa `node <claude-agent-acp>/dist/index.js`, resolvido com `createRequire(import.meta.url)`, em `tmpdir()` e com `buildAgentEnv`.
-- Injeta `CLAUDE_CODE_EXECUTABLE` via `IFileSystemPort.resolveInPath('claude')` quando ausente do ambiente, para usar o CLI instalado (e o login dele). Sem `claude` no `PATH`, o Claude Agent SDK usa o binário embutido.
+- Define `CLAUDE_CODE_EXECUTABLE` com o `claude` do `PATH` (`IFileSystemPort.resolveInPath('claude')`), descartando valor herdado do ambiente, para o Claude Agent SDK usar o CLI instalado e autenticado pelo usuário. Sem `claude` no `PATH`, o SDK usa o binário embutido.
 - Preset de sessão `mode = bypassPermissions`: ninguém responde pedidos de permissão numa sessão remota. O Claude Code não oferece esse modo para processo `root` sem `IS_SANDBOX=1`; nesse caso a sessão segue no modo padrão do usuário e os pedidos de permissão são aprovados pelo handler do `AbstractAcpAdapter`.
 - O agente anuncia `loadSession` e `_meta.steering.supported`, então retomada, steering (`_session/steering`) e a escada de cancelamento com steering valem sem código específico. O `session/load` reenvia o histórico antes de responder e não restaura modelo, effort nem modo; o `applySessionConfig` do adapter base os reaplica.
 - As opções publicadas são `model` (aliases como `opus`, `sonnet`, `haiku` e IDs completos), `effort` (categoria `thought_level`, ausente em modelos sem effort, como `haiku`), `mode` e `fast`. Os efforts dependem do modelo e são lidos pela sessão de sondagem de `getAvailableEffortsForModel`.

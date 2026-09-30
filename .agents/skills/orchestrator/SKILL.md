@@ -91,7 +91,7 @@ Estrutura imutável com o desfecho do turno:
 
 - `sessionId`: identificador da sessão processada; ausente quando o turno falha antes de abrir a sessão;
 - `response`: resposta textual final consolidada;
-- `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, ou `'failed'` se abortado por erro;
+- `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, `'failed'` se abortado por erro, ou `'steered'` quando o prompt foi injetado na rodada do CEO já em andamento (a resposta dele vem no resultado daquele turno, então `response` fica vazio e não há `usage`);
 - `usage`: consumo de tokens da última rodada do CEO (`getLastRoundUsage()`); ausente quando o agente não informa ou a coleta falha;
 - `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha;
 - `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada;
@@ -172,7 +172,8 @@ dentro da fila:
 
 - **Agente da conversa**: um `IAgentPort` do CEO criado com `IAgentPortFactory.create(agentId)` na primeira execução e reutilizado enquanto `agentName === agentId`. Quando o turno pede outro agente, a porta anterior recebe `closeSession()` e `disconnect()` (falhas ignoradas) e uma nova é criada. A troca acontece dentro da fila do CEO, depois dos turnos que ainda usam a porta anterior. `getCeoPort(conversationKey)` devolve a porta atual ou `undefined` antes da primeira execução;
 - **Ciclo de vida e concorrência**: `beginTurn(conversationKey)` rastreia `activeTurnsCount` e previne expiração prematura; `runOnCeo(conversationKey, agentId, work, onQueued)` garante exclusão mútua apenas no uso da porta do CEO, liberando-a enquanto agentes delegados rodam em segundo plano;
-- **Fila de turnos do CEO**: turnos que chegam enquanto o CEO está ocupado chamam `onQueued` e aguardam a liberação da porta do CEO. Novas mensagens do usuário processam imediatamente pelo CEO mesmo com delegações ativas;
+- **Fila de turnos do CEO**: turnos que chegam enquanto o CEO está ocupado chamam `onQueued` e aguardam a liberação da porta do CEO, exceto quando entram na rodada por steering. Novas mensagens do usuário processam imediatamente pelo CEO mesmo com delegações ativas;
+- **Steering do CEO**: `steerCeo(conversationKey, agentId, text)` injeta o texto na rodada do CEO em andamento com `sendSteeringPrompt` e devolve se foi entregue. Só tenta quando há turno ativo não cancelado, nenhum outro turno na fila (`pendingTurns === 1`, para não passar à frente de uma mensagem anterior), a porta do CEO é do `agentId` pedido e anuncia `supportsSteering` (lido do `initialize` do ACP);
 - **Delegações ativas**: `registerDelegation()`, `unregisterDelegation()`, `getActiveDelegations()` e `findActiveDelegation()` mantêm o registro de especialistas em execução em segundo plano;
 - **Cancelamento**: `cancel(conversationKey)` cancela o `ActiveTurn` do CEO e todas as `activeDelegations` ativas da conversa. Devolve `false` quando não há trabalho em andamento;
 - **Expiração por ociosidade**: sem turnos e sem delegações por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra todos os agentes (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
@@ -239,6 +240,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 
 1. **Ciclo de vida do Turno**: invoca `ConversationRuntimeService.beginTurn(conversationKey)`, garantindo rastreamento no contador de turnos ativos até o `finally`.
 2. **Agente do turno**: lê as `AgentSettings` uma vez; o `agentId` do turno é o delas ou `IAgentPortFactory.defaultAgentId`. O CEO e todos os delegados do turno usam esse agente.
+   - **Steering**: antes de entrar na fila, tenta `steerCeo` com `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, bloco `[USER_MESSAGE]` que manda continuar a tarefa atual considerando a mensagem, porque sem isso o modelo tende a responder só a mensagem e encerrar a rodada) sobre o prompt enriquecido com `[ATTACHMENTS]`, seguido do `getTurnReminder(role)`. Entregue, retorna `status: 'steered'` com o `sessionId` salvo e o `agentInfo` do CEO, sem rodar nova rodada. Não entregue (agente sem steering, CEO ainda conectando ou entre rodadas, fila ocupada), segue o fluxo normal.
 3. **Exclusão mútua do CEO**: executa a rodada do CEO via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. A porta do CEO é liberada assim que o CEO decide delegar, permitindo que novas mensagens do usuário sejam atendidas enquanto especialistas trabalham em segundo plano.
 4. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
 5. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
@@ -249,9 +251,9 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 6), porque o resultado não voltaria ao CEO.
    6. Nas demais rodadas, em `delegate`:
       - Quando o papel já possui delegação ativa (`findActiveDelegation`):
-        - Se `existing.agentPort.supportsSteering === true`: aplica steering nativo chamando `await existing.steer(taskSpec)` e retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
-        - Se `existing.agentPort.supportsSteering === false`: cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
-      - Cria a porta do delegado com `create(agentId)`, cria `ActiveDelegation` e registra no runtime. Se `delegatePort.supportsSteering === true`, o método `steer` despacha `sendSteeringPrompt`.
+        - Se `existing.agentPort.supportsSteering === true` e `await existing.steer(taskSpec)` confirma a entrega: retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
+        - Sem steering ou com a entrega recusada: cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
+      - Cria a porta do delegado com `create(agentId)`, cria `ActiveDelegation` e registra no runtime. O método `steer` atualiza a `taskSpec` e, com `supportsSteering`, devolve o resultado de `sendSteeringPrompt`; sem steering, devolve `false`.
       - Registra `[Delegation Started]` e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` e emite `finished`.
    7. No `finally` da delegação, remove do registro de delegações ativas e encerra o agente delegado (`closeSession()` + `disconnect()`).
    8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.

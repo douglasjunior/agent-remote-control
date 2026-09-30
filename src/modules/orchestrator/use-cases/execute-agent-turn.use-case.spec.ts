@@ -1103,6 +1103,172 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
   });
 
+  describe('CEO steering', () => {
+    const holdFirstPrompt = async () => {
+      let release: () => void = () => undefined;
+      let started: () => void = () => undefined;
+      const firstStarted = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
+        this.promptCalls.push(text);
+        if (this.promptCalls.length === 1) {
+          started();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        yield textChunk(`reply to ${text}`);
+      };
+      return { firstStarted, release: () => release() };
+    };
+
+    it('should inject a message that arrives while the CEO is running into the running round', async () => {
+      stubAgentPort.supportsSteering = true;
+      const gate = await holdFirstPrompt();
+      const onQueued = vi.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = await useCase.execute(turnRequest({ prompt: 'two', onQueued }));
+
+      expect(second).toEqual({
+        sessionId: (await sessionStore.findSession('ch-1'))?.sessionId,
+        response: '',
+        status: 'steered',
+        agentInfo: expect.objectContaining({ roleName: 'CEO', agentName: 'stub' }),
+      });
+      expect(second.sessionId).toBeDefined();
+      expect(stubAgentPort.steeringPrompts).toHaveLength(1);
+      expect(stubAgentPort.steeringPrompts[0]).toMatch(/^\[USER_MESSAGE\]\n[\s\S]*\n\ntwo$/);
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+      expect(onQueued).not.toHaveBeenCalled();
+
+      gate.release();
+      const firstResult = await first;
+
+      expect(firstResult).toMatchObject({
+        status: 'completed',
+        response: 'reply to Mock system prompt.\n\none',
+      });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+    });
+
+    it('should steer with the attachments inventory and the turn reminder appended', async () => {
+      stubAgentPort.supportsSteering = true;
+      agentRegistry.getTurnReminder.mockReturnValue('CEO turn reminder');
+      const gate = await holdFirstPrompt();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = await useCase.execute(turnRequest({
+        prompt: 'two',
+        attachments: [{ name: 'notes.txt', path: '/tmp/attachments/notes.txt', contentType: 'text/plain', size: 256 }],
+      }));
+
+      expect(second.status).toBe('steered');
+      expect(stubAgentPort.steeringPrompts).toHaveLength(1);
+      const steeringText = stubAgentPort.steeringPrompts[0]!;
+      expect(steeringText.startsWith('[USER_MESSAGE]')).toBe(true);
+      expect(steeringText).toContain(
+        '[ATTACHMENTS]\n- Name: notes.txt\n  Size: 256 bytes\n  Type: text/plain\n  Path: /tmp/attachments/notes.txt\n'
+        + 'Inspect these files using your available tools as needed.\n\ntwo',
+      );
+      expect(steeringText.endsWith('two\n\nCEO turn reminder')).toBe(true);
+
+      gate.release();
+      await first;
+    });
+
+    it('should leave the session id undefined when the conversation has no stored session', async () => {
+      stubAgentPort.supportsSteering = true;
+      let release: () => void = () => undefined;
+      const conversationKey = buildConversationKey('ch-1');
+      const running = runtime.run(conversationKey, 'stub', () => new Promise<void>((resolve) => {
+        release = resolve;
+      }));
+      await vi.waitFor(() => expect(runtime.getCeoPort(conversationKey)).toBe(stubAgentPort));
+
+      const result = await useCase.execute(turnRequest({ prompt: 'two' }));
+
+      expect(result).toMatchObject({ status: 'steered', sessionId: undefined });
+      expect(stubAgentPort.steeringPrompts).toHaveLength(1);
+      expect(stubAgentPort.steeringPrompts[0]).toContain('two');
+
+      release();
+      await running;
+    });
+
+    it('should queue the message and run it normally when the agent does not accept the steering', async () => {
+      stubAgentPort.supportsSteering = true;
+      stubAgentPort.steeringResult = false;
+      const gate = await holdFirstPrompt();
+      const onQueued = vi.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
+      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+
+      expect(stubAgentPort.steeringPrompts).toHaveLength(1);
+      expect(stubAgentPort.steeringPrompts[0]).toContain('two');
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+
+      gate.release();
+      const [firstResult, secondResult] = await Promise.all([first, second]);
+
+      expect(firstResult.status).toBe('completed');
+      expect(secondResult).toMatchObject({ status: 'completed', response: 'reply to two' });
+    });
+
+    it('should queue the message when the agent does not support steering', async () => {
+      const gate = await holdFirstPrompt();
+      const onQueued = vi.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
+      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+
+      expect(stubAgentPort.steeringPrompts).toEqual([]);
+
+      gate.release();
+      const [, secondResult] = await Promise.all([first, second]);
+
+      expect(secondResult).toMatchObject({ status: 'completed', response: 'reply to two' });
+    });
+
+    it('should queue the message when the configured agent differs from the running CEO agent', async () => {
+      stubAgentPort.supportsSteering = true;
+      const gate = await holdFirstPrompt();
+      const onQueued = vi.fn();
+      delegateStubPort.agentName = 'other';
+      delegateStubPort.mockResponses = ['other agent reply'];
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      settingsStore.settings = {
+        agentId: 'other',
+        agentName: 'Other',
+        modelId: null,
+        modelName: null,
+        effortId: null,
+        effortName: null,
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
+      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+
+      expect(stubAgentPort.steeringPrompts).toEqual([]);
+
+      gate.release();
+      const [, secondResult] = await Promise.all([first, second]);
+
+      expect(secondResult).toMatchObject({ status: 'completed', response: 'other agent reply' });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+    });
+  });
+
   describe('active delegations and transparent steering', () => {
     it('should prepend [ACTIVE_DELEGATIONS] block to CEO prompt when active delegations exist', async () => {
       const activeDelegatePort = new StubAgentPort();
@@ -1142,7 +1308,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should steer active delegation when CEO delegates to an already active role with native steering', async () => {
       delegateStubPort.supportsSteering = true;
-      const steerSpy = vi.fn().mockResolvedValue(undefined);
+      const steerSpy = vi.fn().mockResolvedValue(true);
       const conversationKey = buildConversationKey('ch-1');
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
@@ -1170,6 +1336,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should invoke sendSteeringPrompt when active delegation steer() is called and supportsSteering is true', async () => {
       delegateStubPort.supportsSteering = true;
+      let steerAccepted: boolean | undefined;
       stubAgentPort.mockResponses = [
         'Start building.\n[DELEGATE:DEVELOPER:project-a]',
         'All done.\n[DONE]',
@@ -1181,7 +1348,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       delegateStubPort.prompt = async function* (text: string) {
         capturedDelegation = runtime.findActiveDelegation(conversationKey, 'DEVELOPER');
         if (capturedDelegation) {
-          await capturedDelegation.steer('Steered instruction');
+          steerAccepted = await capturedDelegation.steer('Steered instruction');
         }
         yield* originalPrompt(text);
       };
@@ -1189,8 +1356,56 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest());
       expect(result.status).toBe('completed');
+      expect(steerAccepted).toBe(true);
       expect(delegateStubPort.steeringPrompts).toEqual(['Steered instruction']);
       expect(capturedDelegation.taskSpec).toBe('Steered instruction');
+    });
+
+    it('should report the steering as refused when the delegate agent does not accept it', async () => {
+      delegateStubPort.supportsSteering = true;
+      delegateStubPort.steeringResult = false;
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      let steerAccepted: boolean | undefined;
+      delegateStubPort.prompt = async function* () {
+        const active = runtime.findActiveDelegation(buildConversationKey('ch-1'), 'DEVELOPER');
+        steerAccepted = await active?.steer('Updated task');
+        yield textChunk('Done.');
+      };
+
+      await useCase.execute(turnRequest());
+
+      expect(steerAccepted).toBe(false);
+      expect(delegateStubPort.steeringPrompts).toEqual(['Updated task']);
+    });
+
+    it('should restart the delegate when its agent supports steering but does not accept the message', async () => {
+      const activeDelegatePort = new StubAgentPort();
+      activeDelegatePort.supportsSteering = true;
+      const cancelSpy = vi.fn().mockResolvedValue(undefined);
+      const steerSpy = vi.fn().mockResolvedValue(false);
+      runtime.registerDelegation(buildConversationKey('ch-1'), {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'my-app',
+        taskSpec: 'Original task',
+        cwd: '/mock/workspace/my-app',
+        startedAt: Date.now(),
+        agentPort: activeDelegatePort,
+        turn: { cancel: cancelSpy } as any,
+        steer: steerSpy,
+      });
+      delegateStubPort.mockResponses = ['Restarted task done.'];
+      stubAgentPort.mockResponses = ['Change course.\n[DELEGATE:DEVELOPER:my-app]', 'Finished.\n[DONE]'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Finished.' });
+      expect(steerSpy).toHaveBeenCalledWith('Change course.');
+      expect(cancelSpy).toHaveBeenCalledTimes(1);
+      expect(activeDelegatePort.closeSessionCalls).toBe(1);
+      expect(activeDelegatePort.connected).toBe(false);
+      expect(delegateStubPort.promptCalls).toEqual([expect.stringContaining('Change course.')]);
+      expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER]\nRestarted task done.');
     });
 
     it('should cancel, close, unregister and recreate delegate in new directory when supportsSteering is false', async () => {
@@ -1378,9 +1593,10 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should record the new task without steering a delegate whose agent lacks steering', async () => {
       stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
       let captured: { taskSpec: string } | undefined;
+      let steerAccepted: boolean | undefined;
       delegateStubPort.prompt = async function* () {
         const active = runtime.findActiveDelegation(buildConversationKey('ch-1'), 'DEVELOPER');
-        await active?.steer('Updated task');
+        steerAccepted = await active?.steer('Updated task');
         captured = active;
         yield textChunk('Done.');
       };
@@ -1388,6 +1604,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest());
 
       expect(captured?.taskSpec).toBe('Updated task');
+      expect(steerAccepted).toBe(false);
       expect(delegateStubPort.steeringPrompts).toHaveLength(0);
     });
   });

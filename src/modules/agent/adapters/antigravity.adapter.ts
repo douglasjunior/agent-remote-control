@@ -29,7 +29,7 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
     return this.processRunner.spawn(process.execPath, [bridgeBin], {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: this.buildBridgeEnv(cwd),
+      env: this.buildAgentEnv(cwd),
     });
   }
 
@@ -49,16 +49,5 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
     return fileURLToPath(
       new URL('../bridges/agy-acp-bridge.ts', import.meta.url),
     );
-  }
-
-  private buildBridgeEnv(cwd: string): NodeJS.ProcessEnv {
-    const env = this.buildAgentEnv(cwd);
-    if (!env.AGY_PATH) {
-      const agyPath = this.fileSystem.resolveInPath('agy');
-      if (agyPath) {
-        env.AGY_PATH = agyPath;
-      }
-    }
-    return env;
   }
 }

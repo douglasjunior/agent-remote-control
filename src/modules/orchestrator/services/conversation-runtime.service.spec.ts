@@ -270,6 +270,113 @@ describe('ConversationRuntimeService', () => {
     });
   });
 
+  describe('steerCeo', () => {
+    const supportSteeringOnCreate = (): void => {
+      factory = new StubAgentPortFactory((agentId) => {
+        const port = new StubAgentPort();
+        port.agentName = agentId;
+        port.supportsSteering = true;
+        ports.push(port);
+        return port;
+      });
+      runtime = new ConversationRuntimeService(factory, IDLE_MS);
+    };
+
+    const startRunningCeo = async (agentId = 'stub') => {
+      const gate = deferred();
+      const running = runtime.run('a', agentId, async () => gate.promise);
+      await vi.advanceTimersByTimeAsync(0);
+      return { gate, running };
+    };
+
+    it('should inject the text into the CEO round in progress and return the port answer', async () => {
+      supportSteeringOnCreate();
+      const { gate, running } = await startRunningCeo();
+
+      await expect(runtime.steerCeo('a', 'stub', 'new message')).resolves.toBe(true);
+
+      expect(ports[0]!.steeringPrompts).toEqual(['new message']);
+      gate.resolve();
+      await running;
+    });
+
+    it('should return false when the port does not accept the steering', async () => {
+      supportSteeringOnCreate();
+      const { gate, running } = await startRunningCeo();
+      ports[0]!.steeringResult = false;
+
+      await expect(runtime.steerCeo('a', 'stub', 'new message')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual(['new message']);
+      gate.resolve();
+      await running;
+    });
+
+    it('should return false when the conversation has no runtime', async () => {
+      await expect(runtime.steerCeo('unknown', 'stub', 'text')).resolves.toBe(false);
+    });
+
+    it('should return false when the runtime has no CEO port yet', async () => {
+      runtime.beginTurn('a');
+
+      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+    });
+
+    it('should return false when no CEO round is running', async () => {
+      supportSteeringOnCreate();
+      await runtime.run('a', 'stub', async () => undefined);
+
+      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual([]);
+    });
+
+    it('should return false when the running CEO turn was cancelled', async () => {
+      supportSteeringOnCreate();
+      const { gate, running } = await startRunningCeo();
+      await runtime.cancel('a');
+
+      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual([]);
+      gate.resolve();
+      await running;
+    });
+
+    it('should return false when another turn is already queued behind the running one', async () => {
+      supportSteeringOnCreate();
+      const { gate, running } = await startRunningCeo();
+      const queued = runtime.run('a', 'stub', async () => undefined);
+
+      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual([]);
+      gate.resolve();
+      await Promise.all([running, queued]);
+    });
+
+    it('should return false when the CEO runs on a different agent', async () => {
+      supportSteeringOnCreate();
+      const { gate, running } = await startRunningCeo('first');
+
+      await expect(runtime.steerCeo('a', 'second', 'text')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual([]);
+      gate.resolve();
+      await running;
+    });
+
+    it('should return false when the CEO agent does not support steering', async () => {
+      const { gate, running } = await startRunningCeo();
+
+      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+
+      expect(ports[0]!.steeringPrompts).toEqual([]);
+      gate.resolve();
+      await running;
+    });
+  });
+
   describe('active delegations', () => {
     it('should register, find, get, and unregister active delegations', () => {
       const delegatePort = new StubAgentPort();

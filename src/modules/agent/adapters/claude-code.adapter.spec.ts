@@ -111,18 +111,17 @@ describe('ClaudeCodeAdapter', () => {
       expect(spawnCall(spawn).options.env?.CLAUDE_CODE_EXECUTABLE).toBe('/usr/local/bin/claude');
     });
 
-    it('should preserve a CLAUDE_CODE_EXECUTABLE already set in the environment', async () => {
+    it('should prefer the claude CLI in PATH over an executable inherited from the environment', async () => {
       process.env.CLAUDE_CODE_EXECUTABLE = '/custom/bin/claude';
-      const fileSystem = fileSystemStub('/usr/local/bin/claude');
-      const { adapter, spawn } = buildAdapter(fileSystem);
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/local/bin/claude'));
 
       await adapter.connect();
 
-      expect(spawnCall(spawn).options.env?.CLAUDE_CODE_EXECUTABLE).toBe('/custom/bin/claude');
-      expect(fileSystem.resolveInPath).not.toHaveBeenCalled();
+      expect(spawnCall(spawn).options.env?.CLAUDE_CODE_EXECUTABLE).toBe('/usr/local/bin/claude');
     });
 
     it('should let the agent use its bundled binary when claude is not in PATH', async () => {
+      process.env.CLAUDE_CODE_EXECUTABLE = '/custom/bin/claude';
       const { adapter, spawn } = buildAdapter(fileSystemStub(null));
 
       await adapter.connect();

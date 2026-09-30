@@ -76,7 +76,11 @@ export interface IAgentPort {
   loadSession(cwd: string, sessionId: string): Promise<boolean>;
   prompt(text: string): AsyncGenerator<AgentUpdate>;
   cancel(): Promise<void>;
-  sendSteeringPrompt(text: string): void;
+  /**
+   * Resolves `true` when the agent took the text into the running prompt. With `supportsSteering`,
+   * `false` means no prompt was running or the injection failed, and the text was dropped.
+   */
+  sendSteeringPrompt(text: string): Promise<boolean>;
   onActivity(listener: (activity: AgentActivity) => void): () => void;
   closeSession(): Promise<void>;
   disconnect(): Promise<void>;

@@ -51,14 +51,16 @@ export class ClaudeCodeAdapter extends AbstractAcpAdapter {
     return createRequire(import.meta.url).resolve(CLAUDE_AGENT_ACP_ENTRY);
   }
 
-  /** Points the Claude Agent SDK at the installed `claude` CLI instead of its bundled binary. */
+  /**
+   * `CLAUDE_CODE_EXECUTABLE` is how the Claude Agent SDK runs the user's `claude` from `PATH`
+   * instead of the binary bundled with the SDK.
+   */
   private buildClaudeEnv(cwd: string): NodeJS.ProcessEnv {
     const env = this.buildAgentEnv(cwd);
-    if (!env.CLAUDE_CODE_EXECUTABLE) {
-      const claudePath = this.fileSystem.resolveInPath('claude');
-      if (claudePath) {
-        env.CLAUDE_CODE_EXECUTABLE = claudePath;
-      }
+    delete env.CLAUDE_CODE_EXECUTABLE;
+    const claudePath = this.fileSystem.resolveInPath('claude');
+    if (claudePath) {
+      env.CLAUDE_CODE_EXECUTABLE = claudePath;
     }
     return env;
   }
