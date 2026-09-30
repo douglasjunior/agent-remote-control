@@ -14,7 +14,7 @@ describe('ActiveDelegation', () => {
       startedAt: 1000,
       agentPort: {} as any,
       turn: {} as any,
-      steer: async () => undefined,
+      steer: async () => true,
     };
 
     expect(delegation.role).toBe('DEVELOPER');

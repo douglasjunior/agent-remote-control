@@ -264,12 +264,13 @@ describe('AbstractAcpAdapter', () => {
       await adapter.connect();
       await adapter.createSession('/repo');
 
-      adapter.sendSteeringPrompt('steer here');
+      await adapter.sendSteeringPrompt('steer here');
 
       expect(acpHarness.connectionInstance?.steer).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: 'session-1',
           prompt: [{ type: 'text', text: 'steer here' }],
+          _meta: { steering: { idleBehavior: 'promptRequired' } },
         }),
       );
     });
@@ -1542,28 +1543,51 @@ describe('AbstractAcpAdapter', () => {
   });
 
   describe('sendSteeringPrompt', () => {
-    it('should be a no-op when not connected or no active session', () => {
+    const connectWithSteering = async (): Promise<TestAcpAdapter> => {
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockResolvedValue({
+          _meta: { steering: { supported: true } },
+        }),
+      };
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo');
+      return adapter;
+    };
+
+    it('should return false when not connected', async () => {
       const adapter = new TestAcpAdapter();
 
-      expect(() => adapter.sendSteeringPrompt('test')).not.toThrow();
+      await expect(adapter.sendSteeringPrompt('test')).resolves.toBe(false);
     });
 
-    it('should fall back to prompt request when steering is not supported', async () => {
+    it('should return false without sending anything when there is no active session', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+
+      await expect(adapter.sendSteeringPrompt('test')).resolves.toBe(false);
+      expect(acpHarness.connectionInstance?.steer).not.toHaveBeenCalled();
+      expect(acpHarness.connectionInstance?.prompt).not.toHaveBeenCalled();
+    });
+
+    it('should fall back to a prompt request and return true when steering is not supported', async () => {
       const adapter = new TestAcpAdapter();
       expect(adapter.supportsSteering).toBe(false);
       await adapter.connect();
       expect(adapter.supportsSteering).toBe(false);
       await adapter.createSession('/repo');
 
-      adapter.sendSteeringPrompt('redirect here');
+      const accepted = await adapter.sendSteeringPrompt('redirect here');
 
+      expect(accepted).toBe(true);
       expect(acpHarness.connectionInstance?.prompt).toHaveBeenCalledWith({
         sessionId: 'session-1',
         prompt: [{ type: 'text', text: 'redirect here' }],
       });
+      expect(acpHarness.connectionInstance?.steer).not.toHaveBeenCalled();
     });
 
-    it('should handle steering request failures gracefully without throwing', async () => {
+    it('should return true and log the failure when the fallback prompt request fails', async () => {
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       await adapter.createSession('/repo');
@@ -1575,27 +1599,78 @@ describe('AbstractAcpAdapter', () => {
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(vi.fn());
 
-      expect(() => adapter.sendSteeringPrompt('redirect')).not.toThrow();
+      try {
+        await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(true);
 
-      await new Promise(r => setTimeout(r, 10));
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('steering_prompt_failed'),
-      );
-
-      warnSpy.mockRestore();
+        await vi.waitFor(() => {
+          expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining('steering_prompt_failed (session-1): fail steer'),
+          );
+        });
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
 
-    it('should handle _session/steering rejection gracefully and log warning', async () => {
-      acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockResolvedValue({
-          _meta: { steering: { supported: true } },
-        }),
-      };
-
+    it('should log a generic message when the fallback prompt fails with a non-Error value', async () => {
       const adapter = new TestAcpAdapter();
       await adapter.connect();
-      expect(adapter.supportsSteering).toBe(true);
       await adapter.createSession('/repo');
+
+      acpHarness.connectionInstance?.prompt.mockRejectedValueOnce('boom');
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(vi.fn());
+
+      try {
+        await adapter.sendSteeringPrompt('redirect');
+
+        await vi.waitFor(() => {
+          expect(warnSpy).toHaveBeenCalledWith(
+            expect.stringContaining('steering_prompt_failed (session-1): Unknown error'),
+          );
+        });
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+
+    it('should return true when the agent reports the steering as injected', async () => {
+      const adapter = await connectWithSteering();
+
+      await expect(adapter.sendSteeringPrompt('redirect wire')).resolves.toBe(true);
+
+      expect(acpHarness.connectionInstance?.steer).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        prompt: [{ type: 'text', text: 'redirect wire' }],
+        _meta: { steering: { idleBehavior: 'promptRequired' } },
+      });
+      expect(acpHarness.connectionInstance?.prompt).not.toHaveBeenCalled();
+    });
+
+    it.each(['promptRequired', 'startedNewTurn'])(
+      'should return false when the agent reports the outcome %s',
+      async (outcome) => {
+        const adapter = await connectWithSteering();
+        acpHarness.connectionInstance?.steer.mockResolvedValueOnce({ outcome });
+
+        await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(false);
+      },
+    );
+
+    it.each([
+      ['an empty object', {}],
+      ['undefined', undefined],
+    ])('should return false when the steering response is %s', async (_label, response) => {
+      const adapter = await connectWithSteering();
+      acpHarness.connectionInstance?.steer.mockResolvedValueOnce(response);
+
+      await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(false);
+    });
+
+    it('should return false and log a warning when the _session/steering request rejects', async () => {
+      const adapter = await connectWithSteering();
+      expect(adapter.supportsSteering).toBe(true);
 
       acpHarness.connectionInstance?.steer.mockRejectedValueOnce(
         new Error('fail steer wire'),
@@ -1604,14 +1679,33 @@ describe('AbstractAcpAdapter', () => {
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(vi.fn());
 
-      expect(() => adapter.sendSteeringPrompt('redirect wire')).not.toThrow();
+      try {
+        await expect(adapter.sendSteeringPrompt('redirect wire')).resolves.toBe(false);
 
-      await new Promise(r => setTimeout(r, 10));
-      expect(warnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('steering_inject_failed'),
-      );
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('steering_inject_failed (session-1): fail steer wire'),
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
 
-      warnSpy.mockRestore();
+    it('should log a generic message when the _session/steering request rejects with a non-Error value', async () => {
+      const adapter = await connectWithSteering();
+      acpHarness.connectionInstance?.steer.mockRejectedValueOnce('boom');
+      const warnSpy = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(vi.fn());
+
+      try {
+        await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(false);
+
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('steering_inject_failed (session-1): Unknown error'),
+        );
+      } finally {
+        warnSpy.mockRestore();
+      }
     });
   });
 

@@ -25,6 +25,7 @@ export class StubAgentPort implements IAgentPort {
   cancelCalls = 0;
   closeSessionCalls = 0;
   steeringPrompts: string[] = [];
+  steeringResult = true;
   configCalls: AgentConfig[] = [];
   usageToReturn: AgentUsage | undefined = undefined;
   usageErrorToThrow: Error | null = null;
@@ -84,8 +85,9 @@ export class StubAgentPort implements IAgentPort {
     this.cancelCalls++;
   }
 
-  sendSteeringPrompt(text: string): void {
+  async sendSteeringPrompt(text: string): Promise<boolean> {
     this.steeringPrompts.push(text);
+    return this.steeringResult;
   }
 
   onActivity(listener: (activity: AgentActivity) => void): () => void {

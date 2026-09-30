@@ -102,6 +102,25 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     };
   }
 
+  /**
+   * Injects the text into the CEO round in progress when it runs on `agentId` with steering and no
+   * other turn is waiting, since a queued turn must reach the CEO first.
+   */
+  async steerCeo(conversationKey: string, agentId: string, text: string): Promise<boolean> {
+    const runtime = this.runtimes.get(conversationKey);
+    const agentPort = runtime?.agentPort;
+    if (
+      !runtime?.activeTurn
+      || runtime.activeTurn.isCancelled
+      || runtime.pendingTurns !== 1
+      || agentPort?.agentName !== agentId
+      || !agentPort.supportsSteering
+    ) {
+      return false;
+    }
+    return agentPort.sendSteeringPrompt(text);
+  }
+
   getCeoPort(conversationKey: string): IAgentPort | undefined {
     return this.runtimes.get(conversationKey)?.agentPort ?? undefined;
   }

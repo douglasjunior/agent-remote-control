@@ -77,9 +77,10 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
    - `threadId`: o ID da própria thread, ausente em DM;
    - `userId`: o identificador do autor da mensagem;
    - `agentRole`: invariavelmente `'CEO'` para triagem e orquestração inicial.
-5. **Fila**: mensagens de uma conversa com turno em andamento aguardam na fila do
+5. **Fila e steering**: mensagens de uma conversa com turno em andamento aguardam na fila do
    orquestrador. Via `onQueued`, a mensagem de progresso exibe
-   `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`.
+   `⏳ *Aguardando a tarefa anterior desta conversa terminar...*`. Quando o agente do CEO suporta
+   steering, a mensagem entra na rodada em andamento e o turno termina com `status: 'steered'`.
 
 ## Resolução da Entrada e Seleção de Agente e Modelo
 
@@ -119,6 +120,7 @@ trazer o stderr completo do agente:
 
 - **Concluído**: o texto é a resposta; sem texto, `✅ *Tarefa concluída sem mensagem de resposta.*`.
 - **Cancelado**: `⚠️ **Turno cancelado pelo usuário.**`.
+- **Steering**: `📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*`, sem rodapé e sem particionamento: a mensagem entrou na rodada do CEO em andamento e a resposta chega no desfecho daquele turno.
 - **Falha**: `❌ **Erro na execução**: <errorMessage>`.
 
 Quando `TurnResult.attachments` contiver arquivos locais existentes, eles são enviados no parâmetro `files` da última mensagem enviada.

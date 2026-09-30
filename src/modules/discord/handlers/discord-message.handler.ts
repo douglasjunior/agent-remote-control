@@ -17,6 +17,7 @@ import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.j
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const DEFAULT_ATTACHMENT_PROMPT = 'O usuário enviou anexos. Analise os arquivos anexados.';
+const STEERED_NOTICE = '📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*';
 
 type SendableChannel = {
   send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
@@ -409,6 +410,12 @@ export class DiscordMessageHandler implements OnModuleInit {
         footer,
         result.attachments,
       );
+      return;
+    }
+
+    if (result.status === 'steered') {
+      this.logger.log(`[Turn Steered] Prompt joined the running turn of session ${result.sessionId}`);
+      await targetChannel.send(STEERED_NOTICE);
       return;
     }
 

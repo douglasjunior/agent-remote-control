@@ -12,5 +12,5 @@ export interface ActiveDelegation {
   readonly startedAt: number;
   readonly agentPort: IAgentPort;
   readonly turn: ActiveTurn;
-  steer(newSpec: string): Promise<void>;
+  steer(newSpec: string): Promise<boolean>;
 }

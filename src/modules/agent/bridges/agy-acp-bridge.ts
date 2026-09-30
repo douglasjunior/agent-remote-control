@@ -83,6 +83,7 @@ type AgyRun = {
   pendingPrompt: PendingPrompt | null;
 };
 
+const AGY_BIN = 'agy';
 const INIT_TIMEOUT_MS = 15_000;
 const PRINT_TIMEOUT = '8760h';
 
@@ -256,11 +257,10 @@ export class AgyBridgeServer {
   private async loadAvailableModels(): Promise<
     { readonly value: string; readonly name: string }[]
   > {
-    const agyBin = process.env.AGY_PATH || 'agy';
     return new Promise<{ readonly value: string; readonly name: string }[]>(
       (resolve) => {
         execFile(
-          agyBin,
+          AGY_BIN,
           ['models'],
           { timeout: 10_000, env: process.env },
           (error, stdout) => {
@@ -297,7 +297,6 @@ export class AgyBridgeServer {
   ): Promise<{ readonly run: AgyRun; readonly conversationId: string }> {
     this.terminateRun(this.run);
 
-    const agyBin = process.env.AGY_PATH || 'agy';
     const args = [
       '--output-format',
       'stream-json',
@@ -317,7 +316,7 @@ export class AgyBridgeServer {
       args.push('--conversation', resumeConversationId);
     }
 
-    const proc = spawn(agyBin, args, {
+    const proc = spawn(AGY_BIN, args, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: { ...process.env, PWD: cwd },

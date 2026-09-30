@@ -6,10 +6,18 @@ import { StubAgentPort } from './stub-agent.port.js';
 
 
 describe('StubAgentPort', () => {
-  it('should support steering prompt and activity listeners', () => {
+  it('should record steering prompts and answer with the configured result', async () => {
     const stub = new StubAgentPort();
-    stub.sendSteeringPrompt('Steer instruction');
-    expect(stub.steeringPrompts).toEqual(['Steer instruction']);
+
+    await expect(stub.sendSteeringPrompt('Steer instruction')).resolves.toBe(true);
+    stub.steeringResult = false;
+    await expect(stub.sendSteeringPrompt('Second instruction')).resolves.toBe(false);
+
+    expect(stub.steeringPrompts).toEqual(['Steer instruction', 'Second instruction']);
+  });
+
+  it('should support activity listeners', () => {
+    const stub = new StubAgentPort();
 
     const received: AgentActivity[] = [];
     const unsubscribe = stub.onActivity(act => received.push(act));

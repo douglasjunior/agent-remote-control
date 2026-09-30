@@ -1601,6 +1601,24 @@ describe('DiscordMessageHandler', () => {
 
       expect(send).toHaveBeenLastCalledWith(`${text}\n${footer}`);
     });
+
+    it('should send only the steering notice without footer when the message joined a running turn', async () => {
+      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      orchestratorService.mockResult = {
+        sessionId: 'session-1',
+        response: '',
+        status: 'steered',
+        agentInfo,
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenLastCalledWith(
+        '📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*',
+      );
+      const sent = send.mock.calls.map(call => call[0] as string);
+      expect(sent.some(text => text.includes(footer))).toBe(false);
+    });
   });
 
   describe('agent configuration selection', () => {

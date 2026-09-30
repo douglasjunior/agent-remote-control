@@ -39,6 +39,7 @@ type ConfigCategory = 'model' | 'thought_level' | 'mode' | 'permissions';
 const CANCEL_ESCALATION_MS = 5_000;
 const CANCEL_FORCE_GRACE_MS = 15_000;
 const STEERING_METHOD = '_session/steering';
+const STEERING_INJECTED_OUTCOME = 'injected';
 
 const HOST_ONLY_ENV_VARS = new Set([
   'DISCORD_BOT_TOKEN',
@@ -504,7 +505,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     this.logger.warn(`cancel_escalation_abort: ${sessionId}`);
 
     if (this.steeringSupported) {
-      this.sendSteeringPrompt(CANCEL_ABORT_PROMPT_TEXT);
+      void this.sendSteeringPrompt(CANCEL_ABORT_PROMPT_TEXT);
     } else {
       void this.sendCancelNotification(sessionId);
     }
@@ -540,31 +541,29 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
   }
 
-  sendSteeringPrompt(text: string): void {
+  async sendSteeringPrompt(text: string): Promise<boolean> {
     if (!this.connection || !this.currentSessionId) {
-      return;
+      return false;
     }
     const sessionId = this.currentSessionId;
 
     if (this.steeringSupported) {
       this.logger.debug(`steering_inject_sent: ${sessionId}`);
-      void this.connection.agent
-        .request(STEERING_METHOD, {
+      try {
+        const response: unknown = await this.connection.agent.request(STEERING_METHOD, {
           sessionId,
           prompt: [{ type: 'text', text }],
           _meta: { steering: { idleBehavior: 'promptRequired' } },
-        })
-        .then((response: unknown) => {
-          this.logger.debug(
-            `steering_inject_resolved: ${sessionId} outcome=${(response as { outcome?: string } | undefined)?.outcome}`,
-          );
-        })
-        .catch((error: unknown) => {
-          this.logger.warn(
-            `steering_inject_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
-          );
         });
-      return;
+        const outcome = (response as { outcome?: string } | undefined)?.outcome;
+        this.logger.debug(`steering_inject_resolved: ${sessionId} outcome=${outcome}`);
+        return outcome === STEERING_INJECTED_OUTCOME;
+      } catch (error) {
+        this.logger.warn(
+          `steering_inject_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+        return false;
+      }
     }
 
     this.logger.debug(`steering_prompt_sent: ${sessionId}`);
@@ -583,6 +582,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
           `steering_prompt_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       });
+    return true;
   }
 
   async closeSession(): Promise<void> {

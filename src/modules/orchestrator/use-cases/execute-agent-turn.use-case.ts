@@ -23,6 +23,7 @@ import {
 } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
+import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
@@ -96,6 +97,9 @@ export class ExecuteAgentTurnUseCase {
 
     try {
       agentId = (await this.settingsStore.load())?.agentId ?? agentId;
+      if (await this.steerRunningCeo(conversationKey, agentId, request)) {
+        return await this.buildSteeredResult(conversationKey, request);
+      }
       return await this.runDelegationLoop(
         conversationKey,
         agentId,
@@ -180,6 +184,37 @@ export class ExecuteAgentTurnUseCase {
 
       prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey, agentId);
     }
+  }
+
+  private async steerRunningCeo(
+    conversationKey: string,
+    agentId: string,
+    request: TurnRequest,
+  ): Promise<boolean> {
+    const prompt = buildCeoSteeringPrompt(this.enrichPromptWithAttachments(request.prompt, request.attachments));
+    const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
+    const steered = await this.conversationRuntime.steerCeo(
+      conversationKey,
+      agentId,
+      reminder ? `${prompt}\n\n${reminder}` : prompt,
+    );
+    if (steered) {
+      this.logger.log(
+        `[CEO Steered] Conversation=${conversationKey}, User=${request.userId}, Prompt="${this.preview(request.prompt)}"`,
+      );
+    }
+    return steered;
+  }
+
+  private async buildSteeredResult(conversationKey: string, request: TurnRequest): Promise<TurnResult> {
+    const session = await this.sessionStore.findSession(request.channelId, request.threadId);
+    const ceoPort = this.conversationRuntime.getCeoPort(conversationKey)!;
+    return {
+      sessionId: session?.sessionId,
+      response: '',
+      status: 'steered',
+      agentInfo: await this.buildAgentInfo(ceoPort, request.agentRole),
+    };
   }
 
   private enrichPromptWithAttachments(
@@ -325,16 +360,15 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<string> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
-      if (existing.agentPort.supportsSteering) {
+      if (existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
-        await existing.steer(taskSpec);
         return `[AGENT_RESULT:${delegateToRole}]\nSteering message sent to active agent.`;
       }
 
       this.logger.log(
-        `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unsupported)`,
+        `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unavailable)`,
       );
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
@@ -373,9 +407,7 @@ export class ExecuteAgentTurnUseCase {
       turn: delegationTurn,
       steer: async (newSpec: string) => {
         currentTaskSpec = newSpec;
-        if (delegatePort.supportsSteering) {
-          delegatePort.sendSteeringPrompt(newSpec);
-        }
+        return delegatePort.supportsSteering && delegatePort.sendSteeringPrompt(newSpec);
       },
     };
 

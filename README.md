@@ -109,8 +109,6 @@ Parâmetros suportados:
 | `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
 | `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o agente, o modelo e o effort escolhidos) | Configuração local da máquina | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
-| `AGY_PATH` | Caminho para o executável `agy` | Executável no `PATH` global | `agy` |
-| `CLAUDE_CODE_EXECUTABLE` | Caminho para o executável `claude` usado pelo agente Claude Code | Executável no `PATH` global | `claude` do `PATH` ou binário embutido no SDK |
 | `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
 
 ---
@@ -177,6 +175,8 @@ O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu 
   - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os agentes numerados (Antigravity e Claude Code). Responda com o número do agente, depois com o número do modelo e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
   - Digite `/agent` para trocar de agente (seguido da escolha de modelo e effort dele) e `/model` para trocar só o modelo e o effort do agente atual. A configuração é global e vale para todas as conversas; cada conversa guarda a sessão de cada agente, então voltar a um agente retoma a conversa que ele já tinha.
   - Toda resposta termina com um rodapé indicando o papel, o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
+- **Mensagens Durante uma Tarefa**:
+  - Com o Claude Code, uma mensagem enviada enquanto o agente trabalha entra na tarefa em andamento (steering) e é respondida junto com ela. Com o Antigravity, que não suporta steering, a mensagem aguarda a tarefa anterior terminar.
 - **Cancelamento de Turno**:
   - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução ou encerrar uma seleção de agente ou modelo em andamento.
 
