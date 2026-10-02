@@ -5,7 +5,7 @@ description: >
   Adapters. Define o contrato IAgentPort, o ciclo de vida da sessão (connect,
   createSession, loadSession, prompt, cancel, closeSession), a retomada via session/load,
   a detecção de transporte perdido, a escada de cancelamento com e sem steering, o demux
-  de streaming, a fábrica multi-agente e os adapters AntigravityAdapter e ClaudeCodeAdapter.
+  de streaming, a fábrica multi-agente e os adapters AntigravityAdapter, ClaudeCodeAdapter e CopilotAdapter.
   Use ao implementar, estender ou consumir agentes, bridges ACP, processos e streams.
 ---
 
@@ -37,7 +37,7 @@ const agentPort = this.agentPortFactory.create('claude');
 A fábrica expõe:
 
 - `defaultAgentId: string`: agente usado enquanto não há escolha salva (`'agy'`);
-- `listAgents(): readonly AgentProviderInfo[]`: catálogo (`agentId`, `displayName`) na ordem de exibição — `agy` (Antigravity) e `claude` (Claude Code);
+- `listAgents(): readonly AgentProviderInfo[]`: catálogo (`agentId`, `displayName`) na ordem de exibição — `agy` (Antigravity), `claude` (Claude Code) e `copilot` (GitHub Copilot);
 - `create(agentId: string): IAgentPort`: instância nova do agente; lança `Unknown agent "<id>". Available agents: ...` para um ID fora do catálogo.
 
 O `agentId` do catálogo é igual ao `agentName` da porta criada, e é por ele que o orquestrador
@@ -49,7 +49,7 @@ mesma sessão ACP e o mesmo `cwd`.
 
 ### Propriedades
 
-- `agentName: string`: identificador do agente concreto (`'agy'` ou `'claude'`), igual ao `agentId` da fábrica e exibido no rodapé das respostas.
+- `agentName: string`: identificador do agente concreto (`'agy'`, `'claude'` ou `'copilot'`), igual ao `agentId` da fábrica e exibido no rodapé das respostas.
 - `lastAgentMessage: string`: última resposta textual consolidada do turno.
 - `currentSessionId?: string`: ID da sessão ACP ativa. Fica `undefined` sem sessão, inclusive depois de transporte perdido ou cancelamento forçado.
 - `supportsSteering: boolean`: indica se o agente suporta redirecionamento (steering) nativo durante a execução de um turno.
@@ -172,6 +172,16 @@ O `ClaudeCodeAdapter` (`agentName = 'claude'`) integra o Claude Code CLI pelo ad
 - O agente anuncia `loadSession` e `_meta.steering.supported`, então retomada, steering (`_session/steering`) e a escada de cancelamento com steering valem sem código específico. O `session/load` reenvia o histórico antes de responder e não restaura modelo, effort nem modo; o `applySessionConfig` do adapter base os reaplica.
 - As opções publicadas são `model` (aliases como `opus`, `sonnet`, `haiku` e IDs completos), `effort` (categoria `thought_level`, ausente em modelos sem effort, como `haiku`), `mode` e `fast`. Os efforts dependem do modelo e são lidos pela sessão de sondagem de `getAvailableEffortsForModel`.
 - A sessão carrega as configurações do usuário do Claude Code (`~/.claude/settings.json`, `CLAUDE.md`, hooks, skills), já que o SDK roda com `settingSources` de usuário, projeto e local.
+
+### `CopilotAdapter`
+
+O `CopilotAdapter` (`agentName = 'copilot'`) integra o GitHub Copilot CLI pelo modo ACP nativo do
+próprio CLI, sem bridge nem dependência extra:
+
+- Executa `copilot --acp --stdio` do `PATH`, em `tmpdir()` e com `buildAgentEnv`. A autenticação é a do usuário (`copilot login`).
+- Preset de sessão `permissions = on`: a opção `allow_all` liga a autonomia de ferramentas, e o agente executa as ferramentas sem `session/request_permission`, que ninguém responderia numa sessão remota.
+- O agente anuncia `loadSession`, mas não `_meta.steering`: `sendSteeringPrompt` usa o fallback por `session/prompt` e a escada de cancelamento reenvia `session/cancel`.
+- As opções publicadas são `mode` (`agent`, `plan`, `autopilot`, com IDs em URL), `model` (modelos de vários provedores, incluindo `auto`), `reasoning_effort` (categoria `thought_level`) e `allow_all` (categoria `permissions`).
 
 ## Regras Prescritivas
 
