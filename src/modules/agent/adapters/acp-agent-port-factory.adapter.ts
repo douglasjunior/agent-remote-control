@@ -10,6 +10,7 @@ import { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
 import { AntigravityAdapter } from './antigravity.adapter.js';
 import { ClaudeCodeAdapter } from './claude-code.adapter.js';
+import { CopilotAdapter } from './copilot.adapter.js';
 
 
 type AgentProvider = AgentProviderInfo & { readonly build: () => IAgentPort };
@@ -35,6 +36,11 @@ export class AcpAgentPortFactoryAdapter implements IAgentPortFactory {
         agentId: 'claude',
         displayName: 'Claude Code',
         build: () => new ClaudeCodeAdapter(this.fileSystem, this.processRunner),
+      },
+      {
+        agentId: 'copilot',
+        displayName: 'GitHub Copilot',
+        build: () => new CopilotAdapter(this.processRunner),
       },
     ];
   }

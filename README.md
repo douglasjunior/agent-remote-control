@@ -10,7 +10,7 @@ O sistema desacopla totalmente as regras de negócio dos detalhes tecnológicos 
 
 O código é estruturado em módulos verticais autônomos em `src/modules/`:
 
-- **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux`, a fábrica `AcpAgentPortFactoryAdapter` e os adaptadores concretos `AntigravityAdapter` (ponte `AgyBridgeServer` para o Google Antigravity CLI) e `ClaudeCodeAdapter` (Claude Code CLI pelo adaptador ACP oficial `@agentclientprotocol/claude-agent-acp`).
+- **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux`, a fábrica `AcpAgentPortFactoryAdapter` e os adaptadores concretos `AntigravityAdapter` (ponte `AgyBridgeServer` para o Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI pelo adaptador ACP oficial `@agentclientprotocol/claude-agent-acp`) e `CopilotAdapter` (GitHub Copilot CLI pelo modo ACP nativo `copilot --acp`).
 - **`orchestrator`** (`src/modules/orchestrator`): motor de orquestração agnóstico a canais. Contém os casos de uso `ExecuteAgentTurnUseCase` e `CancelAgentTurnUseCase`, gerenciamento de persistência de sessões (`ISessionStorePort`) e coordenação reativa de eventos.
 - **`agent-definitions`** (`src/modules/agent-definitions`): registro e parametrização de personas de agentes (`AgentRegistryService`). Define papéis como **CEO** (orquestração e triagem), **Tech Lead** (planejamento técnico e arquitetura), **Developer** (implementação e testes) e **Code Reviewer** (revisão independente de código).
 - **`workspace`** (`src/modules/workspace`): gerenciamento de repositórios e workspaces (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
@@ -31,7 +31,7 @@ sequenceDiagram
     participant DiscordBot as Discord Bot Handler
     participant Orchestrator as ExecuteAgentTurnUseCase
     participant AgentRegistry as AgentRegistryService
-    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter)
+    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter / CopilotAdapter)
     participant Demux as AgentStreamDemux
     participant Workspace as Workspace (Files / Git)
     participant AgentBridge as AgyBridgeServer / claude-agent-acp
@@ -79,7 +79,8 @@ sequenceDiagram
 - **Yarn** `1.22+`
 - Ao menos um agente instalado e autenticado:
   - **Google Antigravity CLI** (`agy` disponível no `PATH` global da máquina);
-  - **Claude Code CLI** (`claude` disponível no `PATH`, instalado e autenticado pelo usuário). O adaptador ACP oficial `@agentclientprotocol/claude-agent-acp` já vem nas dependências e usa o `claude` do `PATH`; sem ele, recorre ao binário embutido no Claude Agent SDK. As sessões do Claude Code carregam as configurações do usuário (`~/.claude/settings.json`, `CLAUDE.md`, hooks e skills) e rodam em modo `bypassPermissions`, que o Claude Code recusa quando o processo roda como `root` sem `IS_SANDBOX=1`.
+  - **Claude Code CLI** (`claude` disponível no `PATH`, instalado e autenticado pelo usuário). O adaptador ACP oficial `@agentclientprotocol/claude-agent-acp` já vem nas dependências e usa o `claude` do `PATH`; sem ele, recorre ao binário embutido no Claude Agent SDK. As sessões do Claude Code carregam as configurações do usuário (`~/.claude/settings.json`, `CLAUDE.md`, hooks e skills) e rodam em modo `bypassPermissions`, que o Claude Code recusa quando o processo roda como `root` sem `IS_SANDBOX=1`;
+  - **GitHub Copilot CLI** (`copilot` disponível no `PATH`, autenticado com `copilot login`). As sessões rodam com a autonomia de ferramentas (`allow_all`) ligada.
 - **Git** instalado e configurado
 
 ---
