@@ -557,6 +557,33 @@ describe('AgentStreamDemux final response envelope', () => {
     expect(demux.takeFinalText()).toBe('Plain answer.');
   });
 
+  it('should keep reasoning out of the answer when thought and message chunks share an id', () => {
+    const { demux } = createDemux();
+
+    demux.handle(thoughtNotif('I am unsure what the user needs.', 'm1'));
+    demux.handle(textNotif('<final_response>Real ans', 'm1'));
+    demux.handle(textNotif('wer.</final_response>', 'm1'));
+
+    expect(demux.takeFinalText()).toBe('Real answer.');
+  });
+
+  it('should keep reasoning out of the answer when chunks carry no message id', () => {
+    const { demux } = createDemux();
+
+    demux.handle(thoughtNotif('Thinking about it.'));
+    demux.handle(textNotif('<final_response>Real answer.</final_response>'));
+
+    expect(demux.takeFinalText()).toBe('Real answer.');
+  });
+
+  it('should drop stray envelope tags from a reply without a complete envelope', () => {
+    const { demux } = createDemux();
+
+    demux.handle(textNotif('e.\n</final_response>', 'm1'));
+
+    expect(demux.takeFinalText()).toBe('e.');
+  });
+
   it('should join the content of every envelope', () => {
     const { demux } = createDemux();
 

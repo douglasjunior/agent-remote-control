@@ -11,6 +11,7 @@ type ToolActivity = AgentActivity & { kind: 'tool' };
 
 const NARRATION_IDLE_MS = 3_000;
 const BLOCK_ID_SEPARATOR = '#';
+const THOUGHT_ID_SUFFIX = ':thought';
 const CODE_FENCE_PATTERN = /^`{3,}/;
 const MAX_SUMMARY_LINES = 5;
 const SUMMARY_TRUNCATION_MARKER = '...';
@@ -114,6 +115,11 @@ export function splitFinalResponse(text: string): EnvelopeParts {
   }
 
   return { prose, answers };
+}
+
+/** Drops envelope tags left without a counterpart so they never reach the user. */
+function stripEnvelopeTags(text: string): string {
+  return text.split(FINAL_RESPONSE_OPEN).join('').split(FINAL_RESPONSE_CLOSE).join('');
 }
 
 function meaningfulLines(text: string): string[] {
@@ -245,9 +251,9 @@ export class AgentStreamDemux {
       if (state.isThought) {
         continue;
       }
-      const trimmed = state.buffer.trim();
-      if (trimmed.length > 0) {
-        texts.push(state.buffer);
+      const text = stripEnvelopeTags(state.buffer).trim();
+      if (text.length > 0) {
+        texts.push(text);
       }
     }
     return texts.join('\n\n');
@@ -361,13 +367,16 @@ export class AgentStreamDemux {
   }
 
   private resolveMessageId(chunk: ParsedAgentMessageChunk): string {
+    // Thought and message chunks may share an id; keeping them apart stops one kind from taking over the other's buffer.
+    const suffix = chunk.isThought ? THOUGHT_ID_SUFFIX : '';
+
     if (chunk.messageId !== undefined) {
-      return chunk.messageId;
+      return `${chunk.messageId}${suffix}`;
     }
 
     this.fallbackId ??= `synthetic:${this.syntheticSeq++}`;
 
-    return this.fallbackId;
+    return `${this.fallbackId}${suffix}`;
   }
 
   private dispatchTool(toolFields: ParsedToolCallFields): void {
