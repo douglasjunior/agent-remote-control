@@ -15,8 +15,7 @@ import { AgentCapabilitiesService } from '../services/agent-capabilities.service
 const OPTION_NUMBER_PATTERN = /^\d+$/;
 
 export type SubmitAgentConfigSelectionInput = {
-  readonly channelId: string;
-  readonly threadId?: string;
+  readonly conversationId: string;
   readonly input: string;
 };
 
@@ -31,7 +30,7 @@ export class SubmitAgentConfigSelectionUseCase {
   ) {}
 
   async execute(input: SubmitAgentConfigSelectionInput): Promise<AgentConfigSelectionOutcome> {
-    const selection = await this.selectionStore.find(input.channelId, input.threadId);
+    const selection = await this.selectionStore.find(input.conversationId);
     if (!selection) {
       throw new Error('No agent configuration selection in progress.');
     }
@@ -111,8 +110,8 @@ export class SubmitAgentConfigSelectionUseCase {
       effortName: effort?.label ?? null,
       updatedAt: new Date().toISOString(),
     };
-    await this.settingsStore.save(settings);
-    await this.selectionStore.remove(selection.channelId, selection.threadId);
+    await this.settingsStore.save(selection.conversationId, settings);
+    await this.selectionStore.remove(selection.conversationId);
     return { kind: 'configured', settings, pendingPrompt: selection.pendingPrompt };
   }
 }

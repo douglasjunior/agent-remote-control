@@ -9,7 +9,7 @@ import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
-import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
+import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordTypingIndicator, type TypingChannel } from '../utils/discord-typing-indicator.util.js';
 
 
@@ -24,7 +24,7 @@ type SelectionCommand = {
   readonly notice: string;
   readonly threadName: string;
   readonly unavailable: string;
-  readonly start: (channelId: string, threadId?: string) => Promise<StartAgentConfigSelectionResult>;
+  readonly start: (conversationId: string) => Promise<StartAgentConfigSelectionResult>;
 };
 
 @Injectable()
@@ -60,15 +60,17 @@ export class DiscordInteractionHandler implements OnModuleInit {
         notice: '🧵 Escolha o modelo na thread abaixo.',
         threadName: 'Seleção de modelo',
         unavailable: 'ℹ️ O agente atual não expõe modelos para seleção.',
-        start: (channelId, threadId) => this.orchestratorService.startConfigSelection(channelId, threadId),
+        start: conversationId => this.orchestratorService.startConfigSelection(conversationId),
       });
+    } else if (interaction.commandName === 'usage') {
+      await this.handleUsageCommand(interaction);
     } else if (interaction.commandName === 'agent') {
       await this.handleSelectionCommand(interaction, {
         subject: 'agente',
         notice: '🧵 Escolha o agente na thread abaixo.',
         threadName: 'Seleção de agente',
         unavailable: 'ℹ️ Nenhum agente disponível para seleção.',
-        start: (channelId, threadId) => this.orchestratorService.startAgentSelection(channelId, threadId),
+        start: conversationId => this.orchestratorService.startAgentSelection(conversationId),
       });
     }
   }
@@ -80,8 +82,9 @@ export class DiscordInteractionHandler implements OnModuleInit {
       const { channelId, threadId } = resolveConversationKey(interaction.channelId, interaction.channel);
       this.logCommand(interaction, channelId, threadId);
 
-      const selectionCancelled = await this.orchestratorService.cancelConfigSelection(channelId, threadId);
-      const turnCancelled = await this.orchestratorService.cancelTurn(channelId, threadId);
+      const conversationId = buildConversationId({ channelId, threadId });
+      const selectionCancelled = await this.orchestratorService.cancelConfigSelection(conversationId);
+      const turnCancelled = await this.orchestratorService.cancelTurn(conversationId);
 
       this.logger.log(
         `[Slash Command] /cancel handled for channel=${channelId} (turn=${turnCancelled}, selection=${selectionCancelled})`,
@@ -95,6 +98,21 @@ export class DiscordInteractionHandler implements OnModuleInit {
     }
   }
 
+  private async handleUsageCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    try {
+      await interaction.deferReply({ ephemeral: true });
+      const conversationId = buildConversationId(resolveConversationKey(interaction.channelId, interaction.channel));
+      const report = await this.orchestratorService.getQuota(conversationId);
+      await this.respond(interaction, this.activityFormatter.formatQuota(report), true);
+    } catch (error) {
+      const errorMessage = this.describeError(error);
+      this.logger.error(`Error executing /usage command: ${errorMessage}`);
+      await this.respond(interaction, `❌ **Falha ao consultar o uso**: ${errorMessage}`, true);
+    }
+  }
+
   private async handleSelectionCommand(
     interaction: ChatInputCommandInteraction,
     command: SelectionCommand,
@@ -104,7 +122,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
       const target = await this.openSelectionTarget(interaction, command);
       this.logCommand(interaction, target.channelId, target.threadId);
 
-      const start = () => command.start(target.channelId, target.threadId);
+      const start = () => command.start(buildConversationId(target));
       const result = target.typingChannel
         ? await DiscordTypingIndicator.during(target.typingChannel, start)
         : await start();

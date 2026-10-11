@@ -9,3 +9,8 @@ export function resolveConversationKey(channelId: string, channel: Channel | nul
   }
   return { channelId: channel.parentId ?? channel.id, threadId: channel.id };
 }
+
+/** Identifier the orchestrator uses for the conversation: the parent channel and the thread joined, or the channel alone. */
+export function buildConversationId(key: ConversationKey): string {
+  return key.threadId ? `${key.channelId}:${key.threadId}` : key.channelId;
+}

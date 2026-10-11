@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
-import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 
 @Injectable()
@@ -12,21 +11,20 @@ export class CancelAgentTurnUseCase {
     private readonly conversationRuntime: ConversationRuntimeService,
   ) {}
 
-  async execute(channelId: string, threadId?: string): Promise<boolean> {
-    const conversationKey = buildConversationKey(channelId, threadId);
-    this.logger.log(`[Cancel Requested] Conversation=${conversationKey}`);
+  async execute(conversationId: string): Promise<boolean> {
+    this.logger.log(`[Cancel Requested] Conversation=${conversationId}`);
 
     try {
-      const cancelled = await this.conversationRuntime.cancel(conversationKey);
+      const cancelled = await this.conversationRuntime.cancel(conversationId);
       if (cancelled) {
-        this.logger.log(`[Cancel Signal Sent] Conversation=${conversationKey}`);
+        this.logger.log(`[Cancel Signal Sent] Conversation=${conversationId}`);
       } else {
-        this.logger.warn(`[Cancel Ignored] No turn in progress for conversation=${conversationKey}`);
+        this.logger.warn(`[Cancel Ignored] No turn in progress for conversation=${conversationId}`);
       }
       return cancelled;
     } catch (error) {
       this.logger.error(
-        `[Cancel Failed] Error sending cancel signal for conversation=${conversationKey}: ${error}`,
+        `[Cancel Failed] Error sending cancel signal for conversation=${conversationId}: ${error}`,
       );
       throw error;
     }

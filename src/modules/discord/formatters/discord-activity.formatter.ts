@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
 import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
@@ -100,6 +101,27 @@ export class DiscordActivityFormatter {
 
   formatInvalidSelection(selection: AgentConfigSelection): string {
     return `⚠️ Opção inválida. Responda apenas com um número de 1 a ${selection.options.length}.\n\n${this.formatSelection(selection)}`;
+  }
+
+  formatQuota(report: AgentQuotaReport): string {
+    if (!report.quota) {
+      return `ℹ️ O agente ${report.agent.name} não expõe informações de uso.`;
+    }
+    const lines = [`📊 **Uso do ${report.agent.name}**`];
+    for (const group of report.quota.groups) {
+      lines.push('', `**${group.name}**`);
+      for (const bucket of group.buckets) {
+        const percent = Math.round(bucket.remainingFraction * 100);
+        const reset = this.formatReset(bucket.resetTime);
+        lines.push(`• ${bucket.name}: ${percent}%${reset}`);
+      }
+    }
+    return lines.join('\n');
+  }
+
+  private formatReset(resetTime: string | undefined): string {
+    const timestamp = resetTime ? Date.parse(resetTime) : Number.NaN;
+    return Number.isNaN(timestamp) ? '' : ` · reinicia <t:${Math.floor(timestamp / 1000)}:R>`;
   }
 
   formatConfigured(settings: AgentSettings): string {

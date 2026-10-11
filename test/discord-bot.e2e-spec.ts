@@ -188,18 +188,22 @@ class SelectableAgentFake extends E2EAgentFake {
   }
 }
 
-function seedAgentSettings(dataDir: string): void {
+function seedAgentSettings(dataDir: string, conversationId = 'channel-e2e-111:thread-e2e-999'): void {
+  const existing = existsSync(join(dataDir, 'agent-settings.json'))
+    ? JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))
+    : {};
+  existing[conversationId] = {
+    agentId: 'agy',
+    agentName: 'Antigravity',
+    modelId: 'fast',
+    modelName: 'Fast Model',
+    effortId: null,
+    effortName: null,
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
   writeFileSync(
     join(dataDir, 'agent-settings.json'),
-    JSON.stringify({
-      agentId: 'agy',
-      agentName: 'Antigravity',
-      modelId: 'fast',
-      modelName: 'Fast Model',
-      effortId: null,
-      effortName: null,
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    }),
+    JSON.stringify(existing, null, 2),
   );
 }
 
@@ -333,8 +337,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(editMock).toHaveBeenCalled();
 
     const storedSession = await sessionStore.findSession(
-      'channel-e2e-111',
-      'thread-e2e-999',
+      'channel-e2e-111:thread-e2e-999',
     );
     expect(storedSession).not.toBeNull();
     expect(storedSession?.userId).toBe('discord-user-777');
@@ -346,7 +349,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   });
 
   it('should cancel a turn in progress through the /cancel slash command', async () => {
-    seedAgentSettings(dataDir);
+    seedAgentSettings(dataDir, 'channel-main:thread-sub');
     const fakeAgent = new BlockingAgentFake();
     const cancelSpy = vi.spyOn(fakeAgent, 'cancel');
 
@@ -427,7 +430,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   });
 
   it('should delegate from CEO to Developer inside the project workspace and report the final summary', async () => {
-    seedAgentSettings(dataDir);
+    seedAgentSettings(dataDir, 'channel-delegation:thread-delegation');
     const ceo = new ScriptedAgentFake([
       'Implement the login screen.\n[DELEGATE:DEVELOPER:my-app]',
       'Login delivered.\n[DONE]',
@@ -546,7 +549,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(sent).toContain('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
     expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (claude) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
     expect(agents.some(agent => agent.agentName === 'claude' && agent.prompts.some(prompt => prompt.includes('Build it')))).toBe(true);
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select']).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'two',
@@ -559,7 +562,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   });
 
   it('should reopen the model selection through the /model slash command', async () => {
-    seedAgentSettings(dataDir);
+    seedAgentSettings(dataDir, 'channel-model:thread-model');
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -600,13 +603,13 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
     expect(sent).toEqual(['✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão']);
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].modelId).toBe('one');
 
     await app.close();
   });
 
   it('should open the /model selection of a guild channel in a thread answered without mention', async () => {
-    seedAgentSettings(dataDir);
+    seedAgentSettings(dataDir, 'channel-general:thread-selection');
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
@@ -657,13 +660,13 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
     expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8')).modelId).toBe('one');
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].modelId).toBe('one');
 
     await app.close();
   });
 
   it('should switch the agent through the /agent slash command in a bot-owned thread', async () => {
-    seedAgentSettings(dataDir);
+    seedAgentSettings(dataDir, 'channel-general:thread-agent');
     const createdAgentIds: string[] = [];
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -715,7 +718,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model One · ⚡ padrão');
     expect(createdAgentIds).toContain('claude');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))).toMatchObject({
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent']).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'one',

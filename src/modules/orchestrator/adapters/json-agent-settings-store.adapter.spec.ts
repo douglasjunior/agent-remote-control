@@ -30,26 +30,42 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   });
 
   it('should return null when nothing was saved', async () => {
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load()).resolves.toBeNull();
+    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toBeNull();
   });
 
   it('should persist settings across instances', async () => {
     const dataDir = join(rootDir, 'nested');
     const store = new JsonAgentSettingsStoreAdapter(dataDir);
 
-    await store.save(SETTINGS);
+    await store.save('conv', SETTINGS);
 
-    await expect(store.load()).resolves.toEqual(SETTINGS);
-    await expect(new JsonAgentSettingsStoreAdapter(dataDir).load()).resolves.toEqual(SETTINGS);
+    await expect(store.load('conv')).resolves.toEqual(SETTINGS);
+    await expect(new JsonAgentSettingsStoreAdapter(dataDir).load('conv')).resolves.toEqual(SETTINGS);
+  });
+
+  it('should keep settings isolated per conversation', async () => {
+    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    const copilot = { ...SETTINGS, agentId: 'copilot', agentName: 'Copilot' };
+
+    await store.save('ch:thread-1', SETTINGS);
+    await store.save('ch:thread-2', copilot);
+    await store.save('dm', SETTINGS);
+
+    await expect(store.load('ch:thread-1')).resolves.toEqual(SETTINGS);
+    await expect(store.load('ch:thread-2')).resolves.toEqual(copilot);
+    await expect(store.load('dm')).resolves.toEqual(SETTINGS);
+    await expect(store.load('ch')).resolves.toBeNull();
+    const reloaded = new JsonAgentSettingsStoreAdapter(rootDir);
+    await expect(reloaded.load('ch:thread-1')).resolves.toEqual(SETTINGS);
   });
 
   it('should normalize missing optional fields', async () => {
     writeFileSync(
       join(rootDir, 'agent-settings.json'),
-      JSON.stringify({ agentId: 'claude' }),
+      JSON.stringify({ conv: { agentId: 'claude' } }),
     );
 
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load()).resolves.toEqual({
+    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toEqual({
       agentId: 'claude',
       agentName: 'claude',
       modelId: null,
@@ -63,11 +79,13 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   it.each([
     ['invalid JSON', '{not json'],
     ['null', 'null'],
-    ['missing agent', JSON.stringify({ modelId: 'm1', modelName: 'Model 1' })],
-    ['non-string agent', JSON.stringify({ agentId: 42 })],
+    ['legacy global settings', JSON.stringify({ agentId: 'claude', modelId: 'm1' })],
+    ['missing agent', JSON.stringify({ conv: { modelId: 'm1' } })],
+    ['non-string agent', JSON.stringify({ conv: { agentId: 42 } })],
+    ['null entry', JSON.stringify({ conv: null })],
   ])('should return null for %s', async (_label, content) => {
     writeFileSync(join(rootDir, 'agent-settings.json'), content);
 
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load()).resolves.toBeNull();
+    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toBeNull();
   });
 });

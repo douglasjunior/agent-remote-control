@@ -5,16 +5,9 @@ import type { ISessionStorePort } from '../ports/session-store.port.js';
 export class InMemorySessionStoreFake implements ISessionStorePort {
   private readonly sessions = new Map<string, SessionContext>();
 
-  async findSession(
-    channelId: string,
-    threadId?: string,
-  ): Promise<SessionContext | null> {
-    const normalizedThreadId = threadId ?? undefined;
+  async findSession(conversationId: string): Promise<SessionContext | null> {
     for (const session of this.sessions.values()) {
-      if (
-        session.channelId === channelId
-        && (session.threadId ?? undefined) === normalizedThreadId
-      ) {
+      if (session.conversationId === conversationId) {
         return session;
       }
     }
