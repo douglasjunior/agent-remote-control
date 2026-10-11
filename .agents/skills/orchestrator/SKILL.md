@@ -38,8 +38,7 @@ apenas dados serializáveis; o estado de execução (agentes vivos, fila, turno 
 `ConversationRuntimeService`:
 
 - `sessionId`: identificador único da sessão (UUID v4 ou string estável);
-- `channelId`: identificador do canal de origem (ex.: canal do Discord ou identificador de sala);
-- `threadId`: identificador opcional da subtarefa ou thread aninhada;
+- `conversationId`: identificador único da conversa (gerado pelo canal ou cliente);
 - `userId`: identificador do usuário autor da sessão;
 - `workspacePath`: caminho absoluto do diretório de trabalho do projeto;
 - `agentRole`: papel raiz da conversa (ex.: `'CEO'`);
@@ -50,8 +49,7 @@ apenas dados serializáveis; o estado de execução (agentes vivos, fila, turno 
 
 Encapsula os parâmetros para execução de uma rodada de interação:
 
-- `channelId`: canal solicitante;
-- `threadId`: identificador opcional da thread;
+- `conversationId`: identificador da conversa solicitante;
 - `userId`: autor do prompt;
 - `prompt`: instrução enviada pelo usuário;
 - `workspacePath`: diretório local de trabalho associado ao turno;
@@ -99,13 +97,13 @@ Estrutura imutável com o desfecho do turno:
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
-Configuração de agente, modelo e effort de uma conversa (canal + thread): `agentId`, `agentName` (nome de exibição do
+Configuração de agente, modelo e effort de uma conversa: `agentId`, `agentName` (nome de exibição do
 catálogo), `modelId`, `modelName`, `effortId`, `effortName` e `updatedAt`. `modelId === null`
 indica agente sem modelos publicados; `effortId === null`, modelo sem níveis de effort.
 
 ### `AgentConfigSelection` (`agent-config-selection.model.ts`)
 
-Estado da seleção em andamento numa conversa: `channelId`, `threadId?`, `step`
+Estado da seleção em andamento numa conversa: `conversationId`, `step`
 (`'agent' | 'model' | 'effort'`), `options` numeradas (`SelectionOption`: `index`, `id`, `label`,
 `description?`), `selectedAgent?` (presente nas etapas `model` e `effort`), `selectedModel?`
 (presente na etapa `effort`) e `pendingPrompt?`. Os desfechos dos use cases de seleção
@@ -128,9 +126,10 @@ usam o `InMemorySessionStoreFake` de `testing/`.
 
 ### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
 
-`load(conversationId: string): Promise<AgentSettings | null>` e
+`load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` e
 `save(conversationId: string, settings: AgentSettings): Promise<void>`. Cada conversa
 tem a própria configuração: `/agent` e `/model` alteram só a conversa (`conversationId`) em que rodam.
+`loadMostRecent()` devolve a configuração mais recente (maior `updatedAt`), permitindo herança automática para novas conversas.
 Implementado por `JsonAgentSettingsStoreAdapter` em `DATA_DIR/agent-settings.json`, um mapa `conversationId` → `AgentSettings`.
 
 ### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
@@ -289,8 +288,8 @@ vêm das `AgentSettings` do mesmo agente; sem elas, `modelName` é o `displayNam
 
 Injeta `ConversationRuntimeService`.
 
-O método `execute(channelId: string, threadId?: string): Promise<boolean>` aciona
-`ConversationRuntimeService.cancel(buildConversationKey(channelId, threadId))` e devolve se havia
+O método `execute(conversationId: string): Promise<boolean>` aciona
+`ConversationRuntimeService.cancel(conversationId)` e devolve se havia
 turno em andamento, inclusive num turno que ainda não salvou a sessão. O `PromptCancelledError`
 resultante interrompe o loop de delegação.
 
@@ -302,9 +301,9 @@ A escolha é por conversa e persistida. `AgentCapabilitiesService` monta as opç
 `connect()` → leitura → `disconnect()` no `finally`), isolada da porta da conversa. Sem opções,
 devolvem lista vazia. `resolveAgent(settings)` devolve o agente das settings ou o padrão da fábrica.
 
-- **`StartAgentConfigSelectionUseCase`** `({ channelId, threadId?, pendingPrompt?, step })`: com `step: 'agent'`, lista os agentes e salva a etapa `agent`; com um único agente, pula direto para a etapa `model` dele; sem agentes, `{ kind: 'unavailable' }`. Com `step: 'model'`, lista os modelos do agente atual (`resolveAgent`) e salva a etapa `model` com `selectedAgent`; sem modelos, `unavailable`.
-- **`SubmitAgentConfigSelectionUseCase`** `({ channelId, threadId?, input })`: aceita só `^\d+$` entre 1 e N; outra entrada retorna `invalid` sem mudar o estado. Na etapa `agent`, avança para `model` com os modelos do agente escolhido, ou salva só o agente se ele não tiver modelos. Na etapa `model`, avança para `effort` se o modelo tiver efforts, senão salva com `effortId: null`. Na etapa `effort`, salva. Etapa `model`/`effort` sem `selectedAgent` lança erro. Ao salvar, remove a seleção e retorna `{ kind: 'configured', settings, pendingPrompt? }`.
-- **`ResolveConversationInputUseCase`** `({ channelId, threadId?, prompt })`: com seleção ativa, delega para `Submit`; sem settings, delega para `Start` com `step: 'agent'` e `pendingPrompt` (`unavailable` vira `execute`); com settings, `execute`. Um `configured` com `pendingPrompt` vira `{ kind: 'execute', prompt: pendingPrompt, configured }`.
+- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: com `step: 'agent'`, lista os agentes e salva a etapa `agent`; com um único agente, pula direto para a etapa `model` dele; sem agentes, `{ kind: 'unavailable' }`. Com `step: 'model'`, lista os modelos do agente atual (`resolveAgent`) e salva a etapa `model` com `selectedAgent`; sem modelos, `unavailable`.
+- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: aceita só `^\d+$` entre 1 e N; outra entrada retorna `invalid` sem mudar o estado. Na etapa `agent`, avança para `model` com os modelos do agente escolhido, ou salva só o agente se ele não tiver modelos. Na etapa `model`, avança para `effort` se o modelo tiver efforts, senão salva com `effortId: null`. Na etapa `effort`, salva. Etapa `model`/`effort` sem `selectedAgent` lança erro. Ao salvar, remove a seleção e retorna `{ kind: 'configured', settings, pendingPrompt? }`.
+- **`ResolveConversationInputUseCase`** `({ conversationId, prompt })`: com seleção ativa, delega para `Submit`; sem settings para a conversa, tenta herdar de `loadMostRecent()` (salvando imediatamente para a conversa com `updatedAt` renovado); se não houver histórico, delega para `Start` com `step: 'agent'` e `pendingPrompt` (`unavailable` vira `execute`); com settings, `execute`. Um `configured` com `pendingPrompt` vira `{ kind: 'execute', prompt: pendingPrompt, configured }`.
 - **`CancelAgentConfigSelectionUseCase`**: remove a seleção e retorna se havia uma.
 
 Trocar de agente não interrompe turnos em andamento: o turno seguinte da conversa troca a porta do

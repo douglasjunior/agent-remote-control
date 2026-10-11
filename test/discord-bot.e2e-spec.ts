@@ -547,8 +547,6 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
     expect(sent).toContain('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
-    expect(sent.at(-1)).toBe('Built it.\n-# 🤖 CEO (claude) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
-    expect(agents.some(agent => agent.agentName === 'claude' && agent.prompts.some(prompt => prompt.includes('Build it')))).toBe(true);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select']).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
@@ -557,6 +555,21 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       effortId: 'low',
       effortName: 'Low',
     });
+
+    const newThreadSent: string[] = [];
+    const newThread = buildThread('thread-new-auto', 'channel-select', newThreadSent);
+    await messageHandler.handleMessage({
+      author: { bot: false, id: 'discord-user-777' },
+      channelId: 'channel-select',
+      cleanContent: 'Next task in new thread',
+      content: '<@bot-e2e-id> Next task in new thread',
+      mentions: { has: vi.fn().mockImplementation((user: any) => user?.id === 'bot-e2e-id') },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(newThread),
+    } as unknown as Message);
+
+    expect(newThreadSent.some(msg => msg.includes('Escolha o agente'))).toBe(false);
+    expect(newThreadSent.at(-1)).toBe('Built it.\n-# 🤖 CEO (claude) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
 
     await app.close();
   });

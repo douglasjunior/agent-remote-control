@@ -17,7 +17,9 @@ export class GetAgentQuotaUseCase {
   ) {}
 
   async execute(conversationId: string): Promise<AgentQuotaReport> {
-    const agent = this.capabilities.resolveAgent(await this.settingsStore.load(conversationId));
+    const currentOrRecent = (await this.settingsStore.load(conversationId))
+      ?? (await this.settingsStore.loadMostRecent());
+    const agent = this.capabilities.resolveAgent(currentOrRecent);
     const quota = await this.agentPortFactory.create(agent.id).getQuota();
     return { agent, quota };
   }

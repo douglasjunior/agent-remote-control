@@ -42,6 +42,15 @@ export class ResolveConversationInputUseCase {
       return { kind: 'execute', prompt };
     }
 
+    const mostRecent = await this.settingsStore.loadMostRecent();
+    if (mostRecent) {
+      await this.settingsStore.save(conversationId, {
+        ...mostRecent,
+        updatedAt: new Date().toISOString(),
+      });
+      return { kind: 'execute', prompt };
+    }
+
     const started = await this.startSelection.execute({ conversationId, pendingPrompt: prompt, step: 'agent' });
     if (started.kind === 'unavailable') {
       return { kind: 'execute', prompt };

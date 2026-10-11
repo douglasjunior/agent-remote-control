@@ -58,4 +58,29 @@ describe('GetAgentQuotaUseCase', () => {
       quota: undefined,
     });
   });
+
+  it('should fall back to the most recent settings when current conversation has none', async () => {
+    const factory = new StubAgentPortFactory();
+    const store = new StubAgentSettingsStore();
+    const settings: AgentSettings = {
+      agentId: 'copilot',
+      agentName: 'Copilot',
+      modelId: null,
+      modelName: null,
+      effortId: null,
+      effortName: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+    };
+    await store.save('prev-conv', settings);
+    const useCase = new GetAgentQuotaUseCase(
+      new AgentCapabilitiesService(factory),
+      factory,
+      store,
+    );
+
+    const report = await useCase.execute('new-conv');
+
+    expect(factory.createdAgentIds).toEqual(['copilot']);
+    expect(report.agent).toEqual({ id: 'copilot', name: 'Copilot' });
+  });
 });
