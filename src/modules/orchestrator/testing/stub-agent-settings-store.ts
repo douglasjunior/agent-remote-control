@@ -12,6 +12,15 @@ export class StubAgentSettingsStore implements IAgentSettingsStorePort {
     return this.byConversation.get(conversationId) ?? this.settings;
   }
 
+  async loadMostRecent(): Promise<AgentSettings | null> {
+    if (this.byConversation.size === 0) {
+      return this.settings;
+    }
+    const all = Array.from(this.byConversation.values());
+    return all.reduce((latest, current) =>
+      current.updatedAt > latest.updatedAt ? current : latest);
+  }
+
   async save(conversationId: string, settings: AgentSettings): Promise<void> {
     this.saved.push(settings);
     this.settings = settings;

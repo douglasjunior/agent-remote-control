@@ -59,6 +59,22 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     await expect(reloaded.load('ch:thread-1')).resolves.toEqual(SETTINGS);
   });
 
+  it('should return null for loadMostRecent when store is empty', async () => {
+    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    await expect(store.loadMostRecent()).resolves.toBeNull();
+  });
+
+  it('should return the most recently updated settings', async () => {
+    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    const older = { ...SETTINGS, agentId: 'agy', updatedAt: '2026-01-01T10:00:00.000Z' };
+    const newer = { ...SETTINGS, agentId: 'copilot', updatedAt: '2026-01-02T10:00:00.000Z' };
+
+    await store.save('conv-1', older);
+    await store.save('conv-2', newer);
+
+    await expect(store.loadMostRecent()).resolves.toEqual(newer);
+  });
+
   it('should normalize missing optional fields', async () => {
     writeFileSync(
       join(rootDir, 'agent-settings.json'),

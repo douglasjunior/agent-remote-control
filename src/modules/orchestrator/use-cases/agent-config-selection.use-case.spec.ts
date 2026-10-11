@@ -112,9 +112,25 @@ describe('agent configuration selection', () => {
       });
 
       it('should list the models of the agent persisted in the settings', async () => {
-        settingsStore.settings = settingsOf({ agentId: 'other', agentName: 'Other Agent' });
+        settingsStore.byConversation.set('conv-1', settingsOf({ agentId: 'other', agentName: 'Other Agent' }));
 
         const result = await start.execute({ conversationId: 'conv-1', step: 'model' });
+
+        expect(result).toMatchObject({
+          kind: 'selection',
+          selection: {
+            step: 'model',
+            selectedAgent: { id: 'other', name: 'Other Agent' },
+            options: [{ index: 1, id: 'opus', label: 'Opus' }],
+          },
+        });
+        expect(factory.createdAgentIds).toEqual(['other']);
+      });
+
+      it('should fall back to the most recent settings when current conversation has none in model step', async () => {
+        settingsStore.byConversation.set('prev-conv', settingsOf({ agentId: 'other', agentName: 'Other Agent' }));
+
+        const result = await start.execute({ conversationId: 'new-conv', step: 'model' });
 
         expect(result).toMatchObject({
           kind: 'selection',
@@ -425,11 +441,37 @@ describe('agent configuration selection', () => {
     });
 
     it('should execute directly when settings already exist', async () => {
-      settingsStore.settings = settingsOf();
+      settingsStore.byConversation.set('conv-1', settingsOf());
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'Hi' })).resolves.toEqual({
         kind: 'execute',
         prompt: 'Hi',
+      });
+    });
+
+    it('should inherit and persist the most recent settings when starting a new conversation', async () => {
+      const existingSettings = settingsOf({
+        agentId: 'other',
+        agentName: 'Other Agent',
+        modelId: 'opus',
+        modelName: 'Opus',
+        effortId: null,
+        effortName: null,
+      });
+      settingsStore.byConversation.set('prev-conv', existingSettings);
+
+      const resolution = await resolve.execute({ conversationId: 'new-conv', prompt: 'Do work' });
+
+      expect(resolution).toEqual({
+        kind: 'execute',
+        prompt: 'Do work',
+      });
+      const inherited = await settingsStore.load('new-conv');
+      expect(inherited).toMatchObject({
+        agentId: 'other',
+        agentName: 'Other Agent',
+        modelId: 'opus',
+        modelName: 'Opus',
       });
     });
 

@@ -28,7 +28,9 @@ export class StartAgentConfigSelectionUseCase {
 
   async execute(input: StartAgentConfigSelectionInput): Promise<StartAgentConfigSelectionResult> {
     if (input.step === 'model') {
-      return this.startModelStep(input, this.capabilities.resolveAgent(await this.settingsStore.load(input.conversationId)));
+      const currentOrRecent = (await this.settingsStore.load(input.conversationId))
+        ?? (await this.settingsStore.loadMostRecent());
+      return this.startModelStep(input, this.capabilities.resolveAgent(currentOrRecent));
     }
 
     const agents = this.capabilities.listAgentOptions();
