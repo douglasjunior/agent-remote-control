@@ -3,7 +3,7 @@ name: orchestrator
 description: >
   Orquestração agnóstica a canais para agentes de IA: turnos, delegação do CEO com
   [DELEGATE]/[DONE]/[AGENT_RESULT], retomada de sessão ACP persistida por papel (agentSessions,
-  e agente, DATA_DIR), seleção global de agente/modelo/effort, troca do agente do CEO,
+  e agente, DATA_DIR), seleção de agente/modelo/effort por conversa, troca do agente do CEO,
   rodapé com TurnResult.agentInfo,
   cancelamento, fila por conversa e ISessionStorePort. Use ao implementar turnos,
   delegação, cancelamento, persistência de sessões e configurações, seleção de modelo
@@ -99,7 +99,7 @@ Estrutura imutável com o desfecho do turno:
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
-Configuração global de agente, modelo e effort: `agentId`, `agentName` (nome de exibição do
+Configuração de agente, modelo e effort de uma conversa (canal + thread): `agentId`, `agentName` (nome de exibição do
 catálogo), `modelId`, `modelName`, `effortId`, `effortName` e `updatedAt`. `modelId === null`
 indica agente sem modelos publicados; `effortId === null`, modelo sem níveis de effort.
 
@@ -119,7 +119,7 @@ As portas do orquestrador residem em `src/modules/orchestrator/ports/`:
 
 Responsável pela persistência e consulta do estado das sessões:
 
-- `findSession(channelId: string, threadId?: string): Promise<SessionContext | null>`
+- `findSession(conversationId: string): Promise<SessionContext | null>`
 - `saveSession(session: SessionContext): Promise<void>`
 - Symbol homônimo: `export const ISessionStorePort = Symbol('ISessionStorePort');`
 
@@ -128,13 +128,14 @@ usam o `InMemorySessionStoreFake` de `testing/`.
 
 ### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
 
-`load(): Promise<AgentSettings | null>` e `save(settings): Promise<void>`. Implementado por
-`JsonAgentSettingsStoreAdapter` em `DATA_DIR/agent-settings.json`.
+`load(conversationId: string): Promise<AgentSettings | null>` e
+`save(conversationId: string, settings: AgentSettings): Promise<void>`. Cada conversa
+tem a própria configuração: `/agent` e `/model` alteram só a conversa (`conversationId`) em que rodam.
+Implementado por `JsonAgentSettingsStoreAdapter` em `DATA_DIR/agent-settings.json`, um mapa `conversationId` → `AgentSettings`.
 
 ### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
 
-`find(channelId, threadId?)`, `save(selection)` e `remove(channelId, threadId?): Promise<boolean>`,
-com chave `channelId:threadId`. Implementado em memória por
+`find(conversationId: string)`, `save(selection: AgentConfigSelection)` e `remove(conversationId: string): Promise<boolean>`. Implementado em memória por
 `InMemoryAgentConfigSelectionStoreAdapter`: uma seleção interrompida por reinício é descartada.
 
 ### Persistência em `DATA_DIR`
@@ -239,7 +240,7 @@ Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAge
 A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
 
 1. **Ciclo de vida do Turno**: invoca `ConversationRuntimeService.beginTurn(conversationKey)`, garantindo rastreamento no contador de turnos ativos até o `finally`.
-2. **Agente do turno**: lê as `AgentSettings` uma vez; o `agentId` do turno é o delas ou `IAgentPortFactory.defaultAgentId`. O CEO e todos os delegados do turno usam esse agente.
+2. **Agente do turno**: lê as `AgentSettings` da conversa; o `agentId` do turno é o delas ou `IAgentPortFactory.defaultAgentId`. O CEO e todos os delegados do turno usam esse agente.
    - **Steering**: antes de entrar na fila, tenta `steerCeo` com `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, bloco `[USER_MESSAGE]` que manda continuar a tarefa atual considerando a mensagem, porque sem isso o modelo tende a responder só a mensagem e encerrar a rodada) sobre o prompt enriquecido com `[ATTACHMENTS]`, seguido do `getTurnReminder(role)`. Entregue, retorna `status: 'steered'` com o `sessionId` salvo e o `agentInfo` do CEO, sem rodar nova rodada. Não entregue (agente sem steering, CEO ainda conectando ou entre rodadas, fila ocupada), segue o fluxo normal.
 3. **Exclusão mútua do CEO**: executa a rodada do CEO via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. A porta do CEO é liberada assim que o CEO decide delegar, permitindo que novas mensagens do usuário sejam atendidas enquanto especialistas trabalham em segundo plano.
 4. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
@@ -295,7 +296,7 @@ resultante interrompe o loop de delegação.
 
 ## Seleção de Agente, Modelo e Effort
 
-A escolha é global e persistida. `AgentCapabilitiesService` monta as opções numeradas:
+A escolha é por conversa e persistida. `AgentCapabilitiesService` monta as opções numeradas:
 `listAgentOptions()` a partir de `IAgentPortFactory.listAgents()`, e `listModelOptions(agentId)` /
 `listEffortOptions(agentId, modelId)` numa porta descartável do agente (`create(agentId)` →
 `connect()` → leitura → `disconnect()` no `finally`), isolada da porta da conversa. Sem opções,
@@ -313,14 +314,15 @@ CEO e os delegados seguintes já nascem no agente novo.
 
 Interface do orquestrador para os canais:
 
-- `executeTurn(request)` e `cancelTurn(channelId, threadId?)`;
-- `resolveInput({ channelId, threadId?, prompt })`: decide entre executar o prompt ou conduzir a seleção;
-- `startConfigSelection(channelId, threadId?)` (etapa `model` do agente atual), `startAgentSelection(channelId, threadId?)` (etapa `agent`) e `cancelConfigSelection(channelId, threadId?)`;
-- `hasActiveConfigSelection(channelId, threadId?)`.
+- `executeTurn(request)` e `cancelTurn(conversationId: string)`;
+- `getQuota(conversationId: string)`: `GetAgentQuotaUseCase` resolve o agente salvo na conversa (ou o padrão) e devolve `AgentQuotaReport` (`agent` e `quota`, `undefined` quando o agente não expõe cota), sem abrir sessão;
+- `resolveInput({ conversationId, prompt })`: decide entre executar o prompt ou conduzir a seleção;
+- `startConfigSelection(conversationId: string)` (etapa `model` do agente atual), `startAgentSelection(conversationId: string)` (etapa `agent`) e `cancelConfigSelection(conversationId: string)`;
+- `hasActiveConfigSelection(conversationId: string)`.
 
 ## Regras Prescritivas Mandatórias
 
-- **Proibido acoplamento com Discord ou canais de rede**: o orquestrador manipula unicamente identificadores (`channelId`, `userId`, `threadId`), sem importar discord.js, HTTP frameworks ou drivers de terceiros.
+- **Proibido acoplamento com Discord ou canais de rede**: o orquestrador manipula unicamente identificadores genéricos (`conversationId`, `userId`), sem importar discord.js, HTTP frameworks ou drivers de terceiros.
 - **Portas e Symbols**: toda dependência externa aos use cases deve utilizar injeção por Symbol (`@Inject(ISessionStorePort)`).
 - **Sem barrel exports**: nunca crie `index.ts` em `models/`, `ports/`, `adapters/`, `services/` ou `use-cases/`.
 - **Limpeza de recursos reativos**: todo callback registrado em `onActivity` deve ser desconectado em bloco `finally`.

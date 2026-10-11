@@ -25,7 +25,7 @@ describe('CancelAgentTurnUseCase', () => {
     const started = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const done = runtime.run('ch-1:th-1', 'stub', () => new Promise<void>((resolve) => {
+    const done = runtime.run('conv-th-1', 'stub', () => new Promise<void>((resolve) => {
       finish = resolve;
       markStarted();
     }));
@@ -36,7 +36,7 @@ describe('CancelAgentTurnUseCase', () => {
     const turn = runBlockingTurn();
     await turn.started;
 
-    await expect(useCase.execute('ch-1', 'th-1')).resolves.toBe(true);
+    await expect(useCase.execute('conv-th-1')).resolves.toBe(true);
 
     expect(agentPort.cancelCalls).toBe(1);
     turn.finish();
@@ -44,7 +44,7 @@ describe('CancelAgentTurnUseCase', () => {
   });
 
   it('should report false when the conversation has no turn in progress', async () => {
-    await expect(useCase.execute('ch-1', 'th-1')).resolves.toBe(false);
+    await expect(useCase.execute('conv-th-1')).resolves.toBe(false);
     expect(agentPort.cancelCalls).toBe(0);
   });
 
@@ -52,7 +52,7 @@ describe('CancelAgentTurnUseCase', () => {
     const turn = runBlockingTurn();
     await turn.started;
 
-    await expect(useCase.execute('ch-1', 'th-2')).resolves.toBe(false);
+    await expect(useCase.execute('conv-th-2')).resolves.toBe(false);
 
     expect(agentPort.cancelCalls).toBe(0);
     turn.finish();
@@ -66,7 +66,7 @@ describe('CancelAgentTurnUseCase', () => {
     const turn = runBlockingTurn();
     await turn.started;
 
-    await expect(useCase.execute('ch-1', 'th-1')).rejects.toThrow('cancel failed');
+    await expect(useCase.execute('conv-th-1')).rejects.toThrow('cancel failed');
     turn.finish();
     await turn.done;
   });

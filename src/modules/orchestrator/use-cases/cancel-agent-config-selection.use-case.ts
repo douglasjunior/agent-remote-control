@@ -10,7 +10,7 @@ export class CancelAgentConfigSelectionUseCase {
     private readonly selectionStore: IAgentConfigSelectionStorePort,
   ) {}
 
-  execute(channelId: string, threadId?: string): Promise<boolean> {
-    return this.selectionStore.remove(channelId, threadId);
+  execute(conversationId: string): Promise<boolean> {
+    return this.selectionStore.remove(conversationId);
   }
 }

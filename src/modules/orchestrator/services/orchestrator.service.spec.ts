@@ -6,6 +6,7 @@ import type { TurnResult } from '../models/turn-result.model.js';
 import type { CancelAgentConfigSelectionUseCase } from '../use-cases/cancel-agent-config-selection.use-case.js';
 import type { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-case.js';
 import type { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
+import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import type { ResolveConversationInputUseCase } from '../use-cases/resolve-conversation-input.use-case.js';
 import type { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
@@ -20,6 +21,7 @@ describe('OrchestratorService', () => {
   let mockStartSelectionUseCase: StartAgentConfigSelectionUseCase;
   let mockCancelSelectionUseCase: CancelAgentConfigSelectionUseCase;
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
+  let mockGetQuotaUseCase: GetAgentQuotaUseCase;
 
   beforeEach(() => {
     mockExecuteUseCase = {
@@ -34,6 +36,7 @@ describe('OrchestratorService', () => {
     mockStartSelectionUseCase = { execute: vi.fn() } as unknown as StartAgentConfigSelectionUseCase;
     mockCancelSelectionUseCase = { execute: vi.fn() } as unknown as CancelAgentConfigSelectionUseCase;
     selectionStore = new InMemoryAgentConfigSelectionStoreAdapter();
+    mockGetQuotaUseCase = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
 
     service = new OrchestratorService(
       mockExecuteUseCase,
@@ -42,12 +45,21 @@ describe('OrchestratorService', () => {
       mockStartSelectionUseCase,
       mockCancelSelectionUseCase,
       selectionStore,
+      mockGetQuotaUseCase,
     );
+  });
+
+  it('should delegate getQuota to GetAgentQuotaUseCase', async () => {
+    const report = { agent: { id: 'a', name: 'A' }, quota: undefined };
+    vi.mocked(mockGetQuotaUseCase.execute).mockResolvedValue(report);
+
+    expect(await service.getQuota('conv-th-1')).toBe(report);
+    expect(mockGetQuotaUseCase.execute).toHaveBeenCalledWith('conv-th-1');
   });
 
   it('should delegate executeTurn to ExecuteAgentTurnUseCase', async () => {
     const request: TurnRequest = {
-      channelId: 'ch-1',
+      conversationId: 'conv-1',
       userId: 'user-1',
       prompt: 'Test prompt',
       workspacePath: '/repo/workspace',
@@ -71,14 +83,14 @@ describe('OrchestratorService', () => {
   it('should delegate cancelTurn to CancelAgentTurnUseCase', async () => {
     vi.mocked(mockCancelUseCase.execute).mockResolvedValue(true);
 
-    await expect(service.cancelTurn('ch-1', 'th-1')).resolves.toBe(true);
-    expect(mockCancelUseCase.execute).toHaveBeenCalledWith('ch-1', 'th-1');
+    await expect(service.cancelTurn('conv-th-1')).resolves.toBe(true);
+    expect(mockCancelUseCase.execute).toHaveBeenCalledWith('conv-th-1');
   });
 
   it('should delegate resolveInput to ResolveConversationInputUseCase', async () => {
     vi.mocked(mockResolveUseCase.execute).mockResolvedValue({ kind: 'execute', prompt: 'hi' });
 
-    await expect(service.resolveInput({ channelId: 'ch-1', prompt: 'hi' })).resolves.toEqual({
+    await expect(service.resolveInput({ conversationId: 'conv-1', prompt: 'hi' })).resolves.toEqual({
       kind: 'execute',
       prompt: 'hi',
     });
@@ -88,32 +100,30 @@ describe('OrchestratorService', () => {
     vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
     vi.mocked(mockCancelSelectionUseCase.execute).mockResolvedValue(true);
 
-    await expect(service.startConfigSelection('ch-1', 'th-1')).resolves.toEqual({ kind: 'unavailable' });
-    await expect(service.cancelConfigSelection('ch-1', 'th-1')).resolves.toBe(true);
+    await expect(service.startConfigSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
+    await expect(service.cancelConfigSelection('conv-th-1')).resolves.toBe(true);
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
-      channelId: 'ch-1',
-      threadId: 'th-1',
+      conversationId: 'conv-th-1',
       step: 'model',
     });
-    expect(mockCancelSelectionUseCase.execute).toHaveBeenCalledWith('ch-1', 'th-1');
+    expect(mockCancelSelectionUseCase.execute).toHaveBeenCalledWith('conv-th-1');
   });
 
   it('should start the agent selection at the agent step', async () => {
     vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
 
-    await expect(service.startAgentSelection('ch-1', 'th-1')).resolves.toEqual({ kind: 'unavailable' });
+    await expect(service.startAgentSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
-      channelId: 'ch-1',
-      threadId: 'th-1',
+      conversationId: 'conv-th-1',
       step: 'agent',
     });
   });
 
   it('should report whether a configuration selection is active', async () => {
-    await expect(service.hasActiveConfigSelection('ch-1')).resolves.toBe(false);
+    await expect(service.hasActiveConfigSelection('conv-1')).resolves.toBe(false);
 
-    await selectionStore.save({ channelId: 'ch-1', step: 'model', options: [] });
+    await selectionStore.save({ conversationId: 'conv-1', step: 'model', options: [] });
 
-    await expect(service.hasActiveConfigSelection('ch-1')).resolves.toBe(true);
+    await expect(service.hasActiveConfigSelection('conv-1')).resolves.toBe(true);
   });
 });
