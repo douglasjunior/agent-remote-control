@@ -2,8 +2,9 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 
-import type { AgentConfig } from '../ports/agent.port.js';
+import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
+import { parseCopilotUserOutput } from '../utils/copilot-usage.util.js';
 
 import {
   AbstractAcpAdapter,
@@ -27,6 +28,21 @@ export class CopilotAdapter extends AbstractAcpAdapter {
     @Optional() preferredConfig?: AgentConfig,
   ) {
     super(preferredConfig ?? {});
+  }
+
+  override async getQuota(): Promise<AgentQuota | undefined> {
+    try {
+      const { exitCode, output } = await this.processRunner.run('gh', [
+        'api',
+        '/copilot_internal/user',
+      ]);
+      return exitCode === 0 ? parseCopilotUserOutput(output) : undefined;
+    } catch (error) {
+      this.logger.debug(
+        `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return undefined;
+    }
   }
 
   protected spawnAgentProcess(): ChildProcess {

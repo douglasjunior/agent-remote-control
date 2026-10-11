@@ -66,18 +66,17 @@ class MockOrchestratorService {
   public queued = false;
   public activeSelection = false;
   public resolution: ConversationInputResolution | null = null;
-  public resolvedInputs: { channelId: string; threadId?: string; prompt: string }[] = [];
+  public resolvedInputs: { conversationId: string; prompt: string }[] = [];
 
-  public selectionLookups: { channelId: string; threadId?: string }[] = [];
+  public selectionLookups: string[] = [];
 
-  async hasActiveConfigSelection(channelId: string, threadId?: string): Promise<boolean> {
-    this.selectionLookups.push({ channelId, threadId });
+  async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
+    this.selectionLookups.push(conversationId);
     return this.activeSelection;
   }
 
   async resolveInput(input: {
-    channelId: string;
-    threadId?: string;
+    conversationId: string;
     prompt: string;
   }): Promise<ConversationInputResolution> {
     this.resolvedInputs.push(input);
@@ -218,8 +217,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(orchestratorService.lastRequest).toMatchObject({
-      channelId: 'channel-1',
-      threadId: 'thread-1',
+      conversationId: 'channel-1:thread-1',
       userId: 'user-42',
       prompt: 'Do something',
       agentRole: 'CEO',
@@ -256,8 +254,7 @@ describe('DiscordMessageHandler', () => {
       autoArchiveDuration: 60,
     });
     expect(orchestratorService.lastRequest).toMatchObject({
-      channelId: 'channel-1',
-      threadId: 'thread-new',
+      conversationId: 'channel-1:thread-new',
       userId: 'user-42',
       prompt: 'Fix the bug',
       agentRole: 'CEO',
@@ -1407,8 +1404,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(orchestratorService.lastRequest).toMatchObject({
-      channelId: 'dm-channel-1',
-      threadId: undefined,
+      conversationId: 'dm-channel-1',
       userId: 'user-dm-1',
       prompt: 'Create a new feature',
       agentRole: 'CEO',
@@ -1623,8 +1619,7 @@ describe('DiscordMessageHandler', () => {
 
   describe('agent configuration selection', () => {
     const selection = {
-      channelId: 'channel-1',
-      threadId: 'thread-1',
+      conversationId: 'channel-1:thread-1',
       step: 'model' as const,
       options: [{ index: 1, id: 'm1', label: 'Model 1' }],
     };
@@ -1659,7 +1654,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send, 'Build it'));
 
-      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: 'thread-1', prompt: 'Build it' }]);
+      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: 'Build it' }]);
       expect(send).toHaveBeenCalledWith(expect.stringContaining('**1.** Model 1'));
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
@@ -1716,8 +1711,8 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
-      expect(orchestratorService.selectionLookups).toEqual([{ channelId: 'channel-1', threadId: 'thread-9' }]);
-      expect(orchestratorService.resolvedInputs).toEqual([{ channelId: 'channel-1', threadId: 'thread-9', prompt: '1' }]);
+      expect(orchestratorService.selectionLookups).toEqual(['channel-1:thread-9']);
+      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-9', prompt: '1' }]);
       expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
     });
 
@@ -1818,7 +1813,7 @@ describe('DiscordMessageHandler', () => {
         typingCallsDuringResolution = sendTyping.mock.calls.length;
         return {
           kind: 'selection',
-          selection: { channelId: 'channel-1', threadId: 'thread-1', step: 'agent', options: [] },
+          selection: { conversationId: 'channel-1:thread-1', step: 'agent', options: [] },
         };
       };
 
@@ -2032,8 +2027,7 @@ describe('DiscordMessageHandler', () => {
         [expect.objectContaining({ name: 'diagram.png' })],
       );
       expect(orchestratorService.lastRequest).toMatchObject({
-        channelId: 'channel-1',
-        threadId: 'thread-att-1',
+        conversationId: 'channel-1:thread-att-1',
         prompt: 'O usuário enviou anexos. Analise os arquivos anexados.',
         attachments: [
           expect.objectContaining({
@@ -2051,8 +2045,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       expect(orchestratorService.lastRequest).toMatchObject({
-        channelId: 'channel-1',
-        threadId: 'thread-att-1',
+        conversationId: 'channel-1:thread-att-1',
         prompt: 'Analise a imagem',
         attachments: [
           expect.objectContaining({

@@ -7,6 +7,7 @@ import { DiscordClientService } from './discord-client.service.js';
 const COMMANDS = [
   { name: 'cancel', description: 'Cancela o turno ativo do agente de IA' },
   { name: 'model', description: 'Escolhe o modelo e o effort usados pelos agentes' },
+  { name: 'usage', description: 'Mostra os limites de uso do agente de IA atual' },
   { name: 'agent', description: 'Troca o agente de IA (Antigravity, Claude Code...)' },
 ];
 

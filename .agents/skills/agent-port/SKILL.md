@@ -68,6 +68,7 @@ mesma sessão ACP e o mesmo `cwd`.
 - `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: níveis de effort do modelo, lidos numa sessão de sondagem isolada.
 - `setConfig(config: AgentConfig): Promise<void>`: aplica modelo e/ou effort à sessão ativa e guarda como preferência para as próximas sessões.
 - `getLastRoundUsage(): Promise<AgentUsage | undefined>`: consumo de tokens do último turno ou via fallback.
+- `getQuota(): Promise<AgentQuota | undefined>`: limites de uso do agente (`groups` → `buckets` com `window`, `remainingFraction` de 0 a 1 e `resetTime` ISO). Resolve `undefined` quando o agente não expõe cota ou a consulta falha; `AbstractAcpAdapter` devolve `undefined` por padrão. O `CopilotAdapter` executa `gh api /copilot_internal/user` (endpoint interno não documentado, usa a autenticação do `gh`) e converte com `parseCopilotUserOutput` (`utils/copilot-usage.util.ts`): ignora snapshots ilimitados e mapeia o restante para buckets `monthly`. O `AntigravityAdapter` executa `agy --output-format json --print /usage` via `IProcessRunnerPort.run` e converte a saída com `parseAgyUsageOutput` (`utils/agy-usage.util.ts`).
 - `onActivity(listener): () => void`: observa o feed ao vivo (pensamentos, ferramentas e cancelamento).
 
 ### Tipos sem SDK

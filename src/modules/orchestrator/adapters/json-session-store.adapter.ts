@@ -12,7 +12,10 @@ const SESSIONS_FILENAME = 'sessions.json';
 
 type StoredAgentSession = Omit<AgentSession, 'agentId'> & { readonly agentId?: string };
 
-type StoredSession = Omit<SessionContext, 'agentSessions' | 'createdAt' | 'updatedAt'> & {
+type StoredSession = Omit<SessionContext, 'agentSessions' | 'conversationId' | 'createdAt' | 'updatedAt'> & {
+  readonly conversationId?: string;
+  readonly channelId?: string;
+  readonly threadId?: string;
   readonly agentSessions?: readonly StoredAgentSession[];
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -31,16 +34,10 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
     this.filePath = join(this.dataDirectory, SESSIONS_FILENAME);
   }
 
-  async findSession(
-    channelId: string,
-    threadId?: string,
-  ): Promise<SessionContext | null> {
+  async findSession(conversationId: string): Promise<SessionContext | null> {
     const sessions = await this.load();
     for (const session of sessions.values()) {
-      if (
-        session.channelId === channelId
-        && (session.threadId ?? undefined) === (threadId ?? undefined)
-      ) {
+      if (session.conversationId === conversationId) {
         return session;
       }
     }
@@ -67,8 +64,10 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
     try {
       const items = JSON.parse(await readFile(this.filePath, 'utf-8')) as StoredSession[];
       for (const item of items) {
+        const { channelId, threadId, ...rest } = item;
         sessions.set(item.sessionId, {
-          ...item,
+          ...rest,
+          conversationId: item.conversationId ?? (threadId ? `${channelId}:${threadId}` : channelId ?? ''),
           agentSessions: (item.agentSessions ?? []).filter(
             (agentSession): agentSession is AgentSession => typeof agentSession.agentId === 'string',
           ),

@@ -16,7 +16,6 @@ import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
-import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 
@@ -95,7 +94,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   };
 
   const turnRequest = (overrides: Partial<TurnRequest> = {}): TurnRequest => ({
-    channelId: 'ch-1',
+    conversationId: 'conv-1',
     userId: 'user-1',
     prompt: 'Hi',
     workspacePath: '/mock/workspace',
@@ -396,8 +395,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     stubAgentPort.mockResponses = ['A.'];
     delegateStubPort.mockResponses = ['B.'];
 
-    await useCase.execute(turnRequest({ threadId: 'th-a', prompt: 'a' }));
-    await useCase.execute(turnRequest({ threadId: 'th-b', prompt: 'b' }));
+    await useCase.execute(turnRequest({ conversationId: 'conv-th-a', prompt: 'a' }));
+    await useCase.execute(turnRequest({ conversationId: 'conv-th-b', prompt: 'b' }));
 
     expect(stubAgentPort.promptCalls).toEqual(['Mock system prompt.\n\na']);
     expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nb']);
@@ -419,9 +418,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
     const onQueued = vi.fn();
 
-    const first = useCase.execute(turnRequest({ threadId: 'th-1', prompt: 'one' }));
+    const first = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'one' }));
     await firstStarted;
-    const second = useCase.execute(turnRequest({ threadId: 'th-1', prompt: 'two', onQueued }));
+    const second = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'two', onQueued }));
     await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
     expect(stubAgentPort.promptCalls).toHaveLength(1);
@@ -486,7 +485,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const turn = useCase.execute(turnRequest());
     await connecting;
 
-    await expect(runtime.cancel('ch-1:')).resolves.toBe(true);
+    await expect(runtime.cancel('conv-1')).resolves.toBe(true);
     finishConnect();
     const result = await turn;
 
@@ -600,7 +599,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   describe('agent session recovery', () => {
     const persistedSession = () =>
       sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }] }));
-    const storedAgentSessions = async () => (await sessionStore.findSession('ch-1'))?.agentSessions;
+    const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
 
     it('should persist the agent session id created for a new conversation', async () => {
       stubAgentPort.mockResponses = ['Hi.'];
@@ -806,11 +805,11 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
 
       stubAgentPort.mockResponses = ['Hi.'];
-      const completed = await useCase.execute(turnRequest({ threadId: 'a' }));
+      const completed = await useCase.execute(turnRequest({ conversationId: 'conv-a' }));
       stubAgentPort.promptErrorToThrow = new PromptCancelledError();
-      const cancelled = await useCase.execute(turnRequest({ threadId: 'a' }));
+      const cancelled = await useCase.execute(turnRequest({ conversationId: 'conv-a' }));
       stubAgentPort.promptErrorToThrow = new Error('boom');
-      const failed = await useCase.execute(turnRequest({ threadId: 'a' }));
+      const failed = await useCase.execute(turnRequest({ conversationId: 'conv-a' }));
 
       expect(completed.agentInfo).toEqual(expected);
       expect(cancelled.agentInfo).toEqual(expected);
@@ -845,7 +844,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
       ...overrides,
     });
-    const storedAgentSessions = async () => (await sessionStore.findSession('ch-1'))?.agentSessions;
+    const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
 
     it('should run the CEO and create delegates with the agent of the settings', async () => {
       settingsStore.settings = settingsOf();
@@ -1133,7 +1132,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const second = await useCase.execute(turnRequest({ prompt: 'two', onQueued }));
 
       expect(second).toEqual({
-        sessionId: (await sessionStore.findSession('ch-1'))?.sessionId,
+        sessionId: (await sessionStore.findSession('conv-1'))?.sessionId,
         response: '',
         status: 'steered',
         agentInfo: expect.objectContaining({ roleName: 'CEO', agentName: 'stub' }),
@@ -1183,7 +1182,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should leave the session id undefined when the conversation has no stored session', async () => {
       stubAgentPort.supportsSteering = true;
       let release: () => void = () => undefined;
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       const running = runtime.run(conversationKey, 'stub', () => new Promise<void>((resolve) => {
         release = resolve;
       }));
@@ -1272,7 +1271,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   describe('active delegations and transparent steering', () => {
     it('should prepend [ACTIVE_DELEGATIONS] block to CEO prompt when active delegations exist', async () => {
       const activeDelegatePort = new StubAgentPort();
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
         roleName: 'Developer',
@@ -1309,7 +1308,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should steer active delegation when CEO delegates to an already active role with native steering', async () => {
       delegateStubPort.supportsSteering = true;
       const steerSpy = vi.fn().mockResolvedValue(true);
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
         roleName: 'Developer',
@@ -1342,7 +1341,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         'All done.\n[DONE]',
       ];
 
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       let capturedDelegation: any;
       const originalPrompt = delegateStubPort.prompt.bind(delegateStubPort);
       delegateStubPort.prompt = async function* (text: string) {
@@ -1367,7 +1366,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
       let steerAccepted: boolean | undefined;
       delegateStubPort.prompt = async function* () {
-        const active = runtime.findActiveDelegation(buildConversationKey('ch-1'), 'DEVELOPER');
+        const active = runtime.findActiveDelegation('conv-1', 'DEVELOPER');
         steerAccepted = await active?.steer('Updated task');
         yield textChunk('Done.');
       };
@@ -1383,7 +1382,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       activeDelegatePort.supportsSteering = true;
       const cancelSpy = vi.fn().mockResolvedValue(undefined);
       const steerSpy = vi.fn().mockResolvedValue(false);
-      runtime.registerDelegation(buildConversationKey('ch-1'), {
+      runtime.registerDelegation('conv-1', {
         role: 'DEVELOPER',
         roleName: 'Developer',
         projectName: 'my-app',
@@ -1417,7 +1416,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       workspacePort.resolveRepositoryPath.mockImplementation((proj: string) => `/mock/workspace/${proj}`);
 
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
         role: 'DEVELOPER',
         roleName: 'Developer',
@@ -1453,7 +1452,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should not remove a newer active delegation when a previous delegation completes its finally block', async () => {
-      const conversationKey = buildConversationKey('ch-1');
+      const conversationKey = 'conv-1';
       const newerDelegatePort = new StubAgentPort();
       const newerDelegation = {
         role: 'DEVELOPER',
@@ -1534,16 +1533,16 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should bind the agent session using the in-memory session when the store no longer holds it', async () => {
       const findSession = sessionStore.findSession.bind(sessionStore);
       let lookups = 0;
-      sessionStore.findSession = async (channelId, threadId) => {
+      sessionStore.findSession = async (conversationId) => {
         lookups++;
-        return lookups === 1 ? findSession(channelId, threadId) : null;
+        return lookups === 1 ? findSession(conversationId) : null;
       };
       stubAgentPort.mockResponses = ['Hi.'];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
-      const saved = await findSession('ch-1');
+      const saved = await findSession('conv-1');
       expect(saved?.agentSessions).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1' }]);
     });
 
@@ -1570,7 +1569,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       staleDelegatePort.disconnect = async () => {
         throw new Error('disconnect failed');
       };
-      runtime.registerDelegation(buildConversationKey('ch-1'), {
+      runtime.registerDelegation('conv-1', {
         role: 'DEVELOPER',
         roleName: 'Developer',
         projectName: null,
@@ -1595,7 +1594,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       let captured: { taskSpec: string } | undefined;
       let steerAccepted: boolean | undefined;
       delegateStubPort.prompt = async function* () {
-        const active = runtime.findActiveDelegation(buildConversationKey('ch-1'), 'DEVELOPER');
+        const active = runtime.findActiveDelegation('conv-1', 'DEVELOPER');
         steerAccepted = await active?.steer('Updated task');
         captured = active;
         yield textChunk('Done.');

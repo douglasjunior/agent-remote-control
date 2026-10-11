@@ -367,7 +367,7 @@ describe('DiscordActivityFormatter', () => {
 
   describe('agent configuration', () => {
     const selection: AgentConfigSelection = {
-      channelId: 'ch-1',
+      conversationId: 'ch-1',
       step: 'model',
       options: [
         { index: 1, id: 'fast', label: 'Fast Model', description: 'Quick answers' },
@@ -464,7 +464,7 @@ describe('DiscordActivityFormatter', () => {
 
     it('should list the agent options', () => {
       expect(formatter.formatSelection({
-        channelId: 'ch-1',
+        conversationId: 'ch-1',
         step: 'agent',
         options: [
           { index: 1, id: 'agy', label: 'Antigravity' },
@@ -527,6 +527,57 @@ describe('DiscordActivityFormatter', () => {
       );
       expect(formatter.formatConfigured({ ...settings, modelId: null, modelName: null })).toBe(
         '✅ **Configuração salva**: 🤖 Claude Code · 🧠 padrão · ⚡ padrão',
+      );
+    });
+  });
+
+  describe('formatQuota', () => {
+    const agent = { id: 'agy', name: 'Antigravity' };
+
+    it('should explain when the agent has no quota information', () => {
+      expect(formatter.formatQuota({ agent, quota: undefined })).toBe(
+        'ℹ️ O agente Antigravity não expõe informações de uso.',
+      );
+    });
+
+    it('should list buckets with percentage and relative reset time', () => {
+      const text = formatter.formatQuota({
+        agent,
+        quota: {
+          groups: [
+            {
+              name: 'Gemini Models',
+              buckets: [
+                {
+                  id: 'g-5h',
+                  name: 'Five Hour Limit Remaining',
+                  window: '5h',
+                  remainingFraction: 0.9364,
+                  resetTime: '2026-10-11T23:03:22Z',
+                },
+                { id: 'g-w', name: 'Weekly', window: 'weekly', remainingFraction: 1 },
+                {
+                  id: 'g-x',
+                  name: 'Broken',
+                  window: '5h',
+                  remainingFraction: 0,
+                  resetTime: 'not-a-date',
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      expect(text).toBe(
+        [
+          '📊 **Uso do Antigravity**',
+          '',
+          '**Gemini Models**',
+          '• Five Hour Limit Remaining: 94% · reinicia <t:1791759802:R>',
+          '• Weekly: 100%',
+          '• Broken: 0%',
+        ].join('\n'),
       );
     });
   });

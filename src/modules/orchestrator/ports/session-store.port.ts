@@ -2,10 +2,7 @@ import type { SessionContext } from '../models/session-context.model.js';
 
 
 export interface ISessionStorePort {
-  findSession(
-    channelId: string,
-    threadId?: string,
-  ): Promise<SessionContext | null>;
+  findSession(conversationId: string): Promise<SessionContext | null>;
   saveSession(session: SessionContext): Promise<void>;
 }
 

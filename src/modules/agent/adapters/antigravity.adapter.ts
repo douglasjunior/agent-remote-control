@@ -3,9 +3,10 @@ import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import type { AgentConfig } from '../ports/agent.port.js';
+import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
 import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
+import { parseAgyUsageOutput } from '../utils/agy-usage.util.js';
 
 import { AbstractAcpAdapter } from './abstract-acp.adapter.js';
 
@@ -21,6 +22,23 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
     @Optional() preferredConfig?: AgentConfig,
   ) {
     super(preferredConfig ?? {});
+  }
+
+  override async getQuota(): Promise<AgentQuota | undefined> {
+    try {
+      const { exitCode, output } = await this.processRunner.run('agy', [
+        '--output-format',
+        'json',
+        '--print',
+        '/usage',
+      ]);
+      return exitCode === 0 ? parseAgyUsageOutput(output) : undefined;
+    } catch (error) {
+      this.logger.debug(
+        `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return undefined;
+    }
   }
 
   protected spawnAgentProcess(): ChildProcess {

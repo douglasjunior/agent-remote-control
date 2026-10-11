@@ -30,6 +30,26 @@ export type AgentUsage = {
   readonly cachedWriteTokens?: number;
 };
 
+export type AgentQuotaBucket = {
+  readonly id: string;
+  readonly name: string;
+  readonly window: string;
+  readonly remainingFraction: number;
+  readonly resetTime?: string;
+  readonly description?: string;
+};
+
+export type AgentQuotaGroup = {
+  readonly name: string;
+  readonly description?: string;
+  readonly buckets: readonly AgentQuotaBucket[];
+};
+
+export type AgentQuota = {
+  readonly description?: string;
+  readonly groups: readonly AgentQuotaGroup[];
+};
+
 export type AgentModelInfo = {
   readonly modelId: string;
   readonly name: string;
@@ -71,6 +91,8 @@ export interface IAgentPort {
   readonly currentSessionId?: string;
   readonly supportsSteering: boolean;
   getLastRoundUsage(): Promise<AgentUsage | undefined>;
+  /** Resolves `undefined` when the agent does not expose quota or the query fails. */
+  getQuota(): Promise<AgentQuota | undefined>;
   connect(): Promise<void>;
   createSession(cwd: string): Promise<void>;
   loadSession(cwd: string, sessionId: string): Promise<boolean>;

@@ -17,6 +17,7 @@ import { OrchestratorService } from './services/orchestrator.service.js';
 import { CancelAgentConfigSelectionUseCase } from './use-cases/cancel-agent-config-selection.use-case.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
+import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { ResolveConversationInputUseCase } from './use-cases/resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from './use-cases/start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-config-selection.use-case.js';
@@ -46,6 +47,7 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
     SubmitAgentConfigSelectionUseCase,
     ResolveConversationInputUseCase,
     CancelAgentConfigSelectionUseCase,
+    GetAgentQuotaUseCase,
     OrchestratorService,
   ],
   exports: [

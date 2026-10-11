@@ -4,6 +4,7 @@ import type {
   AgentEffortState,
   AgentModelState,
   AgentUpdate,
+  AgentQuota,
   AgentUsage,
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
@@ -28,6 +29,7 @@ export class StubAgentPort implements IAgentPort {
   steeringResult = true;
   configCalls: AgentConfig[] = [];
   usageToReturn: AgentUsage | undefined = undefined;
+  quotaToReturn: AgentQuota | undefined = undefined;
   usageErrorToThrow: Error | null = null;
   updatesToYield: AgentUpdate[] = [];
   errorToThrowOnPrompt: Error | null = null;
@@ -128,6 +130,10 @@ export class StubAgentPort implements IAgentPort {
 
   async setConfig(config: AgentConfig): Promise<void> {
     this.configCalls.push(config);
+  }
+
+  async getQuota(): Promise<AgentQuota | undefined> {
+    return this.quotaToReturn;
   }
 
   async getLastRoundUsage(): Promise<AgentUsage | undefined> {

@@ -24,28 +24,28 @@ describe('JsonSessionStoreAdapter', () => {
   it('should return null when the file does not exist', async () => {
     const store = new JsonSessionStoreAdapter(dataDir);
 
-    await expect(store.findSession('ch-1')).resolves.toBeNull();
+    await expect(store.findSession('conv-1')).resolves.toBeNull();
   });
 
   it('should persist sessions and rehydrate dates in a new instance', async () => {
     const session = buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }] });
     await new JsonSessionStoreAdapter(dataDir).saveSession(session);
 
-    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
+    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
 
     expect(reloaded).toEqual(session);
     expect(reloaded?.createdAt).toBeInstanceOf(Date);
     expect(JSON.parse(readFileSync(join(dataDir, 'sessions.json'), 'utf-8'))).toHaveLength(1);
   });
 
-  it('should distinguish sessions with and without thread', async () => {
+  it('should keep sessions of different conversations apart', async () => {
     const store = new JsonSessionStoreAdapter(dataDir);
     await store.saveSession(buildSessionContext({ sessionId: 'main' }));
-    await store.saveSession(buildSessionContext({ sessionId: 'thread', threadId: 'th-1' }));
+    await store.saveSession(buildSessionContext({ sessionId: 'thread', conversationId: 'conv-th-1' }));
 
-    expect((await store.findSession('ch-1'))?.sessionId).toBe('main');
-    expect((await store.findSession('ch-1', 'th-1'))?.sessionId).toBe('thread');
-    await expect(store.findSession('ch-1', 'th-2')).resolves.toBeNull();
+    expect((await store.findSession('conv-1'))?.sessionId).toBe('main');
+    expect((await store.findSession('conv-th-1'))?.sessionId).toBe('thread');
+    await expect(store.findSession('conv-th-2')).resolves.toBeNull();
   });
 
   it('should replace a session saved again with the same id', async () => {
@@ -53,7 +53,7 @@ describe('JsonSessionStoreAdapter', () => {
     await store.saveSession(buildSessionContext());
     await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2' }] }));
 
-    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
+    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
 
     expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2' }]);
   });
@@ -62,13 +62,13 @@ describe('JsonSessionStoreAdapter', () => {
     const store = new JsonSessionStoreAdapter(dataDir);
 
     await Promise.all([
-      store.saveSession(buildSessionContext({ sessionId: 'a', channelId: 'ch-a' })),
-      store.saveSession(buildSessionContext({ sessionId: 'b', channelId: 'ch-b' })),
+      store.saveSession(buildSessionContext({ sessionId: 'a', conversationId: 'conv-a' })),
+      store.saveSession(buildSessionContext({ sessionId: 'b', conversationId: 'conv-b' })),
     ]);
 
     const reloaded = new JsonSessionStoreAdapter(dataDir);
-    expect((await reloaded.findSession('ch-a'))?.sessionId).toBe('a');
-    expect((await reloaded.findSession('ch-b'))?.sessionId).toBe('b');
+    expect((await reloaded.findSession('conv-a'))?.sessionId).toBe('a');
+    expect((await reloaded.findSession('conv-b'))?.sessionId).toBe('b');
   });
 
   it('should keep saving after a failed write', async () => {
@@ -79,7 +79,7 @@ describe('JsonSessionStoreAdapter', () => {
 
     rmSync(dataDir);
     await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }] }));
-    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('ch-1');
+    const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
     expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }]);
   });
 
@@ -87,7 +87,7 @@ describe('JsonSessionStoreAdapter', () => {
     writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify([
       {
         sessionId: 'sess-1',
-        channelId: 'ch-1',
+        conversationId: 'conv-1',
         userId: 'user-1',
         workspacePath: '/mock/workspace',
         agentRole: 'CEO',
@@ -96,7 +96,7 @@ describe('JsonSessionStoreAdapter', () => {
       },
     ]));
 
-    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('ch-1');
+    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('conv-1');
 
     expect(reloaded?.agentSessions).toEqual([]);
   });
@@ -105,7 +105,7 @@ describe('JsonSessionStoreAdapter', () => {
     writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify([
       {
         sessionId: 'sess-1',
-        channelId: 'ch-1',
+        conversationId: 'conv-1',
         userId: 'user-1',
         workspacePath: '/mock/workspace',
         agentRole: 'CEO',
@@ -115,15 +115,35 @@ describe('JsonSessionStoreAdapter', () => {
       },
     ]));
 
-    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('ch-1');
+    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('conv-1');
 
     expect(reloaded?.agentSessions).toEqual([]);
+  });
+
+  it('should derive the conversation id of sessions stored with channel and thread', async () => {
+    const stored = {
+      userId: 'user-1',
+      workspacePath: '/mock/workspace',
+      agentRole: 'CEO',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    };
+    writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify([
+      { ...stored, sessionId: 'thread', channelId: 'ch', threadId: 'th' },
+      { ...stored, sessionId: 'channel', channelId: 'dm' },
+      { ...stored, sessionId: 'orphan' },
+    ]));
+    const store = new JsonSessionStoreAdapter(rootDir);
+
+    expect((await store.findSession('ch:th'))?.sessionId).toBe('thread');
+    expect((await store.findSession('dm'))?.sessionId).toBe('channel');
+    expect((await store.findSession(''))?.sessionId).toBe('orphan');
   });
 
   it('should treat an invalid file as empty', async () => {
     const store = new JsonSessionStoreAdapter(rootDir);
     writeFileSync(join(rootDir, 'sessions.json'), '{not json');
 
-    await expect(store.findSession('ch-1')).resolves.toBeNull();
+    await expect(store.findSession('conv-1')).resolves.toBeNull();
   });
 });

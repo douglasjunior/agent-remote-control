@@ -20,6 +20,11 @@ function buildAdapter() {
   return { adapter: new CopilotAdapter(runner), spawn };
 }
 
+function buildAdapterWithRunner() {
+  const { runner } = createProcessRunnerMock();
+  return { runner, adapter: new CopilotAdapter(runner) };
+}
+
 function spawnCall(spawn: ReturnType<typeof createProcessRunnerMock>['spawn']) {
   const [command, args, options] = spawn.mock.calls[0] ?? [];
   return {
@@ -130,6 +135,38 @@ describe('CopilotAdapter', () => {
 
       expect(adapter.currentSessionId).toBe('session-1');
       expect(acpHarness.connectionInstance?.setSessionConfigOption).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getQuota', () => {
+    const payload = JSON.stringify({
+      quota_snapshots: { premium_interactions: { percent_remaining: 50 } },
+    });
+
+    it('should run gh api and return the parsed quota', async () => {
+      const { runner, adapter } = buildAdapterWithRunner();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
+
+      const quota = await adapter.getQuota();
+
+      expect(runner.run).toHaveBeenCalledWith('gh', ['api', '/copilot_internal/user']);
+      expect(quota?.groups[0]?.buckets[0]?.remainingFraction).toBe(0.5);
+    });
+
+    it('should return undefined on non-zero exit code', async () => {
+      const { runner, adapter } = buildAdapterWithRunner();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
+
+      expect(await adapter.getQuota()).toBeUndefined();
+    });
+
+    it('should return undefined when the runner throws', async () => {
+      const { runner, adapter } = buildAdapterWithRunner();
+      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      expect(await adapter.getQuota()).toBeUndefined();
+
+      vi.mocked(runner.run).mockRejectedValue('x');
+      expect(await adapter.getQuota()).toBeUndefined();
     });
   });
 });

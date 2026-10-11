@@ -11,8 +11,7 @@ import { AgentCapabilitiesService } from '../services/agent-capabilities.service
 
 
 export type StartAgentConfigSelectionInput = {
-  readonly channelId: string;
-  readonly threadId?: string;
+  readonly conversationId: string;
   readonly pendingPrompt?: string;
   readonly step: 'agent' | 'model';
 };
@@ -29,7 +28,7 @@ export class StartAgentConfigSelectionUseCase {
 
   async execute(input: StartAgentConfigSelectionInput): Promise<StartAgentConfigSelectionResult> {
     if (input.step === 'model') {
-      return this.startModelStep(input, this.capabilities.resolveAgent(await this.settingsStore.load()));
+      return this.startModelStep(input, this.capabilities.resolveAgent(await this.settingsStore.load(input.conversationId)));
     }
 
     const agents = this.capabilities.listAgentOptions();
@@ -41,8 +40,7 @@ export class StartAgentConfigSelectionUseCase {
     }
 
     return this.save({
-      channelId: input.channelId,
-      threadId: input.threadId,
+      conversationId: input.conversationId,
       step: 'agent',
       options: agents,
       pendingPrompt: input.pendingPrompt,
@@ -59,8 +57,7 @@ export class StartAgentConfigSelectionUseCase {
     }
 
     return this.save({
-      channelId: input.channelId,
-      threadId: input.threadId,
+      conversationId: input.conversationId,
       step: 'model',
       options: models,
       selectedAgent: agent,

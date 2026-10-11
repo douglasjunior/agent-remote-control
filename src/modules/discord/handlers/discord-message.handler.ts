@@ -10,7 +10,7 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordAttachmentService } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
-import { type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
+import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.js';
 
@@ -82,6 +82,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         return;
       }
       const { channelId, threadId } = conversation;
+      const conversationId = buildConversationId(conversation);
       targetChannel = conversation.target;
 
       const rawPrompt = this.cleanPrompt(message.content, clientUser.id);
@@ -108,9 +109,8 @@ export class DiscordMessageHandler implements OnModuleInit {
           return;
         }
 
-        const conversationKey = `${channelId}${threadId ? `:${threadId}` : ''}`;
         turnAttachments = await this.attachmentService.downloadAttachments(
-          conversationKey,
+          conversationId,
           attachments,
         );
       }
@@ -123,8 +123,7 @@ export class DiscordMessageHandler implements OnModuleInit {
 
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
         this.orchestratorService.resolveInput({
-          channelId,
-          threadId,
+          conversationId,
           prompt: promptText,
         }));
 
@@ -265,8 +264,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       let result: TurnResult;
       try {
         result = await this.orchestratorService.executeTurn({
-          channelId,
-          threadId,
+          conversationId,
           userId: message.author.id,
           prompt,
           workspacePath: this.workspacePort.getBaseDirectory(),
@@ -374,8 +372,9 @@ export class DiscordMessageHandler implements OnModuleInit {
     if (message.channel.ownerId === bot.id) {
       return true;
     }
-    const { channelId, threadId } = resolveConversationKey(message.channelId, message.channel);
-    return this.orchestratorService.hasActiveConfigSelection(channelId, threadId);
+    return this.orchestratorService.hasActiveConfigSelection(
+      buildConversationId(resolveConversationKey(message.channelId, message.channel)),
+    );
   }
 
   private async openConversation(message: Message): Promise<Conversation | null> {

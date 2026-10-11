@@ -26,6 +26,7 @@ import {
   type AgentModelInfo,
   type AgentModelState,
   type AgentUpdate,
+  type AgentQuota,
   type AgentUsage,
   type IAgentPort,
 } from '../ports/agent.port.js';
@@ -125,6 +126,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       );
     }
     return this._lastRoundUsage;
+  }
+
+  async getQuota(): Promise<AgentQuota | undefined> {
+    return undefined;
   }
 
   protected abstract spawnAgentProcess(): ChildProcess;

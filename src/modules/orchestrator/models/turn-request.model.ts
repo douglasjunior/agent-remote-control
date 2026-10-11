@@ -5,8 +5,7 @@ import type { TurnAttachment } from './turn-attachment.model.js';
 
 
 export type TurnRequest = {
-  channelId: string;
-  threadId?: string;
+  conversationId: string;
   userId: string;
   prompt: string;
   workspacePath: string;

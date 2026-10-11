@@ -9,8 +9,7 @@ import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selecti
 
 
 export type ResolveConversationInputInput = {
-  readonly channelId: string;
-  readonly threadId?: string;
+  readonly conversationId: string;
   readonly prompt: string;
 };
 
@@ -26,10 +25,10 @@ export class ResolveConversationInputUseCase {
   ) {}
 
   async execute(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
-    const { channelId, threadId, prompt } = input;
+    const { conversationId, prompt } = input;
 
-    if (await this.selectionStore.find(channelId, threadId)) {
-      const outcome = await this.submitSelection.execute({ channelId, threadId, input: prompt });
+    if (await this.selectionStore.find(conversationId)) {
+      const outcome = await this.submitSelection.execute({ conversationId, input: prompt });
       if (outcome.kind !== 'configured') {
         return outcome;
       }
@@ -39,11 +38,11 @@ export class ResolveConversationInputUseCase {
       return { kind: 'configured', settings: outcome.settings };
     }
 
-    if (await this.settingsStore.load()) {
+    if (await this.settingsStore.load(conversationId)) {
       return { kind: 'execute', prompt };
     }
 
-    const started = await this.startSelection.execute({ channelId, threadId, pendingPrompt: prompt, step: 'agent' });
+    const started = await this.startSelection.execute({ conversationId, pendingPrompt: prompt, step: 'agent' });
     if (started.kind === 'unavailable') {
       return { kind: 'execute', prompt };
     }

@@ -220,4 +220,64 @@ describe('AntigravityAdapter', () => {
       delete process.env.SSH_AUTH_SOCK;
     });
   });
+
+  describe('getQuota', () => {
+    const payload = JSON.stringify({
+      status: 'SUCCESS',
+      command: {
+        name: 'usage',
+        data: {
+          groups: [
+            {
+              name: 'Gemini Models',
+              buckets: [
+                {
+                  id: 'gemini-5h',
+                  name: 'Five Hour Limit Remaining',
+                  window: '5h',
+                  remaining_fraction: 0.5,
+                  reset_time: '2026-10-11T23:03:22Z',
+                },
+              ],
+            },
+          ],
+        },
+      },
+    });
+
+    it('should run agy /usage and return the parsed quota', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
+
+      const quota = await adapter.getQuota();
+
+      expect(runner.run).toHaveBeenCalledWith('agy', [
+        '--output-format',
+        'json',
+        '--print',
+        '/usage',
+      ]);
+      expect(quota?.groups[0]?.buckets[0]).toMatchObject({
+        id: 'gemini-5h',
+        window: '5h',
+        remainingFraction: 0.5,
+      });
+    });
+
+    it('should return undefined on non-zero exit code', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
+
+      expect(await adapter.getQuota()).toBeUndefined();
+    });
+
+    it('should return undefined when the runner throws', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      expect(await adapter.getQuota()).toBeUndefined();
+
+      vi.mocked(runner.run).mockRejectedValue('x');
+      expect(await adapter.getQuota()).toBeUndefined();
+    });
+  });
 });

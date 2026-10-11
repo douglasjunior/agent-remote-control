@@ -3,8 +3,7 @@ import type { AgentSession } from './agent-session.model.js';
 
 export interface SessionContext {
   readonly sessionId: string;
-  readonly channelId: string;
-  readonly threadId?: string;
+  readonly conversationId: string;
   readonly userId: string;
   readonly workspacePath: string;
   readonly agentRole: string;

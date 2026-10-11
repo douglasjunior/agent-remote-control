@@ -7,6 +7,7 @@ import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/agent-config-outcome.model.js';
+import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
@@ -15,15 +16,14 @@ import { DiscordInteractionHandler } from './discord-interaction.handler.js';
 
 
 class StubOrchestratorService implements Partial<OrchestratorService> {
-  cancelledChannelId?: string;
-  cancelledThreadId?: string;
+  cancelledConversationId?: string;
   throwError = false;
   hasActiveTurn = true;
   hasActiveSelection = false;
   selectionResult: StartAgentConfigSelectionResult = {
     kind: 'selection',
     selection: {
-      channelId: 'channel-123',
+      conversationId: 'channel-123',
       step: 'model',
       options: [{ index: 1, id: 'm1', label: 'Model 1' }],
     },
@@ -32,41 +32,52 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
   agentSelectionResult: StartAgentConfigSelectionResult = {
     kind: 'selection',
     selection: {
-      channelId: 'channel-123',
+      conversationId: 'channel-123',
       step: 'agent',
       options: [{ index: 1, id: 'claude', label: 'Claude Code' }],
     },
   };
 
-  startedSelections: { channelId: string; threadId?: string }[] = [];
-  startedAgentSelections: { channelId: string; threadId?: string }[] = [];
+  quotaReport: AgentQuotaReport = {
+    agent: { id: 'agy', name: 'Antigravity' },
+    quota: undefined,
+  };
 
-  async cancelTurn(channelId: string, threadId?: string): Promise<boolean> {
+  async getQuota(): Promise<AgentQuotaReport> {
+    if (this.throwError) {
+      throw new Error('quota down');
+    }
+    return this.quotaReport;
+  }
+
+  startedSelections: string[] = [];
+  startedAgentSelections: string[] = [];
+
+  async cancelTurn(conversationId: string): Promise<boolean> {
     if (this.throwError) {
       throw new Error('Cancel turn failed');
     }
-    this.cancelledChannelId = channelId;
-    this.cancelledThreadId = threadId;
+    this.cancelledConversationId = conversationId;
     return this.hasActiveTurn;
   }
 
-  async cancelConfigSelection(): Promise<boolean> {
+  async cancelConfigSelection(_conversationId: string): Promise<boolean> {
     return this.hasActiveSelection;
   }
 
-  async startConfigSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
+  async startConfigSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
     if (this.throwError) {
       throw new Error('agent down');
     }
-    this.startedSelections.push({ channelId, threadId });
+    this.startedSelections.push(conversationId);
     return this.selectionResult;
   }
 
-  async startAgentSelection(channelId: string, threadId?: string): Promise<StartAgentConfigSelectionResult> {
+  async startAgentSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
     if (this.throwError) {
       throw new Error('registry down');
     }
-    this.startedAgentSelections.push({ channelId, threadId });
+    this.startedAgentSelections.push(conversationId);
     return this.agentSelectionResult;
   }
 }
@@ -167,7 +178,7 @@ describe('DiscordInteractionHandler', () => {
 
     await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledChannelId).toBeUndefined();
+    expect(orchestratorService.cancelledConversationId).toBeUndefined();
   });
 
   it('should ignore unknown chat input commands', async () => {
@@ -175,7 +186,7 @@ describe('DiscordInteractionHandler', () => {
 
     await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledChannelId).toBeUndefined();
+    expect(orchestratorService.cancelledConversationId).toBeUndefined();
     expect(orchestratorService.startedSelections).toHaveLength(0);
     expect(orchestratorService.startedAgentSelections).toHaveLength(0);
   });
@@ -186,8 +197,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledChannelId).toBe('channel-123');
-      expect(orchestratorService.cancelledThreadId).toBeUndefined();
+      expect(orchestratorService.cancelledConversationId).toBe('channel-123');
       expect(interaction.reply).toHaveBeenCalledWith({
         content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
         ephemeral: true,
@@ -202,8 +212,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledChannelId).toBe('parent-channel-456');
-      expect(orchestratorService.cancelledThreadId).toBe('thread-777');
+      expect(orchestratorService.cancelledConversationId).toBe('parent-channel-456:thread-777');
     });
 
     it('should fall back to the thread id when the thread has no parent', async () => {
@@ -214,8 +223,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledChannelId).toBe('thread-777');
-      expect(orchestratorService.cancelledThreadId).toBe('thread-777');
+      expect(orchestratorService.cancelledConversationId).toBe('thread-777:thread-777');
     });
 
     it('should confirm when only a selection was cancelled', async () => {
@@ -289,6 +297,30 @@ describe('DiscordInteractionHandler', () => {
     });
   });
 
+  describe('/usage', () => {
+    it('should defer ephemerally and reply with the formatted quota', async () => {
+      const interaction = buildInteraction({ commandName: 'usage' });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: 'ℹ️ O agente Antigravity não expõe informações de uso.',
+      });
+    });
+
+    it('should report the failure when the quota lookup throws', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({ commandName: 'usage' });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Falha ao consultar o uso**: quota down',
+      });
+    });
+  });
+
   describe('/model', () => {
     const optionsText = '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model 1';
 
@@ -307,7 +339,7 @@ describe('DiscordInteractionHandler', () => {
       expect(interaction.deferReply).toHaveBeenCalledWith();
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o modelo na thread abaixo.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de modelo', autoArchiveDuration: 60 });
-      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'selection-thread' }]);
+      expect(orchestratorService.startedSelections).toEqual(['channel-123:selection-thread']);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
 
@@ -316,9 +348,9 @@ describe('DiscordInteractionHandler', () => {
       const sendTyping = vi.fn().mockResolvedValue(undefined);
       const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined), sendTyping };
       const startConfigSelection = orchestratorService.startConfigSelection.bind(orchestratorService);
-      orchestratorService.startConfigSelection = async (channelId: string, threadId?: string) => {
+      orchestratorService.startConfigSelection = async (conversationId: string) => {
         typingCallsDuringLoad = sendTyping.mock.calls.length;
-        return startConfigSelection(channelId, threadId);
+        return startConfigSelection(conversationId);
       };
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
@@ -356,7 +388,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
+      expect(orchestratorService.startedSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
@@ -365,7 +397,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedSelections).toEqual([{ channelId: 'dm-1', threadId: undefined }]);
+      expect(orchestratorService.startedSelections).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
@@ -399,7 +431,7 @@ describe('DiscordInteractionHandler', () => {
       expect(interaction.deferReply).toHaveBeenCalledWith();
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o agente na thread abaixo.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de agente', autoArchiveDuration: 60 });
-      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'channel-123', threadId: 'agent-thread' }]);
+      expect(orchestratorService.startedAgentSelections).toEqual(['channel-123:agent-thread']);
       expect(orchestratorService.startedSelections).toEqual([]);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
@@ -422,7 +454,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'channel-123', threadId: 'thread-1' }]);
+      expect(orchestratorService.startedAgentSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
@@ -431,7 +463,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedAgentSelections).toEqual([{ channelId: 'dm-1', threadId: undefined }]);
+      expect(orchestratorService.startedAgentSelections).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 

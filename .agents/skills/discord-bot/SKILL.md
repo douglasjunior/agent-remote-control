@@ -2,7 +2,7 @@
 name: discord-bot
 description: >
   Bot do Discord como adaptador primário de entrada para agentes de IA. Governa os
-  comandos /agent, /model e /cancel, a seleção numerada de agente/modelo/effort, o rodapé
+  comandos /agent, /model, /usage e /cancel, a seleção numerada de agente/modelo/effort, o rodapé
   de agente nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
   threads por conversa, streaming de atividades, indicador de digitação com watchdog,
   throttling contra 429 e particionamento em 2000 caracteres. Use ao trabalhar com mensagens,
@@ -35,7 +35,7 @@ O gerenciamento do cliente `Client` do `discord.js` é centralizado em `DiscordC
   - `Partials.Channel` e `Partials.Message`: garantem recepção de eventos em canais de DM não cacheados previamente.
 - **Permissões do Bot (Permissions Integer)**:
   - O conjunto padrão de permissões de texto e canais totaliza o inteiro `380104727616` na calculadora de permissões do Discord.
-- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra `/cancel`, `/model` e `/agent`. Com `DISCORD_GUILD_ID` e a guilda encontrada, registra só na guilda e limpa os comandos globais (`application.commands.set([])`), porque o Discord exibiria cada comando duplicado. Sem a variável, ou com a guilda não encontrada, registra só globalmente.
+- **Registro de Comandos Slash**: No hook `onApplicationBootstrap`, registra `/cancel`, `/model`, `/usage` e `/agent`. Com `DISCORD_GUILD_ID` e a guilda encontrada, registra só na guilda e limpa os comandos globais (`application.commands.set([])`), porque o Discord exibiria cada comando duplicado. Sem a variável, ou com a guilda não encontrada, registra só globalmente.
 - **Tolerância a ausência de token**: Se a variável `DISCORD_BOT_TOKEN` não estiver definida
   no ambiente, o serviço deve emitir um aviso via `Logger.warn` e não lançar exceções.
   A aplicação deve inicializar normalmente em ambientes de CI e testes unitários.
@@ -198,5 +198,6 @@ Comandos de barra são interceptados por `DiscordInteractionHandler`:
   - Em canal de guilda: `editReply('🧵 Escolha o modelo na thread abaixo.')`, thread criada a partir desse aviso (`startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` com o indicador de digitação na thread (`DiscordTypingIndicator.during`) e `formatSelection` particionado dentro da thread. A thread é do bot, então as respostas entram sem menção e, depois de configurar, ela segue como uma conversa normal. Se a thread não puder ser criada, responde `❌ **Falha ao abrir a seleção de modelo**: <erro>`.
   - Em DM ou thread: `startConfigSelection` com a chave da conversa atual e `editReply(formatSelection)`; a resposta adiada já exibe "pensando..." durante a consulta.
   - Com `unavailable`, publica `ℹ️ O agente atual não expõe modelos para seleção.` no mesmo destino das opções.
+- **/usage**: responde de forma efêmera (`deferReply({ ephemeral: true })`) com `formatQuota(await orchestratorService.getQuota())`: `📊 **Uso do <agente>**` seguido de cada grupo e seus buckets (`• <nome>: <N>% · reinicia <t:unix:R>`). Agente sem cota publica `ℹ️ O agente <nome> não expõe informações de uso.` e a falha responde `❌ **Falha ao consultar o uso**: <erro>`.
 - **/agent**: mesmo fluxo de `/model`, com `startAgentSelection(channelId, threadId?)`, que abre a seleção no passo `agent`; escolhido o agente, seguem modelo e effort pela mesma resposta numerada. Em canal de guilda o aviso é `🧵 Escolha o agente na thread abaixo.` e a thread se chama `Seleção de agente`. A falha responde `❌ **Falha ao abrir a seleção de agente**: <erro>` e `unavailable` publica `ℹ️ Nenhum agente disponível para seleção.`
 - **Respostas protegidas**: toda resposta passa por um único método que usa `editReply` quando a interação foi adiada, `followUp` quando já respondida e `reply` nos demais casos, e apenas loga falhas de envio. O listener de `InteractionCreate` encadeia `.catch(...)` com log, e `main.ts` registra `process.on('unhandledRejection')` como rede de segurança: uma rejeição sem tratamento derrubaria o processo.

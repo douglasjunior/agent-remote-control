@@ -1363,6 +1363,12 @@ describe('AbstractAcpAdapter', () => {
     });
   });
 
+  describe('getQuota', () => {
+    it('should resolve undefined by default', async () => {
+      expect(await new TestAcpAdapter().getQuota()).toBeUndefined();
+    });
+  });
+
   describe('getLastRoundUsage (fallback)', () => {
     it('should resolve usage from collectFallbackUsage when ACP reports none', async () => {
       const adapter = new FallbackAcpAdapter();

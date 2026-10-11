@@ -32,7 +32,6 @@ import {
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
 import { extractAttachments } from '../utils/attachment-extractor.util.js';
-import { buildConversationKey } from '../utils/conversation-key.util.js';
 
 
 const LOG_PREVIEW_LENGTH = 100;
@@ -66,7 +65,7 @@ export class ExecuteAgentTurnUseCase {
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
-    const conversationKey = buildConversationKey(request.channelId, request.threadId);
+    const conversationKey = request.conversationId;
     const endTurn = this.conversationRuntime.beginTurn(conversationKey);
     try {
       return await this.runTurn(conversationKey, request);
@@ -93,10 +92,11 @@ export class ExecuteAgentTurnUseCase {
         response,
         errorMessage,
         workspacePath: request.workspacePath,
+        conversationId: request.conversationId,
       });
 
     try {
-      agentId = (await this.settingsStore.load())?.agentId ?? agentId;
+      agentId = (await this.settingsStore.load(request.conversationId))?.agentId ?? agentId;
       if (await this.steerRunningCeo(conversationKey, agentId, request)) {
         return await this.buildSteeredResult(conversationKey, request);
       }
@@ -154,7 +154,7 @@ export class ExecuteAgentTurnUseCase {
             session = await this.resolveSession(request);
             observers.onSessionResolved(session);
             this.logger.log(
-              `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Channel=${request.channelId}, Thread=${request.threadId ?? 'none'}, Role=${request.agentRole}`,
+              `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
             );
             const activeDelegations = this.conversationRuntime.getActiveDelegations(conversationKey);
             if (activeDelegations.length > 0) {
@@ -207,13 +207,13 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async buildSteeredResult(conversationKey: string, request: TurnRequest): Promise<TurnResult> {
-    const session = await this.sessionStore.findSession(request.channelId, request.threadId);
+    const session = await this.sessionStore.findSession(request.conversationId);
     const ceoPort = this.conversationRuntime.getCeoPort(conversationKey)!;
     return {
       sessionId: session?.sessionId,
       response: '',
       status: 'steered',
-      agentInfo: await this.buildAgentInfo(ceoPort, request.agentRole),
+      agentInfo: await this.buildAgentInfo(ceoPort, request.agentRole, request.conversationId),
     };
   }
 
@@ -240,15 +240,14 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async resolveSession(request: TurnRequest): Promise<SessionContext> {
-    const existing = await this.sessionStore.findSession(request.channelId, request.threadId);
+    const existing = await this.sessionStore.findSession(request.conversationId);
     const now = new Date();
 
     const session: SessionContext = existing
       ? { ...existing, updatedAt: now }
       : {
         sessionId: randomUUID(),
-        channelId: request.channelId,
-        threadId: request.threadId,
+        conversationId: request.conversationId,
         userId: request.userId,
         workspacePath: request.workspacePath,
         agentRole: request.agentRole,
@@ -432,7 +431,7 @@ export class ExecuteAgentTurnUseCase {
         ...event,
         phase: 'finished',
         response,
-        agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole),
+        agentInfo: await this.buildAgentInfo(delegatePort, delegateToRole, request.conversationId),
         usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
         durationMs,
       });
@@ -484,7 +483,7 @@ export class ExecuteAgentTurnUseCase {
         }
       }
 
-      await this.applyAgentConfig(agentPort, role);
+      await this.applyAgentConfig(agentPort, role, request.conversationId);
 
       if (request.onActivity) {
         unsubscribeActivity = agentPort.onActivity(request.onActivity);
@@ -528,7 +527,7 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async findLatestSession(session: SessionContext): Promise<SessionContext> {
-    return await this.sessionStore.findSession(session.channelId, session.threadId) ?? session;
+    return await this.sessionStore.findSession(session.conversationId) ?? session;
   }
 
   private async bindAgentSession(session: SessionContext, binding: AgentSession): Promise<void> {
@@ -541,8 +540,8 @@ export class ExecuteAgentTurnUseCase {
     });
   }
 
-  private async applyAgentConfig(agentPort: IAgentPort, role: string): Promise<void> {
-    const settings = await this.findAgentSettings(agentPort);
+  private async applyAgentConfig(agentPort: IAgentPort, role: string, conversationId: string): Promise<void> {
+    const settings = await this.findAgentSettings(agentPort, conversationId);
     if (settings?.modelId) {
       await agentPort.setConfig({
         modelId: settings.modelId,
@@ -558,8 +557,8 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /** Settings saved for another agent carry model ids that this agent does not know. */
-  private async findAgentSettings(agentPort: IAgentPort): Promise<AgentSettings | undefined> {
-    const settings = await this.settingsStore.load();
+  private async findAgentSettings(agentPort: IAgentPort, conversationId: string): Promise<AgentSettings | undefined> {
+    const settings = await this.settingsStore.load(conversationId);
     return settings?.agentId === agentPort.agentName ? settings : undefined;
   }
 
@@ -572,6 +571,7 @@ export class ExecuteAgentTurnUseCase {
     response: string;
     errorMessage?: string;
     workspacePath?: string;
+    conversationId: string;
   }): Promise<TurnResult> {
     const attachments = extractAttachments(input.response, input.workspacePath);
     return {
@@ -580,15 +580,15 @@ export class ExecuteAgentTurnUseCase {
       status: input.status,
       errorMessage: input.errorMessage,
       agentInfo: input.ceoPort
-        ? await this.buildAgentInfo(input.ceoPort, input.role)
+        ? await this.buildAgentInfo(input.ceoPort, input.role, input.conversationId)
         : { roleName: this.agentRegistry.getDisplayName(input.role), agentName: input.agentId },
       usage: await input.ceoPort?.getLastRoundUsage().catch(() => undefined),
       ...(attachments.length > 0 ? { attachments } : {}),
     };
   }
 
-  private async buildAgentInfo(agentPort: IAgentPort, role: string): Promise<TurnAgentInfo> {
-    const settings = await this.findAgentSettings(agentPort);
+  private async buildAgentInfo(agentPort: IAgentPort, role: string, conversationId: string): Promise<TurnAgentInfo> {
+    const settings = await this.findAgentSettings(agentPort, conversationId);
     return {
       roleName: this.agentRegistry.getDisplayName(role),
       agentName: agentPort.agentName,
