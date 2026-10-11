@@ -26,6 +26,16 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
     return (await this.settings).get(conversationId) ?? null;
   }
 
+  async loadMostRecent(): Promise<AgentSettings | null> {
+    this.settings ??= this.read();
+    const all = Array.from((await this.settings).values());
+    if (all.length === 0) {
+      return null;
+    }
+    return all.reduce((latest, current) =>
+      current.updatedAt > latest.updatedAt ? current : latest);
+  }
+
   async save(conversationId: string, settings: AgentSettings): Promise<void> {
     this.settings ??= this.read();
     const all = await this.settings;
