@@ -159,7 +159,7 @@ export class ExecuteAgentTurnUseCase {
               prompt = `${this.formatActiveDelegations(activeDelegations)}\n${prompt}`;
             }
           }
-          return this.runCeoTurn(ceoPort, prompt, request, turn, session);
+          return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1);
         },
         round === 1 ? request.onQueued : undefined,
       );
@@ -264,8 +264,9 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     turn: ActiveTurn,
     session: SessionContext,
+    isUserMessage: boolean,
   ): Promise<{ response: string; decision: ValidatedDecision }> {
-    const runCeo = (text: string) => this.runAgentTurn(
+    const runCeo = (text: string, isUserText = false) => this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
@@ -273,9 +274,12 @@ export class ExecuteAgentTurnUseCase {
       request,
       turn,
       session,
+      'resume',
+      undefined,
+      isUserText,
     );
 
-    let response = await runCeo(prompt);
+    let response = await runCeo(prompt, isUserMessage);
     let decision = await this.decide(response, request);
 
     for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
@@ -417,7 +421,10 @@ export class ExecuteAgentTurnUseCase {
     return undefined;
   }
 
-  /** Waits for every delegation, so no agent keeps running unobserved after another one fails. */
+  /**
+   * Waits for every delegation, so no agent keeps running unobserved after another one fails. A failed delegation
+   * becomes a result for the CEO, so the work of the others still reaches it; a cancellation ends the turn.
+   */
   private async delegateAll(
     session: SessionContext,
     delegations: readonly ValidatedDelegation[],
@@ -429,13 +436,25 @@ export class ExecuteAgentTurnUseCase {
     const outcomes = await Promise.allSettled(
       delegations.map(delegation => this.delegate(session, delegation, request, round, conversationKey, agentId)),
     );
-    const failures = outcomes.flatMap(outcome => (outcome.status === 'rejected' ? [outcome.reason as unknown] : []));
-    if (failures.length > 0) {
-      throw failures.find(failure => this.isCancellation(failure)) ?? failures[0];
+    const cancellation = outcomes.find(outcome => outcome.status === 'rejected' && this.isCancellation(outcome.reason));
+    if (cancellation) {
+      throw (cancellation as PromiseRejectedResult).reason;
     }
     return outcomes
-      .map(outcome => (outcome as PromiseFulfilledResult<string>).value)
+      .map((outcome, index) => {
+        if (outcome.status === 'fulfilled') {
+          return outcome.value;
+        }
+        const { delegateToRole, projectName } = delegations[index];
+        const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
+        this.logger.error(`[Delegation Failed] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}: ${message}`);
+        return `${this.buildResultHeader(delegateToRole, projectName)}\nThe delegation failed: ${message}`;
+      })
       .join('\n\n');
+  }
+
+  private buildResultHeader(role: string, projectName: string | undefined): string {
+    return `[AGENT_RESULT:${role}${projectName ? `:${projectName}` : ''}]`;
   }
 
   private isCancellation(error: unknown): boolean {
@@ -451,7 +470,7 @@ export class ExecuteAgentTurnUseCase {
     conversationKey: string,
     agentId: string,
   ): Promise<string> {
-    const resultHeader = `[AGENT_RESULT:${delegateToRole}${projectName ? `:${projectName}` : ''}]`;
+    const resultHeader = this.buildResultHeader(delegateToRole, projectName);
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
     if (existing) {
       if (existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
@@ -549,6 +568,7 @@ export class ExecuteAgentTurnUseCase {
     session: SessionContext,
     sessionMode: 'resume' | 'new' = 'resume',
     projectName?: string,
+    isUserMessage = false,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
@@ -560,10 +580,9 @@ export class ExecuteAgentTurnUseCase {
       await agentPort.connect();
       turn.throwIfCancelled();
 
-      const systemPromptEveryTurn = this.agentRegistry.isSystemPromptEveryTurn(role);
       const reminder = this.agentRegistry.getTurnReminder(role);
       let fullPrompt = reminder ? `${prompt}\n\n${reminder}` : prompt;
-      let systemPromptPending = systemPromptEveryTurn;
+      let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
         const storedSessionId = sessionMode === 'new'

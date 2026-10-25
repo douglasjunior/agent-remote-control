@@ -651,7 +651,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }]);
     });
 
-    it('should resend the system prompt with every turn of a role that asks for it, even when resumed', async () => {
+    it('should resend the system prompt with every user message of a role that asks for it, even when resumed', async () => {
       await persistedSession();
       agentRegistry.isSystemPromptEveryTurn.mockImplementation((role: string) => role === 'CEO');
       agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
@@ -663,19 +663,19 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual([
         'CEO prompt\n\nContinue',
-        'CEO prompt\n\n[AGENT_RESULT:DEVELOPER:my-app]\nImplemented.',
+        '[AGENT_RESULT:DEVELOPER:my-app]\nImplemented.',
       ]);
       expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nGo.']);
     });
 
-    it('should resend the system prompt with the repair prompt of a role that asks for it', async () => {
+    it('should not resend the system prompt with the repair prompt of a role that asks for it every user message', async () => {
       await persistedSession();
       agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
       stubAgentPort.mockResponses = ['Go [DONE] now.', 'Fixed.'];
 
       await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.promptCalls[1]).toMatch(/^Mock system prompt\.\n\n\[DELEGATION_ERROR\]/);
+      expect(stubAgentPort.promptCalls[1]).toMatch(/^\[DELEGATION_ERROR\]/);
     });
 
     it('should create a new session and store its id when the load fails', async () => {
@@ -1729,27 +1729,40 @@ describe('ExecuteAgentTurnUseCase', () => {
         await save(session);
       };
       delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]'];
+      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Ok.\n[DONE]'];
 
-      const result = await useCase.execute(turnRequest());
+      await useCase.execute(turnRequest());
 
-      expect(result.status).toBe('failed');
       expect((await sessionStore.findSession('conv-1'))?.agentSessions.at(-1)?.projectName).toBe('project-b');
     });
 
-    it('should wait for every delegation and fail the turn when one of them fails', async () => {
+    it('should wait for every delegation and hand the failure to the CEO along with the other results', async () => {
       const failing = delegatePort('');
       failing.promptErrorToThrow = new Error('agent crashed');
       const healthy = delegatePort('Done.');
       delegatePorts = [failing, healthy];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]'];
+      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Retrying a.\n[DONE]'];
 
       const result = await useCase.execute(turnRequest());
 
-      expect(result.status).toBe('failed');
-      expect(result.errorMessage).toBe('agent crashed');
-      expect(healthy.promptCalls).toHaveLength(1);
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toBe(
+        '[AGENT_RESULT:DEVELOPER:project-a]\nThe delegation failed: agent crashed\n\n[AGENT_RESULT:DEVELOPER:project-b]\nDone.',
+      );
       expect(healthy.closeSessionCalls).toBe(1);
+    });
+
+    it('should hand a failure that is not an Error to the CEO as text', async () => {
+      const failing = delegatePort('');
+      failing.connect = async () => {
+        throw 'transport closed';
+      };
+      delegatePorts = [failing];
+      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]', 'Ok.\n[DONE]'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER:project-a]\nThe delegation failed: transport closed');
     });
 
     it('should report the turn as cancelled when any parallel delegation was cancelled', async () => {
