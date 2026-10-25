@@ -80,12 +80,16 @@ export class CodexAdapter extends AbstractAcpAdapter {
     if (!config) {
       return {};
     }
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(config);
-      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+      parsed = JSON.parse(config);
     } catch {
-      this.logger.warn('codex_config_ignored: CODEX_CONFIG is not a JSON object');
-      return {};
+      parsed = undefined;
     }
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    this.logger.warn('codex_config_ignored: CODEX_CONFIG is not a JSON object');
+    return {};
   }
 }

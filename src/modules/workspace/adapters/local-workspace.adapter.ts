@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
-import { lstat, mkdir, readdir, readlink, symlink, unlink, writeFile } from 'node:fs/promises';
+import type { Dirent } from 'node:fs';
+import { lstat, mkdir, readdir, readlink, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
@@ -45,10 +46,10 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
   async listProjectFolders(): Promise<readonly string[]> {
     try {
       const entries = await readdir(this.baseDirectory, { withFileTypes: true });
-      return entries
-        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
-        .map(entry => entry.name)
-        .sort();
+      const folders = await Promise.all(entries
+        .filter(entry => !entry.name.startsWith('.'))
+        .map(async entry => (await this.isDirectoryEntry(entry) ? [entry.name] : [])));
+      return folders.flat().sort();
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         return [];
@@ -101,6 +102,13 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
     return platform() === 'win32'
       ? current.toLowerCase() === targetPath.toLowerCase()
       : current === targetPath;
+  }
+
+  private async isDirectoryEntry(entry: Dirent): Promise<boolean> {
+    if (!entry.isSymbolicLink()) {
+      return entry.isDirectory();
+    }
+    return stat(resolve(this.baseDirectory, entry.name)).then(stats => stats.isDirectory(), () => false);
   }
 
   private resolveInside(relativePath: string): string {
