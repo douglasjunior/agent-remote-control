@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import type { WorkspaceFile } from '../../orchestrator/models/workspace-file.model.js';
 import type {
   DelegationContract,
   IAgentRegistryPort,
@@ -23,8 +24,7 @@ export class AgentRegistryService implements IAgentRegistryPort {
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}.`;
     }
-    const team = this.getAllDefinitions().filter(other => other !== definition);
-    return definition.buildSystemPrompt(team);
+    return definition.buildSystemPrompt(this.getTeam(definition));
   }
 
   getDefaultModel(agentRole: string): string | undefined {
@@ -52,7 +52,16 @@ export class AgentRegistryService implements IAgentRegistryPort {
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}. Always provide your final response inside the <final_response> block.`;
     }
-    return definition.turnReminder;
+    return definition.turnReminder ?? '';
+  }
+
+  isSystemPromptEveryTurn(agentRole: string): boolean {
+    return this.getDefinition(agentRole)?.systemPromptEveryTurn === true;
+  }
+
+  getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[] {
+    return this.getAllDefinitions().flatMap(definition =>
+      definition.buildWorkspaceFiles?.(this.getTeam(definition), workspaceDir) ?? []);
   }
 
   getDefinition(roleOrId: string): AgentDefinition | undefined {
@@ -65,5 +74,9 @@ export class AgentRegistryService implements IAgentRegistryPort {
 
   registerDefinition(definition: AgentDefinition): void {
     this.definitions.set(definition.role.toUpperCase(), definition);
+  }
+
+  private getTeam(definition: AgentDefinition): AgentDefinition[] {
+    return this.getAllDefinitions().filter(other => other !== definition);
   }
 }

@@ -1,3 +1,4 @@
+import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
@@ -9,6 +10,7 @@ REMINDER:
 - Format each finding clearly with file, line, severity, problem, reason, and suggested fix.
 - When reviewing a Pull Request (PR) with identified findings, proactively suggest publishing them as PR comments and ask the user which findings (by number, severity, or all) to publish.
 - When publishing findings on a PR/MR, follow the strict tool hierarchy (MCP -> Official CLI -> No Fallback), anchoring inline comments to the exact diff lines or general comments in the discussion.
+${CWD_BOUNDARY_REMINDER}
 - Always provide your final response inside the <final_response> block.`;
 
 export const CODE_REVIEWER_SYSTEM_PROMPT = `You are the Code Reviewer Agent.
@@ -52,8 +54,9 @@ Your primary mission is to perform thorough, unbiased, and constructive code rev
      - Inline on Diff: Point findings with a valid file and line in the diff must be anchored to the exact line of the new version (\`side: RIGHT\` / \`new_line\` / \`rightFileStart\`, specifying path and commit SHA).
      - General Discussion: Use general PR/MR discussion thread comments only for global (file-wide, architectural) findings or overall review summaries.
 
-### Repository Boundaries:
-- Your current working directory is the project folder assigned to you. Stay inside it; do not access or modify anything outside it.
+${CWD_BOUNDARY_INSTRUCTIONS}
+
+### Reviewer Boundaries:
 - You are a reviewer: do NOT modify production code files directly or create commits in the repository.
 - You are authorized and expected to use MCP tools and CLI commands to inspect the repository and to publish review comments on PRs/MRs when requested.
 

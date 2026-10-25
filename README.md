@@ -107,7 +107,7 @@ Parâmetros suportados:
 |---|---|---|---|
 | `DISCORD_BOT_TOKEN` | Token secreto do bot | Aba **Bot** > Seção *Token* > Botão **Redefinir token** (*Reset Token*) | *(Obrigatório)* |
 | `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
-| `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados | Configuração local da máquina | `./workspaces` |
+| `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados. A cada inicialização, a aplicação regenera nele o `AGENTS.md` e as skills do CEO (`.agents/skills/`, com link em `.claude/skills`); edições manuais nesses arquivos são sobrescritas | Configuração local da máquina | `./workspaces` |
 | `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o agente, o modelo e o effort escolhidos) | Configuração local da máquina | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
 | `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |

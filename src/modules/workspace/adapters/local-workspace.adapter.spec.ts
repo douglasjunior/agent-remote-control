@@ -4,10 +4,28 @@ import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
 
 vi.mock('node:fs/promises', () => ({
+  lstat: vi.fn(),
   mkdir: vi.fn(),
+  readdir: vi.fn(),
+  readlink: vi.fn(),
+  symlink: vi.fn(),
+  unlink: vi.fn(),
+  writeFile: vi.fn(),
 }));
 
-const { mkdir } = await import('node:fs/promises');
+const { lstat, mkdir, readdir, readlink, symlink, unlink, writeFile } = await import('node:fs/promises');
+
+function errnoError(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(code), { code });
+}
+
+function dirent(name: string, isDirectory: boolean) {
+  return { name, isDirectory: () => isDirectory };
+}
+
+function stats(isSymbolicLink: boolean) {
+  return { isSymbolicLink: () => isSymbolicLink } as Awaited<ReturnType<typeof lstat>>;
+}
 
 describe('LocalWorkspaceAdapter', () => {
   beforeEach(() => {
@@ -70,6 +88,12 @@ describe('LocalWorkspaceAdapter', () => {
       );
     });
 
+    it('should reject nested repository paths', () => {
+      expect(() => adapter.resolveRepositoryPath('project-alpha/src')).toThrow(
+        'Repository name must be a direct subfolder of the workspace, not a nested path: "project-alpha/src"',
+      );
+    });
+
     it('should create directories inside the base directory recursively', async () => {
       await adapter.ensureDirectory('/test/workspaces');
       await adapter.ensureDirectory('/test/workspaces/project-alpha');
@@ -83,6 +107,100 @@ describe('LocalWorkspaceAdapter', () => {
         'Path is outside the workspace directory: /test/other',
       );
       expect(mkdir).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listProjectFolders', () => {
+    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+
+    it('should list the visible direct subfolders in alphabetical order', async () => {
+      vi.mocked(readdir).mockResolvedValue([
+        dirent('zeta', true),
+        dirent('.agents', true),
+        dirent('AGENTS.md', false),
+        dirent('alpha', true),
+      ] as never);
+
+      await expect(adapter.listProjectFolders()).resolves.toEqual(['alpha', 'zeta']);
+      expect(readdir).toHaveBeenCalledWith('/test/workspaces', { withFileTypes: true });
+    });
+
+    it('should return no folders when the base directory does not exist', async () => {
+      vi.mocked(readdir).mockRejectedValue(errnoError('ENOENT'));
+
+      await expect(adapter.listProjectFolders()).resolves.toEqual([]);
+    });
+
+    it('should propagate other read errors', async () => {
+      vi.mocked(readdir).mockRejectedValue(errnoError('EACCES'));
+
+      await expect(adapter.listProjectFolders()).rejects.toThrow('EACCES');
+    });
+  });
+
+  describe('writeFile', () => {
+    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+
+    it('should create the parent directories and write the content', async () => {
+      await adapter.writeFile('.agents/skills/x/SKILL.md', 'content');
+
+      expect(mkdir).toHaveBeenCalledWith('/test/workspaces/.agents/skills/x', { recursive: true });
+      expect(writeFile).toHaveBeenCalledWith('/test/workspaces/.agents/skills/x/SKILL.md', 'content', 'utf8');
+    });
+
+    it('should refuse paths outside the base directory', async () => {
+      await expect(adapter.writeFile('../escape.md', 'x')).rejects.toThrow(
+        'Path is outside the workspace directory: /test/escape.md',
+      );
+      expect(writeFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('ensureSymlink', () => {
+    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+
+    it('should create the link and its parent directory when nothing exists', async () => {
+      vi.mocked(lstat).mockRejectedValue(errnoError('ENOENT'));
+
+      await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+      expect(mkdir).toHaveBeenCalledWith('/test/workspaces/.claude', { recursive: true });
+      expect(symlink).toHaveBeenCalledWith('../.agents/skills', '/test/workspaces/.claude/skills', 'dir');
+    });
+
+    it('should keep a link that already points to the target', async () => {
+      vi.mocked(lstat).mockResolvedValue(stats(true));
+      vi.mocked(readlink).mockResolvedValue('../.agents/skills' as never);
+
+      await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+      expect(unlink).not.toHaveBeenCalled();
+      expect(symlink).not.toHaveBeenCalled();
+    });
+
+    it('should replace a link that points elsewhere', async () => {
+      vi.mocked(lstat).mockResolvedValue(stats(true));
+      vi.mocked(readlink).mockResolvedValue('/old/target' as never);
+
+      await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+      expect(unlink).toHaveBeenCalledWith('/test/workspaces/.claude/skills');
+      expect(symlink).toHaveBeenCalledWith('../.agents/skills', '/test/workspaces/.claude/skills', 'dir');
+    });
+
+    it('should refuse to replace a real file or directory', async () => {
+      vi.mocked(lstat).mockResolvedValue(stats(false));
+
+      await expect(adapter.ensureSymlink('.claude/skills', '../.agents/skills')).rejects.toThrow(
+        'Cannot create symlink, a file or directory already exists: /test/workspaces/.claude/skills',
+      );
+      expect(symlink).not.toHaveBeenCalled();
+    });
+
+    it('should propagate unexpected errors while inspecting the link path', async () => {
+      vi.mocked(lstat).mockRejectedValue(errnoError('EACCES'));
+
+      await expect(adapter.ensureSymlink('.claude/skills', '../.agents/skills')).rejects.toThrow('EACCES');
     });
   });
 });
