@@ -214,7 +214,7 @@ Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureD
 `agy` falha ao iniciar em diretório inexistente. `resolveRepositoryPath` e `ensureDirectory` rejeitam
 caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO, e
 `resolveRepositoryPath` rejeita também caminhos aninhados (`my-app/src`). Uma pasta de projeto
-precisa ainda constar em `listProjectFolders()` (subpastas diretas não ocultas): um nome errado
+precisa ainda constar em `listProjectFolders()` (subpastas diretas não ocultas, incluindo links para diretórios): um nome errado
 viraria um CWD vazio criado pelo `ensureDirectory`, então a delegação vira `invalid` e o reparo
 lista as pastas existentes.
 

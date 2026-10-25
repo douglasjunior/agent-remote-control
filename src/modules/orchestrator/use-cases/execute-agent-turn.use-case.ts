@@ -48,6 +48,7 @@ export class ExecuteAgentTurnUseCase {
   private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
   private readonly MAX_DELEGATION_ROUNDS = 10;
   private readonly MAX_REPAIR_ATTEMPTS = 1;
+  private sessionBindings: Promise<void> = Promise.resolve();
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -334,12 +335,13 @@ export class ExecuteAgentTurnUseCase {
       cwd = this.workspacePort.resolveRepositoryPath(projectName);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return { reason: `Invalid project folder "${projectName}": ${message}. ${await this.describeProjectFolders()}` };
+      return { reason: `Invalid project folder "${projectName}": ${message}. ${this.describeProjectFolders(await this.workspacePort.listProjectFolders())}` };
     }
 
-    if (!(await this.workspacePort.listProjectFolders()).includes(projectName)) {
+    const folders = await this.workspacePort.listProjectFolders();
+    if (!folders.includes(projectName)) {
       return {
-        reason: `Project folder "${projectName}" does not exist in the workspaces root. ${await this.describeProjectFolders()}`,
+        reason: `Project folder "${projectName}" does not exist in the workspaces root. ${this.describeProjectFolders(folders)}`,
       };
     }
 
@@ -390,8 +392,7 @@ export class ExecuteAgentTurnUseCase {
     return projectName ? `project folder "${projectName}"` : 'the workspaces root';
   }
 
-  private async describeProjectFolders(): Promise<string> {
-    const folders = await this.workspacePort.listProjectFolders();
+  private describeProjectFolders(folders: readonly string[]): string {
     return folders.length > 0
       ? `Use one of the existing project folders exactly as written: ${folders.join(', ')}.`
       : 'The workspaces root has no project folders yet; add the repository first, delegating without a project folder.';
@@ -637,13 +638,19 @@ export class ExecuteAgentTurnUseCase {
     return await this.sessionStore.findSession(session.conversationId) ?? session;
   }
 
+  /** Parallel delegations bind their sessions concurrently, so each binding re-reads the stored session in sequence. */
   private async bindAgentSession(session: SessionContext, binding: AgentSession): Promise<void> {
-    const others = session.agentSessions.filter(agentSession => !this.isSameAgentSession(agentSession, binding));
-    await this.sessionStore.saveSession({
-      ...session,
-      agentSessions: [...others, binding],
-      updatedAt: new Date(),
+    const bound = this.sessionBindings.then(async () => {
+      const latest = await this.findLatestSession(session);
+      const others = latest.agentSessions.filter(agentSession => !this.isSameAgentSession(agentSession, binding));
+      await this.sessionStore.saveSession({
+        ...latest,
+        agentSessions: [...others, binding],
+        updatedAt: new Date(),
+      });
     });
+    this.sessionBindings = bound.catch(() => undefined);
+    await bound;
   }
 
   private isSameAgentSession(

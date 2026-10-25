@@ -1708,6 +1708,35 @@ describe('ExecuteAgentTurnUseCase', () => {
       ]);
     });
 
+    it('should keep the sessions bound by every parallel delegation', async () => {
+      delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
+      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Ok.\n[DONE]'];
+
+      await useCase.execute(turnRequest());
+
+      const developerSessions = (await sessionStore.findSession('conv-1'))?.agentSessions
+        .filter(agentSession => agentSession.role === 'DEVELOPER')
+        .map(agentSession => agentSession.projectName);
+      expect(developerSessions).toEqual(['project-a', 'project-b']);
+    });
+
+    it('should keep binding sessions after one binding fails to save', async () => {
+      const save = sessionStore.saveSession.bind(sessionStore);
+      sessionStore.saveSession = async (session) => {
+        if (session.agentSessions.at(-1)?.projectName === 'project-a') {
+          throw new Error('EACCES: permission denied');
+        }
+        await save(session);
+      };
+      delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
+      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('failed');
+      expect((await sessionStore.findSession('conv-1'))?.agentSessions.at(-1)?.projectName).toBe('project-b');
+    });
+
     it('should wait for every delegation and fail the turn when one of them fails', async () => {
       const failing = delegatePort('');
       failing.promptErrorToThrow = new Error('agent crashed');
