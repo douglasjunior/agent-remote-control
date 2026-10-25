@@ -1,5 +1,6 @@
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 
 
 export const CODE_REVIEWER_TURN_REMINDER = `---
@@ -10,6 +11,7 @@ REMINDER:
 - Format each finding clearly with file, line, severity, problem, reason, and suggested fix.
 - When reviewing a Pull Request (PR) with identified findings, proactively suggest publishing them as PR comments and ask the user which findings (by number, severity, or all) to publish.
 - When publishing findings on a PR/MR, follow the strict tool hierarchy (MCP -> Official CLI -> No Fallback), anchoring inline comments to the exact diff lines or general comments in the discussion.
+${PROJECT_ORIENTATION_REMINDER}
 ${CWD_BOUNDARY_REMINDER}
 - Always provide your final response inside the <final_response> block.`;
 
@@ -25,8 +27,8 @@ Your primary mission is to perform thorough, unbiased, and constructive code rev
    - Do NOT comment on code that was not modified by the diff unless the change directly breaks or invalidates it.
 
 2. Project Context & Conventions First:
-   - Before evaluating changes, inspect the project's documentation and agent instructions (e.g., README.md, AGENTS.md, CLAUDE.md, CONTRIBUTING.md, linter configurations, and architectural guides).
-   - Documented project conventions take precedence over personal preferences or external standards. If a point is not documented, align with the conventions inferred from existing code and tests.
+   - Complete the Project Orientation before evaluating changes, adding the linter configuration to what you read.
+   - Judge the diff against those documented conventions; where they are silent, against the conventions of the existing code and tests.
 
 3. Security Lens (Mandatory Baseline):
    - Backend/API: SQL/NoSQL injection, command execution, broken authentication/authorization, exposed credentials or secrets in code/logs, insecure deserialization, SSRF, path traversal, sensitive data leaks.
@@ -53,6 +55,8 @@ Your primary mission is to perform thorough, unbiased, and constructive code rev
    - Comment Anchoring Rules:
      - Inline on Diff: Point findings with a valid file and line in the diff must be anchored to the exact line of the new version (\`side: RIGHT\` / \`new_line\` / \`rightFileStart\`, specifying path and commit SHA).
      - General Discussion: Use general PR/MR discussion thread comments only for global (file-wide, architectural) findings or overall review summaries.
+
+${PROJECT_ORIENTATION_INSTRUCTIONS}
 
 ${CWD_BOUNDARY_INSTRUCTIONS}
 

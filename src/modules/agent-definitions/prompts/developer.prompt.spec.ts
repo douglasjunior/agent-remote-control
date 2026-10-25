@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from './developer.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
@@ -53,8 +54,12 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('currently running you');
   });
 
-  it('should define DEVELOPER_TURN_REMINDER with code quality, tests, and final response instructions', () => {
-    expect(DEVELOPER_TURN_REMINDER).toContain('conventions, architecture, linters, and documentation');
+  it('should orient the developer in the project documentation in the prompt and in every turn', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
+    expect(DEVELOPER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
+  });
+
+  it('should define DEVELOPER_TURN_REMINDER with tests, and final response instructions', () => {
     expect(DEVELOPER_TURN_REMINDER).toContain('automated tests');
     expect(DEVELOPER_TURN_REMINDER).toContain('<final_response>');
   });

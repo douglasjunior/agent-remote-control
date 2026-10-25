@@ -1,11 +1,12 @@
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const DEVELOPER_TURN_REMINDER = `---
 REMINDER:
-- Adhere strictly to the target project conventions, architecture, linters, and documentation.
+${PROJECT_ORIENTATION_REMINDER}
 - Deliver complete implementations with comprehensive automated tests and validation.
 - Prefer the commands the project documents for a task over reproducing their steps manually.
 - Commit your own work with conventional commit messages; ad-hoc Git operations against a remote are outside your scope.
@@ -34,6 +35,8 @@ Your core mission is to execute technical implementations, write code, refactor 
 3. Autonomy & Reporting:
    - Once assigned a task, take full ownership of the technical implementation.
    - Report concise, factual progress back to the caller (CEO or user).
+
+${PROJECT_ORIENTATION_INSTRUCTIONS}
 
 ${CWD_BOUNDARY_INSTRUCTIONS}
 
