@@ -2,7 +2,8 @@
 name: discord-bot
 description: >
   Bot do Discord como adaptador primário de entrada para agentes de IA. Governa os
-  comandos /agent, /model, /usage e /cancel, a seleção numerada de agente/modelo/effort, o rodapé
+  comandos /agent, /model, /usage e /cancel, a seleção numerada de agente/modelo/effort, as perguntas
+  dos agentes ao usuário uma por vez, o rodapé
   de agente nas respostas, o registro de slash commands por guilda ou global, o cliente e intents,
   threads por conversa, streaming de atividades, indicador de digitação com watchdog,
   throttling contra 429 e particionamento em 2000 caracteres. Use ao trabalhar com mensagens,
@@ -62,9 +63,9 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
      faria qualquer anúncio no servidor abrir uma sessão de agente.
    - Em DM: toda mensagem é aceita.
    - Em threads: responde se a thread for gerenciada pelo bot (`channel.ownerId === clientUser.id`),
-     se o bot for mencionado no corpo da mensagem ou se houver seleção de configuração aberta na
-     thread (`hasActiveConfigSelection(parentId, threadId)`, aberta por `/agent` ou `/model` numa
-     thread que não é do bot).
+     se o bot for mencionado no corpo da mensagem, se houver perguntas de agentes aguardando
+     resposta na thread (`hasPendingQuestions`) ou se houver seleção de configuração aberta nela
+     (`hasActiveConfigSelection`, aberta por `/agent` ou `/model` numa thread que não é do bot).
    - Mensagens sem menção em canal comum são sempre ignoradas. A seleção de `/agent` ou `/model`
      num canal comum acontece numa thread do bot, então nenhuma conversa solta do canal é tratada
      como resposta.
@@ -84,10 +85,15 @@ Para manter os canais limpos e conversas simultâneas estritamente isoladas:
 
 ## Resolução da Entrada e Seleção de Agente e Modelo
 
-Antes de executar o turno, o handler chama `OrchestratorService.resolveInput({ channelId, threadId, prompt })`
-dentro de `DiscordTypingIndicator.during(canal, ...)`, porque responder uma seleção sobe um agente
-descartável para listar modelos ou efforts e leva alguns segundos:
+Antes de executar o turno, o handler valida e baixa os anexos e chama
+`OrchestratorService.resolveInput({ conversationId, prompt, attachments? })` com o texto da mensagem
+(vazio quando ela traz só anexos) dentro de `DiscordTypingIndicator.during(canal, ...)`, porque
+responder uma seleção sobe um agente descartável para listar modelos ou efforts e leva alguns
+segundos:
 
+- `question`: envia `formatQuestion` com a próxima pergunta e encerra;
+- `invalid_answer`: envia `formatInvalidAnswer` (faixa válida seguida da pergunta) e encerra;
+- `answered`: envia `formatAnswersSent` e, quando outro agente aguarda, `formatQuestion` com a pergunta dele, e encerra;
 - `selection`: envia `formatSelection` (lista numerada de agentes, modelos ou efforts) e encerra;
 - `invalid`: envia `formatInvalidSelection` (faixa válida seguida da lista) e encerra;
 - `configured`: envia `formatConfigured` e encerra;
@@ -106,6 +112,28 @@ O cabeçalho de `formatSelection` depende do passo (`AgentConfigSelection.step`)
 
 `formatConfigured(settings)` confirma com `✅ **Configuração salva**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
 com `padrão` quando o modelo ou o effort são nulos.
+
+## Perguntas dos Agentes ao Usuário
+
+Qualquer agente pode perguntar direto ao usuário (ver a skill `orchestrator`). Enquanto houver
+perguntas pendentes, a conversa fica travada como na seleção: toda mensagem é resposta, com ou sem
+anexos, e nada chega ao CEO.
+
+- **Primeira pergunta**: o callback `onQuestion` do turno publica `formatQuestion(prompt)` na mesma
+  fila dos anúncios de delegação e das mensagens intermediárias, então ela aparece depois do aviso de
+  que o agente assumiu a tarefa. Chama `keepAlive()` como os demais callbacks. Se o envio falhar, o
+  erro é registrado em log e o fluxo prossegue.
+- **Perguntas seguintes**: chegam como desfecho de `resolveInput` na mensagem que respondeu a anterior.
+- **`formatQuestion(prompt)`**: o texto livre do agente (só na primeira pergunta), seguido de
+  `❓ **Pergunta <n>/<total>** · <roleName> (\`<projeto>\`)`, o texto da pergunta em negrito, o
+  `rationale` em itálico, as opções numeradas (`**1.** ...`) e uma linha `-#` explicando que se
+  responde com o número ou com outro texto e que `/cancel` interrompe tudo. Com outros agentes na
+  fila, acrescenta `-# ⏳ Mais <n> agente(s) aguardando respostas depois deste.`
+- **`formatInvalidAnswer(prompt)`**: `⚠️ Opção inválida. Responda com um número de 1 a <N> ou digite
+  outra resposta.` seguido da pergunta, sem o texto livre do agente.
+- **`formatAnswersSent(asker)`**: `✅ Respostas enviadas ao **<roleName>** (\`<projeto>\`).`
+- **Anexos como resposta**: os arquivos da mensagem são baixados no diretório temporário de anexos e
+  seguem com a resposta para o agente, que recebe o caminho de cada um.
 
 ## Rodapé das Respostas
 
@@ -129,7 +157,7 @@ Quando `TurnResult.attachments` contiver arquivos locais existentes, eles são e
 
 O bot aceita arquivos anexados diretamente nas mensagens do Discord através de `DiscordAttachmentService`:
 
-- **Mensagens apenas com anexos**: Mensagens sem texto mas com anexos são processadas normalmente com o prompt padrão `O usuário enviou anexos. Analise os arquivos anexados.`, sem descarte por "Empty Prompt".
+- **Mensagens apenas com anexos**: Mensagens sem texto mas com anexos são processadas normalmente, sem descarte por "Empty Prompt": o handler envia o texto vazio ao `resolveInput`, que usa o prompt `O usuário enviou anexos. Analise os arquivos anexados.` para o turno, ou toma os anexos como resposta quando há pergunta pendente.
 - **Validação prévia de compatibilidade**:
   - Aceita múltiplos formatos legíveis pelas ferramentas do agente (imagens `.png`, `.jpg`, `.webp`, `.gif`, documentos `.pdf`, textos e código `.txt`, `.md`, `.json`, `.ts`, `.py`, etc., áudio, vídeo e arquivos de configuração como `Dockerfile` e `.env`).
   - Limite máximo de 100 MB por anexo.
@@ -160,7 +188,7 @@ e formatadas pelo `DiscordActivityFormatter`:
 Durante a execução de um turno em `DiscordMessageHandler`, o feedback visual de digitação ("digitando...") é gerenciado por `DiscordTypingIndicator` (`utils/discord-typing-indicator.util.ts`):
 
 - **Disparo inicial e repetição periódica**: ao iniciar o processamento de um turno, `start()` dispara `sendTyping()` imediatamente no canal e agenda repetições a cada `8000ms` (padrão de `intervalMs`). Rejeições e exceções em `sendTyping()` são suprimidas silenciosamente.
-- **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity`, `onDelegation` e `onInterimMessage` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
+- **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity`, `onDelegation`, `onInterimMessage` e `onQuestion` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
 - **Espera curta**: `DiscordTypingIndicator.during(canal, work)` mantém a digitação enquanto `work` roda e chama `stop()` no `finally`, para esperas fora de um turno, como a consulta de agentes, modelos e efforts de uma seleção.
 - **Encerramento no ciclo de vida**: `stop()` cancela os timers de repetição e de inatividade. O método é invocado em bloco `finally` logo após `executeTurn`, garantindo encerramento em conclusões com sucesso, cancelamentos e falhas.
 
@@ -194,7 +222,8 @@ são particionados por `DiscordActivityFormatter.splitMessage(content, maxLength
 
 Comandos de barra são interceptados por `DiscordInteractionHandler`:
 
-- **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`. Com turno em andamento, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada (de agente, modelo ou effort), `🛑 **Seleção cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
+- **/cancel**: localiza o canal e a thread da interação, chama `cancelConfigSelection` e depois `cancelTurn`, que também descarta as perguntas pendentes e destrava a conversa. Com turno em andamento ou perguntas pendentes, responde `🛑 **Cancelamento solicitado.** O turno ativo será interrompido.`; só com seleção encerrada (de agente, modelo ou effort), `🛑 **Seleção cancelada.**`; sem nenhum dos dois, `ℹ️ Não há nenhum turno em andamento para cancelar.` A resposta é efêmera.
+- **/model** e **/agent** numa conversa com perguntas pendentes (DM ou thread) respondem de forma efêmera `❓ Há perguntas aguardando a sua resposta nesta conversa. Responda a elas ou use /cancel antes de trocar de agente ou de modelo.` sem abrir a seleção. Num canal de guilda a seleção abre outra conversa, numa thread nova, e não é bloqueada.
 - **/model**: `deferReply()` público. As opções são respondidas por mensagem na conversa, por isso a resposta é pública:
   - Em canal de guilda: `editReply('🧵 Escolha o modelo na thread abaixo.')`, thread criada a partir desse aviso (`startThread({ name: 'Seleção de modelo', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` com o indicador de digitação na thread (`DiscordTypingIndicator.during`) e `formatSelection` particionado dentro da thread. A thread é do bot, então as respostas entram sem menção e, depois de configurar, ela segue como uma conversa normal. Se a thread não puder ser criada, responde `❌ **Falha ao abrir a seleção de modelo**: <erro>`.
   - Em DM ou thread: `startConfigSelection` com a chave da conversa atual e `editReply(formatSelection)`; a resposta adiada já exibe "pensando..." durante a consulta.

@@ -51,6 +51,14 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
   }
 
   startedSelections: string[] = [];
+  pendingQuestions = false;
+  pendingQuestionLookups: string[] = [];
+
+  hasPendingQuestions(conversationId: string): boolean {
+    this.pendingQuestionLookups.push(conversationId);
+    return this.pendingQuestions;
+  }
+
   startedAgentSelections: string[] = [];
 
   async cancelTurn(conversationId: string): Promise<boolean> {
@@ -390,6 +398,34 @@ describe('DiscordInteractionHandler', () => {
 
       expect(orchestratorService.startedSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
+    });
+
+    it('should refuse to open the selection while the conversation has questions waiting', async () => {
+      orchestratorService.pendingQuestions = true;
+      const interaction = buildInteraction({
+        commandName: 'model',
+        channelId: 'thread-1',
+        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.pendingQuestionLookups).toEqual(['channel-123:thread-1']);
+      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: expect.stringContaining('Há perguntas aguardando a sua resposta'),
+        ephemeral: true,
+      });
+    });
+
+    it('should open the selection in a new thread from a channel even with questions waiting elsewhere', async () => {
+      orchestratorService.pendingQuestions = true;
+      const interaction = buildInteraction({ commandName: 'model' });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.pendingQuestionLookups).toEqual([]);
+      expect(interaction.deferReply).toHaveBeenCalled();
     });
 
     it('should publish the options in a direct message', async () => {

@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { DelegationDetectorService } from './delegation-detector.service.js';
+import { QuestionParserService } from './question-parser.service.js';
 
 
 describe('DelegationDetectorService', () => {
-  const service = new DelegationDetectorService();
+  const service = new DelegationDetectorService(new QuestionParserService());
 
   const reasonOf = (response: string) => {
     const result = service.detect(response);
@@ -157,6 +158,28 @@ describe('DelegationDetectorService', () => {
       expect(reasonOf('<delegate role="DEVELOPER">Go.</delegate>\n<attachment path="/a.png" />')).toBe(
         'Attachments go in the answer to the user, not in a response that delegates. Send them once the agents have finished.',
       );
+    });
+  });
+
+  describe('questions to the user', () => {
+    it('should ask the user, keeping the text around the questions as the message', () => {
+      expect(service.detect('Before I start:\n<question rationale="It sets the scope.">Which project?<option>Backend</option></question>')).toEqual({
+        kind: 'ask',
+        message: 'Before I start:',
+        questions: [{ text: 'Which project?', rationale: 'It sets the scope.', options: ['Backend'] }],
+      });
+    });
+
+    it('should reject questions together with delegations', () => {
+      expect(reasonOf('<question>Which?</question>\n<delegate role="DEVELOPER">Go.</delegate>')).toContain('either asks the user questions or delegates');
+    });
+
+    it('should reject questions together with attachments', () => {
+      expect(reasonOf('<question>Which?</question>\n<attachment path="/tmp/a.png">A</attachment>')).toContain('not in a response that asks questions');
+    });
+
+    it('should reject malformed questions', () => {
+      expect(reasonOf('<question>Which?')).toContain('must be closed with </question>');
     });
   });
 });

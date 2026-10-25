@@ -6,6 +6,7 @@ import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-rep
 import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
+import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 
 
 const FENCE_PATTERN = /^```\w*/;
@@ -87,6 +88,34 @@ export class DiscordActivityFormatter {
   formatAgentFooter(info: TurnAgentInfo, usage?: AgentUsage): string {
     const footer = `-# 🤖 ${info.roleName} (${info.agentName}) · 🧠 ${info.modelName ?? DEFAULT_LABEL} · ⚡ ${info.effortName ?? DEFAULT_LABEL}`;
     return usage ? `${footer} · 🪙 ${this.formatTokenCount(usage.totalTokens)} tokens` : footer;
+  }
+
+  formatQuestion(prompt: QuestionPrompt): string {
+    const { question, asker } = prompt;
+    const lines = [
+      `❓ **Pergunta ${prompt.number}/${prompt.total}** · ${asker.roleName}${this.formatAskerProject(asker)}`,
+      `**${question.text}**`,
+    ];
+    if (question.rationale) {
+      lines.push(`_${question.rationale}_`);
+    }
+    lines.push(...question.options.map((option, index) => `**${index + 1}.** ${option}`));
+    lines.push(question.options.length > 0
+      ? '-# Responda com o número da opção ou digite outra resposta. /cancel interrompe tudo.'
+      : '-# Digite a sua resposta. /cancel interrompe tudo.');
+    if (prompt.waitingAskers > 0) {
+      lines.push(`-# ⏳ Mais ${prompt.waitingAskers} agente(s) aguardando respostas depois deste.`);
+    }
+    const formatted = lines.join('\n');
+    return prompt.message ? `${prompt.message}\n\n${formatted}` : formatted;
+  }
+
+  formatInvalidAnswer(prompt: QuestionPrompt): string {
+    return `⚠️ Opção inválida. Responda com um número de 1 a ${prompt.question.options.length} ou digite outra resposta.\n\n${this.formatQuestion({ ...prompt, message: undefined })}`;
+  }
+
+  formatAnswersSent(asker: QuestionAsker): string {
+    return `✅ Respostas enviadas ao **${asker.roleName}**${this.formatAskerProject(asker)}.`;
   }
 
   formatSelection(selection: AgentConfigSelection): string {
@@ -200,6 +229,10 @@ export class DiscordActivityFormatter {
 
     chunks.push(lines.join('\n') + (openFence ? CLOSE_FENCE : ''));
     return chunks;
+  }
+
+  private formatAskerProject(asker: QuestionAsker): string {
+    return asker.projectName ? ` (\`${asker.projectName}\`)` : '';
   }
 
   private formatProject(event: DelegationEvent): string {

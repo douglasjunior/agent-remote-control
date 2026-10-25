@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from './git-ops.prompt.js';
+import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('git-ops.prompt', () => {
@@ -60,5 +61,10 @@ describe('git-ops.prompt', () => {
   it('should remind the agent to report the project folder it used', () => {
     expect(GIT_OPS_TURN_REMINDER).toContain('Report the project folder name');
     expect(GIT_OPS_TURN_REMINDER).toContain('<final_response>');
+  });
+
+  it('should explain to the git ops agent how to ask the user, in the prompt and in every turn', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(GIT_OPS_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
   });
 });

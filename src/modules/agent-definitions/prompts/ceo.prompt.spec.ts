@@ -38,9 +38,16 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('inside `<delegate role="ROLE" project="project-folder">...</delegate>`');
   });
 
-  it('should show the text outside the tags to the user and end the turn with an answer without delegations', () => {
+  it('should show the text outside the tags to the user and end the turn with an answer without tags', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Text outside protocol tags is shown to the user.');
-    expect(CEO_SYSTEM_PROMPT).toContain('A response without `<delegate>` is your answer to the user and ends the turn');
+    expect(CEO_SYSTEM_PROMPT).toContain('a response without either tag is your answer to the user and ends the turn');
+  });
+
+  it('should let the CEO ask the user, leaving the details to its skill, and tell it that agents ask the user directly', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('tags ask the user for decisions you need before going on, never in plain prose');
+    expect(CEO_SYSTEM_PROMPT).toContain('(see the `response-protocol` skill)');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('### Asking the User');
+    expect(CEO_SYSTEM_PROMPT).toContain('you receive only each agent\'s final result');
   });
 
   it('should enforce pure orchestration and prohibit direct technical execution', () => {

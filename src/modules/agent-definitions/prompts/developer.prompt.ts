@@ -1,5 +1,6 @@
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const DEVELOPER_TURN_REMINDER = `---
@@ -9,6 +10,7 @@ REMINDER:
 - Prefer the commands the project documents for a task over reproducing their steps manually.
 - Commit your own work with conventional commit messages; ad-hoc Git operations against a remote are outside your scope.
 ${CWD_BOUNDARY_REMINDER}
+${USER_QUESTIONS_REMINDER}
 - Always put your final answer inside the <final_response> block.`;
 
 
@@ -57,5 +59,7 @@ The project's own commands are within your scope even when they reach the networ
    - Never commit sensitive information, credentials, private keys, or .env files.
    - Never commit broken code; verify that tests pass before committing.
    - Keep commits atomic, cohesive, and focused on a single change.
+
+${USER_QUESTIONS_INSTRUCTIONS}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

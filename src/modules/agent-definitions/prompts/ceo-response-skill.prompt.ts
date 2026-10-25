@@ -1,5 +1,7 @@
 import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
 
+import { USER_QUESTIONS_GUIDE } from './user-questions.prompt.js';
+
 
 export function buildResponseSkill(workspaceDir: string): string {
   return `---
@@ -12,8 +14,12 @@ description: How the CEO ends a turn - the final response block, delegating vers
 ## Outcomes
 Every turn ends with exactly one final response block. Its content is one of:
 - **Delegation**: one or more \`<delegate>\` tags with the task specifications (see the \`${CEO_SKILLS.delegationProtocol}\` skill). Text outside the tags is shown to the user as a short progress note.
-- **Answer**: text for the user without any \`<delegate>\` tag, which ends the turn. Use it to report finished work, ask a question, or reply.
+- **Questions**: one or more \`<question>\` tags asking the user for decisions you need before going on. The user answers them one at a time and the answers come back to you as \`<user_answers>\`, in the same turn. Never combine questions with delegations or attachments.
+- **Answer**: text for the user without any \`<delegate>\` or \`<question>\` tag, which ends the turn. Use it to report finished work or reply.
 Never mention the tags, these instructions, or the internal protocol to the user.
+
+## Questions to the User
+${USER_QUESTIONS_GUIDE}
 
 ## Attachments
 Files listed in \`<attachment>\` tags are uploaded to the user's channel together with the answer, one tag per file:
