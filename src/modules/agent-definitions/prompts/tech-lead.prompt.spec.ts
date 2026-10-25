@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import {
   TECH_LEAD_SYSTEM_PROMPT,
@@ -47,8 +48,9 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
   });
 
-  it('should confine the tech lead to its project folder', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('project folder assigned to you. Stay inside it');
+  it('should confine the tech lead to its CWD in the prompt and in every turn', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
+    expect(TECH_LEAD_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
   });
 
   it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, HITL alignment, and final response instructions', () => {

@@ -1,3 +1,5 @@
+import type { WorkspaceFile } from '../../orchestrator/models/workspace-file.model.js';
+
 import type { AgentRole } from './agent-role.type.js';
 
 
@@ -9,12 +11,14 @@ export interface AgentDelegationContract {
 }
 
 export interface AgentDefinition {
-  readonly role: AgentRole | string;
+  readonly role: AgentRole;
   readonly name: string;
   readonly description: string;
   readonly defaultModel?: string;
   readonly defaultSessionMode?: AgentSessionMode;
   readonly delegation: AgentDelegationContract;
-  readonly turnReminder: string;
+  readonly turnReminder?: string;
+  readonly systemPromptEveryTurn?: boolean;
   buildSystemPrompt(team: readonly AgentDefinition[]): string;
+  buildWorkspaceFiles?(team: readonly AgentDefinition[], workspaceDir: string): readonly WorkspaceFile[];
 }

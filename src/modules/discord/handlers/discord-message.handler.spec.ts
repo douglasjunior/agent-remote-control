@@ -99,10 +99,9 @@ class MockWorkspacePort implements IWorkspacePort {
   getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
   resolveRepositoryPath = vi.fn();
   ensureDirectory = vi.fn().mockResolvedValue(undefined);
-  registerRepository = vi.fn();
-  getRepository = vi.fn();
-  listRepositories = vi.fn();
-  hasRepository = vi.fn();
+  listProjectFolders = vi.fn().mockResolvedValue([]);
+  writeFile = vi.fn().mockResolvedValue(undefined);
+  ensureSymlink = vi.fn().mockResolvedValue(undefined);
 }
 
 describe('DiscordMessageHandler', () => {

@@ -41,9 +41,17 @@ describe('initial-agents.constant', () => {
     for (const definition of INITIAL_AGENT_DEFINITIONS) {
       expect(definition.name).toBeTruthy();
       expect(definition.description).toBeTruthy();
-      expect(definition.turnReminder).toBeTruthy();
+      expect(definition.turnReminder ?? definition.systemPromptEveryTurn).toBeTruthy();
       expect(definition.buildSystemPrompt([])).toBeTruthy();
     }
+  });
+
+  it('should send the CEO prompt with every turn and give it workspace guidance files', () => {
+    const ceo = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CEO');
+
+    expect(ceo?.systemPromptEveryTurn).toBe(true);
+    expect(ceo?.turnReminder).toBeUndefined();
+    expect(ceo?.buildWorkspaceFiles?.([], '/ws').map(file => file.path)).toContain('AGENTS.md');
   });
 
   it('should route project documented commands to DEVELOPER and keep them away from GIT_OPS', () => {

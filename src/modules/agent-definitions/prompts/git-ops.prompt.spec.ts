@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
+import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from './git-ops.prompt.js';
 
 
 describe('git-ops.prompt', () => {
+  it('should confine the agent to its CWD except for its own SSH key setup', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('$HOME/.ssh is authorized for the steps in SSH Key Setup');
+    expect(GIT_OPS_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
+  });
+
   it('should define the agent as the owner of remote Git operations', () => {
     expect(GIT_OPS_SYSTEM_PROMPT).toContain('You are the Git Ops Agent.');
     expect(GIT_OPS_SYSTEM_PROMPT).toContain('every Git operation that reaches a remote');
@@ -27,7 +34,7 @@ describe('git-ops.prompt', () => {
 
   it('should own the workspace manifest as a URL to folder mapping', () => {
     expect(GIT_OPS_SYSTEM_PROMPT).toContain('workspace-manifest.json');
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain('You are its only reader and writer');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('You are its only writer');
     expect(GIT_OPS_SYSTEM_PROMPT).toContain('an absent file means an empty workspace');
   });
 

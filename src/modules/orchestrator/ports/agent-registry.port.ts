@@ -1,3 +1,6 @@
+import type { WorkspaceFile } from '../models/workspace-file.model.js';
+
+
 export interface DelegationContract {
   readonly project?: 'required' | 'optional';
   readonly sessionMode?: 'overridable';
@@ -11,6 +14,8 @@ export interface IAgentRegistryPort {
   getDefaultSessionMode(agentRole: string): 'resume' | 'new';
   getDelegationContract(agentRole: string): DelegationContract;
   getTurnReminder(agentRole: string): string;
+  isSystemPromptEveryTurn(agentRole: string): boolean;
+  getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[];
 }
 
 export const IAgentRegistryPort = Symbol('IAgentRegistryPort');
