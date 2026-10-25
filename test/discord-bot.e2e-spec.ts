@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -431,6 +431,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
   it('should delegate from CEO to Developer inside the project workspace and report the final summary', async () => {
     seedAgentSettings(dataDir, 'channel-delegation:thread-delegation');
+    mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
       'Implement the login screen.\n[DELEGATE:DEVELOPER:my-app]',
       'Login delivered.\n[DONE]',
@@ -479,8 +480,9 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(incomingMessage);
 
     expect(ceo.sessionCwds).toEqual([workspaceDir]);
+    expect(ceo.prompts[0]).toContain('[ORCHESTRATOR_INSTRUCTIONS]');
+    expect(ceo.prompts[1]).toContain('[ORCHESTRATOR_INSTRUCTIONS]');
     expect(developer.sessionCwds).toEqual([join(workspaceDir, 'my-app')]);
-    expect(existsSync(join(workspaceDir, 'my-app'))).toBe(true);
     expect(developer.prompts[0]).toContain('Developer Agent');
     expect(developer.prompts[0]).toContain('Implement the login screen.');
     expect(ceo.prompts[1]).toContain(
@@ -491,6 +493,29 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     );
     expect(threadMessages).toContain('↩️ **Developer Agent concluiu** — o CEO está revisando o resultado.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
+
+    await app.close();
+  });
+
+  it('should write the CEO guidance to the workspaces root on startup', async () => {
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue(agentFactory(() => new E2EAgentFake()))
+      .compile();
+
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    expect(readFileSync(join(workspaceDir, 'AGENTS.md'), 'utf8')).toContain(workspaceDir);
+    for (const skill of ['agent-team', 'delegation-protocol', 'response-protocol', 'workspace-navigation']) {
+      expect(existsSync(join(workspaceDir, '.agents', 'skills', skill, 'SKILL.md'))).toBe(true);
+    }
+    const skillsLink = join(workspaceDir, '.claude', 'skills');
+    expect(lstatSync(skillsLink).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(skillsLink)).toBe('../.agents/skills');
+    expect(existsSync(join(skillsLink, 'agent-team', 'SKILL.md'))).toBe(true);
 
     await app.close();
   });

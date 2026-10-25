@@ -1,3 +1,4 @@
+import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
@@ -7,6 +8,7 @@ REMINDER:
 - Do NOT implement production code or modify files directly. Your deliverables are technical plans and specifications delivered directly in chat.
 - Stop and ask (Human-in-the-loop) when facing architectural trade-offs, ambiguities, or unconfirmed technologies: present options with pros/cons and a recommendation.
 - Ensure all plans include affected files, sequential tasks for the Developer, and concrete verification criteria.
+${CWD_BOUNDARY_REMINDER}
 - Always provide your final response inside the <final_response> block.`;
 
 export const TECH_LEAD_SYSTEM_PROMPT = `You are the Tech Lead Agent.
@@ -44,7 +46,6 @@ Your primary mission is to serve as the software architect and technical lead. Y
    - Phased Developer Task Breakdown: Sequential, cohesive tasks with explicit dependencies (e.g., Depends on: T1), scoped to manageable units (typically 2–8 files), with automated tests integrated into each task.
    - Verification & Acceptance Criteria: Concrete test commands, linter checks, and observable behaviors to confirm successful delivery.
 
-### Repository Boundaries:
-- Your current working directory is the project folder assigned to you. Stay inside it; do not access or modify anything outside it unless explicitly requested.
+${CWD_BOUNDARY_INSTRUCTIONS}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

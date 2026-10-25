@@ -156,7 +156,9 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
 - `getDelegationContract(agentRole: string): DelegationContract`: parâmetros de marcador que o papel aceita (`project`, `sessionMode`); contrato vazio para papel desconhecido
-- `getTurnReminder(agentRole: string): string`: lembrete mandatório injetado ao final de cada prompt do turno (sempre string)
+- `getTurnReminder(agentRole: string): string`: lembrete injetado ao final de cada prompt do turno (sempre string, vazia quando o papel não tem)
+- `isSystemPromptEveryTurn(agentRole: string): boolean`: papel cujo system prompt acompanha toda rodada (o CEO)
+- `getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[]`: arquivos de orientação (`workspace-file.model.ts`: `path` relativo à raiz de workspaces, `content`) gravados no boot
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
@@ -200,20 +202,39 @@ Cada agente delegado opera em `IWorkspacePort.resolveRepositoryPath(project)`:
 
 ```text
 ./workspaces/                    ← cwd do CEO e do GIT_OPS sem pasta de projeto
-├── workspace-manifest.json      ← de→para URL/pasta, mantido pelo GIT_OPS
+├── AGENTS.md                    ← manual do CEO, regenerado no boot
+├── .agents/skills/              ← skills do CEO, regeneradas no boot
+├── .claude/skills -> ../.agents/skills
+├── workspace-manifest.json      ← de→para URL/pasta, escrito só pelo GIT_OPS
 ├── my-backend/                  ← cwd do agente delegado com [DELEGATE:ROLE:my-backend]
 └── my-frontend/
 ```
 
 Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureDirectory(cwd)`, pois o
 `agy` falha ao iniciar em diretório inexistente. `resolveRepositoryPath` e `ensureDirectory` rejeitam
-caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO.
+caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO, e
+`resolveRepositoryPath` rejeita também caminhos aninhados (`my-app/src`). Uma pasta de projeto
+precisa ainda constar em `listProjectFolders()` (subpastas diretas não ocultas): um nome errado
+viraria um CWD vazio criado pelo `ensureDirectory`, então a delegação vira `invalid` e o reparo
+lista as pastas existentes.
 
-`IWorkspacePort` expõe apenas `getBaseDirectory`, `resolveRepositoryPath` e `ensureDirectory`: a app
-resolve e cria diretórios, e não executa Git. Clonar um repositório no workspace, registrá-lo no manifest
+`IWorkspacePort` expõe `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory`,
+`listProjectFolders`, `writeFile` (caminho relativo à raiz, sobrescreve) e `ensureSymlink` (recusa
+substituir arquivo ou diretório real): a app resolve, lista e cria diretórios e grava a orientação
+do CEO, e não executa Git. Clonar um repositório no workspace, registrá-lo no manifest
 e as demais operações avulsas de Git contra um remoto pertencem ao agente `GIT_OPS`, e a URL chega até ele
 pela especificação que o CEO escreve. Scripts do próprio projeto que clonam sub-repositórios, como um
 `init`, são executados pelo `DEVELOPER`.
+
+### Orientação do CEO no Workspace (`ProvisionWorkspaceGuidanceUseCase`)
+
+No `onModuleInit`, antes de os canais conectarem, grava na raiz de workspaces os arquivos de
+`IAgentRegistryPort.getWorkspaceFiles(baseDir)` (o `AGENTS.md` e as skills do CEO), sempre
+sobrescrevendo para seguir o código e o registry, e garante o link `.claude/skills` →
+`../.agents/skills`. Falha é registrada em log e não derruba o serviço, porque o prompt núcleo
+enviado em todo turno mantém o CEO operando. Os agentes delegados rodam numa subpasta e não são
+orientados a ler esses arquivos; por isso não se gera `CLAUDE.md`, que o Claude Code carrega dos
+diretórios pais e vazaria para eles.
 
 ### Protocolo de Marcadores
 
@@ -245,7 +266,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 4. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
 5. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
-   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os parâmetros do marcador precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath`. Falhas de validação viram `invalid`.
+   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os parâmetros do marcador precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath` e constar em `listProjectFolders()`. Falhas de validação viram `invalid`, e as de projeto listam as pastas existentes no motivo.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 6), porque o resultado não voltaria ao CEO.
@@ -261,11 +282,11 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 
 Cada turno de agente (CEO ou delegado) executa internamente:
 
-1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido.
+1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido e, com `isSystemPromptEveryTurn(role)`, prefixa o `getSystemPrompt(role)` em toda rodada, inclusive em sessão retomada e no prompt de reparo.
 2. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
 3. `connect()` seguido de `turn.throwIfCancelled()`.
 3. Se `currentSessionId` não estiver definido:
-   1. **Com sessão do papel no agente da porta (`agentId === agentPort.agentName`) em `agentSessions` e `sessionMode !== 'new'`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
+   1. **Com sessão do papel no agente da porta (`agentId === agentPort.agentName`) em `agentSessions` e `sessionMode !== 'new'`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado, salvo para papel com `isSystemPromptEveryTurn`. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
    2. **Sem ID, modo `'new'` ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.
    3. Se o ID da sessão ACP mudou, substitui a entrada do par papel/agente em `agentSessions`, preservando as dos outros agentes, e salva no store.
 4. Configuração: com `AgentSettings` do mesmo agente da porta e `modelId` definido, `setConfig({ modelId, effortId: effortId ?? undefined })`; nos demais casos, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Settings de outro agente são ignoradas porque os IDs de modelo não valem entre agentes. Vale para o CEO e para os delegados.

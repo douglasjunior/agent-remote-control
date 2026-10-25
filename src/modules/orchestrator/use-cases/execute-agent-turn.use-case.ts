@@ -278,20 +278,20 @@ export class ExecuteAgentTurnUseCase {
     );
 
     let response = await runCeo(prompt);
-    let decision = this.decide(response, request);
+    let decision = await this.decide(response, request);
 
     for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
       this.logger.warn(
         `[Delegation Repair] Session=${session.sessionId}, Attempt=${attempt}: ${decision.reason}`,
       );
       response = await runCeo(buildDelegationRepairPrompt(decision.reason));
-      decision = this.decide(response, request);
+      decision = await this.decide(response, request);
     }
 
     return { response, decision };
   }
 
-  private decide(response: string, request: TurnRequest): ValidatedDecision {
+  private async decide(response: string, request: TurnRequest): Promise<ValidatedDecision> {
     const decision = this.delegationDetector.detect(response);
     if (decision.kind !== 'delegate') {
       return decision;
@@ -318,16 +318,32 @@ export class ExecuteAgentTurnUseCase {
       return { kind: 'delegate', delegation: { ...decision.delegation, cwd: request.workspacePath } };
     }
 
+    let cwd: string;
     try {
-      const cwd = this.workspacePort.resolveRepositoryPath(projectName);
-      return { kind: 'delegate', delegation: { ...decision.delegation, cwd } };
+      cwd = this.workspacePort.resolveRepositoryPath(projectName);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
         kind: 'invalid',
-        reason: `Invalid project folder "${projectName}": ${message}. Use a folder name relative to the workspaces root.`,
+        reason: `Invalid project folder "${projectName}": ${message}. ${await this.describeProjectFolders()}`,
       };
     }
+
+    if (!(await this.workspacePort.listProjectFolders()).includes(projectName)) {
+      return {
+        kind: 'invalid',
+        reason: `Project folder "${projectName}" does not exist in the workspaces root. ${await this.describeProjectFolders()}`,
+      };
+    }
+
+    return { kind: 'delegate', delegation: { ...decision.delegation, cwd } };
+  }
+
+  private async describeProjectFolders(): Promise<string> {
+    const folders = await this.workspacePort.listProjectFolders();
+    return folders.length > 0
+      ? `Use one of the existing project folders exactly as written: ${folders.join(', ')}.`
+      : 'The workspaces root has no project folders yet; add the repository first, delegating without a project folder.';
   }
 
   // TODO: devemos pensar numa forma melhor e mais genéricas de validar os parâmetros de delegação
@@ -463,8 +479,10 @@ export class ExecuteAgentTurnUseCase {
       await agentPort.connect();
       turn.throwIfCancelled();
 
+      const systemPromptEveryTurn = this.agentRegistry.isSystemPromptEveryTurn(role);
       const reminder = this.agentRegistry.getTurnReminder(role);
       let fullPrompt = reminder ? `${prompt}\n\n${reminder}` : prompt;
+      let systemPromptPending = systemPromptEveryTurn;
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
         const storedSessionId = sessionMode === 'new'
@@ -475,12 +493,16 @@ export class ExecuteAgentTurnUseCase {
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
           await agentPort.createSession(workspacePath);
-          fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${fullPrompt}`;
+          systemPromptPending = true;
         }
         const { currentSessionId } = agentPort;
         if (currentSessionId && currentSessionId !== storedSessionId) {
           await this.bindAgentSession(latest, { role, agentId: agentPort.agentName, sessionId: currentSessionId });
         }
+      }
+
+      if (systemPromptPending) {
+        fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${fullPrompt}`;
       }
 
       await this.applyAgentConfig(agentPort, role, request.conversationId);

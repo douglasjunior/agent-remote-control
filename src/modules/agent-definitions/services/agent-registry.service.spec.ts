@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { AgentRole } from '../models/agent-role.type.js';
+
 import { AgentRegistryService } from './agent-registry.service.js';
 
 
@@ -40,13 +42,12 @@ describe('AgentRegistryService', () => {
 
     it('should include root directory guideline for delegations in the CEO system prompt', () => {
       const prompt = service.getSystemPrompt('CEO');
-      expect(prompt).toContain('top-level root directory of the project');
-      expect(prompt).toContain('never nested paths or internal subfolders');
+      expect(prompt).toContain('The project folder is the name of a direct subfolder of your CWD that already exists');
     });
 
     it('should give the CEO its team of every other registered agent', () => {
       service.registerDefinition({
-        role: 'REVIEWER',
+        role: 'REVIEWER' as AgentRole,
         name: 'Reviewer Agent',
         description: 'Reviews pull requests.',
         buildSystemPrompt: () => 'Reviewer prompt',
@@ -57,7 +58,7 @@ describe('AgentRegistryService', () => {
       const prompt = service.getSystemPrompt('CEO');
 
       expect(prompt).toContain('- DEVELOPER (Developer Agent):');
-      expect(prompt).toContain('- REVIEWER (Reviewer Agent): Reviews pull requests.');
+      expect(prompt).toContain('- REVIEWER (Reviewer Agent): [DELEGATE:REVIEWER].');
       expect(prompt).not.toContain('- CEO (');
     });
 
@@ -76,7 +77,7 @@ describe('AgentRegistryService', () => {
 
     it('should return default model when configured for a registered agent', () => {
       service.registerDefinition({
-        role: 'TESTER',
+        role: 'TESTER' as AgentRole,
         name: 'Tester Agent',
         description: 'Testing specialist',
         buildSystemPrompt: () => 'You test things.',
@@ -155,14 +156,44 @@ describe('AgentRegistryService', () => {
     });
   });
 
-  describe('getTurnReminder', () => {
-    it('should return turn reminder for CEO role in case-insensitive manner', () => {
-      const reminderUpper = service.getTurnReminder('CEO');
-      const reminderLower = service.getTurnReminder('ceo');
+  describe('isSystemPromptEveryTurn', () => {
+    it('should report the CEO as receiving its system prompt every turn', () => {
+      expect(service.isSystemPromptEveryTurn('ceo')).toBe(true);
+      expect(service.isSystemPromptEveryTurn('DEVELOPER')).toBe(false);
+      expect(service.isSystemPromptEveryTurn('UNKNOWN_ROLE')).toBe(false);
+    });
+  });
 
-      expect(reminderUpper).toBeDefined();
-      expect(reminderLower).toBe(reminderUpper);
-      expect(reminderUpper).toContain('strictly an orchestrator');
+  describe('getWorkspaceFiles', () => {
+    it('should collect the workspace files of every definition, built with its team', () => {
+      service.registerDefinition({
+        role: 'AUDITOR' as AgentRole,
+        name: 'Auditor Agent',
+        description: 'Audits.',
+        buildSystemPrompt: () => 'Auditor prompt',
+        buildWorkspaceFiles: (team, workspaceDir) => [{ path: 'audit.md', content: `${workspaceDir}:${team.map(agent => agent.role).join(',')}` }],
+        delegation: {},
+      });
+
+      const files = service.getWorkspaceFiles('/ws');
+
+      expect(files.map(file => file.path)).toEqual(expect.arrayContaining([
+        'AGENTS.md',
+        '.agents/skills/agent-team/SKILL.md',
+        'audit.md',
+      ]));
+      const audit = files.find(file => file.path === 'audit.md');
+      expect(audit?.content).toContain('/ws:CEO,');
+      expect(audit?.content).not.toContain('AUDITOR');
+      const team = files.find(file => file.path === '.agents/skills/agent-team/SKILL.md');
+      expect(team?.content).toContain('### AUDITOR — Auditor Agent');
+      expect(team?.content).not.toContain('### CEO');
+    });
+  });
+
+  describe('getTurnReminder', () => {
+    it('should return an empty reminder for a role without one', () => {
+      expect(service.getTurnReminder('CEO')).toBe('');
     });
 
     it('should return turn reminder for TECH_LEAD role in case-insensitive manner', () => {
@@ -192,7 +223,7 @@ describe('AgentRegistryService', () => {
 
     it('should return custom turn reminder for dynamically registered agent', () => {
       service.registerDefinition({
-        role: 'CUSTOM',
+        role: 'CUSTOM' as AgentRole,
         name: 'Custom Agent',
         description: 'Custom description',
         buildSystemPrompt: () => 'prompt',
@@ -226,7 +257,7 @@ describe('AgentRegistryService', () => {
   describe('registerDefinition', () => {
     it('should allow registering a new agent definition', () => {
       service.registerDefinition({
-        role: 'ARCHITECT',
+        role: 'ARCHITECT' as AgentRole,
         name: 'Solution Architect',
         description: 'Architectural governance',
         buildSystemPrompt: () => 'Architect prompt',

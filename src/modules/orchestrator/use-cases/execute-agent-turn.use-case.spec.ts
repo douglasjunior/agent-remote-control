@@ -38,12 +38,17 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   );
 
   getTurnReminder = vi.fn().mockReturnValue('');
+  isSystemPromptEveryTurn = vi.fn().mockReturnValue(false);
+  getWorkspaceFiles = vi.fn().mockReturnValue([]);
 }
 
 class StubWorkspacePort implements IWorkspacePort {
   getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
   resolveRepositoryPath = vi.fn().mockReturnValue('/mock/workspace/my-app');
   ensureDirectory = vi.fn().mockResolvedValue(undefined);
+  listProjectFolders = vi.fn().mockResolvedValue(['my-app', 'project-a', 'project-b']);
+  writeFile = vi.fn().mockResolvedValue(undefined);
+  ensureSymlink = vi.fn().mockResolvedValue(undefined);
 }
 
 function textChunk(text: string): AgentUpdate {
@@ -338,9 +343,33 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.status).toBe('completed');
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Invalid project folder "../../etc": Path is outside the workspace directory: /etc.',
+        'Invalid project folder "../../etc": Path is outside the workspace directory: /etc. Use one of the existing project folders exactly as written: my-app, project-a, project-b.',
       );
       expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+    });
+
+    it('should repair a delegation to a project folder that does not exist, listing the existing ones', async () => {
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-ap]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'Project folder "my-ap" does not exist in the workspaces root. Use one of the existing project folders exactly as written: my-app, project-a, project-b.',
+      );
+      expect(workspacePort.ensureDirectory).not.toHaveBeenCalledWith('/mock/workspace/my-ap');
+    });
+
+    it('should ask to add the repository first when the workspace has no project folders', async () => {
+      workspacePort.listProjectFolders.mockResolvedValue([]);
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Sorry.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'The workspaces root has no project folders yet; add the repository first, delegating without a project folder.',
+      );
     });
 
     it('should stringify non-Error failures when resolving the project folder', async () => {
@@ -620,6 +649,33 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual(['Continue']);
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old' }]);
+    });
+
+    it('should resend the system prompt with every turn of a role that asks for it, even when resumed', async () => {
+      await persistedSession();
+      agentRegistry.isSystemPromptEveryTurn.mockImplementation((role: string) => role === 'CEO');
+      agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
+      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
+      delegateStubPort.mockResponses = ['Implemented.'];
+
+      await useCase.execute(turnRequest({ prompt: 'Continue' }));
+
+      expect(stubAgentPort.createSessionCalls).toHaveLength(0);
+      expect(stubAgentPort.promptCalls).toEqual([
+        'CEO prompt\n\nContinue',
+        'CEO prompt\n\n[AGENT_RESULT:DEVELOPER]\nImplemented.',
+      ]);
+      expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nGo.']);
+    });
+
+    it('should resend the system prompt with the repair prompt of a role that asks for it', async () => {
+      await persistedSession();
+      agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
+      stubAgentPort.mockResponses = ['Go [DONE] now.', 'Fixed.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toMatch(/^Mock system prompt\.\n\n\[DELEGATION_ERROR\]/);
     });
 
     it('should create a new session and store its id when the load fails', async () => {

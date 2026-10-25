@@ -4,6 +4,7 @@ import {
   CODE_REVIEWER_SYSTEM_PROMPT,
   CODE_REVIEWER_TURN_REMINDER,
 } from './code-reviewer.prompt.js';
+import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
@@ -33,8 +34,9 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
   });
 
-  it('should confine the code reviewer to its project folder', () => {
-    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('project folder assigned to you. Stay inside it');
+  it('should confine the code reviewer to its CWD in the prompt and in every turn', () => {
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
   });
 
   it('should define CODE_REVIEWER_TURN_REMINDER with objective review, findings format, PR publishing, and final response instructions', () => {

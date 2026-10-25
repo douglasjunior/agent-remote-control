@@ -38,7 +38,7 @@ export type AgentRole =
 
 - **`CEO`**: Líder do time de agentes. Conversa com o usuário, faz a triagem, delega todo o trabalho prático aos demais agentes e revisa os resultados.
 - **`TECH_LEAD`**: Especialista em planejamento técnico, exploração arquitetural, levantamento de impacto e especificação decomposta para o DEVELOPER. Atua de forma consultiva com alinhamento Human-in-the-loop em decisões críticas e trade-offs de design.
-- **`GIT_OPS`**: Dono das operações avulsas de Git que alcançam um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único leitor e escritor. Não executa scripts do projeto, mesmo quando eles clonam ou fazem fetch internamente.
+- **`GIT_OPS`**: Dono das operações avulsas de Git que alcançam um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único escritor (o CEO o lê para localizar repositórios). Não executa scripts do projeto, mesmo quando eles clonam ou fazem fetch internamente.
 - **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código e testes automatizados. No Git opera só o lado local: inspeção da árvore de trabalho, branches locais e commit do próprio trabalho. Executa os comandos que o projeto documenta (scripts do `package.json`, alvos de Makefile, scripts de setup ou init do README/AGENTS.md), mesmo quando instalam dependências ou clonam sub-repositórios.
 - **`CODE_REVIEWER`**: Revisor de código crítico e independente, focado em inspecionar alterações e propor melhorias técnicas, aderência a convenções e prevenção de bugs sem viés de implementações anteriores.
 
@@ -46,14 +46,26 @@ export type AgentRole =
 
 Cada agente é descrito pela estrutura `AgentDefinition`:
 
-- `role`: identificador textual do papel (`AgentRole` ou identificador personalizado);
+- `role`: papel do agente, restrito à união `AgentRole`;
 - `name`: rótulo legível do agente;
 - `description`: resumo descritivo de especialidade e propósito;
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
 - `defaultModel`: modelo de linguagem padrão opcional associado à persona;
 - `defaultSessionMode`: modo de sessão padrão (`'resume' | 'new'`, padrão `'resume'`). Quando `'new'`, o orquestrador inicia sempre uma nova sessão ACP para o agente;
 - `delegation`: contrato de delegação do agente (`AgentDelegationContract`), declarando quais parâmetros do marcador ele aceita. `project` vale `'required'` ou `'optional'`; ausente, o agente não recebe pasta de projeto. `sessionMode` vale `'overridable'`; ausente, o modo fica fixo no `defaultSessionMode` e passar `:new` ou `:resume` é recusado. O conjunto é particular de cada agente, e um parâmetro novo se acrescenta aqui;
-- `turnReminder`: lembrete de turno obrigatório (`string`) injetado no prompt de cada rodada do agente.
+- `turnReminder`: lembrete de turno opcional (`string`) anexado ao prompt de cada rodada do agente;
+- `systemPromptEveryTurn`: quando `true`, o orquestrador prefixa o system prompt em toda rodada, inclusive em sessão retomada e no prompt de reparo. Serve a agentes de sessão longa, cujo contexto é compactado e perde o prompt enviado na criação da sessão; o agente dispensa o `turnReminder`;
+- `buildWorkspaceFiles(team, workspaceDir)`: opcional, devolve `WorkspaceFile[]` (`path` relativo à raiz de workspaces e `content`) que o orquestrador grava na raiz de workspaces a cada boot.
+
+### Fronteira de CWD dos agentes executores
+
+Todo agente executor inclui `CWD_BOUNDARY_INSTRUCTIONS` no system prompt e `CWD_BOUNDARY_REMINDER`
+no `turnReminder` (`prompts/cwd-boundary.prompt.ts`). O agente não lê, lista nem altera nada fora
+do CWD, a menos que o prompt recebido autorize aquele caminho exato e o modo (leitura ou escrita).
+Precisando de algo de fora, como um SDK instalado na máquina, para e devolve na resposta final um
+pedido de acesso com caminho, motivo e modo. O CEO avalia, pede confirmação ao usuário quando o
+caminho sai do workspace, e autoriza delegando de novo ao mesmo papel com `:resume`. O GIT_OPS
+tem `$HOME/.ssh` autorizado no próprio prompt para o setup de chave SSH.
 
 ### Quem pode nomear quem
 
@@ -96,11 +108,12 @@ da narração.
 - Opera com confinamento padrão ao `workspaces` e suas subpastas; atuar fora do workspace é perigoso e exige alerta explícito de risco e confirmação prévia obrigatória do usuário antes de prosseguir;
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
-- Conhece seu time pela seção "Your Team", gerada por `buildCeoSystemPrompt(team)` a partir do registry com papel, nome, descrição e formas de marcador aceitas de cada agente, estas derivadas do `delegation`. A seção de delegação é agnóstica a papéis fixos: o roteamento de tarefas e o sequenciamento em fases (como planejamento antes da execução e revisão antes da conclusão) são orientados exclusivamente pelas especializações descritas dinamicamente no catálogo "Your Team". Por isso a `description` de cada definição deve dizer quando delegar a ele;
+- Recebe o prompt núcleo (`buildCeoSystemPrompt(team)`, envolto em `[ORCHESTRATOR_INSTRUCTIONS]`) em todo turno via `systemPromptEveryTurn`, com as regras que não podem se perder na compactação: orquestração pura, formas de marcador por agente, pasta de projeto como subpasta direta existente, quando usar `:new`, pedidos de acesso fora do CWD e sintaxe de anexos. O detalhe vive no `AGENTS.md` e nas skills que `buildCeoWorkspaceFiles` gera na raiz de workspaces (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). O prompt núcleo não indexa as skills, que são descobertas pela própria `description`;
+- Conhece seu time pela seção "Your Team" do prompt núcleo (papel, nome e formas de marcador derivadas do `delegation`) e pela skill `agent-team`, que traz a `description` completa de cada agente. A seção de delegação é agnóstica a papéis fixos: o roteamento de tarefas e o sequenciamento em fases (como planejamento antes da execução e revisão antes da conclusão) são orientados exclusivamente pelas especializações descritas dinamicamente no catálogo "Your Team". Por isso a `description` de cada definição deve dizer quando delegar a ele;
 - Copia literalmente para a próxima especificação os comandos recomendados e os fatos já verificados que vêm nos resultados dos agentes, e pede o comando documentado pelo projeto em vez da reprodução manual dos seus passos;
 - Delega via protocolo de marcadores, escritos na última linha do envelope de resposta final, usando um papel do time, e revisa cada resultado antes de concluir;
 - Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
-- Possui o lembrete `CEO_TURN_REMINDER` configurado em sua definição, reforçando o papel de orquestração pura e o contrato dos marcadores a cada turno;
+- Lê o `workspace-manifest.json` para localizar repositórios pela URL, sem escrevê-lo;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
 - Quando o usuário questiona uma decisão do próprio CEO, responde no mesmo turno com o contexto que já tem, e só delega se a resposta depender de informação que ainda não possui; quando o usuário pede para parar, para de delegar;
 - Não realiza execução técnica direta, pois a implementação cabe exclusivamente aos agentes especialistas do time.
@@ -147,7 +160,9 @@ A classe `AgentRegistryService` implementa a porta `IAgentRegistryPort` de `src/
 - `getSystemPrompt(agentRole: string)`: resolve a definição de forma case-insensitive e chama `buildSystemPrompt` com todas as outras definições registradas. Papéis não registrados recebem um prompt genérico;
 - `getDefaultModel(agentRole: string)`: retorna o identificador do modelo preferencial associado ao papel;
 - `getDefaultSessionMode(agentRole: string)`: retorna o modo de sessão padrão do papel (`'resume' | 'new'`), recorrendo a `'resume'` se não configurado ou desconhecido;
-- `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), ou texto padrão de fallback para papéis não registrados (sempre string, nunca null ou undefined);
+- `getTurnReminder(agentRole: string)`: retorna o lembrete de turno associado ao papel (`turnReminder`), string vazia para definição sem lembrete, ou texto padrão de fallback para papéis não registrados (sempre string);
+- `isSystemPromptEveryTurn(agentRole: string)`: indica se o papel recebe o system prompt em toda rodada (`false` para papel desconhecido);
+- `getWorkspaceFiles(workspaceDir: string)`: agrega os `buildWorkspaceFiles` de todas as definições, cada uma com o próprio time;
 - `hasRole(agentRole: string)`: indica, de forma case-insensitive, se o papel está registrado;
 - `getDefinition(roleOrId: string)`: recupera a entidade completa `AgentDefinition`;
 - `getAllDefinitions()`: lista todas as definições registradas;
