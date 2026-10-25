@@ -112,21 +112,21 @@ export class DiscordAttachmentService {
     if (attachment.size > MAX_FILE_SIZE_BYTES) {
       return {
         valid: false,
-        reason: `⚠️ O arquivo "${rawName || 'anexo'}" excede o tamanho limite de 100 MB suportado pelas ferramentas de inspeção do agente.`,
+        reason: `⚠️ The file "${rawName || 'attachment'}" exceeds the 100 MB limit supported by the agent's inspection tools.`,
       };
     }
 
     if (ext && BLOCKED_EXTENSIONS.has(ext)) {
       return {
         valid: false,
-        reason: `⚠️ O arquivo "${rawName}" possui um formato não suportado ou incompatível com as ferramentas do agente. Por favor, envie arquivos de texto, código, imagens, áudio, vídeo ou PDF.`,
+        reason: `⚠️ The file "${rawName}" has an unsupported format or is incompatible with the agent's tools. Please send text, code, image, audio, video or PDF files.`,
       };
     }
 
     if (mime && BLOCKED_MIME_TYPES.has(mime)) {
       return {
         valid: false,
-        reason: `⚠️ O arquivo "${rawName || 'anexo'}" possui um formato não suportado ou incompatível com as ferramentas do agente. Por favor, envie arquivos de texto, código, imagens, áudio, vídeo ou PDF.`,
+        reason: `⚠️ The file "${rawName || 'attachment'}" has an unsupported format or is incompatible with the agent's tools. Please send text, code, image, audio, video or PDF files.`,
       };
     }
 
@@ -149,7 +149,7 @@ export class DiscordAttachmentService {
 
     return {
       valid: false,
-      reason: `⚠️ O arquivo "${rawName || 'anexo'}" possui um formato não suportado ou incompatível com as ferramentas do agente. Por favor, envie arquivos de texto, código, imagens, áudio, vídeo ou PDF.`,
+      reason: `⚠️ The file "${rawName || 'attachment'}" has an unsupported format or is incompatible with the agent's tools. Please send text, code, image, audio, video or PDF files.`,
     };
   }
 
@@ -209,7 +209,7 @@ export class DiscordAttachmentService {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Attachment Download Failed] "${rawName}" from ${attachment.url}: ${errorMessage}`);
-      throw new Error(`Falha ao baixar o anexo "${rawName}": ${errorMessage}`);
+      throw new Error(`Failed to download attachment "${rawName}": ${errorMessage}`);
     }
   }
 }

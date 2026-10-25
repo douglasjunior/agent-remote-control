@@ -36,13 +36,13 @@ describe('ResumedSession', () => {
     const { connection } = buildConnection();
     const session = new ResumedSession('stored', connection);
 
-    session.route(chunk('Lembro da conversa.'));
+    session.route(chunk('I remember the conversation.'));
     await session.prompt('continue');
 
     expect(await session.nextUpdate()).toEqual({
       kind: 'session_update',
-      notification: chunk('Lembro da conversa.'),
-      update: chunk('Lembro da conversa.').update,
+      notification: chunk('I remember the conversation.'),
+      update: chunk('I remember the conversation.').update,
     });
     expect(await session.nextUpdate()).toEqual({
       kind: 'stop',
@@ -56,7 +56,7 @@ describe('ResumedSession', () => {
     const session = new ResumedSession('stored', connection);
 
     const next = session.nextUpdate();
-    session.route(chunk('ao vivo'));
+    session.route(chunk('live'));
 
     expect(await next).toEqual(expect.objectContaining({ kind: 'session_update' }));
   });
@@ -65,7 +65,7 @@ describe('ResumedSession', () => {
     const { connection } = buildConnection();
     const session = new ResumedSession('stored', connection);
 
-    session.route(chunk('outra sessão', 'session-1'));
+    session.route(chunk('other session', 'session-1'));
     await session.prompt('continue');
 
     expect(await session.nextUpdate()).toEqual(expect.objectContaining({ kind: 'stop' }));

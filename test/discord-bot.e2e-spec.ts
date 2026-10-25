@@ -23,7 +23,7 @@ import { DiscordClientService } from '../src/modules/discord/services/discord-cl
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
 
 
-const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ padrão · 🪙 150 tokens';
+const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ default · 🪙 150 tokens';
 
 const AGENTS: readonly AgentProviderInfo[] = [
   { agentId: 'agy', displayName: 'Antigravity' },
@@ -331,7 +331,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       autoArchiveDuration: 60,
     });
 
-    expect(threadMessages).toContain('⏳ *Iniciando processamento...*');
+    expect(threadMessages).toContain('⏳ *Starting...*');
     expect(threadMessages).toContain(`Implementation completed successfully.\n${FOOTER}`);
 
     expect(editMock).toHaveBeenCalled();
@@ -420,11 +420,11 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await vi.waitFor(() => {
       expect(replyMock).toHaveBeenCalledWith({
         content:
-          '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
+          '🛑 **Cancellation requested.** The active turn will be stopped.',
         ephemeral: true,
       });
     });
-    expect(threadMessages).toContain(`⚠️ **Turno cancelado pelo usuário.**\n${FOOTER}`);
+    expect(threadMessages).toContain(`⚠️ **Turn cancelled by the user.**\n${FOOTER}`);
 
     await app.close();
   });
@@ -490,12 +490,12 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       '<agent_result role="DEVELOPER" project="my-app">\nLogin screen implemented.\n</agent_result>',
     );
     expect(threadMessages.indexOf('On it.')).toBeLessThan(
-      threadMessages.findIndex(content => content.startsWith('🔀 **Tarefa delegada**')),
+      threadMessages.findIndex(content => content.startsWith('🔀 **Task delegated**')),
     );
     expect(threadMessages).toContain(
-      '🔀 **Tarefa delegada** ao agente **Developer Agent** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
+      '🔀 **Task delegated** to agent **Developer Agent** (`DEVELOPER`) in project `my-app` — it is working on it now.',
     );
-    expect(threadMessages).toContain('↩️ **Developer Agent concluiu** no projeto `my-app` — o CEO está revisando o resultado.');
+    expect(threadMessages).toContain('↩️ **Developer Agent finished** in project `my-app` — the CEO is reviewing the result.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
 
     await app.close();
@@ -557,25 +557,25 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     } as unknown as Message);
 
     expect(sent.at(-1)).toBe(
-      '🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Antigravity\n**2.** Claude Code',
+      '🤖 **Choose the agent** by replying with the option number:\n**1.** Antigravity\n**2.** Claude Code',
     );
 
     await messageHandler.handleMessage(threadReply(thread, 'abc'));
-    expect(sent.at(-1)).toMatch(/^⚠️ Opção inválida\. Responda apenas com um número de 1 a 2\./);
+    expect(sent.at(-1)).toMatch(/^⚠️ Invalid option\. Reply only with a number from 1 to 2\./);
 
     await messageHandler.handleMessage(threadReply(thread, '2'));
     expect(sent.at(-1)).toBe(
-      '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+      '🧠 **Choose the Claude Code model** by replying with the option number:\n**1.** Model One\n**2.** Model Two',
     );
 
     await messageHandler.handleMessage(threadReply(thread, '2'));
     expect(sent.at(-1)).toBe(
-      '⚡ **Escolha o effort para Model Two** respondendo com o número da opção:\n**1.** Low\n**2.** High',
+      '⚡ **Choose the effort for Model Two** by replying with the option number:\n**1.** Low\n**2.** High',
     );
 
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
-    expect(sent).toContain('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
+    expect(sent).toContain('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select']).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
@@ -597,7 +597,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       startThread: vi.fn().mockResolvedValue(newThread),
     } as unknown as Message);
 
-    expect(newThreadSent.some(msg => msg.includes('Escolha o agente'))).toBe(false);
+    expect(newThreadSent.some(msg => msg.includes('Choose the agent'))).toBe(false);
     expect(newThreadSent.at(-1)).toBe('Built it.\n-# 🤖 CEO (claude) · 🧠 Model Two · ⚡ Low · 🪙 150 tokens');
 
     await app.close();
@@ -638,13 +638,13 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
 
     expect(editReply).toHaveBeenCalledWith({
-      content: '🧠 **Escolha o modelo do Antigravity** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+      content: '🧠 **Choose the Antigravity model** by replying with the option number:\n**1.** Model One\n**2.** Model Two',
     });
 
     const sent: string[] = [];
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
-    expect(sent).toEqual(['✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão']);
+    expect(sent).toEqual(['✅ **Settings saved**: 🤖 Antigravity · 🧠 Model One · ⚡ default']);
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].modelId).toBe('one');
 
     await app.close();
@@ -685,7 +685,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     };
     await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
 
-    expect(sent).toEqual(['🧠 **Escolha o modelo do Antigravity** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two']);
+    expect(sent).toEqual(['🧠 **Choose the Antigravity model** by replying with the option number:\n**1.** Model One\n**2.** Model Two']);
 
     const channelChatter = {
       author: { bot: false, id: 'discord-user-888' },
@@ -701,7 +701,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
-    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Antigravity · 🧠 Model One · ⚡ padrão');
+    expect(sent.at(-1)).toBe('✅ **Settings saved**: 🤖 Antigravity · 🧠 Model One · ⚡ default');
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].modelId).toBe('one');
 
     await app.close();
@@ -747,24 +747,85 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     };
     await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
 
-    expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o agente na thread abaixo.' });
-    expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de agente', autoArchiveDuration: 60 });
-    expect(sent).toEqual(['🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Antigravity\n**2.** Claude Code']);
+    expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the agent in the thread below.' });
+    expect(startThread).toHaveBeenCalledWith({ name: 'Agent selection', autoArchiveDuration: 60 });
+    expect(sent).toEqual(['🤖 **Choose the agent** by replying with the option number:\n**1.** Antigravity\n**2.** Claude Code']);
 
     await messageHandler.handleMessage(threadReply(selectionThread, '2'));
     expect(sent.at(-1)).toBe(
-      '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:\n**1.** Model One\n**2.** Model Two',
+      '🧠 **Choose the Claude Code model** by replying with the option number:\n**1.** Model One\n**2.** Model Two',
     );
 
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
-    expect(sent.at(-1)).toBe('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model One · ⚡ padrão');
+    expect(sent.at(-1)).toBe('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model One · ⚡ default');
     expect(createdAgentIds).toContain('claude');
     expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent']).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'one',
     });
+
+    await app.close();
+  });
+
+  it('should store the language the CEO detects and change it through the /language slash command', async () => {
+    seedAgentSettings(dataDir, 'channel-general:thread-language');
+    const agent = new ScriptedAgentFake(['Olá!\n<user_language>Brazilian Portuguese</user_language>', '¡Hola!']);
+    const moduleFixture: TestingModule = await Test.createTestingModule({
+      imports: [AppModule],
+    })
+      .overrideProvider(IAgentPortFactory)
+      .useValue(agentFactory(() => agent))
+      .compile();
+    const app = moduleFixture.createNestApplication();
+    await app.init();
+
+    const interactionHandler = moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler);
+    const messageHandler = moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler);
+    (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
+      id: 'bot-e2e-id',
+    };
+    const readLanguage = () => JSON.parse(readFileSync(join(dataDir, 'preferences.json'), 'utf-8')).language;
+
+    const sent: string[] = [];
+    const thread = buildThread('thread-language', 'channel-general', sent);
+    await messageHandler.handleMessage(threadReply(thread, 'Oi'));
+
+    expect(agent.prompts[0]).toContain('<user_language>language name in English</user_language>');
+    expect(sent.some(message => message.startsWith('Olá!'))).toBe(true);
+    expect(sent.join('\n')).not.toContain('<user_language>');
+    expect(readLanguage()).toBe('Brazilian Portuguese');
+
+    const interaction = {
+      isChatInputCommand: vi.fn().mockReturnValue(true),
+      commandName: 'language',
+      channelId: thread.id,
+      inGuild: vi.fn().mockReturnValue(true),
+      channel: thread,
+      user: { username: 'alice', id: 'discord-user-777' },
+      deferred: false,
+      replied: false,
+      deferReply: vi.fn(async () => {
+        interaction.deferred = true;
+      }),
+      editReply: vi.fn().mockResolvedValue(undefined),
+    };
+    await interactionHandler.handleInteraction(interaction as unknown as ChatInputCommandInteraction);
+
+    expect(interaction.editReply).toHaveBeenCalledWith({
+      content: '🌐 **Current language**: Brazilian Portuguese\nReply with the language the agents should use to talk to you, such as "Spanish" or "Português".',
+    });
+
+    await messageHandler.handleMessage(threadReply(thread, 'Spanish'));
+
+    expect(sent.at(-1)).toBe('✅ **Language saved**: Spanish');
+    expect(readLanguage()).toBe('Spanish');
+
+    await messageHandler.handleMessage(threadReply(thread, 'Hola'));
+
+    expect(agent.prompts).toHaveLength(2);
+    expect(agent.prompts[1]).toContain('Write everything shown to the user in Spanish');
 
     await app.close();
   });
@@ -820,17 +881,17 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
       const turn = messageHandler.handleMessage(threadMessage(thread, 'I want refund approvals'));
       await vi.waitFor(() => {
-        expect(threadMessages.some(content => content.includes('❓ **Pergunta 1/2** · Product Owner Agent'))).toBe(true);
+        expect(threadMessages.some(content => content.includes('❓ **Question 1/2** · Product Owner Agent'))).toBe(true);
       });
       await messageHandler.handleMessage(threadMessage(thread, '7'));
       await messageHandler.handleMessage(threadMessage(thread, '2'));
       await messageHandler.handleMessage(threadMessage(thread, 'R$ 500'));
       await turn;
 
-      expect(threadMessages.find(content => content.includes('Pergunta 1/2'))).toMatch(/^I understood refunds need approval\.\n\n❓/);
-      expect(threadMessages.some(content => content.startsWith('⚠️ Opção inválida'))).toBe(true);
-      expect(threadMessages.some(content => content.includes('❓ **Pergunta 2/2**'))).toBe(true);
-      expect(threadMessages).toContain('✅ Respostas enviadas ao **Product Owner Agent**.');
+      expect(threadMessages.find(content => content.includes('Question 1/2'))).toMatch(/^I understood refunds need approval\.\n\n❓/);
+      expect(threadMessages.some(content => content.startsWith('⚠️ Invalid option'))).toBe(true);
+      expect(threadMessages.some(content => content.includes('❓ **Question 2/2**'))).toBe(true);
+      expect(threadMessages).toContain('✅ Answers sent to **Product Owner Agent**.');
       expect(owner.prompts[0]).toContain('Product Owner Agent');
       expect(owner.prompts[1]).toContain('<answer question="Who approves a refund?" option="2">Finance</answer>');
       expect(owner.prompts[1]).toContain('<answer question="What is the maximum amount?" kind="other">R$ 500</answer>');
@@ -850,7 +911,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
       const turn = messageHandler.handleMessage(threadMessage(thread, 'Plan something'));
       await vi.waitFor(() => {
-        expect(threadMessages.some(content => content.includes('❓ **Pergunta 1/1** · CEO'))).toBe(true);
+        expect(threadMessages.some(content => content.includes('❓ **Question 1/1** · CEO'))).toBe(true);
       });
       const reply = vi.fn().mockResolvedValue(undefined);
       await moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler).handleInteraction({
@@ -866,8 +927,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       } as unknown as ChatInputCommandInteraction);
       await turn;
 
-      expect(reply).toHaveBeenCalledWith({ content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.', ephemeral: true });
-      expect(threadMessages.some(content => content.startsWith('⚠️ **Turno cancelado pelo usuário.**'))).toBe(true);
+      expect(reply).toHaveBeenCalledWith({ content: '🛑 **Cancellation requested.** The active turn will be stopped.', ephemeral: true });
+      expect(threadMessages.some(content => content.startsWith('⚠️ **Turn cancelled by the user.**'))).toBe(true);
 
       await messageHandler.handleMessage(threadMessage(thread, 'Hi'));
 

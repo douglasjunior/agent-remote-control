@@ -23,10 +23,17 @@ import {
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
+import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
+import {
+  buildAgentLanguagePrompt,
+  buildCeoLanguagePrompt,
+  buildLanguageDetectionPrompt,
+  DEFAULT_USER_LANGUAGE,
+} from '../prompts/user-language.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
   type CeoDecision,
@@ -37,6 +44,7 @@ import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
+import { extractUserLanguage } from '../utils/user-language.util.js';
 
 
 const LOG_PREVIEW_LENGTH = 100;
@@ -68,6 +76,8 @@ export class ExecuteAgentTurnUseCase {
     private readonly workspacePort: IWorkspacePort,
     @Inject(IAgentSettingsStorePort)
     private readonly settingsStore: IAgentSettingsStorePort,
+    @Inject(IPreferencesStorePort)
+    private readonly preferencesStore: IPreferencesStorePort,
     private readonly delegationDetector: DelegationDetectorService,
     private readonly conversationRuntime: ConversationRuntimeService,
     private readonly questionParser: QuestionParserService,
@@ -183,7 +193,7 @@ export class ExecuteAgentTurnUseCase {
       }
 
       if (round === this.MAX_DELEGATION_ROUNDS) {
-        return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
+        return finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
       }
 
       if (decision.message) {
@@ -200,10 +210,11 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<boolean> {
     const prompt = buildCeoSteeringPrompt(this.enrichPromptWithAttachments(request.prompt, request.attachments));
     const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
+    const languagePrompt = await this.buildLanguagePrompt(request.agentRole, request.agentRole);
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
-      reminder ? `${prompt}\n\n${reminder}` : prompt,
+      [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n'),
     );
     if (steered) {
       this.logger.log(
@@ -275,7 +286,7 @@ export class ExecuteAgentTurnUseCase {
     session: SessionContext,
     isUserMessage: boolean,
   ): Promise<{ response: string; decision: CeoRoundDecision }> {
-    const runCeo = (text: string, isUserText = false) => this.runAgentTurn(
+    const runCeo = async (text: string, isUserText = false) => this.takeUserLanguage(await this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
@@ -286,7 +297,7 @@ export class ExecuteAgentTurnUseCase {
       'resume',
       undefined,
       isUserText,
-    );
+    ));
 
     let response = await runCeo(prompt, isUserMessage);
     for (;;) {
@@ -305,6 +316,29 @@ export class ExecuteAgentTurnUseCase {
       const answers = await this.askUser(request, this.buildAsker(request.agentRole, undefined), decision.message, decision.questions);
       response = await runCeo(this.formatAnswers(answers), true);
     }
+  }
+
+  /**
+   * Without a stored language the CEO was asked to detect it, so its first response settles the language, falling
+   * back to English when it carries no tag.
+   */
+  private async takeUserLanguage(response: string): Promise<string> {
+    const { language, text } = extractUserLanguage(response);
+    if (!(await this.preferencesStore.load()).language) {
+      const stored = language ?? DEFAULT_USER_LANGUAGE;
+      await this.preferencesStore.update({ language: stored });
+      this.logger.log(`[User Language Stored] Language=${stored}, Detected=${language !== undefined}`);
+    }
+    return text;
+  }
+
+  /** The CEO talks to the user on behalf of the team, so only its prompts carry the language detection. */
+  private async buildLanguagePrompt(role: string, ceoRole: string): Promise<string> {
+    const { language } = await this.preferencesStore.load();
+    if (role !== ceoRole) {
+      return buildAgentLanguagePrompt(language ?? DEFAULT_USER_LANGUAGE);
+    }
+    return language ? buildCeoLanguagePrompt(language) : buildLanguageDetectionPrompt();
   }
 
   private async decide(response: string, request: TurnRequest): Promise<ValidatedDecision> {
@@ -416,8 +450,7 @@ export class ExecuteAgentTurnUseCase {
       : 'The workspaces root has no project folders yet; add the repository first, delegating without a project folder.';
   }
 
-  // TODO: devemos pensar numa forma melhor e mais genéricas de validar os parâmetros de delegação
-  // talvez cada agente ter um zod schema que valide seus parâmetros, não sei ainda...
+  // TODO: find a more generic way to validate delegation parameters, perhaps a zod schema per agent.
   private checkDelegationContract(
     role: string,
     contract: DelegationContract,
@@ -589,7 +622,8 @@ export class ExecuteAgentTurnUseCase {
       turn: delegationTurn,
       steer: async (newSpec: string) => {
         currentTaskSpec = newSpec;
-        return delegatePort.supportsSteering && delegatePort.sendSteeringPrompt(newSpec);
+        const languagePrompt = await this.buildLanguagePrompt(delegateToRole, request.agentRole);
+        return delegatePort.supportsSteering && delegatePort.sendSteeringPrompt(`${newSpec}\n\n${languagePrompt}`);
       },
     };
 
@@ -656,7 +690,8 @@ export class ExecuteAgentTurnUseCase {
       turn.throwIfCancelled();
 
       const reminder = this.agentRegistry.getTurnReminder(role);
-      let fullPrompt = reminder ? `${prompt}\n\n${reminder}` : prompt;
+      const languagePrompt = await this.buildLanguagePrompt(role, request.agentRole);
+      let fullPrompt = [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n');
       let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);

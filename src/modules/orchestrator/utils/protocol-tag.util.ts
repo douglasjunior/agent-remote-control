@@ -2,6 +2,10 @@ export type TagAttributes = ReadonlyMap<string, string>;
 
 export type TagBody = { readonly content: string; readonly end: number };
 
+export type CodeSpan = readonly [start: number, end: number];
+
+/** Fenced blocks first, so an inline span never starts inside a fence. */
+const MARKDOWN_CODE = /```[\s\S]*?(?:```|$)|`[^`\n]+`/g;
 const ATTRIBUTE = /([A-Za-z][\w-]*)=(?:"([^"]*)"|'([^']*)')/g;
 
 export function parseTagAttributes(rawTag: string, rawAttributes: string, allowed: readonly string[]): TagAttributes | string {
@@ -35,4 +39,13 @@ export function readTagBody(text: string, name: string, contentStart: number): T
 
 export function escapeTagAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/\s+/g, ' ').trim();
+}
+
+/** Tags inside Markdown code are quoted markup, not protocol tags. */
+export function findCodeSpans(text: string): CodeSpan[] {
+  return Array.from(text.matchAll(MARKDOWN_CODE), match => [match.index, match.index + match[0].length] as const);
+}
+
+export function isInCode(index: number, codeSpans: readonly CodeSpan[]): boolean {
+  return codeSpans.some(([start, end]) => index >= start && index < end);
 }

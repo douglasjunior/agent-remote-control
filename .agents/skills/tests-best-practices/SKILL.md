@@ -1,65 +1,65 @@
 ---
 name: tests-best-practices
 description: >
-  Regras para testes automatizados com Vitest e NestJS Testing Module. Abrange a
-  regra de ouro de vi.mock apenas para fronteiras externas de I/O, criação de stubs e
-  fakes implementando ports com factory functions, substituição de providers por Symbol,
-  asserções de efeito observável, determinismo com fake timers e meta de 100% de
-  cobertura. Use ao criar, modificar ou revisar arquivos *.spec.ts.
+  Rules for automated tests with Vitest and the NestJS Testing Module. Covers the
+  golden rule of vi.mock only for external I/O boundaries, creating stubs and
+  fakes that implement ports with factory functions, replacing providers by Symbol,
+  observable-effect assertions, determinism with fake timers and the 100%
+  coverage target. Use when creating, modifying or reviewing *.spec.ts files.
 ---
 
-# Boas práticas de testes automatizados
+# Automated testing best practices
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar **qualquer regra descrita aqui**. O critério não
-> é *qual* regra — é a natureza da mudança: uma diretriz ou convenção de testes mudou →
-> atualize; refator técnico que preserva a prática descrita → não toque.
+> Update this document whenever **any rule described here** changes. The criterion is not
+> *which* rule — it is the nature of the change: a testing guideline or convention changed →
+> update; a technical refactor that preserves the described practice → leave it alone.
 
-Esta diretriz governa todos os testes automatizados da aplicação, executados via Vitest
-e integrados ao módulo de testes do NestJS (`@nestjs/testing`).
+This guideline governs all of the application's automated tests, run via Vitest
+and integrated with the NestJS testing module (`@nestjs/testing`).
 
-## Stack e comandos
+## Stack and commands
 
-- **Framework**: Vitest com `globals: true`.
-- **Ambiente**: Node.js puro (`environment: 'node'`).
-- **Localização dos arquivos**: `*.spec.ts` colocados **lado a lado** com o arquivo de
-  produção correspondente em `src/`.
-- **Testes e2e**: localizados no diretório `test/` e executados com `vitest.config.e2e.ts`.
-- **Comandos**:
-  - `yarn test`: Executa todos os testes unitários uma vez;
-  - `yarn test:cov`: Executa os testes e gera relatório de cobertura de código;
-  - `yarn test:e2e`: Executa os testes ponta a ponta.
+- **Framework**: Vitest with `globals: true`.
+- **Environment**: plain Node.js (`environment: 'node'`).
+- **File location**: `*.spec.ts` placed **side by side** with the corresponding
+  production file in `src/`.
+- **E2E tests**: located in the `test/` directory and run with `vitest.config.e2e.ts`.
+- **Commands**:
+  - `yarn test`: Runs all unit tests once;
+  - `yarn test:cov`: Runs the tests and generates a code coverage report;
+  - `yarn test:e2e`: Runs the end-to-end tests.
 
-## Regra de ouro: `vi.mock` exclusivo para fronteiras externas
+## Golden rule: `vi.mock` only for external boundaries
 
-**Dependências internas do projeto (qualquer arquivo localizado em `src/`) jamais devem ser
-mockadas utilizando `vi.mock`.**
+**Internal project dependencies (any file located in `src/`) must never be
+mocked using `vi.mock`.**
 
-- **Permitido com `vi.mock`**:
-  - Módulos nativos da plataforma Node: `node:fs`, `node:child_process`, `node:crypto`, etc.
-  - SDKs de terceiros e clientes de rede externos que realizam I/O real (ex.: `@modelcontextprotocol/sdk`,
-    cliente do Discord.js ou bibliotecas de protocolo externo).
-- **Proibido com `vi.mock`**:
-  - Qualquer porta (`*.port.ts`), adaptador (`*.adapter.ts`), caso de uso (`*.use-case.ts`),
-    serviço (`*.service.ts`) ou controller/handler do projeto.
+- **Allowed with `vi.mock`**:
+  - Native Node platform modules: `node:fs`, `node:child_process`, `node:crypto`, etc.
+  - Third-party SDKs and external network clients that perform real I/O (e.g. `@modelcontextprotocol/sdk`,
+    the Discord.js client or external protocol libraries).
+- **Forbidden with `vi.mock`**:
+  - Any project port (`*.port.ts`), adapter (`*.adapter.ts`), use case (`*.use-case.ts`),
+    service (`*.service.ts`) or controller/handler.
 
-### Por que stubs e fakes em vez de `vi.mock`?
+### Why stubs and fakes over `vi.mock`?
 
-Mockar módulos internos acopla os testes à estrutura de imports do arquivo e esconde quebras
-de contrato: se a assinatura de um método em uma porta mudar, o mock continuará passando
-silenciosamente enquanto o código real quebra em produção.
+Mocking internal modules couples the tests to the file's import structure and hides contract
+breaks: if a method signature on a port changes, the mock keeps passing
+silently while the real code breaks in production.
 
-Ao utilizar **stubs tipados que implementam a interface da porta (`implements IMyPort`)**,
-qualquer alteração contratual quebra a compilação do TypeScript imediatamente, oferecendo
-feedback confiável e instantâneo.
+With **typed stubs that implement the port interface (`implements IMyPort`)**,
+any contract change breaks the TypeScript build immediately, giving
+reliable, instant feedback.
 
-## Padrão de stubs e injeção com NestJS
+## Stub pattern and injection with NestJS
 
-### Implementando a interface da porta (`implements`)
+### Implementing the port interface (`implements`)
 
-Crie classes stub que implementem todos os métodos definidos na interface da porta. Disponibilize
-campos públicos para configurar retornos simulados e registrar invocações:
+Create stub classes that implement every method defined in the port interface. Expose
+public fields to configure simulated return values and record invocations:
 
 ```typescript
 import { IAgentClientPort, AgentSessionData } from '../ports/agent-client.port.ts';
@@ -84,11 +84,11 @@ export class StubAgentClientPort implements IAgentClientPort {
 }
 ```
 
-### Fábrica de stubs com overrides (`createStub*`)
+### Stub factory with overrides (`createStub*`)
 
-Para simplificar a escrita de testes sem duplicar código, padronize fábricas que entregam um
-stub padrão com comportamento neutro (no-op) e permitem sobrescrever apenas os métodos
-relevantes para o teste específico:
+To simplify writing tests without duplicating code, standardize factories that return a
+default stub with neutral (no-op) behavior and allow overriding only the methods
+relevant to the specific test:
 
 ```typescript
 export function createStubAgentClient(
@@ -103,10 +103,10 @@ export function createStubAgentClient(
 }
 ```
 
-### Injeção de dependência no `Test.createTestingModule`
+### Dependency injection in `Test.createTestingModule`
 
-Ao utilizar o utilitário de testes do NestJS, substitua a implementação concreta associando o
-`Symbol` da porta ao stub correspondente:
+When using the NestJS testing utility, replace the concrete implementation by binding the
+port's `Symbol` to the corresponding stub:
 
 ```typescript
 import { Test, TestingModule } from '@nestjs/testing';
@@ -143,20 +143,20 @@ describe('ConnectAgentUseCase', () => {
 });
 ```
 
-Para testes unitários puros sem necessidade do container NestJS, instancie diretamente a
-classe do Caso de Uso passando o stub no construtor:
+For pure unit tests that do not need the NestJS container, instantiate the
+Use Case class directly, passing the stub to the constructor:
 
 ```typescript
 const stubAgentClient = new StubAgentClientPort();
 const sut = new ConnectAgentUseCase(stubAgentClient);
 ```
 
-## Asserções: Efeito observável sobre espionagem de implementação
+## Assertions: observable effect over implementation spying
 
-Prefira validar o **resultado observável** e as mudanças de estado provocadas pelo sistema sob
-teste em vez de apenas verificar chamadas internas de métodos:
+Prefer validating the **observable result** and the state changes caused by the system under
+test over merely checking internal method calls:
 
-Correto — valida o efeito final da operação:
+Correct — validates the operation's final effect:
 
 ```typescript
 const output = await useCase.execute(input);
@@ -165,61 +165,61 @@ expect(output.sessionId).toBe('session-123');
 expect(stubPort.sessions).toContainEqual(expect.objectContaining({ sessionId: 'session-123' }));
 ```
 
-Evite — validação acoplada ao detalhe de invocação interna:
+Avoid — validation coupled to an internal invocation detail:
 
 ```typescript
 expect(stubPort.createSession).toHaveBeenCalledWith('/workspace/repo');
 ```
 
-Utilize spies (`toHaveBeenCalledWith`) somente quando a interação em si com a fronteira
-externa representar o contrato funcional primário (ex.: validar que uma notificação crítica
-foi despachada ao canal do Discord com os parâmetros corretos).
+Use spies (`toHaveBeenCalledWith`) only when the interaction with the external boundary
+itself is the primary functional contract (e.g. validating that a critical notification
+was dispatched to the Discord channel with the correct parameters).
 
-### Uso de matchers específicos
+### Using specific matchers
 
-Prefira matchers explícitos do Vitest para produzir diagnósticos claros em caso de falha:
+Prefer explicit Vitest matchers to produce clear diagnostics on failure:
 
-- `toHaveLength(n)` no lugar de `expect(array.length).toBe(n)`;
-- `toBeNull()` e `toBeUndefined()` no lugar de `toBe(null)` / `toBe(undefined)`;
-- `toContainEqual(...)` para coleções de objetos;
-- `toThrowError(...)` ou `rejects.toThrow(...)` para validação de erros.
+- `toHaveLength(n)` over `expect(array.length).toBe(n)`;
+- `toBeNull()` and `toBeUndefined()` over `toBe(null)` / `toBe(undefined)`;
+- `toContainEqual(...)` for collections of objects;
+- `toThrowError(...)` or `rejects.toThrow(...)` for error validation.
 
-## Determinismo e manipulação de tempo
+## Determinism and time handling
 
-Testes automatizados devem ser determinísticos e independentes de latência de clock do sistema:
+Automated tests must be deterministic and independent of system clock latency:
 
-- **Proibido `setTimeout` arbitrário**: Nunca use atrasos fixos para esperar execuções assíncronas.
-  Utilize `vi.waitFor(() => expect(...))` do Vitest para aguardar eventos ou condições esperadas.
-- **Fake timers para operações temporais**: Ao testar timeouts, retentativas ou debouncing,
-  utilize os timers simulados do Vitest (`vi.useFakeTimers()`) e avance o tempo deliberadamente
-  com `await vi.advanceTimersByTimeAsync(ms)`.
+- **No arbitrary `setTimeout`**: Never use fixed delays to wait for asynchronous executions.
+  Use Vitest's `vi.waitFor(() => expect(...))` to wait for expected events or conditions.
+- **Fake timers for time-based operations**: When testing timeouts, retries or debouncing,
+  use Vitest's simulated timers (`vi.useFakeTimers()`) and advance time deliberately
+  with `await vi.advanceTimersByTimeAsync(ms)`.
 
-## Metas de cobertura
+## Coverage targets
 
-A meta operacional é de **100% de cobertura das linhas executáveis** de código de produção.
+The operational target is **100% coverage of executable lines** of production code.
 
-Para cada caso de uso, adapter ou service, assegure testes para:
-1. Caminho feliz (*happy path*);
-2. Validações e rejeições esperadas (lançamento de exceções específicas);
-3. Casos de borda (coleções vazias, valores limites, timeouts);
-4. Todas as ramificações condicionais (`if/else`, operadores `??` e `||`).
+For each use case, adapter or service, ensure tests for:
+1. The happy path;
+2. Expected validations and rejections (specific exceptions thrown);
+3. Edge cases (empty collections, boundary values, timeouts);
+4. Every conditional branch (`if/else`, `??` and `||` operators).
 
-## Convenções de estilo
+## Style conventions
 
-- Testes escritos em inglês (`describe('NomeDaClasse')`, `it('should ...', async () => ...)`).
-- Estrutura clara no padrão Arrange-Act-Assert (AAA) em cada cenário de teste.
-- Prefixar stubs com `Stub*` ou `Fake*`.
-- Isolar o estado: nenhum teste deve depender do resultado de outro; garanta reinicialização
-  de dados em `beforeEach`.
-- **Proibição de barrel exports**: Testes devem importar classes, interfaces, símbolos e stubs diretamente do arquivo de origem onde foram definidos, sem usar arquivos `index.ts`.
+- Tests written in English (`describe('ClassName')`, `it('should ...', async () => ...)`).
+- Clear Arrange-Act-Assert (AAA) structure in each test scenario.
+- Prefix stubs with `Stub*` or `Fake*`.
+- Isolate state: no test may depend on another's result; ensure data is reset
+  in `beforeEach`.
+- **No barrel exports**: Tests must import classes, interfaces, symbols and stubs directly from the source file where they are defined, without using `index.ts` files.
 
 ## Checklist
 
-- [ ] Nenhum `vi.mock` apontando para arquivos em `src/`.
-- [ ] Stubs implementam explicitamente as interfaces de portas (`implements I...Port`).
-- [ ] Substituição no container NestJS feita através do `Symbol` da porta.
-- [ ] Importações diretas dos arquivos de origem, sem barrel exports (`index.ts`).
-- [ ] Asserções verificam estado e efeitos observáveis antes de checar chamadas a métodos.
-- [ ] Nenhum delay de tempo real (`setTimeout`); uso exclusivo de `vi.waitFor` ou fake timers.
-- [ ] Todos os ramos e tratamentos de erro cobertos pelo spec.
-- [ ] Validação mandatória executada com `yarn lint` e `yarn test` (e `yarn test:e2e`).
+- [ ] No `vi.mock` pointing to files in `src/`.
+- [ ] Stubs explicitly implement the port interfaces (`implements I...Port`).
+- [ ] Replacement in the NestJS container done through the port's `Symbol`.
+- [ ] Direct imports from source files, without barrel exports (`index.ts`).
+- [ ] Assertions check state and observable effects before checking method calls.
+- [ ] No real-time delays (`setTimeout`); exclusive use of `vi.waitFor` or fake timers.
+- [ ] All branches and error handling covered by the spec.
+- [ ] Mandatory validation run with `yarn lint` and `yarn test` (and `yarn test:e2e`).

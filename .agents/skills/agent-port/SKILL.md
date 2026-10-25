@@ -1,31 +1,31 @@
 ---
 name: agent-port
 description: >
-  Padrão de integração com agentes de IA via Agent Client Protocol (ACP) e Ports &
-  Adapters. Define o contrato IAgentPort, o ciclo de vida da sessão (connect,
-  createSession, loadSession, prompt, cancel, closeSession), a retomada via session/load,
-  a detecção de transporte perdido, a escada de cancelamento com e sem steering, o demux
-  de streaming, a fábrica multi-agente e os adapters AntigravityAdapter, ClaudeCodeAdapter, CopilotAdapter, CodexAdapter e CursorAdapter.
-  Use ao implementar, estender ou consumir agentes, bridges ACP, processos e streams.
+  Integration pattern for AI agents via the Agent Client Protocol (ACP) and Ports &
+  Adapters. Defines the IAgentPort contract, the session lifecycle (connect,
+  createSession, loadSession, prompt, cancel, closeSession), resumption via session/load,
+  lost-transport detection, the cancellation ladder with and without steering, the streaming
+  demux, the multi-agent factory and the AntigravityAdapter, ClaudeCodeAdapter, CopilotAdapter, CodexAdapter and CursorAdapter adapters.
+  Use when implementing, extending or consuming agents, ACP bridges, processes and streams.
 ---
 
-# Porta do Agente e Integração ACP
+# Agent Port and ACP Integration
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar qualquer regra descrita aqui. O critério não
-> é qual regra — é a natureza da mudança: o protocolo de comunicação, ciclo de vida
-> de sessão ou contrato de agente mudou → atualize; ajuste cosmético interno que
-> preserva as regras consolidadas → não toque.
+> Update this document whenever any rule described here changes. The criterion is not
+> which rule — it is the nature of the change: the communication protocol, session
+> lifecycle or agent contract changed → update; internal cosmetic adjustment that
+> preserves the consolidated rules → leave it alone.
 
-## Contrato `IAgentPort`
+## `IAgentPort` Contract
 
-A porta `IAgentPort` reside em `src/modules/agent/ports/agent.port.ts` e desacopla
-o núcleo da aplicação dos detalhes técnicos de comunicação com agentes de IA.
+The `IAgentPort` port lives in `src/modules/agent/ports/agent.port.ts` and decouples
+the application core from the technical details of communicating with AI agents.
 
-Cada instância de `IAgentPort` representa um subprocesso de agente com uma única sessão
-ACP. Consumidores obtêm instâncias pela fábrica `IAgentPortFactory`
-(`src/modules/agent/ports/agent-port-factory.port.ts`), registrada no `AgentModule` com
+Each `IAgentPort` instance represents one agent subprocess with a single ACP
+session. Consumers obtain instances through the `IAgentPortFactory` factory
+(`src/modules/agent/ports/agent-port-factory.port.ts`), registered in `AgentModule` with
 `AcpAgentPortFactoryAdapter`:
 
 ```ts
@@ -34,51 +34,51 @@ ACP. Consumidores obtêm instâncias pela fábrica `IAgentPortFactory`
 const agentPort = this.agentPortFactory.create('claude');
 ```
 
-A fábrica expõe:
+The factory exposes:
 
-- `defaultAgentId: string`: agente usado enquanto não há escolha salva (`'agy'`);
-- `listAgents(): readonly AgentProviderInfo[]`: catálogo (`agentId`, `displayName`) na ordem de exibição — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex) e `cursor` (Cursor);
-- `create(agentId: string): IAgentPort`: instância nova do agente; lança `Unknown agent "<id>". Available agents: ...` para um ID fora do catálogo.
+- `defaultAgentId: string`: agent used while no choice is saved (`'agy'`);
+- `listAgents(): readonly AgentProviderInfo[]`: catalog (`agentId`, `displayName`) in display order — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex) and `cursor` (Cursor);
+- `create(agentId: string): IAgentPort`: new agent instance; throws `Unknown agent "<id>". Available agents: ...` for an ID outside the catalog.
 
-O `agentId` do catálogo é igual ao `agentName` da porta criada, e é por ele que o orquestrador
-compara a porta viva com o agente escolhido.
+The catalog `agentId` equals the `agentName` of the created port, and it is what the orchestrator
+uses to compare the live port with the chosen agent.
 
-O `AgentModule` exporta a fábrica e as portas de infraestrutura `IProcessRunnerPort` e
-`IFileSystemPort`. Um `IAgentPort` singleton faria todas as conversas compartilharem a
-mesma sessão ACP e o mesmo `cwd`.
+`AgentModule` exports the factory and the infrastructure ports `IProcessRunnerPort` and
+`IFileSystemPort`. A singleton `IAgentPort` would make every conversation share the
+same ACP session and the same `cwd`.
 
-### Propriedades
+### Properties
 
-- `agentName: string`: identificador do agente concreto (`'agy'`, `'claude'`, `'copilot'`, `'codex'` ou `'cursor'`), igual ao `agentId` da fábrica e exibido no rodapé das respostas.
-- `lastAgentMessage: string`: última resposta textual consolidada do turno.
-- `currentSessionId?: string`: ID da sessão ACP ativa. Fica `undefined` sem sessão, inclusive depois de transporte perdido ou cancelamento forçado.
-- `supportsSteering: boolean`: indica se o agente suporta redirecionamento (steering) nativo durante a execução de um turno.
+- `agentName: string`: identifier of the concrete agent (`'agy'`, `'claude'`, `'copilot'`, `'codex'` or `'cursor'`), equal to the factory `agentId` and shown in the response footer.
+- `lastAgentMessage: string`: last consolidated text response of the turn.
+- `currentSessionId?: string`: ID of the active ACP session. It is `undefined` without a session, including after a lost transport or a forced cancellation.
+- `supportsSteering: boolean`: whether the agent supports native steering while a turn is running.
 
-### Métodos
+### Methods
 
-- `connect(): Promise<void>`: inicializa o transporte, lê as capacidades (`agentCapabilities.loadSession` e `_meta.steering.supported`) e descobre as opções de configuração. É idempotente. Se o handshake falhar, o subprocesso é encerrado e o estado limpo, permitindo nova tentativa.
-- `createSession(cwd: string): Promise<void>`: cria uma sessão (`session/new`) vinculada ao diretório informado.
-- `loadSession(cwd: string, sessionId: string): Promise<boolean>`: retoma uma sessão existente via `session/load`. Retorna `false`, sem lançar, quando o agente não anuncia `loadSession` ou quando o load falha; retorna `true` com `currentSessionId` definido.
-- `prompt(text: string): AsyncGenerator<AgentUpdate>`: envia um turno e entrega o bloco final consolidado.
-- `sendSteeringPrompt(text: string): Promise<boolean>`: injeta texto no prompt em andamento. Com steering, envia `_session/steering` com `_meta.steering.idleBehavior = 'promptRequired'` e resolve `true` só com `outcome: 'injected'`; sem prompt em andamento (`promptRequired`), sem sessão ou com erro, resolve `false` e o texto não é entregue, então o chamador decide o que fazer com ele. Sem steering, dispara `session/prompt` como fallback e resolve `true`.
-- `cancel(): Promise<void>`: interrompe o prompt em andamento pela escada de cancelamento. Sem prompt em andamento é no-op, para que um cancelamento tardio não aborte o turno seguinte.
-- `closeSession(): Promise<void>`: encerra a sessão ativa, preservando a conexão.
-- `disconnect(): Promise<void>`: descarta a sessão, encerra o subprocesso e limpa as opções em cache.
-- `getAvailableModels(): AgentModelState | null`: modelos publicados e o modelo ativo.
-- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: níveis de effort do modelo, lidos numa sessão de sondagem isolada.
-- `setConfig(config: AgentConfig): Promise<void>`: aplica modelo e/ou effort à sessão ativa e guarda como preferência para as próximas sessões.
-- `getLastRoundUsage(): Promise<AgentUsage | undefined>`: consumo de tokens do último turno ou via fallback.
-- `getQuota(): Promise<AgentQuota | undefined>`: limites de uso do agente (`groups` → `buckets` com `window`, `remainingFraction` de 0 a 1 e `resetTime` ISO). Resolve `undefined` quando o agente não expõe cota ou a consulta falha; `AbstractAcpAdapter` devolve `undefined` por padrão. O `CopilotAdapter` executa `gh api /copilot_internal/user` (endpoint interno não documentado, usa a autenticação do `gh`) e converte com `parseCopilotUserOutput` (`utils/copilot-usage.util.ts`): ignora snapshots ilimitados e mapeia o restante para buckets `monthly`. O `AntigravityAdapter` executa `agy --output-format json --print /usage` via `IProcessRunnerPort.run` e converte a saída com `parseAgyUsageOutput` (`utils/agy-usage.util.ts`).
-- `onActivity(listener): () => void`: observa o feed ao vivo (pensamentos, ferramentas e cancelamento).
+- `connect(): Promise<void>`: initializes the transport, reads the capabilities (`agentCapabilities.loadSession` and `_meta.steering.supported`) and discovers the configuration options. It is idempotent. If the handshake fails, the subprocess is terminated and the state cleared, allowing a retry.
+- `createSession(cwd: string): Promise<void>`: creates a session (`session/new`) bound to the given directory.
+- `loadSession(cwd: string, sessionId: string): Promise<boolean>`: resumes an existing session via `session/load`. Returns `false`, without throwing, when the agent does not advertise `loadSession` or when the load fails; returns `true` with `currentSessionId` set.
+- `prompt(text: string): AsyncGenerator<AgentUpdate>`: sends a turn and delivers the consolidated final block.
+- `sendSteeringPrompt(text: string): Promise<boolean>`: injects text into the running prompt. With steering, it sends `_session/steering` with `_meta.steering.idleBehavior = 'promptRequired'` and resolves `true` only with `outcome: 'injected'`; with no running prompt (`promptRequired`), no session or an error, it resolves `false` and the text is not delivered, so the caller decides what to do with it. Without steering, it fires `session/prompt` as a fallback and resolves `true`.
+- `cancel(): Promise<void>`: interrupts the running prompt through the cancellation ladder. With no running prompt it is a no-op, so a late cancellation does not abort the next turn.
+- `closeSession(): Promise<void>`: closes the active session, keeping the connection.
+- `disconnect(): Promise<void>`: discards the session, terminates the subprocess and clears the cached options.
+- `getAvailableModels(): AgentModelState | null`: published models and the active model.
+- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: the model's effort levels, read in an isolated probe session.
+- `setConfig(config: AgentConfig): Promise<void>`: applies model and/or effort to the active session and stores it as the preference for the next sessions.
+- `getLastRoundUsage(): Promise<AgentUsage | undefined>`: token usage of the last turn or via fallback.
+- `getQuota(): Promise<AgentQuota | undefined>`: the agent's usage limits (`groups` → `buckets` with `window`, `remainingFraction` from 0 to 1 and ISO `resetTime`). Resolves `undefined` when the agent does not expose a quota or the query fails; `AbstractAcpAdapter` returns `undefined` by default. `CopilotAdapter` runs `gh api /copilot_internal/user` (an undocumented internal endpoint, uses `gh` authentication) and converts it with `parseCopilotUserOutput` (`utils/copilot-usage.util.ts`): it ignores unlimited snapshots and maps the rest to `monthly` buckets. `AntigravityAdapter` runs `agy --output-format json --print /usage` via `IProcessRunnerPort.run` and converts the output with `parseAgyUsageOutput` (`utils/agy-usage.util.ts`).
+- `onActivity(listener): () => void`: observes the live feed (thoughts, tools and cancellation).
 
-### Tipos sem SDK
+### SDK-free Types
 
-`AgentUpdate` é `{ kind: 'text'; text: string }` e `AgentToolStatus` é
-`'pending' | 'in_progress' | 'completed' | 'failed'`. Nenhum tipo do
-`@agentclientprotocol/sdk` aparece na porta; o SDK só é importado em
+`AgentUpdate` is `{ kind: 'text'; text: string }` and `AgentToolStatus` is
+`'pending' | 'in_progress' | 'completed' | 'failed'`. No type from
+`@agentclientprotocol/sdk` appears in the port; the SDK is only imported in
 `src/modules/agent/{adapters,bridges,demux,testing}`.
 
-## Ciclo de Vida da Sessão
+## Session Lifecycle
 
 ```text
 connect() ──> loadSession(cwd, id) ──false──> createSession(cwd) ──> prompt(text) ──> closeSession() ──> disconnect()
@@ -86,132 +86,132 @@ connect() ──> loadSession(cwd, id) ──false──> createSession(cwd) ─
                      └──────────────────true───────────────────────────┘      └── cancel()
 ```
 
-### Retomada com `session/load`
+### Resuming with `session/load`
 
-O SDK só monta `ActiveSession` para `session/new`. A sessão carregada usa o
-`ResumedSession` (`adapters/resumed-session.ts`), que implementa o mesmo `SessionHandle`
-(`sessionId`, `prompt`, `nextUpdate`, `dispose`): recebe os updates pelo handler global de
-`session/update` e envia o prompt direto por `session/prompt`. O handle só é criado depois
-da resposta do `session/load`, o que descarta o histórico reenviado pelo agente antes dela.
+The SDK only builds `ActiveSession` for `session/new`. A loaded session uses
+`ResumedSession` (`adapters/resumed-session.ts`), which implements the same `SessionHandle`
+(`sessionId`, `prompt`, `nextUpdate`, `dispose`): it receives updates through the global
+`session/update` handler and sends the prompt directly via `session/prompt`. The handle is only created after
+the `session/load` response, which discards the history the agent replays before it.
 
-Depois de criar ou carregar a sessão, o adapter aplica as `configOptions` retornadas, os
-`sessionConfigPresets()` e a preferência de `setConfig`.
+After creating or loading the session, the adapter applies the returned `configOptions`, the
+`sessionConfigPresets()` and the `setConfig` preference.
 
-### Transporte perdido
+### Lost Transport
 
-O `connect()` registra `exit` e `error` no subprocesso. Quando um deles dispara, o adapter
-loga `agent_process_exited`, descarta a sessão e o transporte e zera `currentSessionId`; um
-prompt em andamento falha com erro de transporte. O `disconnect()` remove esses listeners
-antes de encerrar o processo, então o próprio encerramento não é tratado como queda. O
-próximo `connect()` sobe um processo novo.
+`connect()` registers `exit` and `error` on the subprocess. When either fires, the adapter
+logs `agent_process_exited`, discards the session and the transport and clears `currentSessionId`; a
+running prompt fails with a transport error. `disconnect()` removes these listeners
+before terminating the process, so the shutdown itself is not treated as a crash. The
+next `connect()` starts a new process.
 
-### Escada de cancelamento
+### Cancellation Ladder
 
-1. **Notificação imediata**: envia `session/cancel` e abre janela de 5 segundos.
-2. **Escalação**: com steering, injeta o prompt de abort (`CANCEL_ABORT_PROMPT_TEXT`) por `_session/steering`; sem steering, reenvia `session/cancel`, porque um `session/prompt` concorrente seria rejeitado pelo agente ocupado. Abre janela de 15 segundos.
-3. **Cancelamento forçado**: rejeita localmente o turno com `PromptCancelledError` e descarta a sessão e o transporte. O turno seguinte reconecta e retoma a sessão com `loadSession`.
+1. **Immediate notification**: sends `session/cancel` and opens a 5-second window.
+2. **Escalation**: with steering, injects the abort prompt (`CANCEL_ABORT_PROMPT_TEXT`) via `_session/steering`; without steering, resends `session/cancel`, because a concurrent `session/prompt` would be rejected by the busy agent. Opens a 15-second window.
+3. **Forced cancellation**: rejects the turn locally with `PromptCancelledError` and discards the session and the transport. The next turn reconnects and resumes the session with `loadSession`.
 
-## Demux de Streaming e Atividades
+## Streaming Demux and Activities
 
-O `AgentStreamDemux` decompõe as notificações brutas do ACP em eventos tipados:
+`AgentStreamDemux` breaks raw ACP notifications down into typed events:
 
-- `agent_thought_chunk`: atividades `{ kind: 'thought', id, text }`.
-- `tool_call` e `tool_call_update`: atividades `{ kind: 'tool', toolCallId, title, status, details? }`. Os detalhes da ferramenta (argumentos, parâmetros de execução, saída ou erros) são extraídos integralmente do payload ACP sem truncamento prematuro.
-- `agent_message_chunk`: narrado como atividade `thought` e acumulado; no fechamento do `prompt()` vira o bloco final `AgentUpdate`. Respostas vazias não geram bloco.
+- `agent_thought_chunk`: `{ kind: 'thought', id, text }` activities.
+- `tool_call` and `tool_call_update`: `{ kind: 'tool', toolCallId, title, status, details? }` activities. Tool details (arguments, execution parameters, output or errors) are extracted in full from the ACP payload without premature truncation.
+- `agent_message_chunk`: narrated as a `thought` activity and accumulated; when `prompt()` closes it becomes the final `AgentUpdate` block. Empty responses produce no block.
 
-A resposta final é a mensagem que contém `<final_response>` (`constants/final-response.constant.ts`,
-ignorado em `agent_thought_chunk`). Quando esse envelope aparece, a entrada da mensagem no feed é
-fechada com a prosa anterior a ele (`final: true`) ou removida (`removed: true`) quando não há prosa,
-e a mensagem deixa de ser narrada. `takeFinalText()` e `lastAgentMessage` devolvem só o conteúdo dos
-envelopes (`splitFinalResponse`), que aceita envelope sem fechamento. Sem envelope, o texto final
-junta todas as mensagens que não são thought, o que cobre sessões retomadas de antes do envelope.
+The final response is the message that contains `<final_response>` (`constants/final-response.constant.ts`,
+ignored in `agent_thought_chunk`). When this envelope appears, the message's feed entry is
+closed with the prose preceding it (`final: true`) or removed (`removed: true`) when there is no prose,
+and the message stops being narrated. `takeFinalText()` and `lastAgentMessage` return only the content of the
+envelopes (`splitFinalResponse`), which accepts an unclosed envelope. Without an envelope, the final text
+joins all non-thought messages, which covers sessions resumed from before the envelope.
 
-## Adaptadores ACP
+## ACP Adapters
 
-A classe base `AbstractAcpAdapter` implementa o protocolo ACP, as sessões e a integração
-com o demux. Ela também provê `buildAgentEnv(cwd)`, o ambiente isolado de todo subprocesso de
-agente: credenciais e configuração da aplicação hospedeira (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
-`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), as variáveis que revelam o
-diretório da aplicação (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) e as do prefixo `npm_` ficam de
-fora, e `PWD` é reescrito com o `cwd` do subprocesso. O restante do ambiente segue adiante, porque o
-agente depende dele para operar (`PATH`, `HOME`, `SSH_AUTH_SOCK`, credenciais do próprio agente).
+The `AbstractAcpAdapter` base class implements the ACP protocol, sessions and the integration
+with the demux. It also provides `buildAgentEnv(cwd)`, the isolated environment of every agent
+subprocess: credentials and configuration of the host application (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
+`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), the variables that reveal the
+application directory (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) and those with the `npm_` prefix are
+left out, and `PWD` is rewritten with the subprocess `cwd`. The rest of the environment is passed through, because the
+agent depends on it to operate (`PATH`, `HOME`, `SSH_AUTH_SOCK`, the agent's own credentials).
 
-Os `sessionConfigPresets()` de um adapter são aplicados a toda sessão criada ou carregada, por
-categoria de opção (`model`, `thought_level`, `mode`, `permissions`). Um preset cujo valor o agente
-não publica é registrado em log e ignorado.
+An adapter's `sessionConfigPresets()` are applied to every created or loaded session, by
+option category (`model`, `thought_level`, `mode`, `permissions`). A preset whose value the agent
+does not publish is logged and ignored.
 
 ### `AntigravityAdapter`
 
-O `AntigravityAdapter` (`agentName = 'agy'`) herda de `AbstractAcpAdapter` e provê:
+`AntigravityAdapter` (`agentName = 'agy'`) extends `AbstractAcpAdapter` and provides:
 
-- Resolução do binário do bridge (`agy-acp-bridge.js` compilado ou `agy-acp-bridge.ts` em desenvolvimento).
-- Execução do bridge como subprocesso via `IProcessRunnerPort.spawn`, em `tmpdir()`, com `buildAgentEnv`. O bridge sobe no `connect()`, antes de a sessão existir, então não há `cwd` de sessão a adotar.
+- Resolution of the bridge binary (compiled `agy-acp-bridge.js` or `agy-acp-bridge.ts` in development).
+- Execution of the bridge as a subprocess via `IProcessRunnerPort.spawn`, in `tmpdir()`, with `buildAgentEnv`. The bridge starts in `connect()`, before the session exists, so there is no session `cwd` to adopt.
 
-O diretório onde o agente trabalha é o `cwd` da sessão, e não o do bridge: `createSession(cwd)` e `loadSession(cwd, id)` recebem o caminho, e o bridge sobe cada processo `agy` nele, com `PWD` alinhado.
+The directory where the agent works is the session `cwd`, not the bridge's: `createSession(cwd)` and `loadSession(cwd, id)` receive the path, and the bridge starts each `agy` process in it, with `PWD` aligned.
 
-O bridge `agy-acp-bridge.ts` anuncia `loadSession: true`. O `session/load` reinicia o `agy`
-com `--conversation <sessionId>` e adota esse ID; o histórico fica guardado no próprio agy e
-não é reenviado. Se o evento `init` trouxer outro `conversation_id`, o agy abriu uma conversa
-nova: o bridge encerra o processo e rejeita o `session/load`, e o orquestrador cria e persiste
-uma sessão nova. O bridge expõe apenas a opção `model` (sem `thought_level`).
+The `agy-acp-bridge.ts` bridge advertises `loadSession: true`. `session/load` restarts `agy`
+with `--conversation <sessionId>` and adopts that ID; the history is stored in agy itself and
+is not replayed. If the `init` event carries a different `conversation_id`, agy opened a new
+conversation: the bridge terminates the process and rejects `session/load`, and the orchestrator creates and persists
+a new session. The bridge exposes only the `model` option (no `thought_level`).
 
-Cada processo `agy` é uma execução (`AgyRun`) que guarda o próprio prompt pendente. Eventos
-`result`, `step_update` e `exit` de um processo só encerram o prompt dele. O `session/cancel`
-envia `SIGINT` e marca a execução como interrompida; o próximo prompt sobe um processo novo
-com `--conversation`, mesmo que o anterior ainda não tenha saído, e o processo interrompido
-recebe `SIGTERM`. Assim, um `exit` atrasado do processo antigo não cancela nem rejeita o prompt
-novo.
+Each `agy` process is a run (`AgyRun`) that holds its own pending prompt. The
+`result`, `step_update` and `exit` events of a process only end that process's prompt. `session/cancel`
+sends `SIGINT` and marks the run as interrupted; the next prompt starts a new process
+with `--conversation`, even if the previous one has not exited yet, and the interrupted process
+receives `SIGTERM`. This way, a late `exit` from the old process neither cancels nor rejects the new
+prompt.
 
 ### `ClaudeCodeAdapter`
 
-O `ClaudeCodeAdapter` (`agentName = 'claude'`) integra o Claude Code CLI pelo adaptador ACP oficial
-`@agentclientprotocol/claude-agent-acp` (dependência do projeto), sem bridge próprio:
+`ClaudeCodeAdapter` (`agentName = 'claude'`) integrates the Claude Code CLI through the official ACP adapter
+`@agentclientprotocol/claude-agent-acp` (a project dependency), with no bridge of its own:
 
-- Executa `node <claude-agent-acp>/dist/index.js`, resolvido com `createRequire(import.meta.url)`, em `tmpdir()` e com `buildAgentEnv`.
-- Define `SLASH_COMMAND_TOOL_CHAR_BUDGET=100000` quando o usuário não definiu outro valor. É o orçamento, em caracteres, da listagem de skills que o Claude Code mantém no contexto; o padrão (1% da janela) corta descrições quando o projeto tem algumas dezenas de skills.
-- Define `CLAUDE_CODE_EXECUTABLE` com o `claude` do `PATH` (`IFileSystemPort.resolveInPath('claude')`), descartando valor herdado do ambiente, para o Claude Agent SDK usar o CLI instalado e autenticado pelo usuário. Sem `claude` no `PATH`, o SDK usa o binário embutido.
-- Preset de sessão `mode = bypassPermissions`: ninguém responde pedidos de permissão numa sessão remota. O Claude Code não oferece esse modo para processo `root` sem `IS_SANDBOX=1`; nesse caso a sessão segue no modo padrão do usuário e os pedidos de permissão são aprovados pelo handler do `AbstractAcpAdapter`.
-- O agente anuncia `loadSession` e `_meta.steering.supported`, então retomada, steering (`_session/steering`) e a escada de cancelamento com steering valem sem código específico. O `session/load` reenvia o histórico antes de responder e não restaura modelo, effort nem modo; o `applySessionConfig` do adapter base os reaplica.
-- As opções publicadas são `model` (aliases como `opus`, `sonnet`, `haiku` e IDs completos), `effort` (categoria `thought_level`, ausente em modelos sem effort, como `haiku`), `mode` e `fast`. Os efforts dependem do modelo e são lidos pela sessão de sondagem de `getAvailableEffortsForModel`.
-- A sessão carrega as configurações do usuário do Claude Code (`~/.claude/settings.json`, `CLAUDE.md`, hooks, skills), já que o SDK roda com `settingSources` de usuário, projeto e local.
+- Runs `node <claude-agent-acp>/dist/index.js`, resolved with `createRequire(import.meta.url)`, in `tmpdir()` and with `buildAgentEnv`.
+- Sets `SLASH_COMMAND_TOOL_CHAR_BUDGET=100000` when the user has not set another value. It is the budget, in characters, of the skill listing Claude Code keeps in context; the default (1% of the window) truncates descriptions when the project has a few dozen skills.
+- Sets `CLAUDE_CODE_EXECUTABLE` to the `claude` on the `PATH` (`IFileSystemPort.resolveInPath('claude')`), discarding any value inherited from the environment, so the Claude Agent SDK uses the CLI installed and authenticated by the user. Without `claude` on the `PATH`, the SDK uses the bundled binary.
+- Session preset `mode = bypassPermissions`: nobody answers permission requests in a remote session. Claude Code does not offer this mode to a `root` process without `IS_SANDBOX=1`; in that case the session stays in the user's default mode and permission requests are approved by the `AbstractAcpAdapter` handler.
+- The agent advertises `loadSession` and `_meta.steering.supported`, so resumption, steering (`_session/steering`) and the cancellation ladder with steering work without specific code. `session/load` replays the history before responding and restores neither model, effort nor mode; the base adapter's `applySessionConfig` reapplies them.
+- The published options are `model` (aliases such as `opus`, `sonnet`, `haiku` and full IDs), `effort` (`thought_level` category, absent for models without effort, such as `haiku`), `mode` and `fast`. Efforts depend on the model and are read through the `getAvailableEffortsForModel` probe session.
+- The session loads the user's Claude Code settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks, skills), since the SDK runs with user, project and local `settingSources`.
 
 ### `CopilotAdapter`
 
-O `CopilotAdapter` (`agentName = 'copilot'`) integra o GitHub Copilot CLI pelo modo ACP nativo do
-próprio CLI, sem bridge nem dependência extra:
+`CopilotAdapter` (`agentName = 'copilot'`) integrates the GitHub Copilot CLI through the CLI's own native ACP
+mode, with no bridge or extra dependency:
 
-- Executa `copilot --acp --stdio` do `PATH`, em `tmpdir()` e com `buildAgentEnv`. A autenticação é a do usuário (`copilot login`).
-- Define `SKILL_CHAR_BUDGET=100000` quando o usuário não definiu outro valor: no padrão de 15 mil caracteres, as skills que não cabem são listadas só pelo nome.
-- Preset de sessão `permissions = on`: a opção `allow_all` liga a autonomia de ferramentas, e o agente executa as ferramentas sem `session/request_permission`, que ninguém responderia numa sessão remota.
-- O agente anuncia `loadSession`, mas não `_meta.steering`: `sendSteeringPrompt` usa o fallback por `session/prompt` e a escada de cancelamento reenvia `session/cancel`.
-- As opções publicadas são `mode` (`agent`, `plan`, `autopilot`, com IDs em URL), `model` (modelos de vários provedores, incluindo `auto`), `reasoning_effort` (categoria `thought_level`) e `allow_all` (categoria `permissions`).
+- Runs `copilot --acp --stdio` from the `PATH`, in `tmpdir()` and with `buildAgentEnv`. Authentication is the user's (`copilot login`).
+- Sets `SKILL_CHAR_BUDGET=100000` when the user has not set another value: at the default of 15 thousand characters, skills that do not fit are listed by name only.
+- Session preset `permissions = on`: the `allow_all` option turns on tool autonomy, and the agent runs tools without `session/request_permission`, which nobody would answer in a remote session.
+- The agent advertises `loadSession`, but not `_meta.steering`: `sendSteeringPrompt` uses the `session/prompt` fallback and the cancellation ladder resends `session/cancel`.
+- The published options are `mode` (`agent`, `plan`, `autopilot`, with URL IDs), `model` (models from several providers, including `auto`), `reasoning_effort` (`thought_level` category) and `allow_all` (`permissions` category).
 
 ### `CodexAdapter`
 
-O `CodexAdapter` (`agentName = 'codex'`) integra o OpenAI Codex pelo bridge
-`@agentclientprotocol/codex-acp` (dependência do projeto):
+`CodexAdapter` (`agentName = 'codex'`) integrates OpenAI Codex through the
+`@agentclientprotocol/codex-acp` bridge (a project dependency):
 
-- Executa `node <codex-acp>/dist/index.js`, resolvido com `createRequire(import.meta.url)`, em `tmpdir()` e com `buildAgentEnv`. O bridge ignora argumentos de linha de comando e lê as opções do ambiente.
-- Define `CODEX_PATH` com o `codex` do `PATH` quando o usuário não definiu outro; sem ele, o bridge usa o binário do `@openai/codex` embutido, que pode não casar com a arquitetura ou a libc do host. A autenticação é a do usuário (`codex login`).
-- `CODEX_CONFIG` recebe `skills.max_context_tokens: 10000`, o teto que o Codex aceita para a listagem de skills (padrão de 2% da janela), mesclado sob a configuração JSON que o usuário já tiver em `CODEX_CONFIG`.
-- Preset de sessão `mode = agent-full-access`: o bridge aplica aprovação e sandbox a partir do modo em cada turno, então eles não vêm da config. O modo `agent-full-access` nunca pede aprovação e não usa sandbox.
+- Runs `node <codex-acp>/dist/index.js`, resolved with `createRequire(import.meta.url)`, in `tmpdir()` and with `buildAgentEnv`. The bridge ignores command-line arguments and reads its options from the environment.
+- Sets `CODEX_PATH` to the `codex` on the `PATH` when the user has not set another; without it, the bridge uses the bundled `@openai/codex` binary, which may not match the host's architecture or libc. Authentication is the user's (`codex login`).
+- `CODEX_CONFIG` receives `skills.max_context_tokens: 10000`, the ceiling Codex accepts for the skill listing (default of 2% of the window), merged under any JSON configuration the user already has in `CODEX_CONFIG`.
+- Session preset `mode = agent-full-access`: the bridge applies approval and sandbox from the mode on each turn, so they do not come from the config. The `agent-full-access` mode never asks for approval and uses no sandbox.
 
 ### `CursorAdapter`
 
-O `CursorAdapter` (`agentName = 'cursor'`) integra o Cursor CLI pelo modo ACP nativo:
+`CursorAdapter` (`agentName = 'cursor'`) integrates the Cursor CLI through its native ACP mode:
 
-- Executa `cursor-agent` (ou `agent`, nome de instalações mais novas, quando só ele está no `PATH`) com `--force --sandbox disabled --trust --approve-mcps acp`, em `tmpdir()` e com `buildAgentEnv`. As flags globais vêm antes do subcomando e desligam toda aprovação interativa.
-- Responde os métodos bloqueantes `cursor/ask_question` (`skipped`) e `cursor/create_plan` (`rejected`) com uma mensagem que manda o agente escrever a pergunta (com as tags `<question>` do protocolo de perguntas) ou o plano na resposta final, em vez de deixar o turno esperando.
-- O Cursor codifica os parâmetros do modelo no próprio ID (`claude-opus-5[thinking=true,effort=high,fast=false]`) e não publica opção de effort; o `mapModel` leva o nível de raciocínio e o `fast` para o nome exibido e lista os parâmetros na descrição.
+- Runs `cursor-agent` (or `agent`, the name in newer installations, when only it is on the `PATH`) with `--force --sandbox disabled --trust --approve-mcps acp`, in `tmpdir()` and with `buildAgentEnv`. The global flags come before the subcommand and turn off all interactive approval.
+- Answers the blocking methods `cursor/ask_question` (`skipped`) and `cursor/create_plan` (`rejected`) with a message telling the agent to write the question (with the `<question>` tags of the question protocol) or the plan in the final response, so the turn is not left waiting.
+- Cursor encodes the model parameters in the ID itself (`claude-opus-5[thinking=true,effort=high,fast=false]`) and publishes no effort option; `mapModel` carries the reasoning level and `fast` into the display name and lists the parameters in the description.
 
-### Versões do ACP
+### ACP Versions
 
-`@agentclientprotocol/claude-agent-acp` e `@agentclientprotocol/codex-acp` caminham sempre em versões compatíveis entre si: a dependência de `@agentclientprotocol/sdk` de cada bridge resolve para a mesma versão do SDK declarada pelo projeto, deixando uma única cópia no lock. Ao atualizar qualquer um dos três, confira com `yarn why @agentclientprotocol/sdk`; se um bridge exigir uma versão do SDK fora do alcance do outro, segure a atualização até os dois coincidirem.
+`@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `yarn why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
 
-## Regras Prescritivas
+## Prescriptive Rules
 
-- **Proibido instanciar adaptadores diretamente em casos de uso**: obtenha instâncias via `@Inject(IAgentPortFactory)` e `create(agentId)`.
-- **Novo agente entra pela fábrica**: um adapter novo herda de `AbstractAcpAdapter`, usa `buildAgentEnv` no spawn e é registrado no catálogo do `AcpAgentPortFactoryAdapter` com `agentId` igual ao seu `agentName`.
-- **Proibido acoplar o núcleo ao SDK do ACP**: casos de uso manipulam exclusivamente os tipos de `agent.port.ts`.
-- **Isolamento de I/O em adaptadores concretos**: sistema de arquivos e processos passam por `IFileSystemPort` e `IProcessRunnerPort`.
-- **Limpeza de recursos obrigatória**: garanta `closeSession()` ou `disconnect()` em blocos `finally` ou no descarte de recursos de orquestração.
+- **Do not instantiate adapters directly in use cases**: obtain instances via `@Inject(IAgentPortFactory)` and `create(agentId)`.
+- **A new agent enters through the factory**: a new adapter extends `AbstractAcpAdapter`, uses `buildAgentEnv` when spawning and is registered in the `AcpAgentPortFactoryAdapter` catalog with an `agentId` equal to its `agentName`.
+- **Do not couple the core to the ACP SDK**: use cases handle only the types from `agent.port.ts`.
+- **I/O isolation in concrete adapters**: file system and processes go through `IFileSystemPort` and `IProcessRunnerPort`.
+- **Mandatory resource cleanup**: ensure `closeSession()` or `disconnect()` in `finally` blocks or when disposing of orchestration resources.
