@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 
 
 @Injectable()
@@ -9,13 +10,15 @@ export class CancelAgentTurnUseCase {
 
   constructor(
     private readonly conversationRuntime: ConversationRuntimeService,
+    private readonly questionQueue: UserQuestionQueueService,
   ) {}
 
   async execute(conversationId: string): Promise<boolean> {
     this.logger.log(`[Cancel Requested] Conversation=${conversationId}`);
 
     try {
-      const cancelled = await this.conversationRuntime.cancel(conversationId);
+      const questionsCancelled = this.questionQueue.cancel(conversationId);
+      const cancelled = await this.conversationRuntime.cancel(conversationId) || questionsCancelled;
       if (cancelled) {
         this.logger.log(`[Cancel Signal Sent] Conversation=${conversationId}`);
       } else {

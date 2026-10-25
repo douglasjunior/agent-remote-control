@@ -4,14 +4,15 @@ import { INITIAL_AGENT_DEFINITIONS } from './initial-agents.constant.js';
 
 
 describe('initial-agents.constant', () => {
-  it('should contain definitions for CEO, GIT_OPS, TECH_LEAD, DEVELOPER, and CODE_REVIEWER roles', () => {
+  it('should contain definitions for CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, and CODE_REVIEWER roles', () => {
     const roles = INITIAL_AGENT_DEFINITIONS.map(def => def.role);
     expect(roles).toContain('CEO');
     expect(roles).toContain('GIT_OPS');
     expect(roles).toContain('TECH_LEAD');
     expect(roles).toContain('DEVELOPER');
     expect(roles).toContain('CODE_REVIEWER');
-    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(5);
+    expect(roles).toContain('PRODUCT_OWNER');
+    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(6);
   });
 
   it('should require a project folder for the agents that only work inside one', () => {
@@ -62,6 +63,15 @@ describe('initial-agents.constant', () => {
     expect(byRole.get('GIT_OPS')?.description).toContain(
       'It does not run project scripts, even when they clone or fetch internally.',
     );
+  });
+
+  it('should run product discovery read-only, in or out of a project, before technical planning', () => {
+    const owner = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'PRODUCT_OWNER');
+
+    expect(owner?.delegation).toEqual({ project: 'optional', sessionMode: 'overridable', readOnly: true });
+    expect(owner?.defaultSessionMode).toBe('resume');
+    expect(owner?.description).toContain('before the Tech Lead');
+    expect(owner?.description).toContain('interviews the user directly');
   });
 
   it('should describe CODE_REVIEWER as inspecting diffs and publishing review comments on PRs/MRs', () => {

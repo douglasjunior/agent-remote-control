@@ -8,4 +8,4 @@ export const CWD_BOUNDARY_INSTRUCTIONS = `### Working Directory Boundaries
   - the exact path you need;
   - why the task needs it;
   - whether you will only read it or also write to it.
-  Then wait for a prompt that authorizes or denies it.`;
+  Then wait for a prompt that authorizes or denies it. The access request is your answer to the caller, never a question to the user.`;

@@ -14,6 +14,8 @@ import { AgentCapabilitiesService } from './services/agent-capabilities.service.
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
 import { OrchestratorService } from './services/orchestrator.service.js';
+import { QuestionParserService } from './services/question-parser.service.js';
+import { UserQuestionQueueService } from './services/user-question-queue.service.js';
 import { CancelAgentConfigSelectionUseCase } from './use-cases/cancel-agent-config-selection.use-case.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
@@ -42,6 +44,8 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
     AgentCapabilitiesService,
     ConversationRuntimeService,
     DelegationDetectorService,
+    QuestionParserService,
+    UserQuestionQueueService,
     ExecuteAgentTurnUseCase,
     CancelAgentTurnUseCase,
     StartAgentConfigSelectionUseCase,

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
+import type { UserQuestion } from '../models/user-question.model.js';
+import { parseTagAttributes, readTagBody, type TagAttributes } from '../utils/protocol-tag.util.js';
+
+import { QuestionParserService } from './question-parser.service.js';
+
 
 export type DelegationSessionMode = 'resume' | 'new';
 
@@ -14,16 +19,14 @@ export type DelegationResult = {
 export type CeoDecision =
   | { readonly kind: 'delegate'; readonly message: string; readonly delegations: readonly DelegationResult[] }
   | { readonly kind: 'reply'; readonly message: string; readonly attachments: readonly string[] }
+  | { readonly kind: 'ask'; readonly message: string; readonly questions: readonly UserQuestion[] }
   | { readonly kind: 'invalid'; readonly reason: string };
-
-type Attributes = ReadonlyMap<string, string>;
 
 type ParsedTag =
   | { readonly delegation: DelegationResult; readonly end: number }
   | { readonly attachment: string; readonly end: number };
 
 const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
-const ATTRIBUTE = /([A-Za-z][\w-]*)=(?:"([^"]*)"|'([^']*)')/g;
 const ROLE = /^[A-Za-z][\w-]*$/;
 const LEGACY_MARKER = /\[(?:DELEGATE|DONE)\b[^\]\n]*\]/i;
 
@@ -32,6 +35,8 @@ const ATTACHMENT_ATTRIBUTES = ['path'];
 
 @Injectable()
 export class DelegationDetectorService {
+  constructor(private readonly questionParser: QuestionParserService) {}
+
   detect(response: string): CeoDecision {
     if (LEGACY_MARKER.test(response)) {
       return this.invalid('Bracket markers such as [DELEGATE:...] and [DONE] are not part of the protocol. Delegate with <delegate role="ROLE">task</delegate>, and answer the user without any tag to finish.');
@@ -60,6 +65,19 @@ export class DelegationDetectorService {
     messageParts.push(response.slice(cursor));
 
     const message = messageParts.join('').replace(/\n{3,}/g, '\n\n').trim();
+    const questions = this.questionParser.parse(message);
+    if (questions.kind === 'invalid') {
+      return this.invalid(questions.reason);
+    }
+    if (questions.kind === 'questions') {
+      if (delegations.length > 0) {
+        return this.invalid('A response either asks the user questions or delegates, never both. Ask first and delegate once the user has answered, or delegate and let the agent ask what it needs.');
+      }
+      if (attachments.length > 0) {
+        return this.invalid('Attachments go in the answer to the user, not in a response that asks questions. Send them once the user has answered.');
+      }
+      return { kind: 'ask', message: questions.message, questions: questions.questions };
+    }
     if (delegations.length === 0) {
       return { kind: 'reply', message, attachments };
     }
@@ -77,7 +95,7 @@ export class DelegationDetectorService {
     }
 
     const selfClosing = rawAttributes!.trimEnd().endsWith('/');
-    const attributes = this.parseAttributes(
+    const attributes = parseTagAttributes(
       rawTag,
       selfClosing ? rawAttributes!.trimEnd().slice(0, -1) : rawAttributes!,
       name === 'delegate' ? DELEGATE_ATTRIBUTES : ATTACHMENT_ATTRIBUTES,
@@ -87,7 +105,7 @@ export class DelegationDetectorService {
     }
 
     const contentStart = tag.index + rawTag.length;
-    const body = selfClosing ? { content: '', end: contentStart } : this.readBody(response, name, contentStart);
+    const body = selfClosing ? { content: '', end: contentStart } : readTagBody(response, name, contentStart);
     if (typeof body === 'string') {
       return body;
     }
@@ -100,33 +118,7 @@ export class DelegationDetectorService {
     return typeof delegation === 'string' ? delegation : { delegation, end: body.end };
   }
 
-  private parseAttributes(rawTag: string, rawAttributes: string, allowed: readonly string[]): Attributes | string {
-    const attributes = new Map<string, string>();
-    for (const [, name, doubleQuoted, singleQuoted] of rawAttributes.matchAll(ATTRIBUTE)) {
-      const key = name!.toLowerCase();
-      if (!allowed.includes(key)) {
-        const allowedList = allowed.map(attribute => `"${attribute}"`).join(', ');
-        return `Unknown attribute "${name}" in ${rawTag}. Use only ${allowedList}.`;
-      }
-      attributes.set(key, (doubleQuoted ?? singleQuoted)!.trim());
-    }
-    if (rawAttributes.replace(ATTRIBUTE, '').trim()) {
-      return `Malformed tag ${rawTag}. Write each attribute as name="value".`;
-    }
-    return attributes;
-  }
-
-  private readBody(response: string, name: string, contentStart: number): { content: string; end: number } | string {
-    const closingTag = `</${name}>`;
-    const close = response.toLowerCase().indexOf(closingTag, contentStart);
-    const content = close < 0 ? '' : response.slice(contentStart, close);
-    if (close < 0 || new RegExp(String.raw`<${name}\b`, 'i').test(content)) {
-      return `Every <${name}> must be closed with ${closingTag} before the next <${name}> starts.`;
-    }
-    return { content, end: close + closingTag.length };
-  }
-
-  private parseDelegation(attributes: Attributes, content: string): DelegationResult | string {
+  private parseDelegation(attributes: TagAttributes, content: string): DelegationResult | string {
     const role = attributes.get('role');
     if (!role || !ROLE.test(role)) {
       return 'Every <delegate> needs a role attribute with the role name, as in <delegate role="DEVELOPER">.';

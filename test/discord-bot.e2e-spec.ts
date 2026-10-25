@@ -768,4 +768,113 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await app.close();
   });
+
+  describe('questions to the user', () => {
+    const startApp = async (agents: Partial<IAgentPort>[]) => {
+      const moduleFixture: TestingModule = await Test.createTestingModule({
+        imports: [AppModule],
+      })
+        .overrideProvider(IAgentPortFactory)
+        .useValue(agentFactory(() => agents.shift()))
+        .compile();
+      const app = moduleFixture.createNestApplication();
+      await app.init();
+      (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = { id: 'bot-e2e-id' };
+      return { app, moduleFixture, messageHandler: moduleFixture.get<DiscordMessageHandler>(DiscordMessageHandler) };
+    };
+
+    const botThread = (threadMessages: string[]) => ({
+      id: 'thread-questions',
+      parentId: 'channel-questions',
+      ownerId: 'bot-e2e-id',
+      isDMBased: vi.fn().mockReturnValue(false),
+      isThread: vi.fn().mockReturnValue(true),
+      send: vi.fn().mockImplementation(async (content: string) => {
+        threadMessages.push(content);
+        return { edit: vi.fn().mockResolvedValue(undefined) };
+      }),
+    });
+
+    const threadMessage = (thread: ReturnType<typeof botThread>, content: string) => ({
+      author: { bot: false, id: 'discord-user-777' },
+      channelId: 'thread-questions',
+      cleanContent: content,
+      content,
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      channel: thread,
+    }) as unknown as Message;
+
+    it('should let the delegated agent interview the user one question at a time without the CEO', async () => {
+      seedAgentSettings(dataDir, 'channel-questions:thread-questions');
+      const ceo = new ScriptedAgentFake([
+        '<delegate role="PRODUCT_OWNER">Discover the refund approval feature.</delegate>',
+        'The intent document is ready.',
+      ]);
+      const owner = new ScriptedAgentFake([
+        'I understood refunds need approval.\n<question rationale="It defines the flow.">Who approves a refund?<option>The manager</option><option>Finance</option></question>\n<question>What is the maximum amount?</question>',
+        'Document at /tmp/agent-remote-control/intents/refunds.md',
+      ]);
+      const { app, messageHandler } = await startApp([ceo, owner]);
+      const threadMessages: string[] = [];
+      const thread = botThread(threadMessages);
+
+      const turn = messageHandler.handleMessage(threadMessage(thread, 'I want refund approvals'));
+      await vi.waitFor(() => {
+        expect(threadMessages.some(content => content.includes('❓ **Pergunta 1/2** · Product Owner Agent'))).toBe(true);
+      });
+      await messageHandler.handleMessage(threadMessage(thread, '7'));
+      await messageHandler.handleMessage(threadMessage(thread, '2'));
+      await messageHandler.handleMessage(threadMessage(thread, 'R$ 500'));
+      await turn;
+
+      expect(threadMessages.find(content => content.includes('Pergunta 1/2'))).toMatch(/^I understood refunds need approval\.\n\n❓/);
+      expect(threadMessages.some(content => content.startsWith('⚠️ Opção inválida'))).toBe(true);
+      expect(threadMessages.some(content => content.includes('❓ **Pergunta 2/2**'))).toBe(true);
+      expect(threadMessages).toContain('✅ Respostas enviadas ao **Product Owner Agent**.');
+      expect(owner.prompts[0]).toContain('Product Owner Agent');
+      expect(owner.prompts[1]).toContain('<answer question="Who approves a refund?" option="2">Finance</answer>');
+      expect(owner.prompts[1]).toContain('<answer question="What is the maximum amount?" kind="other">R$ 500</answer>');
+      expect(ceo.prompts).toHaveLength(2);
+      expect(ceo.prompts[1]).toContain('<agent_result role="PRODUCT_OWNER">\nDocument at /tmp/agent-remote-control/intents/refunds.md\n</agent_result>');
+      expect(threadMessages).toContain(`The intent document is ready.\n${FOOTER}`);
+
+      await app.close();
+    });
+
+    it('should cancel everything and unlock the conversation through /cancel while a question waits', async () => {
+      seedAgentSettings(dataDir, 'channel-questions:thread-questions');
+      const ceo = new ScriptedAgentFake(['<question>Which project?<option>Backend</option></question>', 'Hello again.']);
+      const { app, moduleFixture, messageHandler } = await startApp([ceo]);
+      const threadMessages: string[] = [];
+      const thread = botThread(threadMessages);
+
+      const turn = messageHandler.handleMessage(threadMessage(thread, 'Plan something'));
+      await vi.waitFor(() => {
+        expect(threadMessages.some(content => content.includes('❓ **Pergunta 1/1** · CEO'))).toBe(true);
+      });
+      const reply = vi.fn().mockResolvedValue(undefined);
+      await moduleFixture.get<DiscordInteractionHandler>(DiscordInteractionHandler).handleInteraction({
+        isChatInputCommand: vi.fn().mockReturnValue(true),
+        commandName: 'cancel',
+        channelId: 'thread-questions',
+        inGuild: vi.fn().mockReturnValue(true),
+        channel: { id: 'thread-questions', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-questions' },
+        deferred: false,
+        replied: false,
+        reply,
+        followUp: vi.fn().mockResolvedValue(undefined),
+      } as unknown as ChatInputCommandInteraction);
+      await turn;
+
+      expect(reply).toHaveBeenCalledWith({ content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.', ephemeral: true });
+      expect(threadMessages.some(content => content.startsWith('⚠️ **Turno cancelado pelo usuário.**'))).toBe(true);
+
+      await messageHandler.handleMessage(threadMessage(thread, 'Hi'));
+
+      expect(ceo.prompts.at(-1)).toContain('Hi');
+      expect(threadMessages.some(content => content.startsWith('Hello again.'))).toBe(true);
+
+      await app.close();
+    });
+  });
 });

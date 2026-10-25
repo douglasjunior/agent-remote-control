@@ -6,6 +6,7 @@ import {
   TECH_LEAD_SYSTEM_PROMPT,
   TECH_LEAD_TURN_REMINDER,
 } from './tech-lead.prompt.js';
+import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('tech-lead.prompt', () => {
@@ -14,7 +15,7 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('general-purpose analytical agent');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Technical Planning & Architecture');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Read-Only Exploration & Non-Execution');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Human-in-the-Loop (HITL) & Decision Discipline');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Decision Discipline');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Actionable Specification & Plan Structure');
   });
 
@@ -28,11 +29,16 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, create git commits, or implement production changes');
   });
 
-  it('should instruct consultative alignment and options with pros and cons on design decisions', () => {
+  it('should ask the user each design decision with the trade-offs and a recommendation', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Do NOT make silent assumptions or arbitrarily elect a solution');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Formulate structured options outlining trade-offs, pros, and cons');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Provide a clear, justified technical recommendation');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Seek alignment from the caller');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Ask each decision as a question to the user (see Asking the User) before cementing the plan');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('your justified recommendation as the first option, and the trade-offs, pros, and cons in the rationale');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('ask which one holds instead of silently picking a side');
+  });
+
+  it('should explain how to ask the user in the prompt and in every turn', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(TECH_LEAD_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
   });
 
   it('should specify plan structure with affected files, developer tasks with dependencies, and verification criteria', () => {
@@ -53,11 +59,11 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
   });
 
-  it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, HITL alignment, and final response instructions', () => {
+  it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, decision discipline, and final response instructions', () => {
     expect(TECH_LEAD_TURN_REMINDER).toContain('Tech Lead and software architect');
     expect(TECH_LEAD_TURN_REMINDER).toContain('Do NOT implement production code or modify files directly');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('Human-in-the-loop');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('present options with pros/cons and a recommendation');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('Decide nothing silently');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('the pros and cons of each option and your recommendation');
     expect(TECH_LEAD_TURN_REMINDER).toContain('affected files, sequential tasks for the Developer, and concrete verification criteria');
     expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>');
   });

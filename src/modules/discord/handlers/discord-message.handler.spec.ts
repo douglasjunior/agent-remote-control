@@ -7,6 +7,7 @@ import type { ConversationInputResolution } from '../../orchestrator/models/agen
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
+import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -69,6 +70,12 @@ class MockOrchestratorService {
   public resolvedInputs: { conversationId: string; prompt: string }[] = [];
 
   public selectionLookups: string[] = [];
+
+  public pendingQuestions = false;
+
+  hasPendingQuestions(_conversationId: string): boolean {
+    return this.pendingQuestions;
+  }
 
   async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
     this.selectionLookups.push(conversationId);
@@ -1811,6 +1818,141 @@ describe('DiscordMessageHandler', () => {
     });
   });
 
+  describe('questions to the user', () => {
+    const prompt: QuestionPrompt = {
+      asker: { role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', projectName: null },
+      question: { text: 'Who approves?', options: ['Manager', 'Finance'] },
+      number: 1,
+      total: 2,
+      waitingAskers: 0,
+    };
+
+    const threadMessage = (send: ReturnType<typeof vi.fn>, content: string, ownerId = 'bot-123') => ({
+      author: { bot: false, id: 'user-42' },
+      channelId: 'thread-1',
+      content,
+      mentions: { has: vi.fn().mockReturnValue(false) },
+      attachments: new Map(),
+      channel: {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId,
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      },
+    }) as unknown as Message;
+
+    it('should show the next question instead of running a turn', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'question', prompt };
+
+      await handler.handleMessage(threadMessage(send, '2'));
+
+      expect(send).toHaveBeenCalledWith(expect.stringContaining('❓ **Pergunta 1/2** · Product Owner Agent'));
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should repeat the question on an invalid option', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'invalid_answer', prompt };
+
+      await handler.handleMessage(threadMessage(send, '9'));
+
+      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Opção inválida/));
+    });
+
+    it('should confirm the answers and show the question of the next waiting agent', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      const next = { ...prompt, asker: { role: 'TECH_LEAD', roleName: 'Tech Lead Agent', projectName: 'my-app' } };
+      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker, next };
+
+      await handler.handleMessage(threadMessage(send, 'Finance'));
+
+      expect(send.mock.calls.map(([content]) => content)).toEqual([
+        '✅ Respostas enviadas ao **Product Owner Agent**.',
+        expect.stringContaining('· Tech Lead Agent (`my-app`)'),
+      ]);
+    });
+
+    it('should only confirm the answers when no other agent is waiting', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker };
+
+      await handler.handleMessage(threadMessage(send, 'Finance'));
+
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith('✅ Respostas enviadas ao **Product Owner Agent**.');
+    });
+
+    it('should hand the downloaded attachments to the input resolution', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker };
+      const message = threadMessage(send, 'see file');
+      (message as unknown as { attachments: Map<string, unknown> }).attachments = new Map([['a', { name: 'a.png' }]]);
+
+      await handler.handleMessage(message);
+
+      expect(orchestratorService.resolvedInputs).toEqual([
+        {
+          conversationId: 'channel-1:thread-1',
+          prompt: 'see file',
+          attachments: attachmentService.downloadedAttachments,
+        },
+      ]);
+    });
+
+    it('should accept an answer without mention in an unmanaged thread with questions waiting', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.pendingQuestions = true;
+      orchestratorService.resolution = { kind: 'question', prompt };
+
+      await handler.handleMessage(threadMessage(send, '1', 'someone-else'));
+
+      expect(orchestratorService.selectionLookups).toEqual([]);
+      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: '1' }]);
+    });
+
+    it('should show the question an agent asks during the turn, in order with the delegation notices', async () => {
+      const contents: string[] = [];
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        contents.push(content);
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onDelegation?.({ round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', phase: 'started' });
+        request.onQuestion?.(prompt);
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+      await vi.runAllTimersAsync();
+
+      const delegated = contents.findIndex(content => content.includes('Tarefa delegada'));
+      const question = contents.findIndex(content => content.includes('❓ **Pergunta 1/2**'));
+      expect(delegated).toBeGreaterThanOrEqual(0);
+      expect(question).toBeGreaterThan(delegated);
+    });
+
+    it('should proceed gracefully when the question cannot be sent', async () => {
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        if (content.includes('❓')) {
+          throw new Error('rate limited');
+        }
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onQuestion?.(prompt);
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+      await vi.runAllTimersAsync();
+
+      expect(send).toHaveBeenLastCalledWith('Done.');
+    });
+  });
+
   describe('typing indicator', () => {
     it('should start typing indicator when turn starts and stop when completed', async () => {
       const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
@@ -2081,10 +2223,19 @@ describe('DiscordMessageHandler', () => {
       return { message, mockThread, send };
     };
 
-    it('should process message with only attachments using default prompt', async () => {
+    it('should resolve a message with only attachments and run the prompt the resolution returns', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('diagram.png')]);
+      orchestratorService.resolution = { kind: 'execute', prompt: 'O usuário enviou anexos. Analise os arquivos anexados.' };
 
       await handler.handleMessage(message);
+
+      expect(orchestratorService.resolvedInputs).toEqual([
+        {
+          conversationId: 'channel-1:thread-att-1',
+          prompt: '',
+          attachments: [expect.objectContaining({ name: 'diagram.png' })],
+        },
+      ]);
 
       expect(attachmentService.validateAttachments).toHaveBeenCalledWith([expect.objectContaining({ name: 'diagram.png' })]);
       expect(attachmentService.downloadAttachments).toHaveBeenCalledWith(

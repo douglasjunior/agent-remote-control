@@ -5,6 +5,7 @@ import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
+import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -16,7 +17,6 @@ import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.j
 
 
 const DISCORD_MESSAGE_LIMIT = 2000;
-const DEFAULT_ATTACHMENT_PROMPT = 'O usuário enviou anexos. Analise os arquivos anexados.';
 const STEERED_NOTICE = '📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*';
 
 type SendableChannel = {
@@ -115,16 +115,15 @@ export class DiscordMessageHandler implements OnModuleInit {
         );
       }
 
-      const promptText = rawPrompt || DEFAULT_ATTACHMENT_PROMPT;
-
       this.logger.log(
-        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${promptText.slice(0, 100)}${promptText.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
+        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
         this.orchestratorService.resolveInput({
           conversationId,
-          prompt: promptText,
+          prompt: rawPrompt,
+          ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
         }));
 
       if (resolution.kind === 'selection') {
@@ -137,6 +136,21 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
       if (resolution.kind === 'configured') {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.settings));
+        return;
+      }
+      if (resolution.kind === 'question') {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatQuestion(resolution.prompt));
+        return;
+      }
+      if (resolution.kind === 'invalid_answer') {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatInvalidAnswer(resolution.prompt));
+        return;
+      }
+      if (resolution.kind === 'answered') {
+        await targetChannel.send(this.activityFormatter.formatAnswersSent(resolution.asker));
+        if (resolution.next) {
+          await this.sendChunks(targetChannel, this.activityFormatter.formatQuestion(resolution.next));
+        }
         return;
       }
       if (resolution.configured) {
@@ -275,6 +289,20 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       };
 
+      const onQuestion = (prompt: QuestionPrompt): void => {
+        typing.keepAlive();
+        void cleanInitialProgress();
+
+        delegationChain = delegationChain.then(async () => {
+          await throttler.flush();
+          try {
+            await this.sendChunks(targetChannel!, this.activityFormatter.formatQuestion(prompt));
+          } catch (error) {
+            this.logger.warn(`Failed to send the question: ${this.describeError(error)}`);
+          }
+        });
+      };
+
       let result: TurnResult;
       try {
         result = await this.orchestratorService.executeTurn({
@@ -287,6 +315,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           onActivity,
           onDelegation,
           onInterimMessage,
+          onQuestion,
           onQueued: () => {
             void progressMessage
               .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
@@ -387,9 +416,9 @@ export class DiscordMessageHandler implements OnModuleInit {
     if (message.channel.ownerId === bot.id) {
       return true;
     }
-    return this.orchestratorService.hasActiveConfigSelection(
-      buildConversationId(resolveConversationKey(message.channelId, message.channel)),
-    );
+    const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
+    return this.orchestratorService.hasPendingQuestions(conversationId)
+      || this.orchestratorService.hasActiveConfigSelection(conversationId);
   }
 
   private async openConversation(message: Message): Promise<Conversation | null> {

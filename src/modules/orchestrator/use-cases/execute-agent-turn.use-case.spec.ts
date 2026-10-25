@@ -5,12 +5,15 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentSettings } from '../models/agent-settings.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
+import type { QuestionPrompt } from '../models/user-question.model.js';
 import {
   type DelegationContract,
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
+import { QuestionParserService } from '../services/question-parser.service.js';
+import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
@@ -66,6 +69,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let delegationDetector: DelegationDetectorService;
   let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
+  let questionQueue: UserQuestionQueueService;
 
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
@@ -74,7 +78,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     settingsStore = new StubAgentSettingsStore();
     agentRegistry = new StubAgentRegistryPort();
     workspacePort = new StubWorkspacePort();
-    delegationDetector = new DelegationDetectorService();
+    delegationDetector = new DelegationDetectorService(new QuestionParserService());
 
     let createCount = 0;
     portFactory = new StubAgentPortFactory(() => {
@@ -87,6 +91,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   const wire = (factory: StubAgentPortFactory) => {
     runtime = new ConversationRuntimeService(factory, 60_000);
+    questionQueue = new UserQuestionQueueService();
     useCase = new ExecuteAgentTurnUseCase(
       factory,
       sessionStore,
@@ -95,6 +100,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       settingsStore,
       delegationDetector,
       runtime,
+      new QuestionParserService(),
+      questionQueue,
     );
   };
 
@@ -1913,6 +1920,192 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(captured?.taskSpec).toBe('Updated task');
       expect(steerAccepted).toBe(false);
       expect(delegateStubPort.steeringPrompts).toHaveLength(0);
+    });
+  });
+
+  describe('questions to the user', () => {
+    const answerWith = (...inputs: string[]) => (): void => {
+      queueMicrotask(() => {
+        while (inputs.length > 0 && questionQueue.hasPending('conv-1')) {
+          questionQueue.submit('conv-1', { text: inputs.shift()! });
+        }
+      });
+    };
+
+    it('should hand the user answers to the asking delegate and deliver only its final result to the CEO', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Discover it.</delegate>', 'Here is the document.'];
+      delegateStubPort.mockResponses = [
+        'I understood X.\n<question rationale="Defines the flow.">Who approves?<option>Manager</option><option>Finance</option></question>\n<question>What is the "limit"?</question>',
+        'Document at /tmp/intent.md',
+      ];
+      const prompts: QuestionPrompt[] = [];
+      const answer = answerWith('2', 'R$ 500');
+
+      const result = await useCase.execute(turnRequest({
+        onQuestion: (prompt) => {
+          prompts.push(prompt);
+          answer();
+        },
+      }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Here is the document.' });
+      expect(prompts).toEqual([
+        {
+          asker: { role: 'DEVELOPER', roleName: 'DEVELOPER', projectName: 'my-app' },
+          question: { text: 'Who approves?', rationale: 'Defines the flow.', options: ['Manager', 'Finance'] },
+          number: 1,
+          total: 2,
+          message: 'I understood X.',
+          waitingAskers: 0,
+        },
+      ]);
+      expect(delegateStubPort.promptCalls[1]).toBe([
+        '<user_answers>',
+        '<answer question="Who approves?" option="2">Finance</answer>',
+        '<answer question="What is the &quot;limit&quot;?" kind="other">R$ 500</answer>',
+        '</user_answers>',
+      ].join('\n'));
+      expect(stubAgentPort.promptCalls).toHaveLength(2);
+      expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER" project="my-app">\nDocument at /tmp/intent.md\n</agent_result>');
+    });
+
+    it('should give the agent the path of each file attached to an answer', async () => {
+      stubAgentPort.mockResponses = ['<question>Show me the current screen.</question>', 'Thanks.'];
+      const file = { name: 'screen.png', path: '/tmp/attachments/screen.png', contentType: 'image/png', size: 10 };
+
+      await useCase.execute(turnRequest({
+        onQuestion: () => queueMicrotask(() => questionQueue.submit('conv-1', { text: 'Here', attachments: [file] })),
+      }));
+
+      expect(stubAgentPort.promptCalls[1]).toBe([
+        '<user_answers>',
+        '<answer question="Show me the current screen." kind="other">Here',
+        '<attachment path="/tmp/attachments/screen.png" name="screen.png" type="image/png"/></answer>',
+        '</user_answers>',
+      ].join('\n'));
+    });
+
+    it('should hand the user answers to the CEO with its system prompt and finish with its next answer', async () => {
+      agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
+      stubAgentPort.mockResponses = ['Before I start:\n<question>Which project?<option>Backend</option></question>', 'Starting on the backend.'];
+
+      const result = await useCase.execute(turnRequest({ onQuestion: answerWith('1') }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Starting on the backend.' });
+      expect(stubAgentPort.promptCalls[1]).toBe(
+        'Mock system prompt.\n\n<user_answers>\n<answer question="Which project?" option="1">Backend</answer>\n</user_answers>',
+      );
+    });
+
+    it('should ask the user in the order the parallel delegates asked', async () => {
+      const ports = [new StubAgentPort(), new StubAgentPort()];
+      let releaseSecond!: () => void;
+      const secondMayAsk = new Promise<void>((resolve) => {
+        releaseSecond = resolve;
+      });
+      ports[0]!.mockResponses = ['<question>First?</question>', 'First done.'];
+      ports[1]!.mockResponses = ['<question>Second?</question>', 'Second done.'];
+      const original = ports[1]!.prompt.bind(ports[1]);
+      ports[1]!.prompt = async function* (text: string) {
+        await secondMayAsk;
+        yield* original(text);
+      };
+      let created = 0;
+      workspacePort.resolveRepositoryPath.mockImplementation((project: string) => `/mock/workspace/${project}`);
+      wire(new StubAgentPortFactory(() => (created++ === 0 ? stubAgentPort : ports.shift()!)));
+      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable', readOnly: true });
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">B.</delegate>',
+        'Both done.',
+      ];
+      const shown: string[] = [];
+      const answers = answerWith('one', 'two');
+
+      const result = await useCase.execute(turnRequest({
+        onQuestion: (prompt) => {
+          shown.push(`${prompt.question.text} (${prompt.waitingAskers} waiting)`);
+          if (shown.length === 1) {
+            releaseSecond();
+            setTimeout(answers, 0);
+          }
+        },
+      }));
+
+      expect(result.response).toBe('Both done.');
+      expect(shown).toEqual(['First? (0 waiting)']);
+      expect(stubAgentPort.promptCalls[1]).toBe([
+        '<agent_result role="DEVELOPER" project="project-a">\nFirst done.\n</agent_result>',
+        '<agent_result role="CODE_REVIEWER" project="project-b">\nSecond done.\n</agent_result>',
+      ].join('\n\n'));
+    });
+
+    it('should repair a CEO response with malformed questions', async () => {
+      stubAgentPort.mockResponses = ['<question>Which?', 'Fixed.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.response).toBe('Fixed.');
+      expect(stubAgentPort.promptCalls[1]).toContain('must be closed with </question>');
+    });
+
+    it('should ask the delegate to fix malformed questions once and then take its response as the result', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Go.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['<option>A</option>', 'Still <option>B</option>'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[1]).toContain('[QUESTION_ERROR]');
+      expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER">\nStill <option>B</option>\n</agent_result>');
+    });
+
+    it('should ask the user again after the delegate fixes its questions', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Go.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['<question>Q?', '<question>Q?</question>', 'Done.'];
+
+      await useCase.execute(turnRequest({ onQuestion: answerWith('yes') }));
+
+      expect(delegateStubPort.promptCalls[2]).toContain('kind="other">yes</answer>');
+      expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER">\nDone.\n</agent_result>');
+    });
+
+    it('should end the turn as cancelled when the questions are cancelled while the delegate waits', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Go.</delegate>'];
+      delegateStubPort.mockResponses = ['<question>Q?</question>'];
+
+      const result = await useCase.execute(turnRequest({
+        onQuestion: () => queueMicrotask(() => questionQueue.cancel('conv-1')),
+      }));
+
+      expect(result.status).toBe('cancelled');
+      expect(questionQueue.hasPending('conv-1')).toBe(false);
+    });
+
+    it('should replace a delegate waiting for answers instead of steering it', async () => {
+      const waitingPort = new StubAgentPort();
+      waitingPort.supportsSteering = true;
+      const steer = vi.fn().mockResolvedValue(true);
+      const cancel = vi.fn().mockResolvedValue(undefined);
+      runtime.registerDelegation('conv-1', {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'my-app',
+        taskSpec: 'Old task',
+        cwd: '/mock/workspace/my-app',
+        startedAt: Date.now(),
+        agentPort: waitingPort,
+        turn: { cancel } as any,
+        steer,
+      });
+      const waiting = questionQueue.ask('conv-1', { role: 'DEVELOPER', roleName: 'Developer', projectName: 'my-app' }, '', [{ text: 'Q?', options: [] }]);
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">New task.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['Done.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.response).toBe('Ok.');
+      expect(steer).not.toHaveBeenCalled();
+      expect(cancel).toHaveBeenCalled();
+      await expect(waiting).rejects.toBeInstanceOf(PromptCancelledError);
     });
   });
 });

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -11,12 +13,14 @@ describe('CancelAgentTurnUseCase', () => {
   let useCase: CancelAgentTurnUseCase;
   let agentPort: StubAgentPort;
   let runtime: ConversationRuntimeService;
+  let questionQueue: UserQuestionQueueService;
 
   beforeEach(() => {
     agentPort = new StubAgentPort();
     const factory = new StubAgentPortFactory(() => agentPort);
     runtime = new ConversationRuntimeService(factory, 60_000);
-    useCase = new CancelAgentTurnUseCase(runtime);
+    questionQueue = new UserQuestionQueueService();
+    useCase = new CancelAgentTurnUseCase(runtime, questionQueue);
   });
 
   const runBlockingTurn = (): { started: Promise<void>; finish: () => void; done: Promise<void> } => {
@@ -41,6 +45,16 @@ describe('CancelAgentTurnUseCase', () => {
     expect(agentPort.cancelCalls).toBe(1);
     turn.finish();
     await turn.done;
+  });
+
+  it('should discard the questions waiting for the user and reject the agents waiting on them', async () => {
+    const asker = { role: 'PRODUCT_OWNER', roleName: 'Product Owner', projectName: null };
+    const waiting = questionQueue.ask('conv-th-1', asker, '', [{ text: 'Who approves?', options: [] }]);
+
+    await expect(useCase.execute('conv-th-1')).resolves.toBe(true);
+
+    await expect(waiting).rejects.toBeInstanceOf(PromptCancelledError);
+    expect(questionQueue.hasPending('conv-th-1')).toBe(false);
   });
 
   it('should report false when the conversation has no turn in progress', async () => {

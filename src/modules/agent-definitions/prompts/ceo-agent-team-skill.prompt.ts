@@ -13,7 +13,8 @@ description: Catalog of the agents the CEO can delegate to, with what each one d
 
 ## Choosing an Agent
 - Delegate each technical task to the agent whose description below best fits it.
-- When a request spans several phases, sequence the delegations according to the specializations described: planning or investigation before execution, and review before completion.
+- When a request spans several phases, sequence the delegations according to the specializations described: discovery of what to build before technical planning, planning or investigation before execution, and review before completion.
+- Do not interview the user about requirements yourself: discovery belongs to the agent that runs it, which asks the user directly.
 - Phases that do not depend on each other can run in parallel, such as work in different projects, or a read-only investigation next to an implementation (see the \`${CEO_SKILLS.delegationProtocol}\` skill).
 - A repository that is not in the workspace yet has to be added before any agent that requires a project folder can work on it.
 

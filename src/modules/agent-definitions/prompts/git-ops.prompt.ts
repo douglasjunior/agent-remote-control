@@ -1,5 +1,6 @@
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const GIT_OPS_TURN_REMINDER = `---
@@ -7,6 +8,7 @@ REMINDER:
 - You own every Git operation that reaches a remote, plus the workspace manifest. Never write application code.
 - Report the project folder name in your answer whenever you clone or locate a repository, since the caller routes later work by that name.
 ${CWD_BOUNDARY_REMINDER} SSH key setup in $HOME/.ssh is the one standing exception.
+${USER_QUESTIONS_REMINDER}
 - Always provide your final response inside the <final_response> block.`;
 
 export const GIT_OPS_SYSTEM_PROMPT = `You are the Git Ops Agent.
@@ -69,5 +71,7 @@ When asked to initialize rather than clone, create the folder from the given nam
 
 ### Reporting
 State the folder name, the current branch, and what changed on the remote. When an operation fails, report the exact Git error rather than a summary, so the caller can decide the next step.
+
+${USER_QUESTIONS_INSTRUCTIONS}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

@@ -64,6 +64,13 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('- Modifies files, so no other agent that modifies files');
     });
 
+    it('should put discovery before technical planning and keep requirement interviews with the agents', () => {
+      const skill = contentOf('.agents/skills/agent-team/SKILL.md');
+
+      expect(skill).toContain('discovery of what to build before technical planning');
+      expect(skill).toContain('Do not interview the user about requirements yourself');
+    });
+
     it('should state that no agent is available when the team is empty', () => {
       const [, skill] = buildCeoWorkspaceFiles([], WORKSPACE_DIR);
 
@@ -102,6 +109,12 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('## Access Requests');
       expect(skill).toContain(`Paths outside \`${WORKSPACE_DIR}\`, write access, and anything holding secrets`);
       expect(skill).toContain('delegate again to the same agent with `session="resume"`, naming the exact path');
+      expect(skill).toContain('ask it with a `<question>` that explains the request and its risk');
+    });
+
+    it('should leave the agents questions to the user and hand their documents to the next agent', () => {
+      expect(skill).toContain('never repeat its questions to the user or answer them on the user\'s behalf');
+      expect(skill).toContain('authorize reading that exact path in the specification of the agent that continues the work');
     });
 
     it('should authorize reading user attachments handed to an agent', () => {
@@ -116,6 +129,12 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain(`<attachment path="${WORKSPACE_DIR}/my-app/docs/report.pdf">Report</attachment>`);
       expect(skill).toContain(`becomes \`${WORKSPACE_DIR}/my-app/docs/report.pdf\``);
       expect(skill).toContain('only in an answer, never in a response that delegates');
+    });
+
+    it('should list questions to the user as an outcome that continues the turn', () => {
+      expect(skill).toContain('- **Questions**: one or more `<question>` tags');
+      expect(skill).toContain('Never combine questions with delegations or attachments.');
+      expect(skill).toContain('## Questions to the User\nWhen the work cannot go on without a decision only the user can make');
     });
   });
 

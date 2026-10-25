@@ -6,6 +6,7 @@ import {
 } from './code-reviewer.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('code-reviewer.prompt', () => {
@@ -74,5 +75,10 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Inline on Diff: Point findings with a valid file and line in the diff must be anchored to the exact line of the new version');
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('side: RIGHT');
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('General Discussion: Use general PR/MR discussion thread comments only for global');
+  });
+
+  it('should leave the questions to the user out of the review, which only reports findings', () => {
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).not.toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(CODE_REVIEWER_TURN_REMINDER).not.toContain(USER_QUESTIONS_REMINDER);
   });
 });

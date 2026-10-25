@@ -2,9 +2,9 @@
 name: agent-definitions
 description: >
   Padrão para definição, parametrização e registro de personas de agentes de IA no sistema.
-  Governa os papéis AgentRole (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER e TECH_LEAD), o contrato AgentDefinition
-  com seu contrato de delegação, a implementação
-  do AgentRegistryService (IAgentRegistryPort), os system prompts especializados e o
+  Governa os papéis AgentRole (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD e PRODUCT_OWNER), o contrato
+  AgentDefinition com seu contrato de delegação, a implementação do AgentRegistryService (IAgentRegistryPort),
+  os system prompts especializados, as instruções de perguntas ao usuário, o prompt núcleo enxuto do CEO e o
   direcionamento de tarefas. Use ao criar, modificar ou consultar personas e papéis de agentes.
 ---
 
@@ -33,11 +33,13 @@ export type AgentRole =
   | 'GIT_OPS'
   | 'DEVELOPER'
   | 'CODE_REVIEWER'
-  | 'TECH_LEAD';
+  | 'TECH_LEAD'
+  | 'PRODUCT_OWNER';
 ```
 
 - **`CEO`**: Líder do time de agentes. Conversa com o usuário, faz a triagem, delega todo o trabalho prático aos demais agentes e revisa os resultados.
-- **`TECH_LEAD`**: Especialista em planejamento técnico, exploração arquitetural, levantamento de impacto e especificação decomposta para o DEVELOPER. Atua de forma consultiva com alinhamento Human-in-the-loop em decisões críticas e trade-offs de design.
+- **`PRODUCT_OWNER`**: Conduz a descoberta de produto antes de qualquer planejamento técnico — requisitos, regras de negócio, exploração de ideias e features, fluxos, usabilidade e critérios de aceite. Entrevista o usuário diretamente, em rodadas, e entrega o caminho de um documento de intenção.
+- **`TECH_LEAD`**: Especialista em planejamento técnico, exploração arquitetural, levantamento de impacto e especificação decomposta para o DEVELOPER. Pergunta ao usuário cada decisão crítica e trade-off de design, com a recomendação justificada.
 - **`GIT_OPS`**: Dono das operações avulsas de Git que alcançam um remoto — clone, init, fetch, pull, push, merge e rebase contra branches remotas, configuração de remote, pull requests e setup de chave SSH. Mantém o `workspace-manifest.json` na raiz de workspaces como de→para de URL de repositório para pasta de projeto, e é seu único escritor (o CEO o lê para localizar repositórios). Não executa scripts do projeto, mesmo quando eles clonam ou fazem fetch internamente.
 - **`DEVELOPER`**: Engenheiro de software sênior autônomo, agnóstico a stacks ou arquiteturas específicas, focado em adaptar-se à arquitetura do projeto alvo, implementação de código e testes automatizados. No Git opera só o lado local: inspeção da árvore de trabalho, branches locais e commit do próprio trabalho. Executa os comandos que o projeto documenta (scripts do `package.json`, alvos de Makefile, scripts de setup ou init do README/AGENTS.md), mesmo quando instalam dependências ou clonam sub-repositórios.
 - **`CODE_REVIEWER`**: Revisor de código crítico e independente, focado em inspecionar alterações e propor melhorias técnicas, aderência a convenções e prevenção de bugs sem viés de implementações anteriores.
@@ -52,7 +54,7 @@ Cada agente é descrito pela estrutura `AgentDefinition`:
 - `buildSystemPrompt(team)`: monta o prompt do agente. Recebe `team`, as demais definições registradas, para que agentes que delegam listem seu time. Agentes executores ignoram o parâmetro;
 - `defaultModel`: modelo de linguagem padrão opcional associado à persona;
 - `defaultSessionMode`: modo de sessão padrão (`'resume' | 'new'`, padrão `'resume'`). Quando `'new'`, o orquestrador inicia sempre uma nova sessão ACP para o agente;
-- `delegation`: contrato de delegação do agente (`AgentDelegationContract`), declarando quais atributos de `<delegate>` ele aceita. `project` vale `'required'` ou `'optional'`; ausente, o agente não recebe pasta de projeto. `sessionMode` vale `'overridable'`; ausente, o modo fica fixo no `defaultSessionMode` e passar o atributo `session` é recusado. `readOnly: true` declara que o agente nunca modifica o projeto, então pode rodar em paralelo com um agente que modifica a mesma pasta; ausente, o agente conta como escritor, e o orquestrador admite um só escritor por pasta ao mesmo tempo. TECH_LEAD e CODE_REVIEWER são `readOnly`. O conjunto é particular de cada agente, e um parâmetro novo se acrescenta aqui;
+- `delegation`: contrato de delegação do agente (`AgentDelegationContract`), declarando quais atributos de `<delegate>` ele aceita. `project` vale `'required'` ou `'optional'`; ausente, o agente não recebe pasta de projeto. `sessionMode` vale `'overridable'`; ausente, o modo fica fixo no `defaultSessionMode` e passar o atributo `session` é recusado. `readOnly: true` declara que o agente nunca modifica o projeto, então pode rodar em paralelo com um agente que modifica a mesma pasta; ausente, o agente conta como escritor, e o orquestrador admite um só escritor por pasta ao mesmo tempo. PRODUCT_OWNER, TECH_LEAD e CODE_REVIEWER são `readOnly`. O conjunto é particular de cada agente, e um parâmetro novo se acrescenta aqui;
 - `turnReminder`: lembrete de turno opcional (`string`) anexado ao prompt de cada rodada do agente;
 - `systemPromptEveryTurn`: quando `true`, o orquestrador prefixa o system prompt a cada mensagem do usuário, inclusive em sessão retomada; as rodadas de resultado de delegação e os prompts de reparo da mesma mensagem não o repetem. Serve a agentes de sessão longa, cujo contexto é compactado e perde o prompt enviado na criação da sessão; o agente dispensa o `turnReminder`;
 - `buildWorkspaceFiles(team, workspaceDir)`: opcional, devolve `WorkspaceFile[]` (`path` relativo à raiz de workspaces e `content`) que o orquestrador grava na raiz de workspaces a cada boot.
@@ -64,8 +66,45 @@ no `turnReminder` (`prompts/cwd-boundary.prompt.ts`). O agente não lê, lista n
 do CWD, a menos que o prompt recebido autorize aquele caminho exato e o modo (leitura ou escrita).
 Precisando de algo de fora, como um SDK instalado na máquina, para e devolve na resposta final um
 pedido de acesso com caminho, motivo e modo. O CEO avalia, pede confirmação ao usuário quando o
-caminho sai do workspace, e autoriza delegando de novo ao mesmo papel com `:resume`. O GIT_OPS
-tem `$HOME/.ssh` autorizado no próprio prompt para o setup de chave SSH.
+caminho sai do workspace, e autoriza delegando de novo ao mesmo papel com `session="resume"`. O
+pedido de acesso é a resposta ao chamador, nunca uma pergunta direta ao usuário, para que o CEO
+avalie o risco antes. O GIT_OPS tem `$HOME/.ssh` autorizado no próprio prompt para o setup de chave
+SSH, e o PRODUCT_OWNER tem `INTENT_DOCUMENTS_DIR` autorizado para escrever o documento de intenção.
+
+### Perguntas ao usuário
+
+Qualquer agente pergunta direto ao usuário quando precisa de uma decisão dele para seguir, com tags
+`<question rationale="…">texto<option>…</option></question>` na resposta final (gramática e fila
+na skill `orchestrator`). As instruções vivem em `prompts/user-questions.prompt.ts`:
+
+- `USER_QUESTIONS_GUIDE`: o corpo das regras — quando perguntar, uma pergunta independente por item
+  do lote, opções sem "Outro", `rationale` com o impacto, e o formato de `<user_answers>`, incluindo
+  `<attachment path="…"/>` para os arquivos que o usuário anexa à resposta;
+- `USER_QUESTIONS_INSTRUCTIONS`: o guia sob o título `### Asking the User`, incluído no system prompt
+  dos agentes executores que dependem de decisões do usuário (DEVELOPER, GIT_OPS, TECH_LEAD e
+  PRODUCT_OWNER);
+- `USER_QUESTIONS_REMINDER`: a linha incluída no `turnReminder` desses mesmos agentes.
+
+O CODE_REVIEWER não recebe as instruções: ele só audita e devolve achados, sem decisão do usuário
+de que dependa para concluir.
+
+O CEO não recebe `USER_QUESTIONS_INSTRUCTIONS` (ver "Prompt núcleo enxuto do CEO"): o prompt núcleo
+traz só a forma da tag e o fato de a resposta voltar no mesmo turno, e o guia completo vai na skill
+`response-protocol`, sob `## Questions to the User`.
+
+### Prompt núcleo enxuto do CEO
+
+O CEO não tem primer: com `systemPromptEveryTurn`, o prompt núcleo acompanha toda mensagem do
+usuário para sobreviver à compactação da sessão. Cada linha dele custa em todo turno e dilui as
+regras que importam, então ele carrega apenas as regras fortes, cuja perda quebra o protocolo:
+orquestração pura, os três desfechos da resposta (delegar, perguntar, responder) com a forma de
+cada tag, o time, pasta de projeto, `session`, pedidos de acesso e anexos. Exemplos, explicações,
+casos de borda e guias completos vão para o `AGENTS.md` e as skills que `buildCeoWorkspaceFiles`
+gera, que o CEO consulta quando precisa aprofundar.
+
+Ao acrescentar uma regra ao CEO, escreva no prompt núcleo no máximo a frase que a torna obrigatória
+e ponha o detalhe na skill do tema. Nunca concatene no prompt núcleo um bloco de instruções
+compartilhado com os agentes executores, como `USER_QUESTIONS_INSTRUCTIONS`.
 
 ### Quem pode nomear quem
 
@@ -108,10 +147,11 @@ da narração.
 - Opera com confinamento padrão ao `workspaces` e suas subpastas; atuar fora do workspace é perigoso e exige alerta explícito de risco e confirmação prévia obrigatória do usuário antes de prosseguir;
 - Atua em orquestração pura: nunca executa tarefas técnicas diretamente, não cria nem altera arquivos de projeto, não executa testes, builds ou linters, e não faz commits. Todo trabalho técnico prático deve ser delegado a agentes especialistas do time. Quando nenhum agente do time puder atender ao pedido, relata a limitação ao usuário sem tentar executar a tarefa;
 - Faz a triagem dos pedidos e converte requisitos ambíguos em tarefas com especificação autocontida e critérios de aceitação;
-- Recebe o prompt núcleo (`buildCeoSystemPrompt(team)`, envolto em `[ORCHESTRATOR_INSTRUCTIONS]`) a cada mensagem do usuário via `systemPromptEveryTurn`, com as regras que não podem se perder na compactação: orquestração pura, formas de `<delegate>` por agente, texto fora das tags como mensagem ao usuário, pasta de projeto como subpasta direta existente, quando usar `session="new"`, pedidos de acesso fora do CWD e a tag `<attachment>`. O detalhe vive no `AGENTS.md` e nas skills que `buildCeoWorkspaceFiles` gera na raiz de workspaces (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). O prompt núcleo não indexa as skills, que são descobertas pela própria `description`;
+- Recebe o prompt núcleo (`buildCeoSystemPrompt(team)`, envolto em `[ORCHESTRATOR_INSTRUCTIONS]`) a cada mensagem do usuário via `systemPromptEveryTurn`, com as regras que não podem se perder na compactação (ver "Prompt núcleo enxuto do CEO"): orquestração pura, os três desfechos da resposta — `<delegate>`, `<question>` ou resposta sem tags —, formas de `<delegate>` por agente, texto fora das tags como mensagem ao usuário, que os agentes perguntam direto ao usuário e o CEO recebe só o resultado final, pasta de projeto como subpasta direta existente, quando usar `session="new"`, pedidos de acesso fora do CWD e a tag `<attachment>`. O detalhe vive no `AGENTS.md` e nas skills que `buildCeoWorkspaceFiles` gera na raiz de workspaces (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). O prompt núcleo não indexa as skills, que são descobertas pela própria `description`;
 - Conhece seu time pela seção "Your Team" do prompt núcleo (papel, nome e formas de `<delegate>` derivadas do `delegation`) e pela skill `agent-team`, que traz a `description` completa de cada agente. A seção de delegação é agnóstica a papéis fixos: o roteamento de tarefas e o sequenciamento em fases (como planejamento antes da execução e revisão antes da conclusão) são orientados exclusivamente pelas especializações descritas dinamicamente no catálogo "Your Team". Por isso a `description` de cada definição deve dizer quando delegar a ele;
 - Copia literalmente para a próxima especificação os comandos recomendados e os fatos já verificados que vêm nos resultados dos agentes, e pede o comando documentado pelo projeto em vez da reprodução manual dos seus passos;
-- Delega com tags `<delegate>` dentro do envelope de resposta final, usando um papel do time, e revisa cada `<agent_result>` antes de responder; uma resposta sem `<delegate>` encerra o turno;
+- Delega com tags `<delegate>` dentro do envelope de resposta final, usando um papel do time, e revisa cada `<agent_result>` antes de responder; pergunta ao usuário com `<question>` e continua o turno com `<user_answers>`; uma resposta sem nenhuma das duas tags encerra o turno;
+- Não entrevista o usuário sobre requisitos: a skill `agent-team` põe a descoberta antes do planejamento técnico e a deixa com o agente que a conduz. Um documento que um agente produz fora do workspace, como o documento de intenção, é anexado à resposta e tem a leitura autorizada na especificação do agente seguinte sem confirmação do usuário (skill `delegation-protocol`). A confirmação de acesso fora do workspace é pedida com `<question>`;
 - Exige que o parâmetro de pasta de projeto (`project-folder`) seja sempre o diretório raiz de primeiro nível do projeto, nunca caminhos aninhados ou subpastas internas, assegurando que o especialista inicie sua execução na raiz do workspace onde residem os arquivos de governança e documentação; detalhes de escopos pontuais ou subdiretórios pertencem à especificação da tarefa;
 - Lê o `workspace-manifest.json` para localizar repositórios pela URL, sem escrevê-lo;
 - Conversa de forma natural e proporcional à mensagem, seguindo as regras de confinamento e protocolo sem mencioná-las ao usuário;
@@ -138,11 +178,11 @@ da narração.
 - Atua como arquiteto de software e líder técnico responsável por análise profunda de requisitos, exploração de arquitetura e levantamento prévio de impacto no repositório;
 - Persona analítica e de uso geral: responde a consultas arquiteturais, investigações, análise de trade-offs de bibliotecas/tecnologias e elaboração de planos de implementação;
 - Opera sob disciplina estritamente somente-leitura: não altera arquivos, não gera código de produção e não realiza commits ou patches diretamente;
-- Adota abordagem consultiva com alinhamento Human-in-the-Loop (HITL): ao identificar ambiguidades, trade-offs arquiteturais relevantes ou dependências não consolidadas, formula opções estruturadas com prós e contras, apresenta recomendação justificada e solicita alinhamento antes de consolidar o plano;
-- Prioriza documentação autoritativa (skills locais, guias arquiteturais) e mapeia divergências (drift) para decisão explícita;
+- Disciplina de decisão: ambiguidades, trade-offs arquiteturais e tecnologias não confirmadas são decisões do usuário, perguntadas com `<question>` antes de consolidar o plano — uma opção por abordagem viável, a recomendação justificada como primeira opção e prós e contras no `rationale`;
+- Prioriza documentação autoritativa (skills locais, guias arquiteturais) e pergunta qual vale quando documentação, código e pedido divergem;
 - Produz planos estruturados entregues diretamente no chat (sem gerar arquivos em disco), contendo Visão Geral e Objetivos, Decisões Técnicas e Arquitetura, Análise de Impacto com caminhos reais de arquivos, Decomposição Sequencial de Tarefas para o DEVELOPER (com dependências explícitas e testes integrados em cada tarefa) e Critérios de Aceitação/Verificação com comandos concretos;
 - Opera por padrão em sessão persistida (`defaultSessionMode: 'resume'`) para sustentar refinamentos iterativos e alinhamentos conversacionais com o CEO ou usuário;
-- Possui o lembrete `TECH_LEAD_TURN_REMINDER` configurado em sua definição, reforçando o papel de planejamento, disciplina somente-leitura, HITL e tarefas com critérios verificáveis.
+- Possui o lembrete `TECH_LEAD_TURN_REMINDER` configurado em sua definição, reforçando o papel de planejamento, disciplina somente-leitura, decisões perguntadas ao usuário e tarefas com critérios verificáveis.
 
 ### 5. Git Ops Agent (`git-ops.prompt.ts`)
 
@@ -152,6 +192,18 @@ da narração.
 - Único leitor e escritor do `workspace-manifest.json` na raiz de workspaces, um array JSON de `{ url, folder, defaultBranch }` que mapeia URL de repositório para pasta de projeto. Arquivo ausente significa workspace vazio;
 - Deriva o nome da pasta do último segmento da URL sem o sufixo `.git`, regra exata porque o chamador roteia o trabalho seguinte por esse nome e um nome diferente duplicaria o clone;
 - Relata no `GIT_OPS_TURN_REMINDER` a pasta de projeto usada, já que é assim que o CEO aprende para onde rotear a sequência.
+
+### 6. Product Owner Agent (`product-owner.prompt.ts`)
+
+- Analista de negócio sênior conduzindo descoberta com quem conhece o negócio, assumindo que a pessoa não é técnica. Extrai e consolida a intenção, sem resolvê-la, estimar esforço, avaliar viabilidade ou escolher tecnologia; o usuário é a fonte de verdade e o código é contexto;
+- Caça o não dito a partir de uma lista inicial que não é limite: quem executa, aprova e é notificado; dado ausente ou errado; falta de permissão; interrupção no meio; volume e lote; retroatividade e dados existentes; auditoria; irreversíveis; limites, prazos, moedas, unidades e fusos; concorrência; o que o usuário final vê (estados vazios, espera, erros, acessibilidade, canais); notificações; dados pessoais; métrica de sucesso;
+- Regra dura de linguagem: sem jargão técnico no que escreve, com leitura livre do código, cujo achado é comportamento atual e vira pergunta, nunca regra;
+- Fronteira técnica: decisões técnicas são registradas em "Technical pending decisions" (decisão, impacto no negócio, quem decide, o que bloqueia), sem perguntar nem decidir; a única exceção é a escolha que muda o comportamento visível, perguntada como comportamento;
+- Conduz a entrevista só por `<question>`, sem limite de rodadas, começando por escopo e atores;
+- Guardrails bloqueantes: somente leitura exceto o documento de intenção; nunca inventar regra; conflito com documentação vira pergunta; divergência entre sistema e documentação vira pergunta e é registrada em "Divergences to fix"; documento citado ilegível vira pergunta;
+- Documento de intenção com template default (seções vazias omitidas, estrutura do usuário), "Open questions" só com o que o usuário declarou não saber, consolidação com pendências só se o usuário insistir, e checklist antes de escrever;
+- Grava o documento em `INTENT_DOCUMENTS_DIR` (`constants/intent-documents.constant.ts`, `os.tmpdir()/agent-remote-control/intents`), sobrescrevendo-o nos refinamentos, e devolve ao chamador o caminho absoluto, um resumo e as decisões técnicas pendentes;
+- Contrato `project: 'optional'` (com pasta lê o projeto; sem pasta discute a ideia do zero), `readOnly`, `defaultSessionMode: 'resume'`, e o lembrete `PRODUCT_OWNER_TURN_REMINDER`.
 
 ## Serviço de Registro (`AgentRegistryService`)
 
