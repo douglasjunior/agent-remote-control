@@ -31,7 +31,7 @@ sequenceDiagram
     participant DiscordBot as Discord Bot Handler
     participant Orchestrator as ExecuteAgentTurnUseCase
     participant AgentRegistry as AgentRegistryService
-    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter / CopilotAdapter)
+    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter / CopilotAdapter / CodexAdapter / CursorAdapter)
     participant Demux as AgentStreamDemux
     participant Workspace as Workspace (Files / Git)
     participant AgentBridge as AgyBridgeServer / claude-agent-acp
@@ -80,7 +80,9 @@ sequenceDiagram
 - Ao menos um agente instalado e autenticado:
   - **Google Antigravity CLI** (`agy` disponível no `PATH` global da máquina);
   - **Claude Code CLI** (`claude` disponível no `PATH`, instalado e autenticado pelo usuário). O adaptador ACP oficial `@agentclientprotocol/claude-agent-acp` já vem nas dependências e usa o `claude` do `PATH`; sem ele, recorre ao binário embutido no Claude Agent SDK. As sessões do Claude Code carregam as configurações do usuário (`~/.claude/settings.json`, `CLAUDE.md`, hooks e skills) e rodam em modo `bypassPermissions`, que o Claude Code recusa quando o processo roda como `root` sem `IS_SANDBOX=1`;
-  - **GitHub Copilot CLI** (`copilot` disponível no `PATH`, autenticado com `copilot login`). As sessões rodam com a autonomia de ferramentas (`allow_all`) ligada.
+  - **GitHub Copilot CLI** (`copilot` disponível no `PATH`, autenticado com `copilot login`). As sessões rodam com a autonomia de ferramentas (`allow_all`) ligada;
+  - **OpenAI Codex CLI** (`codex` no `PATH`, autenticado com `codex login`). O adaptador ACP `@agentclientprotocol/codex-acp` já vem nas dependências; as sessões rodam no modo de acesso total, sem pedidos de aprovação nem sandbox;
+  - **Cursor CLI** (`cursor-agent` ou `agent` no `PATH`, autenticado com `cursor-agent login`). As sessões rodam sem aprovações interativas e sem sandbox.
 - **Git** instalado e configurado
 
 ---
@@ -173,7 +175,7 @@ O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu 
   - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
   - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
 - **Escolha de Agente, Modelo e Effort**:
-  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os agentes numerados (Antigravity e Claude Code). Responda com o número do agente, depois com o número do modelo e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
+  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os agentes numerados (Antigravity, Claude Code, GitHub Copilot, OpenAI Codex e Cursor). Responda com o número do agente, depois com o número do modelo e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
   - Digite `/agent` para trocar de agente (seguido da escolha de modelo e effort dele) e `/model` para trocar só o modelo e o effort do agente atual. A configuração é global e vale para todas as conversas; cada conversa guarda a sessão de cada agente, então voltar a um agente retoma a conversa que ele já tinha.
   - Toda resposta termina com um rodapé indicando o papel, o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
 - **Mensagens Durante uma Tarefa**:

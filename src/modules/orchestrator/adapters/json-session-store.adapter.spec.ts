@@ -28,7 +28,7 @@ describe('JsonSessionStoreAdapter', () => {
   });
 
   it('should persist sessions and rehydrate dates in a new instance', async () => {
-    const session = buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }] });
+    const session = buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] });
     await new JsonSessionStoreAdapter(dataDir).saveSession(session);
 
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
@@ -51,11 +51,11 @@ describe('JsonSessionStoreAdapter', () => {
   it('should replace a session saved again with the same id', async () => {
     const store = new JsonSessionStoreAdapter(dataDir);
     await store.saveSession(buildSessionContext());
-    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2' }] }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null }] }));
 
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
 
-    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2' }]);
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null }]);
   });
 
   it('should keep every session saved concurrently', async () => {
@@ -78,9 +78,9 @@ describe('JsonSessionStoreAdapter', () => {
     await expect(store.saveSession(buildSessionContext())).rejects.toThrow();
 
     rmSync(dataDir);
-    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }] }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] }));
     const reloaded = await new JsonSessionStoreAdapter(dataDir).findSession('conv-1');
-    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1' }]);
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }]);
   });
 
   it('should load sessions stored without agent sessions with an empty list', async () => {
@@ -118,6 +118,31 @@ describe('JsonSessionStoreAdapter', () => {
     const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('conv-1');
 
     expect(reloaded?.agentSessions).toEqual([]);
+  });
+
+  it('should load agent sessions stored without project as sessions at the workspaces root', async () => {
+    writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify([
+      {
+        sessionId: 'sess-1',
+        conversationId: 'conv-1',
+        userId: 'user-1',
+        workspacePath: '/mock/workspace',
+        agentRole: 'CEO',
+        agentSessions: [
+          { role: 'CEO', agentId: 'claude', sessionId: 'conv-1' },
+          { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-1', projectName: 'my-app' },
+        ],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ]));
+
+    const reloaded = await new JsonSessionStoreAdapter(rootDir).findSession('conv-1');
+
+    expect(reloaded?.agentSessions).toEqual([
+      { role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null },
+      { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-1', projectName: 'my-app' },
+    ]);
   });
 
   it('should derive the conversation id of sessions stored with channel and thread', async () => {

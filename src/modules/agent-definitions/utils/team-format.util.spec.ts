@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 import type { AgentRole } from '../models/agent-role.type.js';
 
-import { formatDelegationForms, formatSessionMode } from './team-format.util.js';
+import { formatDelegationForms, formatProjectAccess, formatSessionMode } from './team-format.util.js';
 
 
 function agent(overrides: Partial<AgentDefinition>): AgentDefinition {
@@ -25,6 +25,15 @@ describe('team-format.util', () => {
     );
     expect(formatDelegationForms(agent({ delegation: { project: 'required' } }))).toBe(
       '[DELEGATE:AGENT:<project-folder>]',
+    );
+  });
+
+  it('should tell read-only agents apart from agents that modify files', () => {
+    expect(formatProjectAccess(agent({ delegation: { readOnly: true } }))).toBe(
+      'Read-only, so it may work alongside an agent that modifies the same project.',
+    );
+    expect(formatProjectAccess(agent({}))).toBe(
+      'Modifies files, so no other agent that modifies files may work in the same project folder at the same time.',
     );
   });
 

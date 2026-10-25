@@ -71,14 +71,13 @@ export class DiscordActivityFormatter {
 
   formatDelegation(event: DelegationEvent): string {
     if (event.phase === 'finished') {
-      return `↩️ **${event.roleName} concluiu** — o CEO está revisando o resultado.`;
+      return `↩️ **${event.roleName} concluiu**${this.formatProject(event)} — o CEO está revisando o resultado.`;
     }
-    const project = event.projectName ? ` no projeto \`${event.projectName}\`` : '';
-    return `🔀 **Tarefa delegada** ao agente **${event.roleName}** (\`${event.role}\`)${project} — ele assumiu a tarefa agora.`;
+    return `🔀 **Tarefa delegada** ao agente **${event.roleName}** (\`${event.role}\`)${this.formatProject(event)} — ele assumiu a tarefa agora.`;
   }
 
   formatDelegateResult(event: DelegationEvent & { phase: 'finished' }): string {
-    return `📋 **Resposta do agente ${event.roleName}** (\`${event.role}\`):\n${event.response.trim()}`;
+    return `📋 **Resposta do agente ${event.roleName}** (\`${event.role}\`)${this.formatProject(event)}:\n${event.response.trim()}`;
   }
 
   formatDelegateFooter(event: DelegationEvent & { phase: 'finished' }): string {
@@ -201,5 +200,9 @@ export class DiscordActivityFormatter {
 
     chunks.push(lines.join('\n') + (openFence ? CLOSE_FENCE : ''));
     return chunks;
+  }
+
+  private formatProject(event: DelegationEvent): string {
+    return event.projectName ? ` no projeto \`${event.projectName}\`` : '';
   }
 }

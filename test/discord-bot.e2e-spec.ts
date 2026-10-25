@@ -342,7 +342,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(storedSession).not.toBeNull();
     expect(storedSession?.userId).toBe('discord-user-777');
     expect(storedSession?.agentRole).toBe('CEO');
-    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123' }]);
+    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123', projectName: null }]);
     expect(readFileSync(join(dataDir, 'sessions.json'), 'utf-8')).toContain('e2e-session-123');
 
     await app.close();
@@ -486,12 +486,12 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(developer.prompts[0]).toContain('Developer Agent');
     expect(developer.prompts[0]).toContain('Implement the login screen.');
     expect(ceo.prompts[1]).toContain(
-      '[AGENT_RESULT:DEVELOPER]\nLogin screen implemented.',
+      '[AGENT_RESULT:DEVELOPER:my-app]\nLogin screen implemented.',
     );
     expect(threadMessages).toContain(
       '🔀 **Tarefa delegada** ao agente **Developer Agent** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
     );
-    expect(threadMessages).toContain('↩️ **Developer Agent concluiu** — o CEO está revisando o resultado.');
+    expect(threadMessages).toContain('↩️ **Developer Agent concluiu** no projeto `my-app` — o CEO está revisando o resultado.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
 
     await app.close();

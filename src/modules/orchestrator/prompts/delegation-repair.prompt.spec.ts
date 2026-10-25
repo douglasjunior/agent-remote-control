@@ -10,6 +10,7 @@ describe('buildDelegationRepairPrompt', () => {
     expect(prompt.startsWith('[DELEGATION_ERROR]')).toBe(true);
     expect(prompt).toContain('Unknown role "QA".');
     expect(prompt).toContain('[DELEGATE:ROLE:project-folder] alone on the last line');
+    expect(prompt).toContain('each task specification right before its own marker, with nothing after the last marker');
     expect(prompt).toContain('[DONE] alone on the last line');
     expect(prompt).toContain('inside the final response block');
   });

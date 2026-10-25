@@ -10,11 +10,13 @@ describe('DelegationDetectorService', () => {
     const result = service.detect('Please do this.\n[DELEGATE:DEVELOPER:my-app]');
     expect(result).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'DEVELOPER',
-        projectName: 'my-app',
-        taskSpec: 'Please do this.',
-      },
+      delegations: [
+        {
+          delegateToRole: 'DEVELOPER',
+          projectName: 'my-app',
+          taskSpec: 'Please do this.',
+        },
+      ],
     });
   });
 
@@ -22,11 +24,13 @@ describe('DelegationDetectorService', () => {
     const result = service.detect('Just do this.\n[DELEGATE:DEVELOPER]');
     expect(result).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'DEVELOPER',
-        projectName: undefined,
-        taskSpec: 'Just do this.',
-      },
+      delegations: [
+        {
+          delegateToRole: 'DEVELOPER',
+          projectName: undefined,
+          taskSpec: 'Just do this.',
+        },
+      ],
     });
   });
 
@@ -34,12 +38,14 @@ describe('DelegationDetectorService', () => {
     const result = service.detect('Review diff.\n[DELEGATE:CODE_REVIEWER:my-app:new]');
     expect(result).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'CODE_REVIEWER',
-        projectName: 'my-app',
-        taskSpec: 'Review diff.',
-        sessionMode: 'new',
-      },
+      delegations: [
+        {
+          delegateToRole: 'CODE_REVIEWER',
+          projectName: 'my-app',
+          taskSpec: 'Review diff.',
+          sessionMode: 'new',
+        },
+      ],
     });
   });
 
@@ -47,12 +53,14 @@ describe('DelegationDetectorService', () => {
     const result = service.detect('Continue task.\n[DELEGATE:DEVELOPER:my-app:resume]');
     expect(result).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'DEVELOPER',
-        projectName: 'my-app',
-        taskSpec: 'Continue task.',
-        sessionMode: 'resume',
-      },
+      delegations: [
+        {
+          delegateToRole: 'DEVELOPER',
+          projectName: 'my-app',
+          taskSpec: 'Continue task.',
+          sessionMode: 'resume',
+        },
+      ],
     });
   });
 
@@ -60,23 +68,27 @@ describe('DelegationDetectorService', () => {
     const resultColon = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER::new]');
     expect(resultColon).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'CODE_REVIEWER',
-        projectName: undefined,
-        taskSpec: 'Clean review.',
-        sessionMode: 'new',
-      },
+      delegations: [
+        {
+          delegateToRole: 'CODE_REVIEWER',
+          projectName: undefined,
+          taskSpec: 'Clean review.',
+          sessionMode: 'new',
+        },
+      ],
     });
 
     const resultDirect = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER:new]');
     expect(resultDirect).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'CODE_REVIEWER',
-        projectName: undefined,
-        taskSpec: 'Clean review.',
-        sessionMode: 'new',
-      },
+      delegations: [
+        {
+          delegateToRole: 'CODE_REVIEWER',
+          projectName: undefined,
+          taskSpec: 'Clean review.',
+          sessionMode: 'new',
+        },
+      ],
     });
   });
 
@@ -105,18 +117,20 @@ describe('DelegationDetectorService', () => {
     const result = service.detect('Sure, delegating.\n\n[DELEGATE:DEVELOPER:my-app]\n\n> Clone the repo.');
     expect(result).toEqual({
       kind: 'delegate',
-      delegation: {
-        delegateToRole: 'DEVELOPER',
-        projectName: 'my-app',
-        taskSpec: 'Sure, delegating.\n\n> Clone the repo.',
-      },
+      delegations: [
+        {
+          delegateToRole: 'DEVELOPER',
+          projectName: 'my-app',
+          taskSpec: 'Sure, delegating.\n\n> Clone the repo.',
+        },
+      ],
     });
   });
 
   it('should accept markers wrapped in markdown formatting and normalize the role', () => {
     expect(service.detect('Task.\n**`[delegate:developer:my-app]`**')).toEqual({
       kind: 'delegate',
-      delegation: { delegateToRole: 'DEVELOPER', projectName: 'my-app', taskSpec: 'Task.' },
+      delegations: [{ delegateToRole: 'DEVELOPER', projectName: 'my-app', taskSpec: 'Task.' }],
     });
     expect(service.detect('Finished.\n_[DONE]_')).toEqual({ kind: 'done', summary: 'Finished.' });
   });
@@ -128,10 +142,53 @@ describe('DelegationDetectorService', () => {
     });
   });
 
-  it('should reject responses with more than one marker', () => {
-    expect(service.detect('[DELEGATE:DEVELOPER]\nWork.\n[DONE]')).toEqual({
+  it('should reject [DONE] combined with other markers', () => {
+    expect(service.detect('Work.\n[DELEGATE:DEVELOPER]\nDone.\n[DONE]')).toEqual({
       kind: 'invalid',
-      reason: expect.stringContaining('more than one marker'),
+      reason: expect.stringContaining('[DONE] cannot be combined with other markers'),
+    });
+  });
+
+  describe('parallel delegations', () => {
+    it('should split several delegations, each taking the text right before its marker', () => {
+      const result = service.detect([
+        'Build the API.',
+        '[DELEGATE:DEVELOPER:backend]',
+        'Build the screen.',
+        '[DELEGATE:DEVELOPER:frontend:new]',
+        'Plan the migration.',
+        '[DELEGATE:TECH_LEAD]',
+      ].join('\n'));
+
+      expect(result).toEqual({
+        kind: 'delegate',
+        delegations: [
+          { delegateToRole: 'DEVELOPER', projectName: 'backend', taskSpec: 'Build the API.' },
+          { delegateToRole: 'DEVELOPER', projectName: 'frontend', taskSpec: 'Build the screen.', sessionMode: 'new' },
+          { delegateToRole: 'TECH_LEAD', projectName: undefined, taskSpec: 'Plan the migration.' },
+        ],
+      });
+    });
+
+    it('should reject text after the last marker', () => {
+      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\nB.\n[DELEGATE:DEVELOPER:b]\nTrailing.')).toEqual({
+        kind: 'invalid',
+        reason: expect.stringContaining('nothing follows the last marker'),
+      });
+    });
+
+    it('should reject a delegation without its own specification', () => {
+      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\n[DELEGATE:DEVELOPER:b]')).toEqual({
+        kind: 'invalid',
+        reason: expect.stringContaining('Delegation 2 ("[DELEGATE:DEVELOPER:b]") has no task specification'),
+      });
+    });
+
+    it('should reject a malformed marker among several', () => {
+      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\nB.\n[DELEGATE:DEVELOPER:b:later]')).toEqual({
+        kind: 'invalid',
+        reason: expect.stringContaining('Session mode must be "new" or "resume"'),
+      });
     });
   });
 

@@ -4,6 +4,7 @@ import type { WorkspaceFile } from '../models/workspace-file.model.js';
 export interface DelegationContract {
   readonly project?: 'required' | 'optional';
   readonly sessionMode?: 'overridable';
+  readonly readOnly?: true;
 }
 
 export interface IAgentRegistryPort {

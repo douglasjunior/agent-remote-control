@@ -13,7 +13,12 @@ vi.mock('node:fs/promises', () => ({
   writeFile: vi.fn(),
 }));
 
+vi.mock('node:os', () => ({
+  platform: vi.fn(() => 'linux'),
+}));
+
 const { lstat, mkdir, readdir, readlink, symlink, unlink, writeFile } = await import('node:fs/promises');
+const { platform } = await import('node:os');
 
 function errnoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
@@ -30,6 +35,7 @@ function stats(isSymbolicLink: boolean) {
 describe('LocalWorkspaceAdapter', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(platform).mockReturnValue('linux');
   });
 
   describe('constructor and base directory resolution', () => {
@@ -159,23 +165,72 @@ describe('LocalWorkspaceAdapter', () => {
   describe('ensureSymlink', () => {
     const adapter = new LocalWorkspaceAdapter('/test/workspaces');
 
-    it('should create the link and its parent directory when nothing exists', async () => {
-      vi.mocked(lstat).mockRejectedValue(errnoError('ENOENT'));
+    describe.each(['linux', 'darwin'] as const)('on %s', (os) => {
+      beforeEach(() => {
+        vi.mocked(platform).mockReturnValue(os);
+      });
 
-      await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+      it('should create a relative directory symlink and its parent directory when nothing exists', async () => {
+        vi.mocked(lstat).mockRejectedValue(errnoError('ENOENT'));
 
-      expect(mkdir).toHaveBeenCalledWith('/test/workspaces/.claude', { recursive: true });
-      expect(symlink).toHaveBeenCalledWith('../.agents/skills', '/test/workspaces/.claude/skills', 'dir');
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(mkdir).toHaveBeenCalledWith('/test/workspaces/.claude', { recursive: true });
+        expect(symlink).toHaveBeenCalledWith('../.agents/skills', '/test/workspaces/.claude/skills', 'dir');
+      });
+
+      it('should keep a link that already points to the target', async () => {
+        vi.mocked(lstat).mockResolvedValue(stats(true));
+        vi.mocked(readlink).mockResolvedValue('../.agents/skills' as never);
+
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(unlink).not.toHaveBeenCalled();
+        expect(symlink).not.toHaveBeenCalled();
+      });
+
+      it('should treat paths that differ only in case as different targets', async () => {
+        vi.mocked(lstat).mockResolvedValue(stats(true));
+        vi.mocked(readlink).mockResolvedValue('../.Agents/Skills' as never);
+
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(unlink).toHaveBeenCalledWith('/test/workspaces/.claude/skills');
+      });
     });
 
-    it('should keep a link that already points to the target', async () => {
-      vi.mocked(lstat).mockResolvedValue(stats(true));
-      vi.mocked(readlink).mockResolvedValue('../.agents/skills' as never);
+    describe('on win32', () => {
+      beforeEach(() => {
+        vi.mocked(platform).mockReturnValue('win32');
+      });
 
-      await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+      it('should create a junction with an absolute target, which needs no elevated rights', async () => {
+        vi.mocked(lstat).mockRejectedValue(errnoError('ENOENT'));
 
-      expect(unlink).not.toHaveBeenCalled();
-      expect(symlink).not.toHaveBeenCalled();
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(symlink).toHaveBeenCalledWith('/test/workspaces/.agents/skills', '/test/workspaces/.claude/skills', 'junction');
+      });
+
+      it('should keep a junction whose absolute target has the extended-length prefix and another case', async () => {
+        vi.mocked(lstat).mockResolvedValue(stats(true));
+        vi.mocked(readlink).mockResolvedValue('\\\\?\\/TEST/workspaces/.agents/skills' as never);
+
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(unlink).not.toHaveBeenCalled();
+        expect(symlink).not.toHaveBeenCalled();
+      });
+
+      it('should replace a junction that points elsewhere', async () => {
+        vi.mocked(lstat).mockResolvedValue(stats(true));
+        vi.mocked(readlink).mockResolvedValue('/old/target' as never);
+
+        await adapter.ensureSymlink('.claude/skills', '../.agents/skills');
+
+        expect(unlink).toHaveBeenCalledWith('/test/workspaces/.claude/skills');
+        expect(symlink).toHaveBeenCalledWith('/test/workspaces/.agents/skills', '/test/workspaces/.claude/skills', 'junction');
+      });
     });
 
     it('should replace a link that points elsewhere', async () => {
@@ -186,6 +241,13 @@ describe('LocalWorkspaceAdapter', () => {
 
       expect(unlink).toHaveBeenCalledWith('/test/workspaces/.claude/skills');
       expect(symlink).toHaveBeenCalledWith('../.agents/skills', '/test/workspaces/.claude/skills', 'dir');
+    });
+
+    it('should refuse a target outside the base directory', async () => {
+      await expect(adapter.ensureSymlink('.claude/skills', '../../../etc')).rejects.toThrow(
+        'Path is outside the workspace directory: /etc',
+      );
+      expect(symlink).not.toHaveBeenCalled();
     });
 
     it('should refuse to replace a real file or directory', async () => {

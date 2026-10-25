@@ -2,7 +2,7 @@
 name: orchestrator
 description: >
   Orquestração agnóstica a canais para agentes de IA: turnos, delegação do CEO com
-  [DELEGATE]/[DONE]/[AGENT_RESULT], retomada de sessão ACP persistida por papel (agentSessions,
+  [DELEGATE]/[DONE]/[AGENT_RESULT], delegação paralela, retomada de sessão ACP persistida por papel e projeto (agentSessions,
   e agente, DATA_DIR), seleção de agente/modelo/effort por conversa, troca do agente do CEO,
   rodapé com TurnResult.agentInfo,
   cancelamento, fila por conversa e ISessionStorePort. Use ao implementar turnos,
@@ -42,7 +42,7 @@ apenas dados serializáveis; o estado de execução (agentes vivos, fila, turno 
 - `userId`: identificador do usuário autor da sessão;
 - `workspacePath`: caminho absoluto do diretório de trabalho do projeto;
 - `agentRole`: papel raiz da conversa (ex.: `'CEO'`);
-- `agentSessions`: lista de `AgentSession` (`agent-session.model.ts`: `role`, `agentId`, `sessionId`) com a sessão ACP de cada papel (CEO e delegados) em cada agente, no máximo uma por par papel/agente, usada para retomá-las com `loadSession`. Voltar a um agente já usado na conversa retoma a sessão dele. Uma sessão nova começa com a lista vazia;
+- `agentSessions`: lista de `AgentSession` (`agent-session.model.ts`: `role`, `agentId`, `sessionId`, `projectName`) com a sessão ACP de cada papel (CEO e delegados) em cada agente e projeto, no máximo uma por papel/agente/projeto, usada para retomá-las com `loadSession`. `projectName` é `null` para quem roda na raiz de workspaces (o CEO e delegações sem pasta); por ser parte da chave, o histórico de um papel num projeto nunca é retomado em outro. O `JsonSessionStoreAdapter` carrega entradas gravadas sem `projectName` como `null`. Voltar a um agente já usado na conversa retoma a sessão dele. Uma sessão nova começa com a lista vazia;
 - `createdAt` e `updatedAt`: marcos temporais de ciclo de vida.
 
 ### `TurnRequest` (`turn-request.model.ts`)
@@ -176,7 +176,7 @@ dentro da fila:
 - **Ciclo de vida e concorrência**: `beginTurn(conversationKey)` rastreia `activeTurnsCount` e previne expiração prematura; `runOnCeo(conversationKey, agentId, work, onQueued)` garante exclusão mútua apenas no uso da porta do CEO, liberando-a enquanto agentes delegados rodam em segundo plano;
 - **Fila de turnos do CEO**: turnos que chegam enquanto o CEO está ocupado chamam `onQueued` e aguardam a liberação da porta do CEO, exceto quando entram na rodada por steering. Novas mensagens do usuário processam imediatamente pelo CEO mesmo com delegações ativas;
 - **Steering do CEO**: `steerCeo(conversationKey, agentId, text)` injeta o texto na rodada do CEO em andamento com `sendSteeringPrompt` e devolve se foi entregue. Só tenta quando há turno ativo não cancelado, nenhum outro turno na fila (`pendingTurns === 1`, para não passar à frente de uma mensagem anterior), a porta do CEO é do `agentId` pedido e anuncia `supportsSteering` (lido do `initialize` do ACP);
-- **Delegações ativas**: `registerDelegation()`, `unregisterDelegation()`, `getActiveDelegations()` e `findActiveDelegation()` mantêm o registro de especialistas em execução em segundo plano;
+- **Delegações ativas**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` e `findActiveDelegation(conversationKey, role, projectName)` mantêm o registro de especialistas em execução em segundo plano, indexado por papel e projeto: o mesmo papel roda em paralelo em projetos diferentes. `unregisterDelegation` ignora uma delegação que já foi substituída por outra mais nova do mesmo papel e projeto;
 - **Cancelamento**: `cancel(conversationKey)` cancela o `ActiveTurn` do CEO e todas as `activeDelegations` ativas da conversa. Devolve `false` quando não há trabalho em andamento;
 - **Expiração por ociosidade**: sem turnos e sem delegações por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra todos os agentes (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
 - **Shutdown**: `onApplicationShutdown` desconecta todos os agentes (CEO e delegados). Requer `app.enableShutdownHooks()` no bootstrap.
@@ -187,10 +187,10 @@ Interpreta os marcadores da resposta do CEO e devolve uma `CeoDecision`. Um marc
 ocupa uma linha inteira, aceitando formatação markdown em volta (`` ` ``, `*`, `_`) e caixa
 qualquer; o papel é normalizado para maiúsculas:
 
-- `{ kind: 'delegate', delegation: { delegateToRole, projectName, taskSpec, sessionMode } }` para `[DELEGATE:ROLE:project]` ou com modificador de sessão `[DELEGATE:ROLE:project:new]` / `[DELEGATE:ROLE:new]` (`sessionMode?: 'resume' | 'new'`). `taskSpec` é a resposta sem a linha do marcador, incluindo o texto posterior a ele, já que os modelos às vezes escrevem a especificação depois do marcador;
+- `{ kind: 'delegate', delegations: [{ delegateToRole, projectName, taskSpec, sessionMode }] }` para `[DELEGATE:ROLE:project]` ou com modificador de sessão `[DELEGATE:ROLE:project:new]` / `[DELEGATE:ROLE:new]` (`sessionMode?: 'resume' | 'new'`). Com um único marcador, `taskSpec` é a resposta sem a linha do marcador, incluindo o texto posterior a ele, já que os modelos às vezes escrevem a especificação depois do marcador. Com vários marcadores de delegação (delegação paralela), cada `taskSpec` é o texto entre o marcador anterior (ou o início) e o seu, e nenhum texto pode vir depois do último;
 - `{ kind: 'done', summary }` para `[DONE]`. `summary` é a resposta sem a linha do marcador;
 - `{ kind: 'direct_response' }` quando a resposta não contém nenhum marcador;
-- `{ kind: 'invalid', reason }` para marcador que divide a linha com texto, mais de um marcador, marcador malformado ou delegação sem `taskSpec`. `reason` é escrito em inglês para o CEO corrigir a resposta.
+- `{ kind: 'invalid', reason }` para marcador que divide a linha com texto, `[DONE]` combinado com outros marcadores, texto depois do último marcador numa delegação paralela, marcador malformado ou delegação sem `taskSpec`. `reason` é escrito em inglês para o CEO corrigir a resposta.
 
 ## Casos de Uso e Ciclo de Vida do Turno
 
@@ -249,7 +249,7 @@ diretórios pais e vazaria para eles.
 A resposta classificada é o conteúdo do envelope `<final_response>`, extraído pelo demux, e por
 isso os marcadores ficam na última linha dele. O prompt de reparo reforça essa regra.
 
-O resultado do agente delegado volta ao CEO como `[AGENT_RESULT:ROLE]\n<resposta>`.
+O resultado do agente delegado volta ao CEO como `[AGENT_RESULT:ROLE:project]\n<resposta>` (`[AGENT_RESULT:ROLE]` sem pasta). Numa delegação paralela, os resultados chegam juntos, um bloco por delegação, na ordem dos marcadores.
 
 ### Execução de Turno (`ExecuteAgentTurnUseCase`)
 
@@ -266,18 +266,18 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 4. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
 5. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
    1. Executa o turno do CEO com `cwd = request.workspacePath`.
-   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os parâmetros do marcador precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath` e constar em `listProjectFolders()`. Falhas de validação viram `invalid`, e as de projeto listam as pastas existentes no motivo.
+   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os parâmetros do marcador precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath` e constar em `listProjectFolders()`. Falhas de validação viram `invalid`, e as de projeto listam as pastas existentes no motivo. Com várias delegações, valida cada uma e depois o conjunto: o mesmo papel não aparece duas vezes no mesmo projeto, e no máximo um agente que modifica arquivos trabalha em cada `cwd`, contando as delegações ativas de turnos anteriores; agentes com `readOnly` no contrato não contam, e uma delegação ativa do mesmo papel e projeto também não, porque a nova a redireciona.
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 6), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`:
-      - Quando o papel já possui delegação ativa (`findActiveDelegation`):
-        - Se `existing.agentPort.supportsSteering === true` e `await existing.steer(taskSpec)` confirma a entrega: retorna imediatamente `[AGENT_RESULT:ROLE]\nSteering message sent to active agent.`.
+   6. Nas demais rodadas, em `delegate`, executa todas as delegações em paralelo (`Promise.allSettled`), cada uma como abaixo, e só devolve o controle ao CEO quando todas terminam, para nenhum agente seguir rodando sem observação. Se alguma falhou, o turno falha com o primeiro erro, ou é cancelado se alguma foi cancelada:
+      - Quando o papel já possui delegação ativa no mesmo projeto (`findActiveDelegation`):
+        - Se `existing.agentPort.supportsSteering === true` e `await existing.steer(taskSpec)` confirma a entrega: retorna imediatamente `[AGENT_RESULT:ROLE:project]\nSteering message sent to active agent.`.
         - Sem steering ou com a entrega recusada: cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
       - Cria a porta do delegado com `create(agentId)`, cria `ActiveDelegation` e registra no runtime. O método `steer` atualiza a `taskSpec` e, com `supportsSteering`, devolve o resultado de `sendSteeringPrompt`; sem steering, devolve `false`.
       - Registra `[Delegation Started]` e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` e emite `finished`.
    7. No `finally` da delegação, remove do registro de delegações ativas e encerra o agente delegado (`closeSession()` + `disconnect()`).
-   8. O próximo prompt do CEO passa a ser `[AGENT_RESULT:ROLE]\n<resposta do delegado>`.
+   8. O próximo prompt do CEO passa a ser os blocos `[AGENT_RESULT:ROLE:project]\n<resposta do delegado>` de todas as delegações, separados por linha em branco.
 6. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
 
 Cada turno de agente (CEO ou delegado) executa internamente:
@@ -346,7 +346,7 @@ Interface do orquestrador para os canais:
 - **Portas e Symbols**: toda dependência externa aos use cases deve utilizar injeção por Symbol (`@Inject(ISessionStorePort)`).
 - **Sem barrel exports**: nunca crie `index.ts` em `models/`, `ports/`, `adapters/`, `services/` ou `use-cases/`.
 - **Limpeza de recursos reativos**: todo callback registrado em `onActivity` deve ser desconectado em bloco `finally`.
-- **Uma sessão ACP por conversa, papel e agente**: obtenha instâncias de `IAgentPort` exclusivamente pela `IAgentPortFactory`, sempre com o `agentId` do turno. O agente do CEO de cada conversa vive no `ConversationRuntimeService`, e cada delegação usa uma instância descartável que retoma a sessão ACP do papel.
+- **Uma sessão ACP por conversa, papel, agente e projeto**: obtenha instâncias de `IAgentPort` exclusivamente pela `IAgentPortFactory`, sempre com o `agentId` do turno. O agente do CEO de cada conversa vive no `ConversationRuntimeService`, e cada delegação usa uma instância descartável que retoma a sessão ACP do papel naquele projeto.
 - **Sessão só com dados**: `SessionContext` guarda apenas dados serializáveis. Agentes vivos, fila e turno ativo ficam no `ConversationRuntimeService`, porque o store é persistido em disco.
 - **Controle de concorrência e exclusão mútua do CEO**: todo turno registra seu ciclo de vida em `ConversationRuntimeService.beginTurn(conversationKey)`, e as interações com o CEO passam por `ConversationRuntimeService.runOnCeo(conversationKey, work)`. O CEO fica liberado durante a execução de delegados em segundo plano, mantendo o enfileiramento estrito de chamadas simultâneas na mesma porta do CEO para evitar chamadas paralelas a `prompt()`.
 - **Delegação cancelável**: todo agente em execução deve ser registrado com `turn.activate(agentPort)`, e `turn.throwIfCancelled()` deve preceder `connect` e `prompt`.

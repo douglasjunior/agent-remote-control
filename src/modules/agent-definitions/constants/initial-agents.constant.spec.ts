@@ -34,6 +34,7 @@ describe('initial-agents.constant', () => {
     expect(reviewer?.delegation).toEqual({
       project: 'required',
       sessionMode: 'overridable',
+      readOnly: true,
     });
   });
 

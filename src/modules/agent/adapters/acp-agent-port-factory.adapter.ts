@@ -10,7 +10,9 @@ import { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
 import { AntigravityAdapter } from './antigravity.adapter.js';
 import { ClaudeCodeAdapter } from './claude-code.adapter.js';
+import { CodexAdapter } from './codex.adapter.js';
 import { CopilotAdapter } from './copilot.adapter.js';
+import { CursorAdapter } from './cursor.adapter.js';
 
 
 type AgentProvider = AgentProviderInfo & { readonly build: () => IAgentPort };
@@ -41,6 +43,16 @@ export class AcpAgentPortFactoryAdapter implements IAgentPortFactory {
         agentId: 'copilot',
         displayName: 'GitHub Copilot',
         build: () => new CopilotAdapter(this.processRunner),
+      },
+      {
+        agentId: 'codex',
+        displayName: 'OpenAI Codex',
+        build: () => new CodexAdapter(this.fileSystem, this.processRunner),
+      },
+      {
+        agentId: 'cursor',
+        displayName: 'Cursor',
+        build: () => new CursorAdapter(this.fileSystem, this.processRunner),
       },
     ];
   }

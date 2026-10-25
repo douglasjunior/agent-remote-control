@@ -404,6 +404,9 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished' })).toBe(
         '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
       );
+      expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished', projectName: 'my-app' })).toBe(
+        '↩️ **Desenvolvedor concluiu** no projeto `my-app` — o CEO está revisando o resultado.',
+      );
     });
 
     it('should present the delegate response with its name and role', () => {
@@ -417,6 +420,20 @@ describe('DiscordActivityFormatter', () => {
           response: '\nLogin implemented.\n',
         }),
       ).toBe('📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nLogin implemented.');
+    });
+
+    it('should name the project in the delegate response when there is one', () => {
+      expect(
+        formatter.formatDelegateResult({
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Desenvolvedor',
+          projectName: 'my-app',
+          ...finishedDetails,
+          phase: 'finished',
+          response: 'Done.',
+        }),
+      ).toBe('📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`) no projeto `my-app`:\nDone.');
     });
 
     it('should show the delegate model, effort, tokens and duration in its footer', () => {
