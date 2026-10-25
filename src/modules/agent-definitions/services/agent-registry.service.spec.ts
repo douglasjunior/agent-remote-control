@@ -212,7 +212,7 @@ describe('AgentRegistryService', () => {
 
       expect(reminderUpper).toBeDefined();
       expect(reminderLower).toBe(reminderUpper);
-      expect(reminderUpper).toContain('conventions, architecture, linters, and documentation');
+      expect(reminderUpper).toContain('read its guidance files');
     });
 
     it('should return fallback turn reminder string for unknown role', () => {
