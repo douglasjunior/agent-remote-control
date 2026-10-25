@@ -8,53 +8,33 @@
   "files.insertFinalNewline": true,
   "js/ts.preferences.importModuleSpecifier": "relative",
   "vitest.shellType": "terminal",
-  "i18n-ally.localesPaths": [
-    "todo/",
-  ],
-  "i18n-ally.pathMatcher": "{locale}/{namespaces}.json",
-  "i18n-ally.defaultNamespace": "common",
-  "i18n-ally.keystyle": "nested",
-  "i18n-ally.sortKeys": true,
-  "i18n-ally.indent": 2,
-  "i18n-ally.tabStyle": "space",
-  "i18n-ally.namespace": true,
-  "i18n-ally.encoding": "utf-8",
-  "i18n-ally.enabledFrameworks": [
-    "react-i18next",
-    "custom"
-  ],
-  "i18n-ally.sourceLanguage": "pt",
-  "i18n-ally.displayLanguage": "pt",
   "github.copilot.chat.commitMessageGeneration.instructions": [
     {
-      "text": "Escreva mensagens de commit apenas em português do Brasil."
+      "text": "Write commit messages in English."
     },
     {
-      "text": "Use o tempo verbal no presente (ex: \"corrige\", \"adiciona\", \"remove\")."
+      "text": "Use the imperative mood (e.g. \"fix\", \"add\", \"remove\")."
     },
     {
-      "text": "Siga o padrão Conventional Commits (Angular): <type>(escopo?): assunto curto. Exemplos: \"feat(portfolio): adiciona seção de projetos\", \"fix(contacts): corrige link do GitHub\"."
+      "text": "Follow Conventional Commits (Angular): <type>(scope?): short subject. Examples: \"feat(orchestrator): add user language preference\", \"fix(discord): handle empty attachments\"."
     },
     {
-      "text": "Tipos principais: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert. Use o tipo apropriado no início da mensagem."
+      "text": "Main types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert. Start the message with the appropriate type."
     },
     {
-      "text": "Escopo é opcional e deve indicar a parte afetada do projeto (ex: \"hero\", \"repos\", \"build\")."
+      "text": "The scope is optional and names the affected part of the project (e.g. \"orchestrator\", \"discord\", \"agent\")."
     },
     {
-      "text": "Mantenha o assunto (subject) conciso, preferencialmente <= 50 caracteres; não termine com ponto final. Use o corpo para contexto adicional quando necessário."
+      "text": "Keep the subject concise, preferably <= 50 characters, without a trailing period. Use the body for additional context when needed."
     },
     {
-      "text": "Quando a alteração for apenas documentação ou código não útil do projeto, adicione no final da mensagem de commit um [skip ci]."
+      "text": "Focus on meaningful changes and avoid generic messages such as \"update code\" or \"improve maintainability\"."
     },
     {
-      "text": "Foque em mudanças significativas e evite mensagens genéricas como \"atualiza código\", \"melhora manutenibilidade\", etc."
+      "text": "Ignore generated or metadata files such as yarn.lock unless the change is relevant."
     },
     {
-      "text": "Ignore arquivos auto-gerados ou de metadados como yarn.lock e *.bru a não ser que a mudança seja relevante."
-    },
-    {
-      "text": "Adicione apenas uma linha de assunto e quando necessário adicione um corpo detalhado após o assunto, separado por uma linha em branco."
+      "text": "Write a single subject line and, when needed, a detailed body after it, separated by a blank line."
     }
   ],
   "git.detectWorktrees": true
