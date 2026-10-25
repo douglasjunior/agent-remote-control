@@ -28,7 +28,6 @@ type ParsedTag =
 
 const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
 const ROLE = /^[A-Za-z][\w-]*$/;
-const LEGACY_MARKER = /\[(?:DELEGATE|DONE)\b[^\]\n]*\]/i;
 
 const DELEGATE_ATTRIBUTES = ['role', 'project', 'session'];
 const ATTACHMENT_ATTRIBUTES = ['path'];
@@ -38,10 +37,6 @@ export class DelegationDetectorService {
   constructor(private readonly questionParser: QuestionParserService) {}
 
   detect(response: string): CeoDecision {
-    if (LEGACY_MARKER.test(response)) {
-      return this.invalid('Bracket markers such as [DELEGATE:...] and [DONE] are not part of the protocol. Delegate with <delegate role="ROLE">task</delegate>, and answer the user without any tag to finish.');
-    }
-
     const delegations: DelegationResult[] = [];
     const attachments: string[] = [];
     const messageParts: string[] = [];

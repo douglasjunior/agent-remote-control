@@ -44,6 +44,18 @@ describe('resolveAttachmentPaths', () => {
     expect(resolveAttachmentPaths(['file:///app/shot.png'], '/workspace')).toEqual(['/app/shot.png']);
   });
 
+  it('should decode a percent-encoded file URL', () => {
+    existingFiles('/app/My Report.pdf');
+
+    expect(resolveAttachmentPaths(['file:///app/My%20Report.pdf'], '/workspace')).toEqual(['/app/My Report.pdf']);
+  });
+
+  it('should strip the prefix of a file URL that names a host', () => {
+    existingFiles('/workspace/app/shot.png');
+
+    expect(resolveAttachmentPaths(['file://app/shot.png'], '/workspace')).toEqual(['/workspace/app/shot.png']);
+  });
+
   it('should drop missing files and directories', () => {
     existingFiles('/app/shot.png');
 

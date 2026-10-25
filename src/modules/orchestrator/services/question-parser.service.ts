@@ -12,6 +12,10 @@ export type ParsedQuestions =
 
 const QUESTION_TAG = /<(\/?)(question|option)\b([^>]*)>/gi;
 const OPTION_TAG = /<(\/?)option\b([^>]*)>/gi;
+/** Fenced blocks first, so an inline span never starts inside a fence. */
+const MARKDOWN_CODE = /```[\s\S]*?(?:```|$)|`[^`\n]+`/g;
+
+type CodeSpan = readonly [start: number, end: number];
 
 @Injectable()
 export class QuestionParserService {
@@ -19,9 +23,10 @@ export class QuestionParserService {
     const questions: UserQuestion[] = [];
     const messageParts: string[] = [];
     const tags = new RegExp(QUESTION_TAG.source, QUESTION_TAG.flags);
+    const codeSpans = this.findCodeSpans(response);
     let cursor = 0;
 
-    for (let tag = tags.exec(response); tag; tag = tags.exec(response)) {
+    for (let tag = this.nextTag(tags, response, codeSpans); tag; tag = this.nextTag(tags, response, codeSpans)) {
       const [rawTag, closing, rawName, rawAttributes] = tag;
       const name = rawName!.toLowerCase();
       if (name === 'option') {
@@ -93,6 +98,23 @@ export class QuestionParserService {
       return 'A <question> has no text. Write the question itself inside the tag, before its options.';
     }
     return { text, ...(rationale ? { rationale } : {}), options };
+  }
+
+  /** Tags inside Markdown code are quoted markup, such as an HTML `<option>`, not questions. */
+  private nextTag(tags: RegExp, response: string, codeSpans: readonly CodeSpan[]): RegExpExecArray | null {
+    let tag = tags.exec(response);
+    while (tag && this.isInCode(tag.index, codeSpans)) {
+      tag = tags.exec(response);
+    }
+    return tag;
+  }
+
+  private findCodeSpans(response: string): CodeSpan[] {
+    return Array.from(response.matchAll(MARKDOWN_CODE), match => [match.index, match.index + match[0].length] as const);
+  }
+
+  private isInCode(index: number, codeSpans: readonly CodeSpan[]): boolean {
+    return codeSpans.some(([start, end]) => index >= start && index < end);
   }
 
   private invalid(reason: string): ParsedQuestions {

@@ -93,7 +93,7 @@ describe('CursorAdapter', () => {
       const result = await acpHarness.lastClient?.extensionRequest('cursor/ask_question', { question: 'Which DB?' });
 
       expect(result).toEqual({
-        outcome: { outcome: 'skipped', reason: expect.stringContaining('Write your question in your final response') },
+        outcome: { outcome: 'skipped', reason: expect.stringContaining('Write your question in your final response with the <question> tags') },
       });
     });
 

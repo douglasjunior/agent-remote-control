@@ -201,12 +201,12 @@ O `CodexAdapter` (`agentName = 'codex'`) integra o OpenAI Codex pelo bridge
 O `CursorAdapter` (`agentName = 'cursor'`) integra o Cursor CLI pelo modo ACP nativo:
 
 - Executa `cursor-agent` (ou `agent`, nome de instalações mais novas, quando só ele está no `PATH`) com `--force --sandbox disabled --trust --approve-mcps acp`, em `tmpdir()` e com `buildAgentEnv`. As flags globais vêm antes do subcomando e desligam toda aprovação interativa.
-- Responde os métodos bloqueantes `cursor/ask_question` (`skipped`) e `cursor/create_plan` (`rejected`) com uma mensagem que manda o agente escrever a pergunta ou o plano na resposta final, em vez de deixar o turno esperando.
+- Responde os métodos bloqueantes `cursor/ask_question` (`skipped`) e `cursor/create_plan` (`rejected`) com uma mensagem que manda o agente escrever a pergunta (com as tags `<question>` do protocolo de perguntas) ou o plano na resposta final, em vez de deixar o turno esperando.
 - O Cursor codifica os parâmetros do modelo no próprio ID (`claude-opus-5[thinking=true,effort=high,fast=false]`) e não publica opção de effort; o `mapModel` leva o nível de raciocínio e o `fast` para o nome exibido e lista os parâmetros na descrição.
 
 ### Versões do ACP
 
-`@agentclientprotocol/sdk`, `@agentclientprotocol/claude-agent-acp` e `@agentclientprotocol/codex-acp` ficam em versões exatas, escolhidas para que os dois bridges dependam da mesma linha do SDK que o projeto usa, resolvendo para uma única cópia no lock. Ao atualizar, suba os três juntos e confira com `yarn why @agentclientprotocol/sdk`; o `claude-agent-acp` fixa o SDK em versão exata e passa para uma linha major nova antes do `codex-acp`.
+`@agentclientprotocol/claude-agent-acp` e `@agentclientprotocol/codex-acp` caminham sempre em versões compatíveis entre si: a dependência de `@agentclientprotocol/sdk` de cada bridge resolve para a mesma versão do SDK declarada pelo projeto, deixando uma única cópia no lock. Ao atualizar qualquer um dos três, confira com `yarn why @agentclientprotocol/sdk`; se um bridge exigir uma versão do SDK fora do alcance do outro, segure a atualização até os dois coincidirem.
 
 ## Regras Prescritivas
 

@@ -91,13 +91,6 @@ describe('DelegationDetectorService', () => {
   });
 
   describe('invalid responses', () => {
-    it.each([
-      ['Go.\n[DELEGATE:DEVELOPER:my-app]'],
-      ['All done.\n[DONE]'],
-    ])('should reject the bracket markers in %j', (response) => {
-      expect(reasonOf(response)).toMatch(/^Bracket markers such as \[DELEGATE:\.\.\.\] and \[DONE\] are not part of the protocol/);
-    });
-
     it('should reject a closing tag without its opening tag', () => {
       expect(reasonOf('Done.</delegate>')).toBe('Found </delegate> without its opening <delegate> tag.');
     });
