@@ -8,6 +8,7 @@ vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn(),
   readdir: vi.fn(),
   readlink: vi.fn(),
+  stat: vi.fn(),
   symlink: vi.fn(),
   unlink: vi.fn(),
   writeFile: vi.fn(),
@@ -17,15 +18,15 @@ vi.mock('node:os', () => ({
   platform: vi.fn(() => 'linux'),
 }));
 
-const { lstat, mkdir, readdir, readlink, symlink, unlink, writeFile } = await import('node:fs/promises');
+const { lstat, mkdir, readdir, readlink, stat, symlink, unlink, writeFile } = await import('node:fs/promises');
 const { platform } = await import('node:os');
 
 function errnoError(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(code), { code });
 }
 
-function dirent(name: string, isDirectory: boolean) {
-  return { name, isDirectory: () => isDirectory };
+function dirent(name: string, isDirectory: boolean, isSymbolicLink = false) {
+  return { name, isDirectory: () => isDirectory, isSymbolicLink: () => isSymbolicLink };
 }
 
 function stats(isSymbolicLink: boolean) {
@@ -129,6 +130,22 @@ describe('LocalWorkspaceAdapter', () => {
 
       await expect(adapter.listProjectFolders()).resolves.toEqual(['alpha', 'zeta']);
       expect(readdir).toHaveBeenCalledWith('/test/workspaces', { withFileTypes: true });
+    });
+
+    it('should list symlinked folders and skip broken links or links to files', async () => {
+      vi.mocked(readdir).mockResolvedValue([
+        dirent('linked', false, true),
+        dirent('file-link', false, true),
+        dirent('broken', false, true),
+      ] as never);
+      vi.mocked(stat).mockImplementation((path) => {
+        if (path === '/test/workspaces/broken') {
+          return Promise.reject(errnoError('ENOENT'));
+        }
+        return Promise.resolve({ isDirectory: () => path === '/test/workspaces/linked' } as never);
+      });
+
+      await expect(adapter.listProjectFolders()).resolves.toEqual(['linked']);
     });
 
     it('should return no folders when the base directory does not exist', async () => {
