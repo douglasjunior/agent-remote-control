@@ -196,7 +196,7 @@ em branco repetidas colapsadas, é a `message` dirigida ao usuário:
 - `{ kind: 'delegate', message, delegations: [{ delegateToRole, projectName, taskSpec, sessionMode? }] }` quando há ao menos um `<delegate role="ROLE" project="pasta" session="new|resume">tarefa</delegate>`. `role` é obrigatório e normalizado para maiúsculas, `project` e `session` são opcionais, e `taskSpec` é o conteúdo da tag sem os espaços das bordas, preservando markdown e `<`/`>` soltos. Só o conteúdo da tag chega ao agente;
 - `{ kind: 'ask', message, questions }` quando há `<question>`: perguntas ao usuário, cujas respostas voltam ao CEO no mesmo turno;
 - `{ kind: 'reply', message, attachments }` quando não há `<delegate>` nem `<question>`: a resposta ao usuário, que encerra o turno. `attachments` lista o atributo `path` de cada `<attachment path="...">descrição</attachment>` ou `<attachment path="..." />`, na ordem em que aparecem;
-- `{ kind: 'invalid', reason }` para marcador entre colchetes (`[DELEGATE:...]`, `[DONE]`), comum em sessões retomadas com histórico anterior ao protocolo de tags; tag de fechamento sem abertura; `<delegate>` ou `<attachment>` sem fechamento ou com outra de mesmo nome dentro; atributo desconhecido ou sem aspas; `<delegate>` sem `role` válido, com `project` vazio, `session` diferente de `new`/`resume` ou sem tarefa; `<attachment>` sem `path`; anexos numa resposta que delega; `<question>` malformada; e perguntas junto com `<delegate>` ou com `<attachment>`. `reason` é escrito em inglês para o CEO corrigir a resposta.
+- `{ kind: 'invalid', reason }` para tag de fechamento sem abertura; `<delegate>` ou `<attachment>` sem fechamento ou com outra de mesmo nome dentro; atributo desconhecido ou sem aspas; `<delegate>` sem `role` válido, com `project` vazio, `session` diferente de `new`/`resume` ou sem tarefa; `<attachment>` sem `path`; anexos numa resposta que delega; `<question>` malformada; e perguntas junto com `<delegate>` ou com `<attachment>`. `reason` é escrito em inglês para o CEO corrigir a resposta.
 
 ## Casos de Uso e Ciclo de Vida do Turno
 
@@ -329,7 +329,9 @@ Entendi assim: ... (texto livre, mostrado antes da primeira pergunta)
 - **`QuestionParserService`** (`services/question-parser.service.ts`) devolve `none`, `questions`
   (`message` e `UserQuestion[]` com `text`, `rationale?` e `options`) ou `invalid`: `<option>` fora de
   `<question>`, tag sem fechamento ou sem abertura, atributo desconhecido (`<question>` aceita só
-  `rationale`; `<option>` nenhum), pergunta sem texto ou opção vazia.
+  `rationale`; `<option>` nenhum), pergunta sem texto ou opção vazia. Tags dentro de código Markdown
+  (bloco cercado por crases triplas ou trecho entre crases) são marcação citada, como um `<option>` de
+  HTML, e ficam no texto.
 - **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) mantém em memória uma
   fila de pedidos por conversa, na ordem em que os agentes perguntaram, e expõe uma pergunta por vez.
   Fica em memória porque o agente que pergunta aguarda vivo dentro do turno, e um reinício já derruba
