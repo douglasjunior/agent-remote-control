@@ -6,6 +6,7 @@ import {
 } from './code-reviewer.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
@@ -38,6 +39,11 @@ describe('code-reviewer.prompt', () => {
   it('should confine the code reviewer to its CWD in the prompt and in every turn', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(CODE_REVIEWER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
+  });
+
+  it('should orient the code reviewer in the project documentation in the prompt and in every turn', () => {
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
   });
 
   it('should define CODE_REVIEWER_TURN_REMINDER with objective review, findings format, PR publishing, and final response instructions', () => {
