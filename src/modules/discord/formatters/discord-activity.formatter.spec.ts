@@ -224,6 +224,42 @@ describe('DiscordActivityFormatter', () => {
     });
   });
 
+  describe('stripLocalLinks', () => {
+    it('should keep only the text of a file:// link with a line anchor', () => {
+      const content = 'No componente [`src/Header.js`](file:///home/u/repo/src/Header.js#L51-L54):';
+
+      expect(formatter.stripLocalLinks(content)).toBe('No componente `src/Header.js`:');
+    });
+
+    it('should keep only the text of links to absolute and relative paths', () => {
+      const content = 'See [Header.js](/home/u/repo/Header.js) and [utils](src/utils.ts:12 "utils").';
+
+      expect(formatter.stripLocalLinks(content)).toBe('See Header.js and utils.');
+    });
+
+    it('should keep only the alt text of a local image', () => {
+      expect(formatter.stripLocalLinks('![diagram](file:///tmp/d.png)')).toBe('diagram');
+    });
+
+    it('should preserve web and mailto links', () => {
+      const content = '[MR](https://gitlab.com/g/p/-/merge_requests/88) [docs](http://x.dev) [me](mailto:a@b.c)';
+
+      expect(formatter.stripLocalLinks(content)).toBe(content);
+    });
+
+    it('should leave links inside fenced code blocks untouched', () => {
+      const content = '[a](file:///a.ts)\n```md\n[b](file:///b.ts)\n```\n[c](file:///c.ts)';
+
+      expect(formatter.stripLocalLinks(content)).toBe('a\n```md\n[b](file:///b.ts)\n```\nc');
+    });
+
+    it('should strip local links from thought activity', () => {
+      const activity: AgentActivity = { kind: 'thought', id: '1', text: 'Reading [a.ts](file:///a.ts)' };
+
+      expect(formatter.formatActivity(activity)).toBe('> 💭 *Reading a.ts*');
+    });
+  });
+
   describe('splitMessage', () => {
     it('should return empty array for empty string', () => {
       expect(formatter.splitMessage('')).toEqual([]);

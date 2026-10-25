@@ -497,7 +497,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     attachments?: readonly string[],
   ): Promise<void> {
     const limit = footer ? DISCORD_MESSAGE_LIMIT - footer.length - 1 : DISCORD_MESSAGE_LIMIT;
-    const chunks = this.activityFormatter.splitMessage(content, limit);
+    const chunks = this.activityFormatter.splitMessage(this.activityFormatter.stripLocalLinks(content), limit);
     for (const [index, chunk] of chunks.entries()) {
       const isLast = index === chunks.length - 1;
       const messageContent = isLast && footer ? `${chunk}\n${footer}` : chunk;

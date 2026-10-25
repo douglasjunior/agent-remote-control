@@ -219,6 +219,14 @@ are split by `DiscordActivityFormatter.splitMessage(content, maxLength)`:
   it, and lines larger than the available space are sliced by the same mechanism, preserving
   the code block state between slices.
 
+## Local Links (`stripLocalLinks`)
+
+Discord renders masked links only for web URLs, so agent links to local files
+(`[text](file:///…#L51)`, absolute or relative paths) would show up raw. Before splitting,
+`sendChunks` and thought formatting pass the text through `stripLocalLinks`, which keeps only
+the link text (and the alt text of local images). Links to `http(s)://` and `mailto:` and
+anything inside fenced code blocks stay untouched.
+
 ## Interactions and Slash Commands
 
 Slash commands are intercepted by `DiscordInteractionHandler`:

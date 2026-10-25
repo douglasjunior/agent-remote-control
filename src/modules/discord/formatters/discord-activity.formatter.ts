@@ -10,6 +10,8 @@ import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/us
 
 
 const FENCE_PATTERN = /^```\w*/;
+// Discord only renders masked links for web URLs; any other target (file://, absolute or relative paths) shows up raw.
+const LOCAL_LINK_PATTERN = /!?\[([^\]\n]+)\]\(<?(?!https?:\/\/|mailto:)[^\s)>]+>?(?:\s+"[^"\n]*")?\)/g;
 const CLOSE_FENCE = '\n```';
 const DEFAULT_LABEL = 'default';
 const MAX_TOOL_DETAILS_LENGTH = 1800;
@@ -22,7 +24,7 @@ export class DiscordActivityFormatter {
       if (!text) {
         return null;
       }
-      const lines = text.split('\n');
+      const lines = this.stripLocalLinks(text).split('\n');
       return lines
         .map((line, index) => (index === 0 ? `> 💭 *${line}*` : `> *${line}*`))
         .join('\n');
@@ -188,6 +190,20 @@ export class DiscordActivityFormatter {
       return `${(tokens / 1_000).toFixed(1)}k`;
     }
     return String(tokens);
+  }
+
+  stripLocalLinks(content: string): string {
+    let insideFence = false;
+    return content
+      .split('\n')
+      .map((line) => {
+        if (FENCE_PATTERN.test(line)) {
+          insideFence = !insideFence;
+          return line;
+        }
+        return insideFence ? line : line.replace(LOCAL_LINK_PATTERN, '$1');
+      })
+      .join('\n');
   }
 
   splitMessage(content: string, maxLength = 2000): string[] {
