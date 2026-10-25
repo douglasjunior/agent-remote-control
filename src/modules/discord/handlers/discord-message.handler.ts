@@ -17,7 +17,7 @@ import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.j
 
 
 const DISCORD_MESSAGE_LIMIT = 2000;
-const STEERED_NOTICE = '📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*';
+const STEERED_NOTICE = '📨 *Message sent to the running agent. The reply will come with the current task\'s response.*';
 
 type SendableChannel = {
   send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
@@ -96,7 +96,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           `[Empty Prompt] Received empty message from @${authorName} in channel=${channelId}, thread=${threadId ?? 'none'}`,
         );
         await targetChannel.send(
-          'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+          'Hi! How can I help you today? Please send an instruction or task.',
         );
         return;
       }
@@ -153,13 +153,21 @@ export class DiscordMessageHandler implements OnModuleInit {
         }
         return;
       }
+      if (resolution.kind === 'language_set') {
+        await targetChannel.send(this.activityFormatter.formatLanguageSet(resolution.language));
+        return;
+      }
+      if (resolution.kind === 'invalid_language') {
+        await targetChannel.send(this.activityFormatter.formatInvalidLanguage());
+        return;
+      }
       if (resolution.configured) {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
       }
       const { prompt } = resolution;
 
       const progressMessage: ProgressMessage = await targetChannel.send(
-        '⏳ *Iniciando processamento...*',
+        '⏳ *Starting...*',
       );
       let cleanInitialProgressPromise: Promise<void> | null = null;
       const cleanInitialProgress = (): Promise<void> => {
@@ -318,7 +326,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           onQuestion,
           onQueued: () => {
             void progressMessage
-              .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
+              .edit('⏳ *Waiting for the previous task in this conversation to finish...*')
               .catch(() => undefined);
           },
         });
@@ -340,7 +348,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       if (targetChannel) {
         await this.sendChunks(
           targetChannel,
-          `❌ **Ocorreu um erro ao processar sua solicitação:** ${errorMessage}`,
+          `❌ **An error occurred while processing your request:** ${errorMessage}`,
         ).catch((sendError: unknown) => {
           this.logger.warn(`Failed to report the error to Discord: ${String(sendError)}`);
         });
@@ -418,6 +426,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
     const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
     return this.orchestratorService.hasPendingQuestions(conversationId)
+      || this.orchestratorService.hasPendingLanguageChange(conversationId)
       || this.orchestratorService.hasActiveConfigSelection(conversationId);
   }
 
@@ -449,7 +458,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       );
       await this.sendChunks(
         targetChannel,
-        result.response || '✅ *Tarefa concluída sem mensagem de resposta.*',
+        result.response || '✅ *Task completed with no response message.*',
         footer,
         result.attachments,
       );
@@ -466,7 +475,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       this.logger.warn(
         `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
       );
-      await this.sendChunks(targetChannel, '⚠️ **Turno cancelado pelo usuário.**', footer, result.attachments);
+      await this.sendChunks(targetChannel, '⚠️ **Turn cancelled by the user.**', footer, result.attachments);
       return;
     }
 
@@ -475,7 +484,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     );
     await this.sendChunks(
       targetChannel,
-      `❌ **Erro na execução**: ${result.errorMessage || 'Falha desconhecida.'}`,
+      `❌ **Execution error**: ${result.errorMessage || 'Unknown failure.'}`,
       footer,
       result.attachments,
     );

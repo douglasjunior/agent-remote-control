@@ -814,7 +814,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     const stderr = this.stderrBuffer.trim();
 
     const lines = [
-      `Erro retornado pelo agente (${this.agentName}):`,
+      `Error returned by the agent (${this.agentName}):`,
       rawMessage,
     ];
 

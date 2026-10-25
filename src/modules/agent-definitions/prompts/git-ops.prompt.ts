@@ -67,7 +67,7 @@ Derive the folder name from the repository URL: take the last path segment and d
 - Never print, copy, or transmit the private key ($HOME/.ssh/id_rsa).
 
 ### Initializing a New Repository
-When asked to initialize rather than clone, create the folder from the given name, run git init, and make a single scaffolding commit following the Conventional Commits format in Portuguese (pt-BR), subject in the present indicative and at most 50 characters. Record it in the manifest.
+When asked to initialize rather than clone, create the folder from the given name, run git init, and make a single scaffolding commit following the Conventional Commits format in English, subject in the imperative mood and at most 50 characters. Record it in the manifest.
 
 ### Reporting
 State the folder name, the current branch, and what changed on the remote. When an operation fails, report the exact Git error rather than a summary, so the caller can decide the next step.

@@ -1,54 +1,54 @@
 ---
 name: clean-architecture-nestjs
 description: >
-  Padrão arquitetural Clean Architecture com Ports & Adapters em NestJS. Define a
-  divisão em módulos verticais, portas tipadas com Symbol para injeção de dependência,
-  adaptadores de infraestrutura, casos de uso orquestrando regras de negócio e
-  adaptadores de entrada (Discord handlers, controllers). Use ao modelar, criar ou refatorar
-  módulos, ports, adapters e use cases.
+  Clean Architecture with Ports & Adapters architectural pattern in NestJS. Defines the
+  split into vertical modules, ports typed with Symbol for dependency injection,
+  infrastructure adapters, use cases orchestrating business rules and
+  inbound adapters (Discord handlers, controllers). Use when modeling, creating or refactoring
+  modules, ports, adapters and use cases.
 ---
 
-# Clean Architecture em NestJS (Ports & Adapters)
+# Clean Architecture in NestJS (Ports & Adapters)
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar **qualquer regra descrita aqui**. O critério não
-> é *qual* regra — é a natureza da mudança: uma diretriz de arquitetura, convenção de
-> camadas ou regra de injeção mudou → atualize; refator técnico que preserva o padrão
-> descrito → não toque.
+> Update this document whenever **any rule described here** changes. The criterion is not
+> *which* rule — it is the nature of the change: an architecture guideline, layering
+> convention or injection rule changed → update; a technical refactor that preserves the
+> described pattern → leave it alone.
 
-Esta arquitetura rege a separação de responsabilidades em todo o código-fonte da aplicação.
-O objetivo central é isolar as regras de negócio de detalhes técnicos e de bibliotecas externas
-(Discord.js, SDK do ACP, sistema de arquivos ou rede), garantindo alta testabilidade, baixo
-acoplamento e facilidade de evolução.
+This architecture governs the separation of responsibilities across the application's entire source code.
+The central goal is to isolate business rules from technical details and external libraries
+(Discord.js, the ACP SDK, the file system or the network), ensuring high testability, low
+coupling and ease of evolution.
 
-## Orquestração centralizada em Use Cases
+## Orchestration centralized in Use Cases
 
-A orquestração do comportamento e o fluxo de regras de negócio residem exclusivamente em **Casos de Uso (Use Cases)** independentes e coesos (`*.use-case.ts`). Não são utilizadas classes de workflows nem máquinas de estado acopladas.
+Behavior orchestration and business rule flow reside exclusively in independent, cohesive **Use Cases** (`*.use-case.ts`). Workflow classes and coupled state machines are not used.
 
-## Divisão vertical em módulos NestJS
+## Vertical split into NestJS modules
 
-O código de negócio fica organizado em módulos verticais orientados a domínios dentro de
-`src/modules/<nome>/`. Cada módulo encapsula suas portas, adaptadores, casos de uso e
-handlers de entrada:
+Business code is organized into domain-oriented vertical modules under
+`src/modules/<name>/`. Each module encapsulates its ports, adapters, use cases and
+inbound handlers:
 
 ```text
-src/modules/<nome>/
-├── ports/              # Interfaces e Symbols das portas técnicas (*.port.ts)
-├── adapters/           # Implementações concretas de tecnologia (*.adapter.ts)
-├── use-cases/          # Regras de negócio e orquestração (*.use-case.ts)
-├── services/           # Serviços utilitários concretos sem variação (*.service.ts)
-├── handlers/           # Adaptadores primários (ex.: Discord handlers, controllers)
-└── <nome>.module.ts    # Configuração e amarração de injeção de dependência NestJS
+src/modules/<name>/
+├── ports/              # Interfaces and Symbols of the technical ports (*.port.ts)
+├── adapters/           # Concrete technology implementations (*.adapter.ts)
+├── use-cases/          # Business rules and orchestration (*.use-case.ts)
+├── services/           # Concrete utility services with no variation (*.service.ts)
+├── handlers/           # Primary adapters (e.g. Discord handlers, controllers)
+└── <name>.module.ts    # NestJS dependency injection configuration and wiring
 ```
 
-## Camadas e convenções
+## Layers and conventions
 
 ### 1. Ports (`*.port.ts`)
 
-Uma porta define um contrato de fronteira exigido pelas regras de negócio. Como interfaces em
-TypeScript são apagadas em tempo de compilação, **toda porta exporta tanto a `interface` quanto
-um `Symbol` homônimo com o mesmo nome**:
+A port defines a boundary contract required by the business rules. Since TypeScript
+interfaces are erased at compile time, **every port exports both the `interface` and
+a `Symbol` with the same name**:
 
 ```typescript
 export interface IAgentClientPort {
@@ -60,16 +60,16 @@ export interface IAgentClientPort {
 export const IAgentClientPort = Symbol('IAgentClientPort');
 ```
 
-- Localize em `src/modules/<nome>/ports/<nome-da-porta>.port.ts`;
-- O nome da interface inicia com `I` maiúsculo e termina com `Port`;
-- O `Symbol` possui o mesmo identificador da interface;
-- Métodos de porta utilizam tipos puros de domínio ou DTOs primitivos, nunca tipos de bibliotecas
-  externas.
+- Place in `src/modules/<name>/ports/<port-name>.port.ts`;
+- The interface name starts with a capital `I` and ends with `Port`;
+- The `Symbol` has the same identifier as the interface;
+- Port methods use pure domain types or primitive DTOs, never types from external
+  libraries.
 
 ### 2. Adapters (`*.adapter.ts`)
 
-Um adaptador é a implementação concreta de uma porta tecnológica (Driven / Secondary Adapter).
-Consome SDKs externos, drivers de I/O ou a API do sistema operacional:
+An adapter is the concrete implementation of a technology port (Driven / Secondary Adapter).
+It consumes external SDKs, I/O drivers or the operating system API:
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -78,28 +78,28 @@ import { IAgentClientPort } from '../ports/agent-client.port.ts';
 @Injectable()
 export class AcpAgentClientAdapter implements IAgentClientPort {
   async connect(targetUri: string): Promise<void> {
-    // implementação concreta consumindo o SDK do ACP
+    // concrete implementation consuming the ACP SDK
   }
 
   async disconnect(): Promise<void> {
-    // encerramento de conexão
+    // connection shutdown
   }
 
   async sendPrompt(prompt: string): Promise<string> {
-    // envio do prompt via protocolo
+    // sends the prompt via the protocol
     return 'response';
   }
 }
 ```
 
-- Localize em `src/modules/<nome>/adapters/<nome-do-adapter>.adapter.ts`;
-- Decorado obrigatoriamente com `@Injectable()`;
-- Declara explicitamente `implements I<Nome>Port`.
+- Place in `src/modules/<name>/adapters/<adapter-name>.adapter.ts`;
+- Must be decorated with `@Injectable()`;
+- Explicitly declares `implements I<Name>Port`.
 
 ### 3. Use Cases (`*.use-case.ts`)
 
-Um caso de uso orquestra uma ação ou regra de negócio específica do sistema. Possui
-responsabilidade única (*Single Responsibility Principle*):
+A use case orchestrates a specific system action or business rule. It has a
+single responsibility (*Single Responsibility Principle*):
 
 ```typescript
 import { Inject, Injectable } from '@nestjs/common';
@@ -131,16 +131,16 @@ export class SendAgentPromptUseCase {
 }
 ```
 
-- Localize em `src/modules/<nome>/use-cases/<nome-da-acao>.use-case.ts`;
-- Decorado obrigatoriamente com `@Injectable()`;
-- Injeta portas utilizando `@Inject(IMyPort)` associado ao `Symbol` da porta;
-- Expõe método público primário `execute(input)`;
-- **Nunca importa diretamente classes de adaptadores concretos**: depende exclusivamente dos ports.
+- Place in `src/modules/<name>/use-cases/<action-name>.use-case.ts`;
+- Must be decorated with `@Injectable()`;
+- Injects ports using `@Inject(IMyPort)` bound to the port's `Symbol`;
+- Exposes a primary public method `execute(input)`;
+- **Never imports concrete adapter classes directly**: depends exclusively on ports.
 
-### 4. Services Concretos (`*.service.ts`)
+### 4. Concrete Services (`*.service.ts`)
 
-Utilizados para lógica utilitária, cálculos internos ou agregação técnica auxiliar quando
-**não há previsão de variação ou troca tecnológica**:
+Used for utility logic, internal calculations or auxiliary technical aggregation when
+**no variation or technology swap is expected**:
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -153,13 +153,13 @@ export class MessageFormatterService {
 }
 ```
 
-- Localize em `src/modules/<nome>/services/<nome>.service.ts`;
-- Decorado com `@Injectable()`.
+- Place in `src/modules/<name>/services/<name>.service.ts`;
+- Decorated with `@Injectable()`.
 
-### 5. Controllers e Handlers (`*.controller.ts`, `*.handler.ts`)
+### 5. Controllers and Handlers (`*.controller.ts`, `*.handler.ts`)
 
-Adaptadores primários de entrada (Driving / Primary Adapters). Recebem eventos externos
-(interações do Discord, comandos barra, webhooks ou rotas HTTP):
+Primary inbound adapters (Driving / Primary Adapters). They receive external events
+(Discord interactions, slash commands, webhooks or HTTP routes):
 
 ```typescript
 import { Injectable } from '@nestjs/common';
@@ -181,15 +181,15 @@ export class DiscordCommandHandler {
 }
 ```
 
-- Localize em `src/modules/<nome>/handlers/` ou `src/modules/<nome>/controllers/`;
-- Recebem e validam a entrada superficial do usuário ou protocolo externo;
-- Delegam a execução imediatamente para um ou mais Casos de Uso;
-- Formatam a resposta de retorno de volta para o cliente.
+- Place in `src/modules/<name>/handlers/` or `src/modules/<name>/controllers/`;
+- Receive and validate the surface input from the user or external protocol;
+- Delegate execution immediately to one or more Use Cases;
+- Format the response back to the client.
 
-## Registro e Injeção de Dependências no Módulo NestJS
+## Dependency Registration and Injection in the NestJS Module
 
-A vinculação entre a porta abstrata e sua implementação concreta é configurada no arquivo
-`<nome>.module.ts` através do `provide` com o `Symbol` da porta:
+The binding between the abstract port and its concrete implementation is configured in the
+`<name>.module.ts` file through `provide` with the port's `Symbol`:
 
 ```typescript
 import { Module } from '@nestjs/common';
@@ -212,25 +212,25 @@ import { DiscordCommandHandler } from './handlers/discord-command.handler.ts';
 export class AgentModule {}
 ```
 
-## Regras de Dependência e Fronteiras
+## Dependency Rules and Boundaries
 
-1. **Sentido das dependências**: Handlers/Controllers → Use Cases → Ports ← Adapters.
-2. **Casos de uso não conhecem tecnologia**: Use Cases nunca importam nada de `adapters/`,
-   `discord.js`, SDKs proprietários ou drivers de infraestrutura.
-3. **Proibição de barrel exports**: Não crie arquivos `index.ts`. Importe sempre a partir do
-   arquivo original.
-4. **Um use case por arquivo**: Cada classe de Caso de Uso mora em seu próprio arquivo `*.use-case.ts`,
-   com seu teste correspondente `*.use-case.spec.ts`.
-5. **Validação mandatória de lint e testes**: Toda e qualquer alteração de código exige a execução
-   de `yarn lint` e `yarn test` (e `yarn test:e2e` quando afetar pontos de entrada). A formatação do
-   código é feita exclusivamente via ESLint (`yarn format`).
+1. **Dependency direction**: Handlers/Controllers → Use Cases → Ports ← Adapters.
+2. **Use cases know no technology**: Use Cases never import anything from `adapters/`,
+   `discord.js`, proprietary SDKs or infrastructure drivers.
+3. **No barrel exports**: Do not create `index.ts` files. Always import from the
+   original file.
+4. **One use case per file**: Each Use Case class lives in its own `*.use-case.ts` file,
+   with its corresponding test `*.use-case.spec.ts`.
+5. **Mandatory lint and test validation**: Every code change requires running
+   `yarn lint` and `yarn test` (and `yarn test:e2e` when it affects entry points). Code
+   formatting is done exclusively via ESLint (`yarn format`).
 
 ## Checklist
 
-- [ ] Porta criada com `interface` e `Symbol` com o mesmo nome (`export const IPort = Symbol('IPort')`).
-- [ ] Adaptador implementa a porta (`implements IPort`) e utiliza o decorator `@Injectable()`.
-- [ ] Caso de uso injeta a porta via `@Inject(IPort)` e contém método `execute()`.
-- [ ] Caso de uso livre de imports de tecnologias concretas ou SDKs de terceiros.
-- [ ] Amarração realizada no módulo NestJS com `{ provide: IPort, useClass: MyAdapter }`.
-- [ ] Nenhum conceito de workflow introduzido no módulo.
-- [ ] Validação executada com `yarn lint` e `yarn test` com 100% de sucesso.
+- [ ] Port created with an `interface` and a `Symbol` with the same name (`export const IPort = Symbol('IPort')`).
+- [ ] Adapter implements the port (`implements IPort`) and uses the `@Injectable()` decorator.
+- [ ] Use case injects the port via `@Inject(IPort)` and contains an `execute()` method.
+- [ ] Use case free of imports of concrete technologies or third-party SDKs.
+- [ ] Wiring done in the NestJS module with `{ provide: IPort, useClass: MyAdapter }`.
+- [ ] No workflow concept introduced in the module.
+- [ ] Validation run with `yarn lint` and `yarn test` passing 100%.

@@ -1,33 +1,33 @@
 # Agent Remote Control
 
-Aplicação NestJS desenvolvida sob **Clean Architecture com Ports & Adapters** e **Use Cases** para controle e orquestração remota de agentes de Inteligência Artificial para desenvolvimento de software, operando sobre o **Agent Client Protocol (ACP)** da comunidade e oferecendo interface primária através de um **Bot do Discord**.
+A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases** for remote control and orchestration of AI software development agents, running over the community **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
 
-O sistema desacopla totalmente as regras de negócio dos detalhes tecnológicos (Discord.js, SDK do ACP, sistemas de arquivos e execução de comandos), permitindo orquestrar múltiplos agentes especializados (ex.: agente CEO/roteador e agente Desenvolvedor) e disparar habilidades automatizadas (Git, modo de planejamento, testes).
-
----
-
-## 1. Módulos e Arquitetura
-
-O código é estruturado em módulos verticais autônomos em `src/modules/`:
-
-- **`agent`** (`src/modules/agent`): camada de integração com agentes de IA via protocolo ACP. Fornece a porta `IAgentPort`, o adaptador base `AbstractAcpAdapter`, o desmultiplexador de stream em tempo real `AgentStreamDemux`, a fábrica `AcpAgentPortFactoryAdapter` e os adaptadores concretos `AntigravityAdapter` (ponte `AgyBridgeServer` para o Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI pelo adaptador ACP oficial `@agentclientprotocol/claude-agent-acp`) e `CopilotAdapter` (GitHub Copilot CLI pelo modo ACP nativo `copilot --acp`).
-- **`orchestrator`** (`src/modules/orchestrator`): motor de orquestração agnóstico a canais. Contém os casos de uso `ExecuteAgentTurnUseCase` e `CancelAgentTurnUseCase`, gerenciamento de persistência de sessões (`ISessionStorePort`) e coordenação reativa de eventos.
-- **`agent-definitions`** (`src/modules/agent-definitions`): registro e parametrização de personas de agentes (`AgentRegistryService`). Define papéis como **CEO** (orquestração e triagem), **Tech Lead** (planejamento técnico e arquitetura), **Developer** (implementação e testes) e **Code Reviewer** (revisão independente de código).
-- **`workspace`** (`src/modules/workspace`): gerenciamento de repositórios e workspaces (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
-- **`discord`** (`src/modules/discord`): adaptador primário de entrada via Bot do Discord (Discord.js). Gerencia threads de contexto, transmissão de atividades em tempo real (pensamentos e chamadas de ferramentas) e entrega de respostas finais formatadas.
-
-A governança do projeto e regras técnicas adicionais estão documentadas em [`.agents/skills/`](.agents/skills/) e em [`AGENTS.md`](AGENTS.md).
+The system fully decouples business rules from technology details (Discord.js, the ACP SDK, file systems and command execution), making it possible to orchestrate multiple specialized agents (e.g. a CEO/router agent and a Developer agent) and trigger automated skills (Git, planning mode, tests).
 
 ---
 
-## 2. Fluxograma de Funcionamento
+## 1. Modules and Architecture
 
-O diagrama abaixo ilustra o ciclo de vida completo de uma requisição, desde o recebimento no canal até a conclusão da tarefa:
+The code is structured as autonomous vertical modules in `src/modules/`:
+
+- **`agent`** (`src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`) and `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`).
+- **`orchestrator`** (`src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
+- **`agent-definitions`** (`src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`). Defines roles such as **CEO** (orchestration and triage), **Tech Lead** (technical planning and architecture), **Developer** (implementation and tests) and **Code Reviewer** (independent code review).
+- **`workspace`** (`src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
+- **`discord`** (`src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
+
+Project governance and additional technical rules are documented in [`.agents/skills/`](.agents/skills/) and in [`AGENTS.md`](AGENTS.md).
+
+---
+
+## 2. Flow Diagram
+
+The diagram below shows the full lifecycle of a request, from its arrival in the channel to the completion of the task:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Usuario as Usuário (Discord)
+    actor User as User (Discord)
     participant DiscordBot as Discord Bot Handler
     participant Orchestrator as ExecuteAgentTurnUseCase
     participant AgentRegistry as AgentRegistryService
@@ -36,58 +36,58 @@ sequenceDiagram
     participant Workspace as Workspace (Files / Git)
     participant AgentBridge as AgyBridgeServer / claude-agent-acp
 
-    Usuario->>DiscordBot: Envia mensagem (@bot ou comando)
-    DiscordBot->>DiscordBot: Cria / associa Thread da sessão no Discord
+    User->>DiscordBot: Sends message (@bot or command)
+    DiscordBot->>DiscordBot: Creates / binds the session Thread in Discord
     DiscordBot->>Orchestrator: execute({ channelId, threadId, prompt, onActivity })
 
     Orchestrator->>AgentRegistry: getSystemPrompt('CEO', 'TECH_LEAD', 'DEVELOPER', ...)
-    AgentRegistry-->>Orchestrator: Retorna instruções do agente e lembretes de turno
+    AgentRegistry-->>Orchestrator: Returns agent instructions and turn reminders
 
     Orchestrator->>AgentPort: connect() & createSession(workspacePath)
-    AgentPort->>AgentBridge: Inicia subprocesso ACP / handshake de sessão
+    AgentPort->>AgentBridge: Starts ACP subprocess / session handshake
 
-    Orchestrator->>AgentPort: prompt(promptComInstrucoes)
+    Orchestrator->>AgentPort: prompt(promptWithInstructions)
 
-    loop Streaming de Execução do Turno
-        AgentBridge-->>AgentPort: Notificações ACP (ndjson)
-        AgentPort->>Demux: Processa chunks de eventos
+    loop Turn Execution Streaming
+        AgentBridge-->>AgentPort: ACP notifications (ndjson)
+        AgentPort->>Demux: Processes event chunks
         
-        alt Bloco de Pensamento (Thought)
-            Demux-->>DiscordBot: Emite atividade: thought
-            DiscordBot->>Usuario: Atualiza embed de raciocínio na Thread
-        else Chamada de Ferramenta (Tool Call / Git / Arquivos)
-            Demux-->>DiscordBot: Emite atividade: tool (in_progress)
-            DiscordBot->>Usuario: Exibe status da ferramenta (ex.: "Executando git clone...")
-            AgentBridge->>Workspace: Executa comando (clone / checkout / edição)
-            Workspace-->>AgentBridge: Retorno da ferramenta
-            Demux-->>DiscordBot: Emite atividade: tool (completed)
-            DiscordBot->>Usuario: Atualiza status da ferramenta (ex.: "✅ git clone concluído")
+        alt Thought Block
+            Demux-->>DiscordBot: Emits activity: thought
+            DiscordBot->>User: Updates reasoning embed in the Thread
+        else Tool Call (Git / Files)
+            Demux-->>DiscordBot: Emits activity: tool (in_progress)
+            DiscordBot->>User: Shows tool status (e.g. "Running git clone...")
+            AgentBridge->>Workspace: Runs command (clone / checkout / edit)
+            Workspace-->>AgentBridge: Tool output
+            Demux-->>DiscordBot: Emits activity: tool (completed)
+            DiscordBot->>User: Updates tool status (e.g. "✅ git clone completed")
         end
     end
 
-    AgentBridge-->>AgentPort: Evento final do turno (result + usage)
-    AgentPort-->>Orchestrator: Mensagem consolidada do agente + métricas de tokens
+    AgentBridge-->>AgentPort: Final turn event (result + usage)
+    AgentPort-->>Orchestrator: Consolidated agent message + token metrics
     Orchestrator-->>DiscordBot: TurnResult (completed)
-    DiscordBot->>Usuario: Publica resposta final consolidada na Thread
+    DiscordBot->>User: Posts the consolidated final answer in the Thread
 ```
 
 ---
 
-## 3. Pré-requisitos
+## 3. Prerequisites
 
 - **Node.js** `>=24`
 - **Yarn** `1.22+`
-- Ao menos um agente instalado e autenticado:
-  - **Google Antigravity CLI** (`agy` disponível no `PATH` global da máquina);
-  - **Claude Code CLI** (`claude` disponível no `PATH`, instalado e autenticado pelo usuário). O adaptador ACP oficial `@agentclientprotocol/claude-agent-acp` já vem nas dependências e usa o `claude` do `PATH`; sem ele, recorre ao binário embutido no Claude Agent SDK. As sessões do Claude Code carregam as configurações do usuário (`~/.claude/settings.json`, `CLAUDE.md`, hooks e skills) e rodam em modo `bypassPermissions`, que o Claude Code recusa quando o processo roda como `root` sem `IS_SANDBOX=1`;
-  - **GitHub Copilot CLI** (`copilot` disponível no `PATH`, autenticado com `copilot login`). As sessões rodam com a autonomia de ferramentas (`allow_all`) ligada;
-  - **OpenAI Codex CLI** (`codex` no `PATH`, autenticado com `codex login`). O adaptador ACP `@agentclientprotocol/codex-acp` já vem nas dependências; as sessões rodam no modo de acesso total, sem pedidos de aprovação nem sandbox;
-  - **Cursor CLI** (`cursor-agent` ou `agent` no `PATH`, autenticado com `cursor-agent login`). As sessões rodam sem aprovações interativas e sem sandbox.
-- **Git** instalado e configurado
+- At least one agent installed and authenticated:
+  - **Google Antigravity CLI** (`agy` available on the machine's global `PATH`);
+  - **Claude Code CLI** (`claude` available on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
+  - **GitHub Copilot CLI** (`copilot` available on the `PATH`, authenticated with `copilot login`). Sessions run with tool autonomy (`allow_all`) enabled;
+  - **OpenAI Codex CLI** (`codex` on the `PATH`, authenticated with `codex login`). The ACP adapter `@agentclientprotocol/codex-acp` ships with the dependencies; sessions run in full-access mode, with no approval requests and no sandbox;
+  - **Cursor CLI** (`cursor-agent` or `agent` on the `PATH`, authenticated with `cursor-agent login`). Sessions run without interactive approvals and without a sandbox.
+- **Git** installed and configured
 
 ---
 
-## 4. Instalação das Dependências
+## 4. Installing Dependencies
 
 ```bash
 yarn install
@@ -95,156 +95,165 @@ yarn install
 
 ---
 
-## 5. Variáveis de Ambiente
+## 5. Environment Variables
 
-Copie o arquivo de exemplo para `.env` na raiz do projeto e configure suas credenciais:
+Copy the example file to `.env` at the project root and configure your credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-Parâmetros suportados:
+Supported parameters:
 
-| Variável | Descrição | Onde Obter no Discord | Padrão |
+| Variable | Description | Where to Get It in Discord | Default |
 |---|---|---|---|
-| `DISCORD_BOT_TOKEN` | Token secreto do bot | Aba **Bot** > Seção *Token* > Botão **Redefinir token** (*Reset Token*) | *(Obrigatório)* |
-| `DISCORD_GUILD_ID` | ID do servidor Discord | Botão direito no seu servidor > **Copiar ID do Servidor** *(Modo Desenvolvedor ativo)* | *(Opcional)* |
-| `WORKSPACE_DIR` | Diretório raiz onde os repositórios serão clonados. A cada inicialização, a aplicação regenera nele o `AGENTS.md` e as skills do CEO (`.agents/skills/`, com link em `.claude/skills`); edições manuais nesses arquivos são sobrescritas | Configuração local da máquina | `./workspaces` |
-| `DATA_DIR` | Diretório dos dados persistidos (`sessions.json` com o vínculo conversa → sessão do agente e `agent-settings.json` com o agente, o modelo e o effort escolhidos) | Configuração local da máquina | `./data` |
-| `SESSION_IDLE_TIMEOUT_MS` | Tempo ocioso (ms) até a sessão de agente de uma conversa ser encerrada | Configuração local da máquina | `1800000` (30 min) |
-| `PORT` | Porta para o servidor HTTP NestJS | Configuração local da máquina | `3000` |
+| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required)* |
+| `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
+| `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
+| `DATA_DIR` | Directory for persisted data (`sessions.json` with the conversation → agent session binding, `agent-settings.json` with the chosen agent, model and effort, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
+| `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
+| `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
 ---
 
-## 6. Configuração no Discord Developer Portal
+## 6. Discord Developer Portal Setup
 
-Para que o bot do Discord consiga autenticar, escutar mensagens, responder em canais privados (DM) ou criar threads em servidores:
+For the Discord bot to authenticate, listen to messages, reply in direct messages (DM) or create threads in servers:
 
-### Passo 1: Criar o Aplicativo
-1. Acesse o [Discord Developer Portal](https://discord.com/developers/applications) e clique em **New Application** (ou **Criar**).
-2. Dê um nome ao seu aplicativo (ex.: `Agent Remote Control`).
+### Step 1: Create the Application
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and click **New Application**.
+2. Give your application a name (e.g. `Agent Remote Control`).
 
-### Passo 2: Configurar o Bot, Obter o `DISCORD_BOT_TOKEN` e Ativar as Intents
-1. No menu lateral esquerdo, clique em **Bot**.
-2. **Nome de usuário do bot**: Escolha um nome exclusivo (se aparecer o erro em vermelho *"username: Muitas pessoas já usam este nome de usuário"*, altere para um identificador único como `Jarvis-ARC-Dev` e clique em *Salvar alterações*).
-3. **Token do bot (`DISCORD_BOT_TOKEN`)**:
-   - Na seção **Token**, clique no botão azul **Redefinir token** (*Reset Token*).
-   - Confirme a ação e copie o token gerado para a variável `DISCORD_BOT_TOKEN` no `.env`.
-4. **Intenções de Gateway Privilegiadas** (*Privileged Gateway Intents*):
-   - Role a página até a seção **Intenções de gateway privilegiadas**.
-   - Ative as seguintes opções com a chave seletora à direita:
-     - ✅ **Intenção dos membros do servidor** (*Server Members Intent*): necessária para identificar membros e remetentes.
-     - ✅ **Intenção de conteúdo da mensagem** (*Message Content Intent*): **mandatória** para que o bot consiga ler o texto dos prompts digitados pelos usuários.
-   - Clique no botão verde **Salvar alterações** (*Save Changes*) no rodapé da página.
+### Step 2: Configure the Bot, Get the `DISCORD_BOT_TOKEN` and Enable the Intents
+1. In the left sidebar, click **Bot**.
+2. **Bot username**: Choose a unique name (if the red error *"username: Too many users have this username"* appears, change it to a unique identifier such as `Jarvis-ARC-Dev` and click *Save Changes*).
+3. **Bot token (`DISCORD_BOT_TOKEN`)**:
+   - In the **Token** section, click the blue **Reset Token** button.
+   - Confirm the action and copy the generated token into the `DISCORD_BOT_TOKEN` variable in `.env`.
+4. **Privileged Gateway Intents**:
+   - Scroll down to the **Privileged Gateway Intents** section.
+   - Enable the following options with the toggle on the right:
+     - ✅ **Server Members Intent**: required to identify members and senders.
+     - ✅ **Message Content Intent**: **mandatory** for the bot to read the text of the prompts typed by users.
+   - Click the green **Save Changes** button at the bottom of the page.
 
-### Passo 3: Obter o `DISCORD_GUILD_ID` (Opcional para Servidor)
-1. No aplicativo do Discord (desktop ou web), acesse as **Configurações de Usuário** (ícone de engrenagem ao lado do seu perfil) > aba **Avançado**.
-2. Ative a opção **Modo de Desenvolvedor**.
-3. Feche as configurações.
-4. Na barra lateral esquerda do Discord, clique com o **botão direito** no ícone do seu servidor e selecione **Copiar ID do Servidor**.
-5. Cole o valor em `DISCORD_GUILD_ID` no `.env`. *(Com a variável definida, os comandos `/cancel`, `/model` e `/agent` são registrados só neste servidor, com efeito imediato; sem ela, o registro é global).*
+### Step 3: Get the `DISCORD_GUILD_ID` (Optional, for a Server)
+1. In the Discord app (desktop or web), open **User Settings** (gear icon next to your profile) > **Advanced** tab.
+2. Enable **Developer Mode**.
+3. Close the settings.
+4. In Discord's left sidebar, **right-click** your server icon and select **Copy Server ID**.
+5. Paste the value into `DISCORD_GUILD_ID` in `.env`. *(With the variable set, the `/agent`, `/model`, `/usage`, `/cancel` and `/language` commands are registered only in this server, taking effect immediately; without it, registration is global.)*
 
-### Passo 4: Convidar o Bot para o Servidor
-1. No Developer Portal, vá em **OAuth2 > URL Generator**.
-2. Na seção **Scopes**, selecione:
+### Step 4: Invite the Bot to the Server
+1. In the Developer Portal, go to **OAuth2 > URL Generator**.
+2. In the **Scopes** section, select:
    - `bot`
    - `applications.commands`
-   *(Importante: marque apenas estes dois escopos para que a URL gerada não exija servidor de redirecionamento).*
-3. Na seção **Bot Permissions**, selecione as permissões necessárias:
-   - *Send Messages* (Enviar mensagens)
-   - *Send Messages in Threads* (Enviar mensagens em tópicos)
-   - *Create Public Threads* (Criar tópicos públicos)
-   - *Create Private Threads* (Criar tópicos privados)
-   - *Read Message History* (Ver histórico de mensagens)
-   - *View Channels* (Ver canais)
-   - *Add Reactions* (Adicionar reações)
-   - *Embed Links* (Inserir links)
-   - *Attach Files* (Anexar arquivos)
-   - *Use Slash Commands* (Usar comandos de barra)
-   > **Permissions Integer (Calculadora de Permissões):** `380104727616` (ou marque `Administrador` se for seu servidor pessoal).
-4. Copie a URL gerada no rodapé da página (campo **URL gerado**), cole no navegador e selecione o seu servidor para autorizar o bot.
+   *(Important: select only these two scopes so the generated URL does not require a redirect server.)*
+3. In the **Bot Permissions** section, select the required permissions:
+   - *Send Messages*
+   - *Send Messages in Threads*
+   - *Create Public Threads*
+   - *Create Private Threads*
+   - *Read Message History*
+   - *View Channels*
+   - *Add Reactions*
+   - *Embed Links*
+   - *Attach Files*
+   - *Use Slash Commands*
+   > **Permissions Integer:** `380104727616` (or select `Administrator` if it is your personal server).
+4. Copy the URL generated at the bottom of the page (**Generated URL** field), paste it into your browser and select your server to authorize the bot.
 
-### Passo 5: Como Conversar com o Bot
+### Step 5: Talking to the Bot
 
-O **Agent Remote Control** opera através de um Bot do Discord conectado ao seu ambiente de desenvolvimento. Você pode conversar com ele de duas formas:
+**Agent Remote Control** works through a Discord Bot connected to your development environment. You can talk to it in two ways:
 
-- **No Particular (Direct Message / DM Privada)**:
-  - Após convidar o bot para o seu servidor, clique no perfil do bot na lista de membros à direita e clique em **Enviar mensagem** (abrir DM privada).
-  - No chat particular, você **não precisa** mencionar `@Bot`. Basta digitar sua tarefa diretamente. O bot responderá em tempo real no privado mantendo o histórico da conversa.
-- **Em Canais de Servidor**:
-  - Em qualquer canal de texto onde o bot tenha acesso, mencione-o: `@NomeDoBot Crie uma rota de healthcheck`.
-  - O bot abrirá automaticamente uma **Thread** isolada para aquela tarefa, mantendo o histórico organizado e transmitindo o progresso com throttling anti-rate-limit.
-- **Escolha de Agente, Modelo e Effort**:
-  - Na primeira mensagem, se ainda não houver configuração salva, o bot lista os agentes numerados (Antigravity, Claude Code, GitHub Copilot, OpenAI Codex e Cursor). Responda com o número do agente, depois com o número do modelo e, se o modelo tiver níveis de effort, com o número do effort. A tarefa enviada é executada logo em seguida.
-  - Digite `/agent` para trocar de agente (seguido da escolha de modelo e effort dele) e `/model` para trocar só o modelo e o effort do agente atual. A configuração é global e vale para todas as conversas; cada conversa guarda a sessão de cada agente, então voltar a um agente retoma a conversa que ele já tinha.
-  - Toda resposta termina com um rodapé indicando o papel, o agente, o modelo e o effort usados, por exemplo: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
-- **Mensagens Durante uma Tarefa**:
-  - Com o Claude Code, uma mensagem enviada enquanto o agente trabalha entra na tarefa em andamento (steering) e é respondida junto com ela. Com o Antigravity, que não suporta steering, a mensagem aguarda a tarefa anterior terminar.
-- **Cancelamento de Turno**:
-  - Digite `/cancel` a qualquer momento (seja na DM ou na thread do servidor) para abortar imediatamente o turno em execução ou encerrar uma seleção de agente ou modelo em andamento.
+- **In Private (Direct Message / DM)**:
+  - After inviting the bot to your server, click the bot's profile in the member list on the right and click **Send Message** (open a private DM).
+  - In the private chat, mentioning `@Bot` is optional. Just type your task directly. The bot replies in real time in the DM, keeping the conversation history.
+- **In Server Channels**:
+  - In any text channel the bot has access to, mention it: `@BotName Create a healthcheck route`.
+  - The bot automatically opens an isolated **Thread** for that task, keeping the history organized and streaming progress with anti-rate-limit throttling.
+- **Choosing Agent, Model and Effort**:
+  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents (Antigravity, Claude Code, GitHub Copilot, OpenAI Codex and Cursor). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
+  - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. The configuration is global and applies to every conversation; each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
+  - Type `/usage` to see the usage limits of the current agent.
+  - Every answer ends with a footer showing the role, agent, model and effort used, for example: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
+- **Messages During a Task**:
+  - With Claude Code, a message sent while the agent is working joins the task in progress (steering) and is answered along with it. With Antigravity, which does not support steering, the message waits for the previous task to finish.
+- **Turn Cancellation**:
+  - Type `/cancel` at any time (in the DM or in the server thread) to immediately abort the running turn or end an agent or model selection in progress.
 
----
+### Language
 
-## 7. Guia Operacional: Como Usar o Bot no Dia a Dia
-
-### O que o Bot Pode Fazer?
-- **Clonar repositórios**: Faz clone seguro de projetos Git em diretórios isolados dentro de `./workspaces/<repo>`.
-- **Explorar codebases**: Inspeciona arquivos, arquitetura existente, dependências, scripts e regras documentadas.
-- **Planejar antes de codificar (Plan Mode)**: Decompõe tarefas complexas em marcos executáveis com validação prévia.
-- **Implementar e refatorar**: Escreve código limpo adaptando-se à arquitetura do projeto de destino (Clean Architecture, MVC, microsserviços, etc.).
-- **Garantir qualidade**: Identifica as ferramentas de teste, linter e build do projeto alvo e executa validações antes de concluir.
-- **Operações de Git**: Criação de branches temáticas, commits padronizados em português (pt-BR Conventional Commits) e push de código.
-
-### Agentes e Personas Disponíveis
-- **`CEO / Router Agent`**: Agente executivo de triagem. Recebe seu pedido, clarifica ambiguidades, formula o plano arquitetural e direciona os requisitos para o desenvolvedor.
-- **`Developer Agent`**: Engenheiro de software sênior autônomo. É acionado para a execução técnica: lê o código, implementa as soluções na stack do repositório, roda a suíte de testes e faz operações de Git.
-
-### Exemplos Práticos de Interação
-
-#### 1. Clonar um Repositório
-Envie na DM ou mencione no canal:
-```text
-Clone o repositório https://github.com/usuario/meu-backend.git e analise as tecnologias utilizadas e a estrutura de pastas.
-```
-
-#### 2. Planejar uma Funcionalidade (Plan Mode)
-Para tarefas de média ou alta complexidade, peça para o bot planejar primeiro sem alterar código:
-```text
-No projeto meu-backend, elabore um plano passo a passo para criar um endpoint de redefinição de senha com envio de e-mail. Liste os arquivos impactados e a estratégia de testes, mas não altere nenhum arquivo ainda.
-```
-
-#### 3. Implementar um Plano Aprovado
-Após revisar e concordar com o plano apresentado pelo agente:
-```text
-O plano está aprovado. Pode executar a implementação das alterações e rodar a suíte de testes do projeto para garantir que tudo passou.
-```
-
-#### 4. Commitar e Fazer Push das Alterações
-Para salvar o trabalho no controle de versão:
-```text
-Crie a branch feature/password-reset no projeto meu-backend, commite as alterações seguindo o padrão conventional commits em pt-BR e faça push para o repositório remoto.
-```
-
-### Como Funciona o Controle de Sessões
-
-- **Sessão Contínua em DM (Direct Message)**:
-  - Todas as mensagens enviadas na conversa privada com o bot pertencem à **mesma sessão ativa**. O agente se lembra do repositório em que você está trabalhando, dos arquivos já lidos e das instruções anteriores.
-  - Para alternar o foco para outro projeto ou começar um contexto novo, basta instruir: *"Agora vamos trabalhar em outro projeto: clone https://..."*.
-- **Sessões Isoladas por Thread em Servidores**:
-  - Cada **Thread** aberta em um canal de servidor representa uma **sessão de agente isolada e independente**.
-  - **Como abrir uma nova sessão**: Vá ao canal principal do servidor e mencione o bot com um novo pedido (`@NomeDoBot ...`). Ele criará automaticamente uma nova Thread com uma sessão limpa, sem qualquer interferência com tarefas anteriores.
+- The bot's fixed UI text (menus, prompts for selections, status messages) is in English.
+- Agent-generated text shown to you (answers, questions, decisions and delegation results) follows a global language preference stored in `DATA_DIR/preferences.json`.
+- On the first conversation with no saved preference, the CEO detects the language you write in and the backend saves it. When the language cannot be detected, English is used.
+- Type `/language` to change it: the bot asks for the language and your next message sets it. Any language name works, e.g. `Spanish` or `português`.
+- Agents talk to each other in English, regardless of the preference.
 
 ---
 
-## 8. Execução em Desenvolvimento
+## 7. Operational Guide: Using the Bot Day to Day
 
-Inicie a aplicação NestJS em modo watch:
+### What Can the Bot Do?
+- **Clone repositories**: Safely clones Git projects into isolated directories under `./workspaces/<repo>`.
+- **Explore codebases**: Inspects files, existing architecture, dependencies, scripts and documented rules.
+- **Plan before coding (Plan Mode)**: Breaks complex tasks into executable milestones with upfront validation.
+- **Implement and refactor**: Writes clean code that adapts to the target project's architecture (Clean Architecture, MVC, microservices, etc.).
+- **Ensure quality**: Identifies the target project's test, lint and build tools and runs validations before finishing.
+- **Git operations**: Creates topic branches, writes standardized commits (Conventional Commits in English) and pushes code.
+
+### Available Agents and Personas
+- **`CEO / Router Agent`**: Executive triage agent. Receives your request, clarifies ambiguities, drafts the architectural plan and routes the requirements to the developer.
+- **`Developer Agent`**: Autonomous senior software engineer. Called for technical execution: reads the code, implements solutions in the repository's stack, runs the test suite and performs Git operations.
+
+### Practical Interaction Examples
+
+#### 1. Clone a Repository
+Send in the DM or mention in the channel:
+```text
+Clone the repository https://github.com/user/my-backend.git and analyze the technologies used and the folder structure.
+```
+
+#### 2. Plan a Feature (Plan Mode)
+For medium- or high-complexity tasks, ask the bot to plan first without changing code:
+```text
+In the my-backend project, draft a step-by-step plan to create a password reset endpoint that sends an email. List the affected files and the testing strategy, but do not change any files yet.
+```
+
+#### 3. Implement an Approved Plan
+After reviewing and agreeing with the plan presented by the agent:
+```text
+The plan is approved. Go ahead and implement the changes and run the project's test suite to make sure everything passes.
+```
+
+#### 4. Commit and Push the Changes
+To save the work in version control:
+```text
+Create the feature/password-reset branch in the my-backend project, commit the changes following Conventional Commits in English and push to the remote repository.
+```
+
+### How Session Control Works
+
+- **Continuous Session in DM (Direct Message)**:
+  - All messages sent in the private conversation with the bot belong to the **same active session**. The agent remembers the repository you are working on, the files already read and previous instructions.
+  - To switch focus to another project or start a fresh context, just say: *"Let's work on another project: clone https://..."*.
+- **Isolated Sessions per Thread in Servers**:
+  - Each **Thread** opened in a server channel represents an **isolated, independent agent session**.
+  - **How to open a new session**: Go to the server's main channel and mention the bot with a new request (`@BotName ...`). It automatically creates a new Thread with a clean session, with no interference from previous tasks.
+
+---
+
+## 8. Running in Development
+
+Start the NestJS application in watch mode:
 
 ```bash
 yarn start:dev
 ```
 
-Para compilar e executar o bundle de produção:
+To build and run the production bundle:
 
 ```bash
 yarn build
@@ -253,33 +262,39 @@ yarn start:prod
 
 ---
 
-## 9. Testes e Qualidade
+## 9. Tests and Quality
 
-O projeto adota a meta de **100% de cobertura de testes unitários** nas linhas executáveis de código de produção, com testes ponta a ponta (e2e) para as portas de entrada:
+The project targets **100% unit test coverage** of executable production code lines, with end-to-end (e2e) tests for the entry points:
 
 ```bash
-# Executa os testes unitários
+# Run unit tests
 yarn test
 
-# Executa testes unitários com relatório de cobertura
+# Run unit tests with a coverage report
 yarn test:cov
 
-# Executa testes ponta a ponta (e2e)
+# Run end-to-end (e2e) tests
 yarn test:e2e
 
-# Checagem estática de tipos TypeScript
+# TypeScript static type checking
 yarn ts
 
-# Análise estática com ESLint
+# Static analysis with ESLint
 yarn lint
 
-# Formatação e autocorreção via ESLint
+# Formatting and autofix via ESLint
 yarn format
 ```
 
 ---
 
-## 10. Documentação e Governança
+## 10. Documentation and Governance
 
-- [**`AGENTS.md`**](AGENTS.md): Diretrizes gerais de governança, arquitetura do projeto, convenções transversais e regras mandatórias para agentes de IA.
-- [**Catálogo de Skills (`.agents/skills/`)**](.agents/skills/): Catálogo de habilidades sob demanda contendo regras mandatórias para os agentes. O agente consulta e carrega autonomamente as skills necessárias conforme a natureza da tarefa.
+- [**`AGENTS.md`**](AGENTS.md): General governance guidelines, project architecture, cross-cutting conventions and mandatory rules for AI agents.
+- [**Skills Catalog (`.agents/skills/`)**](.agents/skills/): Catalog of on-demand skills containing mandatory rules for the agents. The agent autonomously consults and loads the skills it needs according to the nature of the task.
+
+---
+
+## License
+
+[MIT](LICENSE) © Douglas Nassif Roma Junior

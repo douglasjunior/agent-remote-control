@@ -216,7 +216,7 @@ describe('AbstractAcpAdapter', () => {
       }
 
       await expect(new NoStdioAdapter().connect()).rejects.toThrow(
-        'Erro retornado pelo agente (test)',
+        'Error returned by the agent (test)',
       );
     });
 
@@ -1968,7 +1968,7 @@ describe('AbstractAcpAdapter', () => {
         }
       })();
       const rejection = expect(promptPromise).rejects.toThrow(
-        'Erro retornado pelo agente (test)',
+        'Error returned by the agent (test)',
       );
       acpHarness.spawnedProcs[0]?.emit('exit', 1);
 
@@ -2160,7 +2160,7 @@ describe('AbstractAcpAdapter', () => {
 
       const adapter = new TestAcpAdapter();
       await expect(adapter.connect()).rejects.toThrow(
-        'Erro retornado pelo agente (test)',
+        'Error returned by the agent (test)',
       );
     });
 
@@ -2189,7 +2189,7 @@ describe('AbstractAcpAdapter', () => {
       );
 
       await expect(adapter.createSession('/repo')).rejects.toThrow(
-        'Erro retornado pelo agente (test)',
+        'Error returned by the agent (test)',
       );
     });
 
