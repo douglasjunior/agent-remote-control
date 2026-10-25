@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Agent Remote Control** is a NestJS application for remote control and orchestration of AI software development agents, running over the **Agent Client Protocol (ACP)** with a **Discord Bot** as its primary interface.
+**Agent Remote Control** is a NestJS application for remote control and orchestration of AI software development agents, running over the **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
 
 The project follows **Clean Architecture with Ports & Adapters**, decoupling the business core from external technologies (Discord, the ACP SDK, the file system and processes). Behavior and business rules are orchestrated directly by independent, cohesive **Use Cases**.
 

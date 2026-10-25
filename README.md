@@ -1,6 +1,6 @@
 # Agent Remote Control
 
-A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases** for remote control and orchestration of AI software development agents, running over the community **Agent Client Protocol (ACP)** with a **Discord Bot** as its primary interface.
+A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases** for remote control and orchestration of AI software development agents, running over the community **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
 
 The system fully decouples business rules from technology details (Discord.js, the ACP SDK, file systems and command execution), making it possible to orchestrate multiple specialized agents (e.g. a CEO/router agent and a Developer agent) and trigger automated skills (Git, planning mode, tests).
 
