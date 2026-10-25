@@ -6,17 +6,21 @@ import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
 import { AcpAgentPortFactoryAdapter } from './acp-agent-port-factory.adapter.js';
 import { AntigravityAdapter } from './antigravity.adapter.js';
 import { ClaudeCodeAdapter } from './claude-code.adapter.js';
+import { CodexAdapter } from './codex.adapter.js';
 import { CopilotAdapter } from './copilot.adapter.js';
+import { CursorAdapter } from './cursor.adapter.js';
 
 
 describe('AcpAgentPortFactoryAdapter', () => {
   const factory = new AcpAgentPortFactoryAdapter({} as IFileSystemPort, {} as IProcessRunnerPort);
 
-  it('should list the Antigravity, Claude Code and GitHub Copilot agents', () => {
+  it('should list every supported agent', () => {
     expect(factory.listAgents()).toEqual([
       { agentId: 'agy', displayName: 'Antigravity' },
       { agentId: 'claude', displayName: 'Claude Code' },
       { agentId: 'copilot', displayName: 'GitHub Copilot' },
+      { agentId: 'codex', displayName: 'OpenAI Codex' },
+      { agentId: 'cursor', displayName: 'Cursor' },
     ]);
   });
 
@@ -28,6 +32,8 @@ describe('AcpAgentPortFactoryAdapter', () => {
     ['agy', AntigravityAdapter],
     ['claude', ClaudeCodeAdapter],
     ['copilot', CopilotAdapter],
+    ['codex', CodexAdapter],
+    ['cursor', CursorAdapter],
   ])('should create the %s adapter', (agentId, adapterClass) => {
     expect(factory.create(agentId)).toBeInstanceOf(adapterClass);
   });
@@ -43,6 +49,6 @@ describe('AcpAgentPortFactoryAdapter', () => {
   });
 
   it('should reject an unknown agent', () => {
-    expect(() => factory.create('gpt')).toThrow('Unknown agent "gpt". Available agents: agy, claude, copilot.');
+    expect(() => factory.create('gpt')).toThrow('Unknown agent "gpt". Available agents: agy, claude, copilot, codex, cursor.');
   });
 });

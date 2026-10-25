@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { lstat, mkdir, readdir, readlink, symlink, unlink, writeFile } from 'node:fs/promises';
+import { platform } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
 import type { IWorkspacePort } from '../ports/workspace.port.js';
@@ -64,6 +65,10 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
 
   async ensureSymlink(relativeLinkPath: string, target: string): Promise<void> {
     const linkPath = this.resolveInside(relativeLinkPath);
+    const linkDirectory = dirname(linkPath);
+    const targetPath = resolve(linkDirectory, target);
+    this.assertInsideBaseDirectory(targetPath);
+
     const existing = await lstat(linkPath).catch((error: NodeJS.ErrnoException) => {
       if (error.code === 'ENOENT') {
         return undefined;
@@ -75,14 +80,27 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
       throw new Error(`Cannot create symlink, a file or directory already exists: ${linkPath}`);
     }
     if (existing) {
-      if (await readlink(linkPath) === target) {
+      if (this.pointsTo(linkDirectory, await readlink(linkPath), targetPath)) {
         return;
       }
       await unlink(linkPath);
     }
 
-    await mkdir(dirname(linkPath), { recursive: true });
-    await symlink(target, linkPath, 'dir');
+    await mkdir(linkDirectory, { recursive: true });
+    // Windows only creates directory symlinks with admin rights or Developer Mode; a junction needs neither but takes an absolute target.
+    if (platform() === 'win32') {
+      await symlink(targetPath, linkPath, 'junction');
+    } else {
+      await symlink(target, linkPath, 'dir');
+    }
+  }
+
+  /** Windows reports a junction target as an absolute path, possibly with the `\\?\` prefix, and compares paths case-insensitively. */
+  private pointsTo(linkDirectory: string, linkTarget: string, targetPath: string): boolean {
+    const current = resolve(linkDirectory, linkTarget.replace(/^\\\\\?\\/, ''));
+    return platform() === 'win32'
+      ? current.toLowerCase() === targetPath.toLowerCase()
+      : current === targetPath;
   }
 
   private resolveInside(relativePath: string): string {

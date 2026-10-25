@@ -13,6 +13,12 @@ export function formatDelegationForms(agent: AgentDefinition): string {
   return forms.join(' or ');
 }
 
+export function formatProjectAccess(agent: AgentDefinition): string {
+  return agent.delegation.readOnly
+    ? 'Read-only, so it may work alongside an agent that modifies the same project.'
+    : 'Modifies files, so no other agent that modifies files may work in the same project folder at the same time.';
+}
+
 export function formatSessionMode(agent: AgentDefinition): string {
   const mode = agent.defaultSessionMode ?? 'resume';
   return agent.delegation.sessionMode

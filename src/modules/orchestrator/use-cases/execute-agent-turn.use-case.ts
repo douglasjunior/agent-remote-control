@@ -40,7 +40,7 @@ type ValidatedDelegation = DelegationResult & { readonly cwd: string };
 
 type ValidatedDecision =
   | Exclude<CeoDecision, { kind: 'delegate' }>
-  | { readonly kind: 'delegate'; readonly delegation: ValidatedDelegation };
+  | { readonly kind: 'delegate'; readonly delegations: readonly ValidatedDelegation[] };
 
 
 @Injectable()
@@ -116,10 +116,7 @@ export class ExecuteAgentTurnUseCase {
       );
     } catch (error) {
       const sessionLabel = session?.sessionId ?? 'none';
-      if (
-        error instanceof PromptCancelledError
-        || (error instanceof Error && error.name === 'PromptCancelledError')
-      ) {
+      if (this.isCancellation(error)) {
         this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${sessionLabel}`);
         return finish('cancelled', currentCeoPort()?.lastAgentMessage ?? '');
       }
@@ -182,7 +179,7 @@ export class ExecuteAgentTurnUseCase {
         return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
       }
 
-      prompt = await this.delegate(session!, decision.delegation, request, round, conversationKey, agentId);
+      prompt = await this.delegateAll(session!, decision.delegations, request, round, conversationKey, agentId);
     }
   }
 
@@ -297,25 +294,39 @@ export class ExecuteAgentTurnUseCase {
       return decision;
     }
 
-    const { delegateToRole, projectName } = decision.delegation;
+    const delegations: ValidatedDelegation[] = [];
+    for (const delegation of decision.delegations) {
+      const validated = await this.validateDelegation(delegation, request);
+      if ('reason' in validated) {
+        return { kind: 'invalid', reason: validated.reason };
+      }
+      delegations.push(validated);
+    }
+
+    const conflict = this.findParallelConflict(delegations, request.conversationId);
+    return conflict ? { kind: 'invalid', reason: conflict } : { kind: 'delegate', delegations };
+  }
+
+  private async validateDelegation(
+    delegation: DelegationResult,
+    request: TurnRequest,
+  ): Promise<ValidatedDelegation | { readonly reason: string }> {
+    const { delegateToRole, projectName } = delegation;
     if (delegateToRole === request.agentRole.toUpperCase() || !this.agentRegistry.hasRole(delegateToRole)) {
-      return {
-        kind: 'invalid',
-        reason: `Unknown role "${delegateToRole}". Delegate only to a role listed in Your Team.`,
-      };
+      return { reason: `Unknown role "${delegateToRole}". Delegate only to a role listed in Your Team.` };
     }
 
     const violation = this.checkDelegationContract(
       delegateToRole,
       this.agentRegistry.getDelegationContract(delegateToRole),
-      decision.delegation,
+      delegation,
     );
     if (violation) {
-      return { kind: 'invalid', reason: violation };
+      return { reason: violation };
     }
 
     if (!projectName) {
-      return { kind: 'delegate', delegation: { ...decision.delegation, cwd: request.workspacePath } };
+      return { ...delegation, cwd: request.workspacePath };
     }
 
     let cwd: string;
@@ -323,20 +334,60 @@ export class ExecuteAgentTurnUseCase {
       cwd = this.workspacePort.resolveRepositoryPath(projectName);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return {
-        kind: 'invalid',
-        reason: `Invalid project folder "${projectName}": ${message}. ${await this.describeProjectFolders()}`,
-      };
+      return { reason: `Invalid project folder "${projectName}": ${message}. ${await this.describeProjectFolders()}` };
     }
 
     if (!(await this.workspacePort.listProjectFolders()).includes(projectName)) {
       return {
-        kind: 'invalid',
         reason: `Project folder "${projectName}" does not exist in the workspaces root. ${await this.describeProjectFolders()}`,
       };
     }
 
-    return { kind: 'delegate', delegation: { ...decision.delegation, cwd } };
+    return { ...delegation, cwd };
+  }
+
+  /**
+   * Agents that modify files would overwrite each other's work in the same folder. A delegation to a role
+   * already working in the same project redirects that agent, so the running one does not count against it.
+   */
+  private findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): string | undefined {
+    const targets = new Set<string>();
+    for (const { delegateToRole, projectName } of delegations) {
+      const target = `${delegateToRole}:${projectName ?? ''}`;
+      if (targets.has(target)) {
+        return `${delegateToRole} appears more than once for ${this.describeTarget(projectName)}. Merge those tasks into a single delegation.`;
+      }
+      targets.add(target);
+    }
+
+    const writers = new Map<string, string>();
+    for (const active of this.conversationRuntime.getActiveDelegations(conversationKey)) {
+      const redirected = delegations.some(delegation =>
+        delegation.delegateToRole === active.role.toUpperCase() && (delegation.projectName ?? null) === active.projectName);
+      if (!redirected && !this.isReadOnly(active.role)) {
+        writers.set(active.cwd, `${active.role}, which is already working there`);
+      }
+    }
+
+    for (const { delegateToRole, projectName, cwd } of delegations) {
+      if (this.isReadOnly(delegateToRole)) {
+        continue;
+      }
+      const other = writers.get(cwd);
+      if (other) {
+        return `${delegateToRole} cannot work in ${this.describeTarget(projectName)} at the same time as ${other}: only one agent that modifies files may work in a folder at a time. Run them in sequence, or delegate to that same agent to redirect it.`;
+      }
+      writers.set(cwd, delegateToRole);
+    }
+    return undefined;
+  }
+
+  private isReadOnly(role: string): boolean {
+    return this.agentRegistry.getDelegationContract(role).readOnly === true;
+  }
+
+  private describeTarget(projectName: string | undefined): string {
+    return projectName ? `project folder "${projectName}"` : 'the workspaces root';
   }
 
   private async describeProjectFolders(): Promise<string> {
@@ -365,6 +416,32 @@ export class ExecuteAgentTurnUseCase {
     return undefined;
   }
 
+  /** Waits for every delegation, so no agent keeps running unobserved after another one fails. */
+  private async delegateAll(
+    session: SessionContext,
+    delegations: readonly ValidatedDelegation[],
+    request: TurnRequest,
+    round: number,
+    conversationKey: string,
+    agentId: string,
+  ): Promise<string> {
+    const outcomes = await Promise.allSettled(
+      delegations.map(delegation => this.delegate(session, delegation, request, round, conversationKey, agentId)),
+    );
+    const failures = outcomes.flatMap(outcome => (outcome.status === 'rejected' ? [outcome.reason as unknown] : []));
+    if (failures.length > 0) {
+      throw failures.find(failure => this.isCancellation(failure)) ?? failures[0];
+    }
+    return outcomes
+      .map(outcome => (outcome as PromiseFulfilledResult<string>).value)
+      .join('\n\n');
+  }
+
+  private isCancellation(error: unknown): boolean {
+    return error instanceof PromptCancelledError
+      || (error instanceof Error && error.name === 'PromptCancelledError');
+  }
+
   private async delegate(
     session: SessionContext,
     { delegateToRole, projectName, taskSpec, sessionMode, cwd }: ValidatedDelegation,
@@ -373,13 +450,14 @@ export class ExecuteAgentTurnUseCase {
     conversationKey: string,
     agentId: string,
   ): Promise<string> {
-    const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
+    const resultHeader = `[AGENT_RESULT:${delegateToRole}${projectName ? `:${projectName}` : ''}]`;
+    const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
     if (existing) {
       if (existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
-        return `[AGENT_RESULT:${delegateToRole}]\nSteering message sent to active agent.`;
+        return `${resultHeader}\nSteering message sent to active agent.`;
       }
 
       this.logger.log(
@@ -388,7 +466,7 @@ export class ExecuteAgentTurnUseCase {
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);
-      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole, existing);
+      this.conversationRuntime.unregisterDelegation(conversationKey, existing);
     }
 
     const delegatePort = this.agentPortFactory.create(agentId);
@@ -438,6 +516,7 @@ export class ExecuteAgentTurnUseCase {
         delegationTurn,
         session,
         effectiveSessionMode,
+        projectName,
       );
       const durationMs = Date.now() - startedAt;
       this.logger.log(
@@ -451,9 +530,9 @@ export class ExecuteAgentTurnUseCase {
         usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
         durationMs,
       });
-      return `[AGENT_RESULT:${delegateToRole}]\n${response}`;
+      return `${resultHeader}\n${response}`;
     } finally {
-      this.conversationRuntime.unregisterDelegation(conversationKey, delegateToRole, activeDelegation);
+      this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
@@ -468,6 +547,7 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     session: SessionContext,
     sessionMode: 'resume' | 'new' = 'resume',
+    projectName?: string,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
@@ -488,7 +568,7 @@ export class ExecuteAgentTurnUseCase {
         const storedSessionId = sessionMode === 'new'
           ? undefined
           : latest.agentSessions.find(agentSession =>
-            agentSession.role === role && agentSession.agentId === agentPort.agentName)?.sessionId;
+            this.isSameAgentSession(agentSession, { role, agentId: agentPort.agentName, projectName: projectName ?? null }))?.sessionId;
         const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
@@ -497,7 +577,12 @@ export class ExecuteAgentTurnUseCase {
         }
         const { currentSessionId } = agentPort;
         if (currentSessionId && currentSessionId !== storedSessionId) {
-          await this.bindAgentSession(latest, { role, agentId: agentPort.agentName, sessionId: currentSessionId });
+          await this.bindAgentSession(latest, {
+            role,
+            agentId: agentPort.agentName,
+            sessionId: currentSessionId,
+            projectName: projectName ?? null,
+          });
         }
       }
 
@@ -553,13 +638,21 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async bindAgentSession(session: SessionContext, binding: AgentSession): Promise<void> {
-    const others = session.agentSessions.filter(agentSession =>
-      agentSession.role !== binding.role || agentSession.agentId !== binding.agentId);
+    const others = session.agentSessions.filter(agentSession => !this.isSameAgentSession(agentSession, binding));
     await this.sessionStore.saveSession({
       ...session,
       agentSessions: [...others, binding],
       updatedAt: new Date(),
     });
+  }
+
+  private isSameAgentSession(
+    agentSession: AgentSession,
+    target: Pick<AgentSession, 'role' | 'agentId' | 'projectName'>,
+  ): boolean {
+    return agentSession.role === target.role
+      && agentSession.agentId === target.agentId
+      && agentSession.projectName === target.projectName;
   }
 
   private async applyAgentConfig(agentPort: IAgentPort, role: string, conversationId: string): Promise<void> {

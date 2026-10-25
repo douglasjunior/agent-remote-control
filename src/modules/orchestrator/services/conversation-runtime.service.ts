@@ -128,20 +128,18 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   registerDelegation(conversationKey: string, delegation: ActiveDelegation): void {
     const runtime = this.getOrCreate(conversationKey);
     this.clearIdleTimer(runtime);
-    runtime.activeDelegations.set(delegation.role.toUpperCase(), delegation);
+    runtime.activeDelegations.set(this.delegationKey(delegation.role, delegation.projectName), delegation);
   }
 
-  unregisterDelegation(conversationKey: string, role: string, delegation?: ActiveDelegation): void {
+  /** Ignores a delegation that was already replaced by a newer one for the same role and project. */
+  unregisterDelegation(conversationKey: string, delegation: ActiveDelegation): void {
     const runtime = this.runtimes.get(conversationKey);
     if (!runtime) return;
-    const roleKey = role.toUpperCase();
-    if (delegation) {
-      const current = runtime.activeDelegations.get(roleKey);
-      if (current !== delegation) {
-        return;
-      }
+    const key = this.delegationKey(delegation.role, delegation.projectName);
+    if (runtime.activeDelegations.get(key) !== delegation) {
+      return;
     }
-    runtime.activeDelegations.delete(roleKey);
+    runtime.activeDelegations.delete(key);
     if (runtime.pendingTurns === 0 && runtime.activeTurnsCount === 0 && runtime.activeDelegations.size === 0) {
       this.scheduleExpiration(conversationKey, runtime);
     }
@@ -152,8 +150,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     return runtime ? Array.from(runtime.activeDelegations.values()) : [];
   }
 
-  findActiveDelegation(conversationKey: string, role: string): ActiveDelegation | undefined {
-    return this.runtimes.get(conversationKey)?.activeDelegations.get(role.toUpperCase());
+  findActiveDelegation(conversationKey: string, role: string, projectName: string | null): ActiveDelegation | undefined {
+    return this.runtimes.get(conversationKey)?.activeDelegations.get(this.delegationKey(role, projectName));
   }
 
   async cancel(conversationKey: string): Promise<boolean> {
@@ -190,6 +188,10 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
       runtime.activeDelegations.clear();
       await runtime.agentPort?.disconnect().catch(() => undefined);
     }));
+  }
+
+  private delegationKey(role: string, projectName: string | null): string {
+    return `${role.toUpperCase()}:${projectName ?? ''}`;
   }
 
   private getOrCreate(conversationKey: string): ConversationRuntime {

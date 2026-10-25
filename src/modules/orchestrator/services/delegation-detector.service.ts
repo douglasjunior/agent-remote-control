@@ -11,10 +11,12 @@ export type DelegationResult = {
 };
 
 export type CeoDecision =
-  | { readonly kind: 'delegate'; readonly delegation: DelegationResult }
+  | { readonly kind: 'delegate'; readonly delegations: readonly DelegationResult[] }
   | { readonly kind: 'done'; readonly summary: string }
   | { readonly kind: 'direct_response' }
   | { readonly kind: 'invalid'; readonly reason: string };
+
+type ParsedMarker = Omit<DelegationResult, 'taskSpec'> | { readonly invalid: string };
 
 const MARKER_LINE = /^[ \t]*[*_`]*\[(DELEGATE|DONE)([^\]\n]*)\][*_`]*[ \t]*$/gim;
 const MARKER_MENTION = /\[(?:DELEGATE|DONE)\b/i;
@@ -31,25 +33,75 @@ export class DelegationDetectorService {
         : { kind: 'direct_response' };
     }
 
-    if (markers.length > 1) {
-      return { kind: 'invalid', reason: 'The response contains more than one marker. Use exactly one marker per response.' };
+    if (markers.some(([, name]) => name!.toUpperCase() === 'DONE')) {
+      return markers.length > 1
+        ? { kind: 'invalid', reason: '[DONE] cannot be combined with other markers. Finish with [DONE] alone, or delegate without it.' }
+        : this.detectDone(response, markers[0]!);
     }
 
-    const marker = markers[0]!;
-    const body = this.removeMarker(response, marker);
-    const [, name, args] = marker;
+    return markers.length === 1
+      ? this.detectSingleDelegation(response, markers[0]!)
+      : this.detectParallelDelegations(response, markers);
+  }
 
-    if (name!.toUpperCase() === 'DONE') {
-      return args
-        ? { kind: 'invalid', reason: `Malformed done marker "${marker[0].trim()}". Use exactly [DONE].` }
-        : { kind: 'done', summary: body };
+  private detectDone(response: string, marker: RegExpExecArray): CeoDecision {
+    return marker[2]
+      ? { kind: 'invalid', reason: `Malformed done marker "${marker[0].trim()}". Use exactly [DONE].` }
+      : { kind: 'done', summary: this.removeMarker(response, marker) };
+  }
+
+  /** Models sometimes write the specification after the marker, so a single delegation takes the text on both sides. */
+  private detectSingleDelegation(response: string, marker: RegExpExecArray): CeoDecision {
+    const parsed = this.parseDelegateMarker(marker);
+    if ('invalid' in parsed) {
+      return { kind: 'invalid', reason: parsed.invalid };
     }
 
-    const delegateArgs = args!.match(DELEGATE_ARGUMENTS);
-    if (!delegateArgs) {
+    const taskSpec = this.removeMarker(response, marker);
+    if (!taskSpec) {
+      return { kind: 'invalid', reason: 'The delegation has no task specification. Write the task before the marker.' };
+    }
+
+    return { kind: 'delegate', delegations: [{ ...parsed, taskSpec }] };
+  }
+
+  private detectParallelDelegations(response: string, markers: readonly RegExpExecArray[]): CeoDecision {
+    const lastMarker = markers.at(-1)!;
+    if (response.slice(lastMarker.index + lastMarker[0].length).trim()) {
       return {
         kind: 'invalid',
-        reason: `Malformed delegation marker "${marker[0].trim()}". Use [DELEGATE:ROLE:project-folder:new], [DELEGATE:ROLE:project-folder], or [DELEGATE:ROLE].`,
+        reason: 'With several delegations, each task specification goes before its own marker and nothing follows the last marker.',
+      };
+    }
+
+    const delegations: DelegationResult[] = [];
+    let specStart = 0;
+    for (const [position, marker] of markers.entries()) {
+      const parsed = this.parseDelegateMarker(marker);
+      if ('invalid' in parsed) {
+        return { kind: 'invalid', reason: parsed.invalid };
+      }
+
+      const taskSpec = response.slice(specStart, marker.index).trim();
+      if (!taskSpec) {
+        return {
+          kind: 'invalid',
+          reason: `Delegation ${position + 1} ("${marker[0].trim()}") has no task specification. Write each task right before its own marker.`,
+        };
+      }
+
+      delegations.push({ ...parsed, taskSpec });
+      specStart = marker.index + marker[0].length;
+    }
+
+    return { kind: 'delegate', delegations };
+  }
+
+  private parseDelegateMarker(marker: RegExpExecArray): ParsedMarker {
+    const delegateArgs = marker[2]!.match(DELEGATE_ARGUMENTS);
+    if (!delegateArgs) {
+      return {
+        invalid: `Malformed delegation marker "${marker[0].trim()}". Use [DELEGATE:ROLE:project-folder:new], [DELEGATE:ROLE:project-folder], or [DELEGATE:ROLE].`,
       };
     }
 
@@ -61,34 +113,24 @@ export class DelegationDetectorService {
       const modeLower = segment3.toLowerCase();
       if (modeLower !== 'new' && modeLower !== 'resume') {
         return {
-          kind: 'invalid',
-          reason: `Malformed delegation marker "${marker[0].trim()}". Session mode must be "new" or "resume".`,
+          invalid: `Malformed delegation marker "${marker[0].trim()}". Session mode must be "new" or "resume".`,
         };
       }
-      sessionMode = modeLower as DelegationSessionMode;
+      sessionMode = modeLower;
       projectName = segment2 ? segment2 : undefined;
     } else if (segment2 !== undefined) {
       const seg2Lower = segment2.toLowerCase();
       if (seg2Lower === 'new' || seg2Lower === 'resume') {
-        sessionMode = seg2Lower as DelegationSessionMode;
-        projectName = undefined;
+        sessionMode = seg2Lower;
       } else {
         projectName = segment2;
       }
     }
 
-    if (!body) {
-      return { kind: 'invalid', reason: 'The delegation has no task specification. Write the task before the marker.' };
-    }
-
     return {
-      kind: 'delegate',
-      delegation: {
-        delegateToRole: rawRole!.toUpperCase(),
-        projectName,
-        taskSpec: body,
-        ...(sessionMode ? { sessionMode } : {}),
-      },
+      delegateToRole: rawRole!.toUpperCase(),
+      projectName,
+      ...(sessionMode ? { sessionMode } : {}),
     };
   }
 

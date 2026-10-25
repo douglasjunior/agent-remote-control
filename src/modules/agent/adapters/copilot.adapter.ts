@@ -18,6 +18,13 @@ import {
  */
 const SESSION_PRESETS: readonly SessionConfigPreset[] = [{ category: 'permissions', value: 'on' }];
 
+/**
+ * Characters Copilot keeps in context for the skill listing (`SKILL_CHAR_BUDGET`). With the default
+ * of 15 thousand, skills that do not fit are listed by name only, without the description that
+ * tells the agent when to use them.
+ */
+const SKILL_LISTING_CHAR_BUDGET = '100000';
+
 @Injectable()
 export class CopilotAdapter extends AbstractAcpAdapter {
   readonly agentName = 'copilot';
@@ -50,7 +57,7 @@ export class CopilotAdapter extends AbstractAcpAdapter {
     return this.processRunner.spawn('copilot', ['--acp', '--stdio'], {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: this.buildAgentEnv(cwd),
+      env: { SKILL_CHAR_BUDGET: SKILL_LISTING_CHAR_BUDGET, ...this.buildAgentEnv(cwd) },
     });
   }
 

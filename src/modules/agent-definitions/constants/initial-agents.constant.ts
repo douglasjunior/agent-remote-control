@@ -38,7 +38,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
       'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
     buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
-    delegation: { project: 'optional', sessionMode: 'overridable' },
+    delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true },
     turnReminder: TECH_LEAD_TURN_REMINDER,
   },
   {
@@ -58,7 +58,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
       'Senior code reviewer for rigorous, unbiased inspection of diffs, branches, pull requests, and codebases against project conventions, security checklists, and functional correctness, publishing review comments on PRs/MRs when requested. Reviews in a fresh session to avoid prior implementation bias; to publish findings it already mapped, delegate again with :resume so it reuses that inspection context.',
     buildSystemPrompt: () => CODE_REVIEWER_SYSTEM_PROMPT,
     defaultSessionMode: 'new',
-    delegation: { project: 'required', sessionMode: 'overridable' },
+    delegation: { project: 'required', sessionMode: 'overridable', readOnly: true },
     turnReminder: CODE_REVIEWER_TURN_REMINDER,
   },
 ];

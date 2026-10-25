@@ -10,7 +10,10 @@ import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 const SESSIONS_FILENAME = 'sessions.json';
 
-type StoredAgentSession = Omit<AgentSession, 'agentId'> & { readonly agentId?: string };
+type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName'> & {
+  readonly agentId?: string;
+  readonly projectName?: string | null;
+};
 
 type StoredSession = Omit<SessionContext, 'agentSessions' | 'conversationId' | 'createdAt' | 'updatedAt'> & {
   readonly conversationId?: string;
@@ -68,9 +71,8 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
         sessions.set(item.sessionId, {
           ...rest,
           conversationId: item.conversationId ?? (threadId ? `${channelId}:${threadId}` : channelId ?? ''),
-          agentSessions: (item.agentSessions ?? []).filter(
-            (agentSession): agentSession is AgentSession => typeof agentSession.agentId === 'string',
-          ),
+          agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, ...agentSession }) =>
+            typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null }] : []),
           createdAt: new Date(item.createdAt),
           updatedAt: new Date(item.updatedAt),
         });

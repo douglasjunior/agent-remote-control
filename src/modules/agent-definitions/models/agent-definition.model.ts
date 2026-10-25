@@ -8,6 +8,7 @@ export type AgentSessionMode = 'resume' | 'new';
 export interface AgentDelegationContract {
   readonly project?: 'required' | 'optional';
   readonly sessionMode?: 'overridable';
+  readonly readOnly?: true;
 }
 
 export interface AgentDefinition {
