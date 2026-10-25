@@ -1,10 +1,22 @@
 {
   "name": "agent-remote-control",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Remote control and orchestration of AI coding agents over the Agent Client Protocol (ACP), driven from Discord.",
+  "author": {
+    "name": "Douglas Nassif Roma Junior",
+    "email": "nassifrroma@gmail.com",
+    "url": "https://github.com/douglasjunior"
+  },
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/douglasjunior/agent-remote-control.git"
+  },
+  "bugs": {
+    "url": "https://github.com/douglasjunior/agent-remote-control/issues"
+  },
+  "homepage": "https://github.com/douglasjunior/agent-remote-control",
   "type": "module",
   "scripts": {
     "build": "nest build",
