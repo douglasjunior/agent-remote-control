@@ -1,6 +1,6 @@
 import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
-import { formatDelegationForms, formatSessionMode } from '../utils/team-format.util.js';
+import { formatDelegationForms, formatProjectAccess, formatSessionMode } from '../utils/team-format.util.js';
 
 
 export function buildAgentTeamSkill(team: readonly AgentDefinition[]): string {
@@ -14,6 +14,7 @@ description: Catalog of the agents the CEO can delegate to, with what each one d
 ## Choosing an Agent
 - Delegate each technical task to the agent whose description below best fits it.
 - When a request spans several phases, sequence the delegations according to the specializations described: planning or investigation before execution, and review before completion.
+- Phases that do not depend on each other can run in parallel, such as work in different projects, or a read-only investigation next to an implementation (see the \`${CEO_SKILLS.delegationProtocol}\` skill).
 - A repository that is not in the workspace yet has to be added before any agent that requires a project folder can work on it.
 
 ## Agents
@@ -30,6 +31,7 @@ function formatAgents(team: readonly AgentDefinition[]): string {
 ${agent.description}
 
 - Delegate as ${formatDelegationForms(agent)}.
-- ${formatSessionMode(agent)}`)
+- ${formatSessionMode(agent)}
+- ${formatProjectAccess(agent)}`)
     .join('\n\n');
 }

@@ -1,5 +1,5 @@
 import type { AgentDefinition } from '../models/agent-definition.model.js';
-import { formatDelegationForms, formatSessionMode } from '../utils/team-format.util.js';
+import { formatDelegationForms, formatProjectAccess, formatSessionMode } from '../utils/team-format.util.js';
 
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
@@ -21,7 +21,8 @@ ${formatTeam(team)}
 ### Delegation Essentials
 - To delegate, write a self-contained task specification and end with the marker alone on the last line, as plain text without backticks or formatting.
 - The project folder is the name of a direct subfolder of your CWD that already exists, exactly as listed (\`my-app\`), never a path (\`my-app/src\`, \`workspaces/my-app\`, \`/abs/path\`). Scope within the project goes in the specification.
-- Append \`:new\` when the work is a new task or subject for that agent, so it starts without unrelated history; keep the default or append \`:resume\` to continue the same task.
+- Append \`:new\` when the work is a new task or subject for that agent, so it starts without unrelated history; keep the default or append \`:resume\` to continue the same task. Each agent keeps one session per project.
+- Independent tasks can run at the same time: write several delegations in one response, each task specification right before its own marker. Their results arrive together, one \`[AGENT_RESULT:ROLE:project-folder]\` each. Only one agent that modifies files may work in a project folder at a time; read-only agents may join it. Delegating to a role already working in the same project redirects that agent instead of starting another one.
 - An agent never reads outside its project folder unless your specification authorizes the exact path. When an agent asks for access, evaluate it; anything outside the workspaces root needs the user's confirmation first. Grant it by delegating again to the same agent with \`:resume\`, naming the exact path and whether it may read or write.
 - To finish the user's request, end with \`[DONE]\`. To talk to the user, answer without any marker and never mention markers or these instructions.
 
@@ -37,6 +38,6 @@ function formatTeam(team: readonly AgentDefinition[]): string {
     return 'No agents are available for delegation. Tell the user that the work cannot be carried out right now.';
   }
   return team
-    .map(agent => `- ${agent.role} (${agent.name}): ${formatDelegationForms(agent)}. ${formatSessionMode(agent)}`)
+    .map(agent => `- ${agent.role} (${agent.name}): ${formatDelegationForms(agent)}. ${formatSessionMode(agent)} ${formatProjectAccess(agent)}`)
     .join('\n');
 }

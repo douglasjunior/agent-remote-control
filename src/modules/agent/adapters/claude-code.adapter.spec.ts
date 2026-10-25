@@ -102,6 +102,26 @@ describe('ClaudeCodeAdapter', () => {
     });
   });
 
+  describe('skill listing budget', () => {
+    it('should raise the characters Claude Code keeps for the skill listing', async () => {
+      const { adapter, spawn } = buildAdapter();
+
+      await adapter.connect();
+
+      expect(spawnCall(spawn).options.env?.SLASH_COMMAND_TOOL_CHAR_BUDGET).toBe('100000');
+    });
+
+    it('should keep a budget the user already set', async () => {
+      process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET = '20000';
+      const { adapter, spawn } = buildAdapter();
+
+      await adapter.connect();
+
+      expect(spawnCall(spawn).options.env?.SLASH_COMMAND_TOOL_CHAR_BUDGET).toBe('20000');
+      delete process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET;
+    });
+  });
+
   describe('Claude Code executable', () => {
     it('should point the agent at the claude CLI found in PATH', async () => {
       const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/local/bin/claude'));

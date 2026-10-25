@@ -86,6 +86,26 @@ describe('CopilotAdapter', () => {
     });
   });
 
+  describe('skill listing budget', () => {
+    it('should raise the characters Copilot keeps for the skill listing', async () => {
+      const { adapter, spawn } = buildAdapter();
+
+      await adapter.connect();
+
+      expect(spawnCall(spawn).options.env?.SKILL_CHAR_BUDGET).toBe('100000');
+    });
+
+    it('should keep a budget the user already set', async () => {
+      process.env.SKILL_CHAR_BUDGET = '20000';
+      const { adapter, spawn } = buildAdapter();
+
+      await adapter.connect();
+
+      expect(spawnCall(spawn).options.env?.SKILL_CHAR_BUDGET).toBe('20000');
+      delete process.env.SKILL_CHAR_BUDGET;
+    });
+  });
+
   describe('tool autonomy', () => {
     it('should turn tool autonomy on for new sessions', async () => {
       const { adapter } = buildAdapter();

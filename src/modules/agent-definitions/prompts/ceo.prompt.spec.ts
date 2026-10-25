@@ -20,7 +20,7 @@ const reviewer: AgentDefinition = {
   name: 'Reviewer Agent',
   description: 'Reviews code.',
   buildSystemPrompt: () => 'rev',
-  delegation: { project: 'required' },
+  delegation: { project: 'required', readOnly: true },
   defaultSessionMode: 'new',
 };
 
@@ -63,6 +63,13 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Append `:new` when the work is a new task or subject for that agent');
   });
 
+  it('should allow parallel delegations with one agent that modifies files per project', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('write several delegations in one response, each task specification right before its own marker');
+    expect(CEO_SYSTEM_PROMPT).toContain('one `[AGENT_RESULT:ROLE:project-folder]` each');
+    expect(CEO_SYSTEM_PROMPT).toContain('Only one agent that modifies files may work in a project folder at a time');
+    expect(CEO_SYSTEM_PROMPT).toContain('redirects that agent instead of starting another one');
+  });
+
   it('should grant access outside a project folder by resuming the agent with the exact path', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('anything outside the workspaces root needs the user\'s confirmation first');
     expect(CEO_SYSTEM_PROMPT).toContain('delegating again to the same agent with `:resume`, naming the exact path');
@@ -79,10 +86,10 @@ describe('ceo.prompt', () => {
     const prompt = buildCeoSystemPrompt([developer, reviewer]);
 
     expect(prompt).toContain(
-      '- DEVELOPER (Developer Agent): [DELEGATE:DEVELOPER:<project-folder>]. Runs in "resume" session mode unless you append :new or :resume.',
+      '- DEVELOPER (Developer Agent): [DELEGATE:DEVELOPER:<project-folder>]. Runs in "resume" session mode unless you append :new or :resume. Modifies files,',
     );
     expect(prompt).toContain(
-      '- REVIEWER (Reviewer Agent): [DELEGATE:REVIEWER:<project-folder>]. Always runs in "new" session mode, so never append :new or :resume.',
+      '- REVIEWER (Reviewer Agent): [DELEGATE:REVIEWER:<project-folder>]. Always runs in "new" session mode, so never append :new or :resume. Read-only,',
     );
     expect(prompt).not.toContain('Writes code.');
   });

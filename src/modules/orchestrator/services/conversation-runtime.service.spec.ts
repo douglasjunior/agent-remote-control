@@ -395,15 +395,39 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', delegation);
 
       expect(runtime.getActiveDelegations('a')).toEqual([delegation]);
-      expect(runtime.findActiveDelegation('a', 'developer')).toBe(delegation);
-      expect(runtime.findActiveDelegation('a', 'unknown')).toBeUndefined();
+      expect(runtime.findActiveDelegation('a', 'developer', 'my-app')).toBe(delegation);
+      expect(runtime.findActiveDelegation('a', 'developer', 'other-app')).toBeUndefined();
+      expect(runtime.findActiveDelegation('a', 'developer', null)).toBeUndefined();
+      expect(runtime.findActiveDelegation('a', 'unknown', 'my-app')).toBeUndefined();
       expect(runtime.getActiveDelegations('unknown')).toEqual([]);
 
-      runtime.unregisterDelegation('a', 'developer');
+      runtime.unregisterDelegation('a', delegation);
       expect(runtime.getActiveDelegations('a')).toEqual([]);
 
-      runtime.unregisterDelegation('unknown', 'developer');
+      runtime.unregisterDelegation('unknown', delegation);
       expect(runtime.getActiveDelegations('unknown')).toEqual([]);
+    });
+
+    it('should keep one delegation per role and project at the same time', () => {
+      const backend = {
+        role: 'DEVELOPER',
+        roleName: 'Developer Agent',
+        projectName: 'backend',
+        taskSpec: 'Build the API',
+        cwd: '/mock/backend',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      };
+      const frontend = { ...backend, projectName: 'frontend', cwd: '/mock/frontend', agentPort: new StubAgentPort() };
+
+      runtime.registerDelegation('a', backend);
+      runtime.registerDelegation('a', frontend);
+
+      expect(runtime.getActiveDelegations('a')).toEqual([backend, frontend]);
+      expect(runtime.findActiveDelegation('a', 'DEVELOPER', 'backend')).toBe(backend);
+      expect(runtime.findActiveDelegation('a', 'DEVELOPER', 'frontend')).toBe(frontend);
     });
 
     it('should ignore unregisterDelegation when delegation parameter does not match current active delegation', () => {
@@ -429,11 +453,11 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', delegation1);
       runtime.registerDelegation('a', delegation2);
 
-      runtime.unregisterDelegation('a', 'developer', delegation1);
+      runtime.unregisterDelegation('a', delegation1);
       expect(runtime.getActiveDelegations('a')).toEqual([delegation2]);
-      expect(runtime.findActiveDelegation('a', 'DEVELOPER')).toBe(delegation2);
+      expect(runtime.findActiveDelegation('a', 'DEVELOPER', 'my-app')).toBe(delegation2);
 
-      runtime.unregisterDelegation('a', 'developer', delegation2);
+      runtime.unregisterDelegation('a', delegation2);
       expect(runtime.getActiveDelegations('a')).toEqual([]);
     });
 
@@ -572,7 +596,7 @@ describe('ConversationRuntimeService', () => {
       await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
       expect(ports[0]!.closeSessionCalls).toBe(0);
 
-      runtime.unregisterDelegation('a', 'DEVELOPER');
+      runtime.unregisterDelegation('a', delegation);
       await vi.advanceTimersByTimeAsync(IDLE_MS);
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
@@ -646,7 +670,7 @@ describe('ConversationRuntimeService', () => {
       runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
       await runtime.run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
-      runtime.unregisterDelegation('unknown', 'DEVELOPER');
+      runtime.unregisterDelegation('unknown', runtime.getActiveDelegations('a')[0]!);
 
       await (runtime as any).expire('a', (runtime as any).getOrCreate('a'));
 

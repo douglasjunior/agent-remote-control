@@ -543,10 +543,10 @@ describe('DiscordMessageHandler', () => {
         '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
       );
       expect(contents).toContain(
-        '📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nListed files.\n-# 🤖 Desenvolvedor (agy) · 🧠 padrão · ⚡ padrão · ⏱️ 3.0s',
+        '📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`) no projeto `my-app`:\nListed files.\n-# 🤖 Desenvolvedor (agy) · 🧠 padrão · ⚡ padrão · ⏱️ 3.0s',
       );
       expect(contents).toContain(
-        '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
+        '↩️ **Desenvolvedor concluiu** no projeto `my-app` — o CEO está revisando o resultado.',
       );
       expect(contents).toContain('Done.');
     });

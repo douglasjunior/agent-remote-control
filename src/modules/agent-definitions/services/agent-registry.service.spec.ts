@@ -148,6 +148,7 @@ describe('AgentRegistryService', () => {
       expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({
         project: 'required',
         sessionMode: 'overridable',
+        readOnly: true,
       });
     });
 

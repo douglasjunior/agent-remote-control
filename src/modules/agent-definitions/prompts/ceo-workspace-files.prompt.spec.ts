@@ -61,6 +61,7 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('### GIT_OPS — Git Ops Agent\nAdds repositories to the workspace.');
       expect(skill).toContain('- Delegate as [DELEGATE:GIT_OPS] or [DELEGATE:GIT_OPS:<project-folder>].');
       expect(skill).toContain('- Runs in "resume" session mode unless you append :new or :resume.');
+      expect(skill).toContain('- Modifies files, so no other agent that modifies files');
     });
 
     it('should state that no agent is available when the team is empty', () => {
@@ -77,6 +78,19 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('| `[DELEGATE:ROLE:my-app]` | yes |');
       expect(skill).toContain('| `[DELEGATE:ROLE:my-app/backend]` | no |');
       expect(skill).toContain(`| \`[DELEGATE:ROLE:${WORKSPACE_DIR}/my-app]\` | no |`);
+    });
+
+    it('should explain parallel delegations and their limits', () => {
+      expect(skill).toContain('## Parallel Work');
+      expect(skill).toContain('[DELEGATE:DEVELOPER:backend]\nBuild the orders screen');
+      expect(skill).toContain('Only one agent that modifies files may work in a project folder at a time, counting agents still running');
+      expect(skill).toContain('If any of them fails, the whole round fails.');
+      expect(skill).toContain('`[AGENT_RESULT:ROLE:project-folder]`');
+    });
+
+    it('should explain that delegating to a running role in the same project redirects it', () => {
+      expect(skill).toContain('redirects that agent with the new specification instead of starting a second one');
+      expect(skill).toContain('Delegating the same role to a different project starts another agent in parallel.');
     });
 
     it('should choose a new session when the task or subject changes', () => {
