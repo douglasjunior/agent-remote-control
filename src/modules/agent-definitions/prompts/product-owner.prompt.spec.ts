@@ -5,6 +5,7 @@ import { INTENT_DOCUMENTS_DIR } from '../constants/intent-documents.constant.js'
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from './product-owner.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
@@ -51,10 +52,12 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(`The only file you may write is the intent document, inside ${INTENT_DOCUMENTS_DIR}`);
   });
 
-  it('should include the shared boundaries, question, and final response instructions', () => {
+  it('should include the shared orientation, boundaries, question, and final response instructions', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain('<final_response>');

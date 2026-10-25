@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import {
   TECH_LEAD_SYSTEM_PROMPT,
   TECH_LEAD_TURN_REMINDER,
@@ -57,6 +58,11 @@ describe('tech-lead.prompt', () => {
   it('should confine the tech lead to its CWD in the prompt and in every turn', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(TECH_LEAD_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
+  });
+
+  it('should orient the tech lead in the project documentation in the prompt and in every turn', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
+    expect(TECH_LEAD_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
   });
 
   it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, decision discipline, and final response instructions', () => {
