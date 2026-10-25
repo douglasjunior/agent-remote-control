@@ -71,6 +71,22 @@ pedido de acesso é a resposta ao chamador, nunca uma pergunta direta ao usuári
 avalie o risco antes. O GIT_OPS tem `$HOME/.ssh` autorizado no próprio prompt para o setup de chave
 SSH, e o PRODUCT_OWNER tem `INTENT_DOCUMENTS_DIR` autorizado para escrever o documento de intenção.
 
+### Orientação no projeto
+
+DEVELOPER, TECH_LEAD, CODE_REVIEWER e PRODUCT_OWNER incluem `PROJECT_ORIENTATION_INSTRUCTIONS` no
+system prompt e `PROJECT_ORIENTATION_REMINDER` no `turnReminder` (`prompts/project-orientation.prompt.ts`).
+Antes da primeira ação no projeto na sessão, o agente faz um reconhecimento rápido do que o projeto
+documenta para agentes e contribuidores (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
+`.github/instructions/*.instructions.md`, `README.md`, `CONTRIBUTING.md` e os `AGENTS.md` aninhados nas
+pastas que vai tocar) e segue os ponteiros deles só no que cobre a tarefa.
+
+O reconhecimento é do próprio agente, e não do CEO: o system prompt do executor vai na criação da
+sessão ACP, então a leitura acontece uma vez por sessão e a sessão retomada já a tem; o CEO, com
+prompt enviado a cada turno e CWD na raiz de workspaces, pagaria esse contexto em todo turno e
+repassaria um resumo com perda das regras literais. Cada runtime ACP carrega nativamente um
+arquivo diferente (CLAUDE.md, AGENTS.md, instruções do Copilot), e a instrução explícita cobre os
+demais. O GIT_OPS não recebe o bloco: não trabalha no código e roda também na raiz de workspaces.
+
 ### Perguntas ao usuário
 
 Qualquer agente pergunta direto ao usuário quando precisa de uma decisão dele para seguir, com tags
@@ -132,7 +148,7 @@ da narração.
 ### 1. Developer Agent (`developer.prompt.ts`)
 
 - Atua como engenheiro de software sênior autônomo, adaptável a qualquer linguagem, stack ou arquitetura;
-- Inspeciona e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino (`AGENTS.md`, README, etc.);
+- Faz a orientação no projeto antes da primeira ação na sessão e adere estritamente à arquitetura, convenções, linter e documentação do projeto de destino;
 - Adota os padrões e convenções idiomáticas já estabelecidos na base de código existente quando não houver documentação formal;
 - Garante qualidade através de testes automatizados abrangentes e validação com os comandos de compilação, teste e linter do projeto alvo;
 - Usa o comando que o projeto documenta para a tarefa em vez de reproduzir seus passos manualmente, inclusive quando o comando acessa a rede, como instalação de dependências ou script de init que clona sub-repositórios;
@@ -169,6 +185,7 @@ da narração.
   2. **CLI Oficial:** Segunda opção. Na ausência de ferramentas MCP, utiliza CLIs oficiais autenticadas (`gh`, `glab`, `az`);
   3. **Sem Fallback Arbitrário:** Quando nem MCP nem CLI oficial estiverem disponíveis ou autenticados para o provedor, não executa chamadas manuais (`curl`, scripts ad-hoc ou requisições REST cruas) e relata a ausência de ferramental ao usuário;
 - Ancora comentários pontuais inline na linha exata da nova versão no diff (`side: RIGHT` / `new_line` / `rightFileStart`, informando path e commit SHA) e comentários gerais/arquiteturais na discussão principal do PR/MR;
+- Faz a orientação no projeto, acrescida da configuração de linter, antes de avaliar o diff, e julga as mudanças contra as convenções documentadas ou, na falta delas, contra as do código existente;
 - Executa ferramentas de leitura, linter ou testes apenas para inspeção quando necessário;
 - Opera por padrão em sessão nova (`defaultSessionMode: 'new'`) para auditar código sem viés de implementações anteriores ou contexto prévio acumulado;
 - Possui o lembrete `CODE_REVIEWER_TURN_REMINDER` configurado em sua definição, reforçando o foco exclusivo em auditoria, o fluxo de publicação de achados e a hierarquia de ferramentas.
@@ -179,7 +196,7 @@ da narração.
 - Persona analítica e de uso geral: responde a consultas arquiteturais, investigações, análise de trade-offs de bibliotecas/tecnologias e elaboração de planos de implementação;
 - Opera sob disciplina estritamente somente-leitura: não altera arquivos, não gera código de produção e não realiza commits ou patches diretamente;
 - Disciplina de decisão: ambiguidades, trade-offs arquiteturais e tecnologias não confirmadas são decisões do usuário, perguntadas com `<question>` antes de consolidar o plano — uma opção por abordagem viável, a recomendação justificada como primeira opção e prós e contras no `rationale`;
-- Prioriza documentação autoritativa (skills locais, guias arquiteturais) e pergunta qual vale quando documentação, código e pedido divergem;
+- Faz a orientação no projeto, trata skills locais e guias arquiteturais como autoritativos e pergunta qual vale quando documentação, código e pedido divergem;
 - Produz planos estruturados entregues diretamente no chat (sem gerar arquivos em disco), contendo Visão Geral e Objetivos, Decisões Técnicas e Arquitetura, Análise de Impacto com caminhos reais de arquivos, Decomposição Sequencial de Tarefas para o DEVELOPER (com dependências explícitas e testes integrados em cada tarefa) e Critérios de Aceitação/Verificação com comandos concretos;
 - Opera por padrão em sessão persistida (`defaultSessionMode: 'resume'`) para sustentar refinamentos iterativos e alinhamentos conversacionais com o CEO ou usuário;
 - Possui o lembrete `TECH_LEAD_TURN_REMINDER` configurado em sua definição, reforçando o papel de planejamento, disciplina somente-leitura, decisões perguntadas ao usuário e tarefas com critérios verificáveis.
@@ -203,7 +220,7 @@ da narração.
 - Guardrails bloqueantes: somente leitura exceto o documento de intenção; nunca inventar regra; conflito com documentação vira pergunta; divergência entre sistema e documentação vira pergunta e é registrada em "Divergences to fix"; documento citado ilegível vira pergunta;
 - Documento de intenção com template default (seções vazias omitidas, estrutura do usuário), "Open questions" só com o que o usuário declarou não saber, consolidação com pendências só se o usuário insistir, e checklist antes de escrever;
 - Grava o documento em `INTENT_DOCUMENTS_DIR` (`constants/intent-documents.constant.ts`, `os.tmpdir()/agent-remote-control/intents`), sobrescrevendo-o nos refinamentos, e devolve ao chamador o caminho absoluto, um resumo e as decisões técnicas pendentes;
-- Contrato `project: 'optional'` (com pasta lê o projeto; sem pasta discute a ideia do zero), `readOnly`, `defaultSessionMode: 'resume'`, e o lembrete `PRODUCT_OWNER_TURN_REMINDER`.
+- Contrato `project: 'optional'` (com pasta faz a orientação no projeto e lê o código; sem pasta discute a ideia do zero), `readOnly`, `defaultSessionMode: 'resume'`, e o lembrete `PRODUCT_OWNER_TURN_REMINDER`.
 
 ## Serviço de Registro (`AgentRegistryService`)
 
