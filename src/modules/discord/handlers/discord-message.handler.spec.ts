@@ -77,6 +77,12 @@ class MockOrchestratorService {
     return this.pendingQuestions;
   }
 
+  public pendingLanguageChange = false;
+
+  hasPendingLanguageChange(_conversationId: string): boolean {
+    return this.pendingLanguageChange;
+  }
+
   async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
     this.selectionLookups.push(conversationId);
     return this.activeSelection;
@@ -291,7 +297,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+      'Hi! How can I help you today? Please send an instruction or task.',
     );
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
@@ -374,7 +380,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(progressMessage.edit).toHaveBeenCalledWith(
-      '⏳ *Aguardando a tarefa anterior desta conversa terminar...*',
+      '⏳ *Waiting for the previous task in this conversation to finish...*',
     );
   });
 
@@ -489,9 +495,9 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Executando'));
+      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Running'));
       expect(toolMsg).toBeDefined();
-      expect(toolMsg!.edit).toHaveBeenCalledWith('✅ **Concluído**: `ls`\n```\nfile1.txt\n```');
+      expect(toolMsg!.edit).toHaveBeenCalledWith('✅ **Completed**: `ls`\n```\nfile1.txt\n```');
 
       const thoughtMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Draft'));
       expect(thoughtMsg).toBeDefined();
@@ -522,7 +528,7 @@ describe('DiscordMessageHandler', () => {
       const delegation = {
         round: 1,
         role: 'DEVELOPER',
-        roleName: 'Desenvolvedor',
+        roleName: 'Developer',
         projectName: 'my-app',
       };
       orchestratorService.executeTurn = async (request: TurnRequest) => {
@@ -534,7 +540,7 @@ describe('DiscordMessageHandler', () => {
           ...delegation,
           phase: 'finished',
           response: 'Listed files.',
-          agentInfo: { roleName: 'Desenvolvedor', agentName: 'agy' },
+          agentInfo: { roleName: 'Developer', agentName: 'agy' },
           durationMs: 3_000,
         });
         request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' });
@@ -545,15 +551,15 @@ describe('DiscordMessageHandler', () => {
       await vi.runAllTimersAsync();
 
       const contents = sentMessages.map(sent => sent.content);
-      expect(contents).toContain('⏳ *Iniciando processamento...*');
+      expect(contents).toContain('⏳ *Starting...*');
       expect(contents).toContain(
-        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
+        '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` — it is working on it now.',
       );
       expect(contents).toContain(
-        '📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`) no projeto `my-app`:\nListed files.\n-# 🤖 Desenvolvedor (agy) · 🧠 padrão · ⚡ padrão · ⏱️ 3.0s',
+        '📋 **Response from agent Developer** (`DEVELOPER`) in project `my-app`:\nListed files.\n-# 🤖 Developer (agy) · 🧠 default · ⚡ default · ⏱️ 3.0s',
       );
       expect(contents).toContain(
-        '↩️ **Desenvolvedor concluiu** no projeto `my-app` — o CEO está revisando o resultado.',
+        '↩️ **Developer finished** in project `my-app` — the CEO is reviewing the result.',
       );
       expect(contents).toContain('Done.');
     });
@@ -580,7 +586,7 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         send.mockImplementation(async (content: string) => {
-          if (typeof content === 'string' && content.includes('delegada')) {
+          if (typeof content === 'string' && content.includes('delegated')) {
             throw new Error('rate limited');
           }
           return { content, edit: vi.fn().mockResolvedValue(undefined) };
@@ -588,7 +594,7 @@ describe('DiscordMessageHandler', () => {
         request.onDelegation?.({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           phase: 'started',
         });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
@@ -623,7 +629,7 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
-        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', phase: 'started' });
+        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Developer', phase: 'started' });
         return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
       };
 
@@ -632,7 +638,7 @@ describe('DiscordMessageHandler', () => {
 
       const interim = contents.indexOf('Splitting this in two.');
       expect(interim).toBeGreaterThanOrEqual(0);
-      expect(interim).toBeLessThan(contents.findIndex(content => content.includes('Tarefa delegada')));
+      expect(interim).toBeLessThan(contents.findIndex(content => content.includes('Task delegated')));
     });
 
     it('should proceed gracefully when the CEO interim message cannot be sent', async () => {
@@ -699,7 +705,7 @@ describe('DiscordMessageHandler', () => {
         request.onDelegation?.({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           phase: 'started',
         });
         resolveDelete();
@@ -806,7 +812,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      expect(sentMessages.some(m => typeof m.content === 'string' && m.content.includes('✅ **Concluído**: `pwd`'))).toBe(true);
+      expect(sentMessages.some(m => typeof m.content === 'string' && m.content.includes('✅ **Completed**: `pwd`'))).toBe(true);
     });
 
     it('should format failed tool call with details', async () => {
@@ -839,9 +845,9 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
       await vi.runAllTimersAsync();
 
-      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Executando'));
+      const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Running'));
       expect(toolMsg).toBeDefined();
-      expect(toolMsg!.edit).toHaveBeenCalledWith('❌ **Falhou**: `npm build`\n```\nexit code 1\n```');
+      expect(toolMsg!.edit).toHaveBeenCalledWith('❌ **Failed**: `npm build`\n```\nexit code 1\n```');
     });
   });
 
@@ -1194,7 +1200,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      '✅ *Tarefa concluída sem mensagem de resposta.*',
+      '✅ *Task completed with no response message.*',
     );
   });
 
@@ -1224,7 +1230,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      '⚠️ **Turno cancelado pelo usuário.**',
+      '⚠️ **Turn cancelled by the user.**',
     );
   });
 
@@ -1255,7 +1261,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      '❌ **Erro na execução**: Workspace not found',
+      '❌ **Execution error**: Workspace not found',
     );
   });
 
@@ -1412,7 +1418,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      '❌ **Ocorreu um erro ao processar sua solicitação:** Discord API 500',
+      '❌ **An error occurred while processing your request:** Discord API 500',
     );
   });
 
@@ -1438,7 +1444,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(mockThread.send).toHaveBeenCalledWith(
-      '❌ **Ocorreu um erro ao processar sua solicitação:** raw string error',
+      '❌ **An error occurred while processing your request:** raw string error',
     );
   });
 
@@ -1502,7 +1508,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(dmChannel.send).toHaveBeenCalledWith(
-      'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+      'Hi! How can I help you today? Please send an instruction or task.',
     );
     expect(orchestratorService.lastRequest).toBeUndefined();
   });
@@ -1528,7 +1534,7 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(dmChannel.send).toHaveBeenCalledWith(
-      '❌ **Ocorreu um erro ao processar sua solicitação:** Internal failure',
+      '❌ **An error occurred while processing your request:** Internal failure',
     );
   });
 
@@ -1637,7 +1643,7 @@ describe('DiscordMessageHandler', () => {
 
       const sent = send.mock.calls.map(call => call[0] as string).slice(1);
       expect(sent.length).toBeGreaterThan(1);
-      expect(sent[0]!.startsWith('❌ **Erro na execução**: stderr line')).toBe(true);
+      expect(sent[0]!.startsWith('❌ **Execution error**: stderr line')).toBe(true);
       expect(sent.slice(0, -1).some(text => text.includes(footer))).toBe(false);
       expect(sent.at(-1)!.endsWith(`\n${footer}`)).toBe(true);
       expect(sent.every(text => text.length <= 2000)).toBe(true);
@@ -1653,14 +1659,14 @@ describe('DiscordMessageHandler', () => {
 
       const sent = send.mock.calls.map(call => call[0] as string).slice(1);
       expect(sent.length).toBeGreaterThan(1);
-      expect(sent[0]!.startsWith('❌ **Ocorreu um erro ao processar sua solicitação:** trace line')).toBe(true);
+      expect(sent[0]!.startsWith('❌ **An error occurred while processing your request:** trace line')).toBe(true);
       expect(sent.every(text => text.length <= 2000)).toBe(true);
     });
 
     it.each([
-      ['completed without text', { response: '', status: 'completed' }, '✅ *Tarefa concluída sem mensagem de resposta.*'],
-      ['cancelled', { response: '', status: 'cancelled' }, '⚠️ **Turno cancelado pelo usuário.**'],
-      ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Erro na execução**: boom'],
+      ['completed without text', { response: '', status: 'completed' }, '✅ *Task completed with no response message.*'],
+      ['cancelled', { response: '', status: 'cancelled' }, '⚠️ **Turn cancelled by the user.**'],
+      ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Execution error**: boom'],
     ] as const)('should append the footer when the turn is %s', async (_label, partial, text) => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = { sessionId: 'session-1', ...partial, agentInfo };
@@ -1682,7 +1688,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(threadMessage(send));
 
       expect(send).toHaveBeenLastCalledWith(
-        '📨 *Mensagem enviada ao agente em execução. A resposta virá junto com a da tarefa em andamento.*',
+        '📨 *Message sent to the running agent. The reply will come with the current task\'s response.*',
       );
       const sent = send.mock.calls.map(call => call[0] as string);
       expect(sent.some(text => text.includes(footer))).toBe(false);
@@ -1737,7 +1743,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send, 'abc'));
 
-      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Opção inválida/));
+      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Invalid option/));
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
@@ -1747,7 +1753,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
+      expect(send).toHaveBeenCalledWith('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
@@ -1757,7 +1763,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send.mock.calls[0]![0]).toBe('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
+      expect(send.mock.calls[0]![0]).toBe('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
       expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
     });
 
@@ -1785,7 +1791,28 @@ describe('DiscordMessageHandler', () => {
 
       expect(orchestratorService.selectionLookups).toEqual(['channel-1:thread-9']);
       expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-9', prompt: '1' }]);
-      expect(send).toHaveBeenCalledWith('✅ **Configuração salva**: 🤖 Claude Code · 🧠 Model 1 · ⚡ padrão');
+      expect(send).toHaveBeenCalledWith('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
+    });
+
+    it('should take a message without mention as the language while a language change is pending', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.pendingLanguageChange = true;
+      orchestratorService.resolution = { kind: 'language_set', language: 'Spanish' };
+
+      await handler.handleMessage(unmanagedThreadMessage(send));
+
+      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(send).toHaveBeenCalledWith('✅ **Language saved**: Spanish');
+    });
+
+    it('should ask again when the language is invalid', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.pendingLanguageChange = true;
+      orchestratorService.resolution = { kind: 'invalid_language' };
+
+      await handler.handleMessage(unmanagedThreadMessage(send));
+
+      expect(send).toHaveBeenCalledWith('⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".');
     });
 
     it('should ignore messages without mention in an unmanaged thread without a selection', async () => {
@@ -1849,7 +1876,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send, '2'));
 
-      expect(send).toHaveBeenCalledWith(expect.stringContaining('❓ **Pergunta 1/2** · Product Owner Agent'));
+      expect(send).toHaveBeenCalledWith(expect.stringContaining('❓ **Question 1/2** · Product Owner Agent'));
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
@@ -1859,7 +1886,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send, '9'));
 
-      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Opção inválida/));
+      expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Invalid option/));
     });
 
     it('should confirm the answers and show the question of the next waiting agent', async () => {
@@ -1870,7 +1897,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(threadMessage(send, 'Finance'));
 
       expect(send.mock.calls.map(([content]) => content)).toEqual([
-        '✅ Respostas enviadas ao **Product Owner Agent**.',
+        '✅ Answers sent to **Product Owner Agent**.',
         expect.stringContaining('· Tech Lead Agent (`my-app`)'),
       ]);
     });
@@ -1882,7 +1909,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(threadMessage(send, 'Finance'));
 
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send).toHaveBeenCalledWith('✅ Respostas enviadas ao **Product Owner Agent**.');
+      expect(send).toHaveBeenCalledWith('✅ Answers sent to **Product Owner Agent**.');
     });
 
     it('should hand the downloaded attachments to the input resolution', async () => {
@@ -1928,8 +1955,8 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
       await vi.runAllTimersAsync();
 
-      const delegated = contents.findIndex(content => content.includes('Tarefa delegada'));
-      const question = contents.findIndex(content => content.includes('❓ **Pergunta 1/2**'));
+      const delegated = contents.findIndex(content => content.includes('Task delegated'));
+      const question = contents.findIndex(content => content.includes('❓ **Question 1/2**'));
       expect(delegated).toBeGreaterThanOrEqual(0);
       expect(question).toBeGreaterThan(delegated);
     });
@@ -2097,7 +2124,7 @@ describe('DiscordMessageHandler', () => {
         request.onDelegation?.({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           phase: 'started',
         });
         vi.advanceTimersByTime(2 * 60 * 1000);
@@ -2225,7 +2252,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should resolve a message with only attachments and run the prompt the resolution returns', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('diagram.png')]);
-      orchestratorService.resolution = { kind: 'execute', prompt: 'O usuário enviou anexos. Analise os arquivos anexados.' };
+      orchestratorService.resolution = { kind: 'execute', prompt: 'The user sent attachments. Analyze the attached files.' };
 
       await handler.handleMessage(message);
 
@@ -2244,7 +2271,7 @@ describe('DiscordMessageHandler', () => {
       );
       expect(orchestratorService.lastRequest).toMatchObject({
         conversationId: 'channel-1:thread-att-1',
-        prompt: 'O usuário enviou anexos. Analise os arquivos anexados.',
+        prompt: 'The user sent attachments. Analyze the attached files.',
         attachments: [
           expect.objectContaining({
             name: 'diagram.png',
@@ -2275,7 +2302,7 @@ describe('DiscordMessageHandler', () => {
     it('should reject message with invalid attachments and not invoke executeTurn', async () => {
       attachmentService.validationResult = {
         valid: false,
-        reason: '⚠️ O arquivo "virus.exe" possui um formato não suportado ou incompatível com as ferramentas do agente.',
+        reason: '⚠️ The file "virus.exe" has an unsupported format or is incompatible with the agent\'s tools.',
       };
 
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('virus.exe', 'application/x-msdownload')]);
@@ -2283,20 +2310,20 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       expect(mockThread.send).toHaveBeenCalledWith(
-        '⚠️ O arquivo "virus.exe" possui um formato não suportado ou incompatível com as ferramentas do agente.',
+        '⚠️ The file "virus.exe" has an unsupported format or is incompatible with the agent\'s tools.',
       );
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
     it('should report error to channel when attachment download fails', async () => {
-      attachmentService.downloadError = new Error('Falha no download da CDN do Discord');
+      attachmentService.downloadError = new Error('Discord CDN download failed');
 
-      const { message, mockThread } = createThreadMessageWithAttachments('Ver anexo', [createAttachment('broken.png')]);
+      const { message, mockThread } = createThreadMessageWithAttachments('See attachment', [createAttachment('broken.png')]);
 
       await handler.handleMessage(message);
 
       expect(mockThread.send).toHaveBeenCalledWith(
-        '❌ **Ocorreu um erro ao processar sua solicitação:** Falha no download da CDN do Discord',
+        '❌ **An error occurred while processing your request:** Discord CDN download failed',
       );
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
@@ -2307,7 +2334,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       expect(mockThread.send).toHaveBeenCalledWith(
-        'Olá! Como posso te ajudar hoje? Por favor, envie uma instrução ou tarefa.',
+        'Hi! How can I help you today? Please send an instruction or task.',
       );
       expect(orchestratorService.lastRequest).toBeUndefined();
     });

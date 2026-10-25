@@ -13,7 +13,7 @@ import { buildConversationId, type ConversationKey, resolveConversationKey } fro
 import { DiscordTypingIndicator, type TypingChannel } from '../utils/discord-typing-indicator.util.js';
 
 
-const PENDING_QUESTIONS_NOTICE = '❓ Há perguntas aguardando a sua resposta nesta conversa. Responda a elas ou use /cancel antes de trocar de agente ou de modelo.';
+const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.';
 
 type SelectionTarget = ConversationKey & {
   readonly publish: (content: string) => Promise<void>;
@@ -25,8 +25,8 @@ type SelectionCommand = {
   readonly subject: string;
   readonly notice: string;
   readonly threadName: string;
-  readonly unavailable: string;
-  readonly start: (conversationId: string) => Promise<StartAgentConfigSelectionResult>;
+  /** Resolves to the message that asks the user for their choice. */
+  readonly start: (conversationId: string) => Promise<string>;
 };
 
 @Injectable()
@@ -58,21 +58,34 @@ export class DiscordInteractionHandler implements OnModuleInit {
       await this.handleCancelCommand(interaction);
     } else if (interaction.commandName === 'model') {
       await this.handleSelectionCommand(interaction, {
-        subject: 'modelo',
-        notice: '🧵 Escolha o modelo na thread abaixo.',
-        threadName: 'Seleção de modelo',
-        unavailable: 'ℹ️ O agente atual não expõe modelos para seleção.',
-        start: conversationId => this.orchestratorService.startConfigSelection(conversationId),
+        subject: 'model',
+        notice: '🧵 Choose the model in the thread below.',
+        threadName: 'Model selection',
+        start: async conversationId => this.describeSelection(
+          await this.orchestratorService.startConfigSelection(conversationId),
+          'ℹ️ The current agent does not expose any models to select.',
+        ),
       });
     } else if (interaction.commandName === 'usage') {
       await this.handleUsageCommand(interaction);
     } else if (interaction.commandName === 'agent') {
       await this.handleSelectionCommand(interaction, {
-        subject: 'agente',
-        notice: '🧵 Escolha o agente na thread abaixo.',
-        threadName: 'Seleção de agente',
-        unavailable: 'ℹ️ Nenhum agente disponível para seleção.',
-        start: conversationId => this.orchestratorService.startAgentSelection(conversationId),
+        subject: 'agent',
+        notice: '🧵 Choose the agent in the thread below.',
+        threadName: 'Agent selection',
+        start: async conversationId => this.describeSelection(
+          await this.orchestratorService.startAgentSelection(conversationId),
+          'ℹ️ No agents available to select.',
+        ),
+      });
+    } else if (interaction.commandName === 'language') {
+      await this.handleSelectionCommand(interaction, {
+        subject: 'language',
+        notice: '🧵 Choose the language in the thread below.',
+        threadName: 'Language selection',
+        start: async conversationId => this.activityFormatter.formatLanguageRequest(
+          await this.orchestratorService.requestLanguageChange(conversationId),
+        ),
       });
     }
   }
@@ -85,7 +98,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
       this.logCommand(interaction, channelId, threadId);
 
       const conversationId = buildConversationId({ channelId, threadId });
-      const selectionCancelled = await this.orchestratorService.cancelConfigSelection(conversationId);
+      const configSelectionCancelled = await this.orchestratorService.cancelConfigSelection(conversationId);
+      const selectionCancelled = this.orchestratorService.cancelLanguageChange(conversationId) || configSelectionCancelled;
       const turnCancelled = await this.orchestratorService.cancelTurn(conversationId);
 
       this.logger.log(
@@ -96,7 +110,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /cancel command: ${errorMessage}`);
-      await this.respond(interaction, `❌ **Falha ao solicitar cancelamento**: ${errorMessage}`, true);
+      await this.respond(interaction, `❌ **Failed to request cancellation**: ${errorMessage}`, true);
     }
   }
 
@@ -111,7 +125,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /usage command: ${errorMessage}`);
-      await this.respond(interaction, `❌ **Falha ao consultar o uso**: ${errorMessage}`, true);
+      await this.respond(interaction, `❌ **Failed to fetch usage**: ${errorMessage}`, true);
     }
   }
 
@@ -129,20 +143,18 @@ export class DiscordInteractionHandler implements OnModuleInit {
       this.logCommand(interaction, target.channelId, target.threadId);
 
       const start = () => command.start(buildConversationId(target));
-      const result = target.typingChannel
+      await target.publish(target.typingChannel
         ? await DiscordTypingIndicator.during(target.typingChannel, start)
-        : await start();
-
-      await target.publish(
-        result.kind === 'selection'
-          ? this.activityFormatter.formatSelection(result.selection)
-          : command.unavailable,
-      );
+        : await start());
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /${interaction.commandName} command: ${errorMessage}`);
-      await this.respond(interaction, `❌ **Falha ao abrir a seleção de ${command.subject}**: ${errorMessage}`, false);
+      await this.respond(interaction, `❌ **Failed to open ${command.subject} selection**: ${errorMessage}`, false);
     }
+  }
+
+  private describeSelection(result: StartAgentConfigSelectionResult, unavailable: string): string {
+    return result.kind === 'selection' ? this.activityFormatter.formatSelection(result.selection) : unavailable;
   }
 
   /** Outside a thread or DM the selection opens a new conversation, which has no questions of its own. */
@@ -185,12 +197,12 @@ export class DiscordInteractionHandler implements OnModuleInit {
 
   private cancelReply(turnCancelled: boolean, selectionCancelled: boolean): string {
     if (turnCancelled) {
-      return '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.';
+      return '🛑 **Cancellation requested.** The active turn will be stopped.';
     }
     if (selectionCancelled) {
-      return '🛑 **Seleção cancelada.**';
+      return '🛑 **Selection cancelled.**';
     }
-    return 'ℹ️ Não há nenhum turno em andamento para cancelar.';
+    return 'ℹ️ There is no turn in progress to cancel.';
   }
 
   private logCommand(

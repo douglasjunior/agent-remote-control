@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import type { UserQuestion } from '../models/user-question.model.js';
-import { parseTagAttributes, readTagBody } from '../utils/protocol-tag.util.js';
+import { type CodeSpan, findCodeSpans, isInCode, parseTagAttributes, readTagBody } from '../utils/protocol-tag.util.js';
 
 
 /** `message` is the agent's text outside the question tags, addressed to the user. */
@@ -12,10 +12,6 @@ export type ParsedQuestions =
 
 const QUESTION_TAG = /<(\/?)(question|option)\b([^>]*)>/gi;
 const OPTION_TAG = /<(\/?)option\b([^>]*)>/gi;
-/** Fenced blocks first, so an inline span never starts inside a fence. */
-const MARKDOWN_CODE = /```[\s\S]*?(?:```|$)|`[^`\n]+`/g;
-
-type CodeSpan = readonly [start: number, end: number];
 
 @Injectable()
 export class QuestionParserService {
@@ -23,7 +19,7 @@ export class QuestionParserService {
     const questions: UserQuestion[] = [];
     const messageParts: string[] = [];
     const tags = new RegExp(QUESTION_TAG.source, QUESTION_TAG.flags);
-    const codeSpans = this.findCodeSpans(response);
+    const codeSpans = findCodeSpans(response);
     let cursor = 0;
 
     for (let tag = this.nextTag(tags, response, codeSpans); tag; tag = this.nextTag(tags, response, codeSpans)) {
@@ -103,18 +99,10 @@ export class QuestionParserService {
   /** Tags inside Markdown code are quoted markup, such as an HTML `<option>`, not questions. */
   private nextTag(tags: RegExp, response: string, codeSpans: readonly CodeSpan[]): RegExpExecArray | null {
     let tag = tags.exec(response);
-    while (tag && this.isInCode(tag.index, codeSpans)) {
+    while (tag && isInCode(tag.index, codeSpans)) {
       tag = tags.exec(response);
     }
     return tag;
-  }
-
-  private findCodeSpans(response: string): CodeSpan[] {
-    return Array.from(response.matchAll(MARKDOWN_CODE), match => [match.index, match.index + match[0].length] as const);
-  }
-
-  private isInCode(index: number, codeSpans: readonly CodeSpan[]): boolean {
-    return codeSpans.some(([start, end]) => index >= start && index < end);
   }
 
   private invalid(reason: string): ParsedQuestions {

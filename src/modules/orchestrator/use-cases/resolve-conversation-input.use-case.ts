@@ -5,13 +5,16 @@ import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { QuestionSubmission } from '../models/user-question.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
+import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
+import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
+import { normalizeUserLanguage } from '../utils/user-language.util.js';
 
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selection.use-case.js';
 
 
-const ATTACHMENTS_ONLY_PROMPT = 'O usuário enviou anexos. Analise os arquivos anexados.';
+const ATTACHMENTS_ONLY_PROMPT = 'The user sent attachments. Analyze the attached files.';
 
 export type ResolveConversationInputInput = {
   readonly conversationId: string;
@@ -30,6 +33,9 @@ export class ResolveConversationInputUseCase {
     private readonly startSelection: StartAgentConfigSelectionUseCase,
     private readonly submitSelection: SubmitAgentConfigSelectionUseCase,
     private readonly questionQueue: UserQuestionQueueService,
+    private readonly languageChangeRequests: LanguageChangeRequestService,
+    @Inject(IPreferencesStorePort)
+    private readonly preferencesStore: IPreferencesStorePort,
   ) {}
 
   async execute(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
@@ -38,6 +44,10 @@ export class ResolveConversationInputUseCase {
     const submission = this.questionQueue.submit(conversationId, { text: input.prompt, attachments });
     if (submission) {
       return this.describeSubmission(submission);
+    }
+
+    if (this.languageChangeRequests.isPending(conversationId)) {
+      return this.changeLanguage(conversationId, input.prompt);
     }
 
     const prompt = input.prompt || ATTACHMENTS_ONLY_PROMPT;
@@ -71,6 +81,16 @@ export class ResolveConversationInputUseCase {
       return { kind: 'execute', prompt };
     }
     return started;
+  }
+
+  private async changeLanguage(conversationId: string, input: string): Promise<ConversationInputResolution> {
+    const language = normalizeUserLanguage(input);
+    if (!language) {
+      return { kind: 'invalid_language' };
+    }
+    this.languageChangeRequests.cancel(conversationId);
+    await this.preferencesStore.update({ language });
+    return { kind: 'language_set', language };
   }
 
   private describeSubmission(submission: QuestionSubmission): ConversationInputResolution {

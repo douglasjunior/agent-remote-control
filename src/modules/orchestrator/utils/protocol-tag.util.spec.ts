@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { escapeTagAttribute, parseTagAttributes, readTagBody } from './protocol-tag.util.js';
+import { escapeTagAttribute, findCodeSpans, isInCode, parseTagAttributes, readTagBody } from './protocol-tag.util.js';
 
 
 describe('protocol tag utils', () => {
@@ -37,5 +37,16 @@ describe('protocol tag utils', () => {
 
   it('should escape an attribute value into a single line', () => {
     expect(escapeTagAttribute(' Say "yes" &\n  go ')).toBe('Say &quot;yes&quot; &amp; go');
+  });
+
+  describe('findCodeSpans', () => {
+    it('should find fenced blocks and inline spans', () => {
+      const text = 'a `b` c\n```\n`d`\n```\ne';
+      const spans = findCodeSpans(text);
+
+      expect(spans.map(([start, end]) => text.slice(start, end))).toEqual(['`b`', '```\n`d`\n```']);
+      expect(isInCode(text.indexOf('b'), spans)).toBe(true);
+      expect(isInCode(text.indexOf('e'), spans)).toBe(false);
+    });
   });
 });
