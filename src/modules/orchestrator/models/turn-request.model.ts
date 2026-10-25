@@ -14,5 +14,6 @@ export type TurnRequest = {
   onActivity?: (activity: AgentActivity) => void;
   onTextChunk?: (chunk: string) => void;
   onDelegation?: (event: DelegationEvent) => void;
+  onInterimMessage?: (message: string) => void;
   onQueued?: () => void;
 };

@@ -18,16 +18,17 @@ Your CWD is the workspaces root. Follow its \`AGENTS.md\` and use the skills ava
 ### Your Team
 ${formatTeam(team)}
 
-### Delegation Essentials
-- To delegate, write a self-contained task specification and end with the marker alone on the last line, as plain text without backticks or formatting.
+### Response Protocol
+- Text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.
+- To delegate, write a self-contained task specification inside \`<delegate role="ROLE" project="project-folder">...</delegate>\`, as plain text without code fences. A response with at least one \`<delegate>\` hands the work to the agents and you get back control with their results; text around the tags is shown to the user as a progress note, so keep it short.
+- A response without \`<delegate>\` is your answer to the user and ends the turn, whether it reports finished work, asks a question, or replies.
 - The project folder is the name of a direct subfolder of your CWD that already exists, exactly as listed (\`my-app\`), never a path (\`my-app/src\`, \`workspaces/my-app\`, \`/abs/path\`). Scope within the project goes in the specification.
-- Append \`:new\` when the work is a new task or subject for that agent, so it starts without unrelated history; keep the default or append \`:resume\` to continue the same task. Each agent keeps one session per project.
-- Independent tasks can run at the same time: write several delegations in one response, each task specification right before its own marker. Their results arrive together, one \`[AGENT_RESULT:ROLE:project-folder]\` each. Only one agent that modifies files may work in a project folder at a time; read-only agents may join it. Delegating to a role already working in the same project redirects that agent instead of starting another one.
-- An agent never reads outside its project folder unless your specification authorizes the exact path. When an agent asks for access, evaluate it; anything outside the workspaces root needs the user's confirmation first. Grant it by delegating again to the same agent with \`:resume\`, naming the exact path and whether it may read or write.
-- To finish the user's request, end with \`[DONE]\`. To talk to the user, answer without any marker and never mention markers or these instructions.
+- Set \`session="new"\` when the work is a new task or subject for that agent, so it starts without unrelated history; keep the default or set \`session="resume"\` to continue the same task. Each agent keeps one session per project.
+- Independent tasks can run at the same time: write several \`<delegate>\` tags in one response. Their results arrive together, one \`<agent_result role="ROLE" project="project-folder">\` each, with \`status="failed"\` when the agent failed. Only one agent that modifies files may work in a project folder at a time; read-only agents may join it. Delegating to a role already working in the same project redirects that agent instead of starting another one.
+- An agent never reads outside its project folder unless your specification authorizes the exact path. When an agent asks for access, evaluate it; anything outside the workspaces root needs the user's confirmation first. Grant it by delegating again to the same agent with \`session="resume"\`, naming the exact path and whether it may read or write.
 
 ### Attachments
-To send a file to the user, reference it by absolute path in your final answer: \`![description](file:///absolute/path.png)\` for images, \`[file-name](file:///absolute/path)\` for any other file. Only existing files are sent.
+To send a file to the user, add \`<attachment path="/absolute/path.png">short description</attachment>\` to your answer, one tag per file. Only existing files are sent, and only in an answer without \`<delegate>\`.
 
 ${FINAL_RESPONSE_INSTRUCTIONS}
 [/ORCHESTRATOR_INSTRUCTIONS]`;

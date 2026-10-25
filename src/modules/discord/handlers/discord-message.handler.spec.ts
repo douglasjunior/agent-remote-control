@@ -594,6 +594,72 @@ describe('DiscordMessageHandler', () => {
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
 
+    it('should send the CEO interim message before the delegation it precedes', async () => {
+      const contents: string[] = [];
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        contents.push(content);
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: {
+          id: 'thread-1',
+          parentId: 'channel-1',
+          ownerId: 'bot-123',
+          isDMBased: vi.fn().mockReturnValue(false),
+          isThread: vi.fn().mockReturnValue(true),
+          send,
+        },
+      } as unknown as Message;
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onInterimMessage?.('Splitting this in two.');
+        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor', phase: 'started' });
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      const interim = contents.indexOf('Splitting this in two.');
+      expect(interim).toBeGreaterThanOrEqual(0);
+      expect(interim).toBeLessThan(contents.findIndex(content => content.includes('Tarefa delegada')));
+    });
+
+    it('should proceed gracefully when the CEO interim message cannot be sent', async () => {
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        if (content === 'Splitting this in two.') {
+          throw new Error('rate limited');
+        }
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: {
+          id: 'thread-1',
+          parentId: 'channel-1',
+          ownerId: 'bot-123',
+          isDMBased: vi.fn().mockReturnValue(false),
+          isThread: vi.fn().mockReturnValue(true),
+          send,
+        },
+      } as unknown as Message;
+      orchestratorService.executeTurn = async (request: TurnRequest) => {
+        request.onInterimMessage?.('Splitting this in two.');
+        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(send).toHaveBeenLastCalledWith('Done.');
+    });
+
     it('should delete initial progress message only once when onActivity and onDelegation fire concurrently', async () => {
       let resolveDelete!: () => void;
       const deletePromise = new Promise<void>((resolve) => {

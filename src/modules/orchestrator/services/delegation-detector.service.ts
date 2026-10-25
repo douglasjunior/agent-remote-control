@@ -10,133 +10,152 @@ export type DelegationResult = {
   readonly sessionMode?: DelegationSessionMode;
 };
 
+/** `message` is the text outside the protocol tags, addressed to the user. */
 export type CeoDecision =
-  | { readonly kind: 'delegate'; readonly delegations: readonly DelegationResult[] }
-  | { readonly kind: 'done'; readonly summary: string }
-  | { readonly kind: 'direct_response' }
+  | { readonly kind: 'delegate'; readonly message: string; readonly delegations: readonly DelegationResult[] }
+  | { readonly kind: 'reply'; readonly message: string; readonly attachments: readonly string[] }
   | { readonly kind: 'invalid'; readonly reason: string };
 
-type ParsedMarker = Omit<DelegationResult, 'taskSpec'> | { readonly invalid: string };
+type Attributes = ReadonlyMap<string, string>;
 
-const MARKER_LINE = /^[ \t]*[*_`]*\[(DELEGATE|DONE)([^\]\n]*)\][*_`]*[ \t]*$/gim;
-const MARKER_MENTION = /\[(?:DELEGATE|DONE)\b/i;
-const DELEGATE_ARGUMENTS = /^:([A-Za-z][\w-]*)(?::([^\s:]*))?(?::([^\s:]+))?$/;
+type ParsedTag =
+  | { readonly delegation: DelegationResult; readonly end: number }
+  | { readonly attachment: string; readonly end: number };
+
+const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
+const ATTRIBUTE = /([A-Za-z][\w-]*)=(?:"([^"]*)"|'([^']*)')/g;
+const ROLE = /^[A-Za-z][\w-]*$/;
+const LEGACY_MARKER = /\[(?:DELEGATE|DONE)\b[^\]\n]*\]/i;
+
+const DELEGATE_ATTRIBUTES = ['role', 'project', 'session'];
+const ATTACHMENT_ATTRIBUTES = ['path'];
 
 @Injectable()
 export class DelegationDetectorService {
   detect(response: string): CeoDecision {
-    const markers = [...response.matchAll(MARKER_LINE)];
-
-    if (markers.length === 0) {
-      return MARKER_MENTION.test(response)
-        ? { kind: 'invalid', reason: 'The marker must be alone on its own line, with no other text on that line.' }
-        : { kind: 'direct_response' };
-    }
-
-    if (markers.some(([, name]) => name!.toUpperCase() === 'DONE')) {
-      return markers.length > 1
-        ? { kind: 'invalid', reason: '[DONE] cannot be combined with other markers. Finish with [DONE] alone, or delegate without it.' }
-        : this.detectDone(response, markers[0]!);
-    }
-
-    return markers.length === 1
-      ? this.detectSingleDelegation(response, markers[0]!)
-      : this.detectParallelDelegations(response, markers);
-  }
-
-  private detectDone(response: string, marker: RegExpExecArray): CeoDecision {
-    return marker[2]
-      ? { kind: 'invalid', reason: `Malformed done marker "${marker[0].trim()}". Use exactly [DONE].` }
-      : { kind: 'done', summary: this.removeMarker(response, marker) };
-  }
-
-  /** Models sometimes write the specification after the marker, so a single delegation takes the text on both sides. */
-  private detectSingleDelegation(response: string, marker: RegExpExecArray): CeoDecision {
-    const parsed = this.parseDelegateMarker(marker);
-    if ('invalid' in parsed) {
-      return { kind: 'invalid', reason: parsed.invalid };
-    }
-
-    const taskSpec = this.removeMarker(response, marker);
-    if (!taskSpec) {
-      return { kind: 'invalid', reason: 'The delegation has no task specification. Write the task before the marker.' };
-    }
-
-    return { kind: 'delegate', delegations: [{ ...parsed, taskSpec }] };
-  }
-
-  private detectParallelDelegations(response: string, markers: readonly RegExpExecArray[]): CeoDecision {
-    const lastMarker = markers.at(-1)!;
-    if (response.slice(lastMarker.index + lastMarker[0].length).trim()) {
-      return {
-        kind: 'invalid',
-        reason: 'With several delegations, each task specification goes before its own marker and nothing follows the last marker.',
-      };
+    if (LEGACY_MARKER.test(response)) {
+      return this.invalid('Bracket markers such as [DELEGATE:...] and [DONE] are not part of the protocol. Delegate with <delegate role="ROLE">task</delegate>, and answer the user without any tag to finish.');
     }
 
     const delegations: DelegationResult[] = [];
-    let specStart = 0;
-    for (const [position, marker] of markers.entries()) {
-      const parsed = this.parseDelegateMarker(marker);
-      if ('invalid' in parsed) {
-        return { kind: 'invalid', reason: parsed.invalid };
-      }
+    const attachments: string[] = [];
+    const messageParts: string[] = [];
+    const tags = new RegExp(OPENING_TAG.source, OPENING_TAG.flags);
+    let cursor = 0;
 
-      const taskSpec = response.slice(specStart, marker.index).trim();
-      if (!taskSpec) {
-        return {
-          kind: 'invalid',
-          reason: `Delegation ${position + 1} ("${marker[0].trim()}") has no task specification. Write each task right before its own marker.`,
-        };
+    for (let tag = tags.exec(response); tag; tag = tags.exec(response)) {
+      messageParts.push(response.slice(cursor, tag.index));
+      const parsed = this.readTag(response, tag);
+      if (typeof parsed === 'string') {
+        return this.invalid(parsed);
       }
-
-      delegations.push({ ...parsed, taskSpec });
-      specStart = marker.index + marker[0].length;
+      tags.lastIndex = parsed.end;
+      cursor = parsed.end;
+      if ('delegation' in parsed) {
+        delegations.push(parsed.delegation);
+      } else {
+        attachments.push(parsed.attachment);
+      }
     }
+    messageParts.push(response.slice(cursor));
 
-    return { kind: 'delegate', delegations };
+    const message = messageParts.join('').replace(/\n{3,}/g, '\n\n').trim();
+    if (delegations.length === 0) {
+      return { kind: 'reply', message, attachments };
+    }
+    if (attachments.length > 0) {
+      return this.invalid('Attachments go in the answer to the user, not in a response that delegates. Send them once the agents have finished.');
+    }
+    return { kind: 'delegate', message, delegations };
   }
 
-  private parseDelegateMarker(marker: RegExpExecArray): ParsedMarker {
-    const delegateArgs = marker[2]!.match(DELEGATE_ARGUMENTS);
-    if (!delegateArgs) {
-      return {
-        invalid: `Malformed delegation marker "${marker[0].trim()}". Use [DELEGATE:ROLE:project-folder:new], [DELEGATE:ROLE:project-folder], or [DELEGATE:ROLE].`,
-      };
+  private readTag(response: string, tag: RegExpExecArray): ParsedTag | string {
+    const [rawTag, closing, rawName, rawAttributes] = tag;
+    const name = rawName!.toLowerCase();
+    if (closing) {
+      return `Found ${rawTag} without its opening <${name}> tag.`;
     }
 
-    const [, rawRole, segment2, segment3] = delegateArgs;
-    let projectName: string | undefined;
-    let sessionMode: DelegationSessionMode | undefined;
+    const selfClosing = rawAttributes!.trimEnd().endsWith('/');
+    const attributes = this.parseAttributes(
+      rawTag,
+      selfClosing ? rawAttributes!.trimEnd().slice(0, -1) : rawAttributes!,
+      name === 'delegate' ? DELEGATE_ATTRIBUTES : ATTACHMENT_ATTRIBUTES,
+    );
+    if (typeof attributes === 'string') {
+      return attributes;
+    }
 
-    if (segment3 !== undefined) {
-      const modeLower = segment3.toLowerCase();
-      if (modeLower !== 'new' && modeLower !== 'resume') {
-        return {
-          invalid: `Malformed delegation marker "${marker[0].trim()}". Session mode must be "new" or "resume".`,
-        };
+    const contentStart = tag.index + rawTag.length;
+    const body = selfClosing ? { content: '', end: contentStart } : this.readBody(response, name, contentStart);
+    if (typeof body === 'string') {
+      return body;
+    }
+
+    if (name === 'attachment') {
+      const path = attributes.get('path');
+      return path ? { attachment: path, end: body.end } : 'Every <attachment> needs a path attribute with the absolute path of the file.';
+    }
+    const delegation = this.parseDelegation(attributes, body.content);
+    return typeof delegation === 'string' ? delegation : { delegation, end: body.end };
+  }
+
+  private parseAttributes(rawTag: string, rawAttributes: string, allowed: readonly string[]): Attributes | string {
+    const attributes = new Map<string, string>();
+    for (const [, name, doubleQuoted, singleQuoted] of rawAttributes.matchAll(ATTRIBUTE)) {
+      const key = name!.toLowerCase();
+      if (!allowed.includes(key)) {
+        const allowedList = allowed.map(attribute => `"${attribute}"`).join(', ');
+        return `Unknown attribute "${name}" in ${rawTag}. Use only ${allowedList}.`;
       }
-      sessionMode = modeLower;
-      projectName = segment2 ? segment2 : undefined;
-    } else if (segment2 !== undefined) {
-      const seg2Lower = segment2.toLowerCase();
-      if (seg2Lower === 'new' || seg2Lower === 'resume') {
-        sessionMode = seg2Lower;
-      } else {
-        projectName = segment2;
-      }
+      attributes.set(key, (doubleQuoted ?? singleQuoted)!.trim());
+    }
+    if (rawAttributes.replace(ATTRIBUTE, '').trim()) {
+      return `Malformed tag ${rawTag}. Write each attribute as name="value".`;
+    }
+    return attributes;
+  }
+
+  private readBody(response: string, name: string, contentStart: number): { content: string; end: number } | string {
+    const closingTag = `</${name}>`;
+    const close = response.toLowerCase().indexOf(closingTag, contentStart);
+    const content = close < 0 ? '' : response.slice(contentStart, close);
+    if (close < 0 || new RegExp(String.raw`<${name}\b`, 'i').test(content)) {
+      return `Every <${name}> must be closed with ${closingTag} before the next <${name}> starts.`;
+    }
+    return { content, end: close + closingTag.length };
+  }
+
+  private parseDelegation(attributes: Attributes, content: string): DelegationResult | string {
+    const role = attributes.get('role');
+    if (!role || !ROLE.test(role)) {
+      return 'Every <delegate> needs a role attribute with the role name, as in <delegate role="DEVELOPER">.';
+    }
+
+    const projectName = attributes.get('project');
+    if (projectName === '') {
+      return `The project attribute of <delegate role="${role}"> is empty. Name the project folder, or leave the attribute out.`;
+    }
+
+    const session = attributes.get('session')?.toLowerCase();
+    if (session !== undefined && session !== 'new' && session !== 'resume') {
+      return `The session attribute of <delegate role="${role}"> must be "new" or "resume".`;
+    }
+
+    const taskSpec = content.trim();
+    if (!taskSpec) {
+      return `<delegate role="${role}"> has no task specification. Write the task between <delegate ...> and </delegate>.`;
     }
 
     return {
-      delegateToRole: rawRole!.toUpperCase(),
+      delegateToRole: role.toUpperCase(),
       projectName,
-      ...(sessionMode ? { sessionMode } : {}),
+      taskSpec,
+      ...(session ? { sessionMode: session } : {}),
     };
   }
 
-  private removeMarker(text: string, match: RegExpExecArray): string {
-    const before = text.slice(0, match.index).trim();
-    const after = text.slice(match.index + match[0].length).trim();
-    return [before, after].filter(Boolean).join('\n\n');
+  private invalid(reason: string): CeoDecision {
+    return { kind: 'invalid', reason };
   }
 }

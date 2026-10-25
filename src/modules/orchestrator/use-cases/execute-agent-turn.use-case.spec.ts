@@ -121,7 +121,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should return the summary before the done marker', async () => {
-    stubAgentPort.mockResponses = ['All set.\n[DONE]'];
+    stubAgentPort.mockResponses = ['All set.'];
 
     const result = await useCase.execute(turnRequest());
 
@@ -154,7 +154,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should delegate to a new agent in the project folder and feed its result back to the CEO', async () => {
-    stubAgentPort.mockResponses = ['Implement login.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Implement login.</delegate>', 'Done.'];
     delegateStubPort.mockResponses = ['Login implemented.'];
     agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
 
@@ -166,7 +166,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.']);
     expect(stubAgentPort.promptCalls).toEqual([
       'CEO prompt\n\nAdd login',
-      '[AGENT_RESULT:DEVELOPER:my-app]\nLogin implemented.',
+      '<agent_result role="DEVELOPER" project="my-app">\nLogin implemented.\n</agent_result>',
     ]);
     expect(delegateStubPort.closeSessionCalls).toBe(1);
     expect(delegateStubPort.connected).toBe(false);
@@ -177,7 +177,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       (role: string) => `${role} turn reminder`,
     );
     agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
-    stubAgentPort.mockResponses = ['Implement login.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Implement login.</delegate>', 'Done.'];
     delegateStubPort.mockResponses = ['Login implemented.'];
 
     const result = await useCase.execute(turnRequest({ prompt: 'Add login' }));
@@ -185,13 +185,13 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.response).toBe('Done.');
     expect(stubAgentPort.promptCalls).toEqual([
       'CEO prompt\n\nAdd login\n\nCEO turn reminder',
-      '[AGENT_RESULT:DEVELOPER:my-app]\nLogin implemented.\n\nCEO turn reminder',
+      '<agent_result role="DEVELOPER" project="my-app">\nLogin implemented.\n</agent_result>\n\nCEO turn reminder',
     ]);
     expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nImplement login.\n\nDEVELOPER turn reminder']);
   });
 
   it('should run the delegate in the request workspace when no project is given', async () => {
-    stubAgentPort.mockResponses = ['Review it.\n[DELEGATE:DEVELOPER]', 'Ok.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Review it.</delegate>', 'Ok.'];
     delegateStubPort.mockResponses = ['Reviewed.'];
 
     await useCase.execute(turnRequest());
@@ -201,7 +201,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should notify when a delegation starts and finishes', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.mockResponses = ['Done.'];
     agentRegistry.getDisplayName.mockImplementation((role: string) => `${role} name`);
     const usage = { totalTokens: 40, inputTokens: 30, outputTokens: 10 };
@@ -225,7 +225,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should ensure each agent working directory exists before creating its session', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.mockResponses = ['Done.'];
 
     await useCase.execute(turnRequest());
@@ -247,7 +247,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should return failed when max delegation rounds are exceeded', async () => {
-    stubAgentPort.mockResponses = Array(15).fill('Delegating...\n[DELEGATE:DEVELOPER:my-app]');
+    stubAgentPort.mockResponses = Array(15).fill('<delegate role="DEVELOPER" project="my-app">Delegating...</delegate>');
     delegateStubPort.mockResponses = Array(15).fill('I did it.');
 
     const result = await useCase.execute(turnRequest());
@@ -261,48 +261,48 @@ describe('ExecuteAgentTurnUseCase', () => {
   describe('delegation contract', () => {
     it('should repair a delegation missing a project folder the role requires', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Go.</delegate>', '<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Role "DEVELOPER" requires a project folder. Use [DELEGATE:DEVELOPER:<project-folder>].',
+        'Role "DEVELOPER" requires a project folder. Use <delegate role="DEVELOPER" project="<project-folder>">.',
       );
     });
 
     it('should repair a delegation carrying a project folder the role does not take', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({});
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok, asking you first.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok, asking you first.'];
 
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Role "DEVELOPER" does not take a project folder. Use [DELEGATE:DEVELOPER].',
+        'Role "DEVELOPER" does not take a project folder. Use <delegate role="DEVELOPER"> without the project attribute.',
       );
       expect(delegateStubPort.promptCalls).toHaveLength(0);
     });
 
     it('should repair a delegation carrying a session mode the role keeps fixed', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app:new]', 'Ok, asking you first.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app" session="new">Go.</delegate>', 'Ok, asking you first.'];
 
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Role "DEVELOPER" does not take a session mode. Use [DELEGATE:DEVELOPER:my-app] without ":new".',
+        'Role "DEVELOPER" does not take a session mode. Use <delegate role="DEVELOPER"> without the session attribute.',
       );
       expect(delegateStubPort.promptCalls).toHaveLength(0);
     });
   });
 
   describe('delegation repair', () => {
-    it('should send a repair prompt with the reason and delegate once the CEO fixes the marker', async () => {
+    it('should send a repair prompt with the reason and delegate once the CEO fixes the tag', async () => {
       stubAgentPort.mockResponses = [
-        'Cloning it. [DELEGATE:DEVELOPER:my-app]',
-        'Clone the repo.\n[DELEGATE:DEVELOPER:my-app]',
-        'Cloned.\n[DONE]',
+        '<delegate project="my-app">Cloning it.</delegate>',
+        '<delegate role="DEVELOPER" project="my-app">Clone the repo.</delegate>',
+        'Cloned.',
       ];
       delegateStubPort.mockResponses = ['Repo cloned.'];
 
@@ -310,12 +310,12 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result).toMatchObject({ status: 'completed', response: 'Cloned.' });
       expect(stubAgentPort.promptCalls[1]).toContain('[DELEGATION_ERROR]');
-      expect(stubAgentPort.promptCalls[1]).toContain('alone on its own line');
+      expect(stubAgentPort.promptCalls[1]).toContain('needs a role attribute');
       expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nClone the repo.']);
     });
 
     it('should repair a delegation to a role outside the team', async () => {
-      stubAgentPort.mockResponses = ['Test it.\n[DELEGATE:QA:my-app]', 'Ok, I will ask you first.'];
+      stubAgentPort.mockResponses = ['<delegate role="QA" project="my-app">Test it.</delegate>', 'Ok, I will ask you first.'];
 
       const result = await useCase.execute(turnRequest());
 
@@ -325,7 +325,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should repair a delegation from the CEO to itself', async () => {
-      stubAgentPort.mockResponses = ['Plan it.\n[DELEGATE:CEO]', 'Planned.'];
+      stubAgentPort.mockResponses = ['<delegate role="CEO">Plan it.</delegate>', 'Planned.'];
 
       await useCase.execute(turnRequest());
 
@@ -336,7 +336,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       workspacePort.resolveRepositoryPath.mockImplementationOnce(() => {
         throw new Error('Path is outside the workspace directory: /etc');
       });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:../../etc]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="../../etc">Go.</delegate>', '<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       const result = await useCase.execute(turnRequest());
@@ -349,7 +349,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should repair a delegation to a project folder that does not exist, listing the existing ones', async () => {
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-ap]', 'Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-ap">Go.</delegate>', '<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       const result = await useCase.execute(turnRequest());
@@ -363,7 +363,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should ask to add the repository first when the workspace has no project folders', async () => {
       workspacePort.listProjectFolders.mockResolvedValue([]);
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Sorry.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Sorry.'];
 
       await useCase.execute(turnRequest());
 
@@ -376,7 +376,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       workspacePort.resolveRepositoryPath.mockImplementationOnce(() => {
         throw 'bad path';
       });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:x]', 'Never mind.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="x">Go.</delegate>', 'Never mind.'];
 
       await useCase.execute(turnRequest());
 
@@ -390,9 +390,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.status).toBe('failed');
       expect(result.response).toBe('Still [DONE] wrong.');
-      expect(result.errorMessage).toBe(
-        'Invalid CEO response: The marker must be alone on its own line, with no other text on that line.',
-      );
+      expect(result.errorMessage).toMatch(/^Invalid CEO response: Bracket markers such as \[DELEGATE:\.\.\.\] and \[DONE\]/);
       expect(stubAgentPort.promptCalls).toHaveLength(2);
     });
   });
@@ -500,7 +498,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should honour a cancellation requested while the delegate is still connecting', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>'];
     let finishConnect: () => void = () => undefined;
     const connecting = new Promise<void>((started) => {
       delegateStubPort.connect = async () => {
@@ -524,7 +522,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should close the delegate and return cancelled when the delegate prompt is cancelled', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>'];
     delegateStubPort.promptErrorToThrow = new PromptCancelledError();
 
     const result = await useCase.execute(turnRequest());
@@ -535,7 +533,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should report a finished delegation without usage when collecting it fails', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.mockResponses = ['Done.'];
     delegateStubPort.usageErrorToThrow = new Error('usage unavailable');
     const events: DelegationEvent[] = [];
@@ -548,7 +546,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should not report a finished delegation when the delegate is cancelled', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>'];
     delegateStubPort.promptErrorToThrow = new PromptCancelledError();
     const phases: string[] = [];
 
@@ -558,7 +556,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should stream text chunks and forward activities from every agent', async () => {
-    stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.prompt = async function* (this: StubAgentPort) {
       this.emitActivity({ kind: 'thought', id: 't', text: 'thinking' });
       yield textChunk('first ');
@@ -574,7 +572,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(onTextChunk).toHaveBeenCalledWith('first ');
     expect(onTextChunk).toHaveBeenCalledWith('second');
     expect(onTextChunk).toHaveBeenCalledTimes(4);
-    expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER:my-app]\nfirst second');
+    expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER" project="my-app">\nfirst second\n</agent_result>');
     expect(delegateStubPort.activityListeners).toHaveLength(0);
   });
 
@@ -655,7 +653,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await persistedSession();
       agentRegistry.isSystemPromptEveryTurn.mockImplementation((role: string) => role === 'CEO');
       agentRegistry.getSystemPrompt.mockImplementation((role: string) => `${role} prompt`);
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Done.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['Implemented.'];
 
       await useCase.execute(turnRequest({ prompt: 'Continue' }));
@@ -663,7 +661,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual([
         'CEO prompt\n\nContinue',
-        '[AGENT_RESULT:DEVELOPER:my-app]\nImplemented.',
+        '<agent_result role="DEVELOPER" project="my-app">\nImplemented.\n</agent_result>',
       ]);
       expect(delegateStubPort.promptCalls).toEqual(['DEVELOPER prompt\n\nGo.']);
     });
@@ -691,7 +689,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should persist the delegate session id alongside the CEO session id', async () => {
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
@@ -707,7 +705,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await sessionStore.saveSession(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app' }],
       }));
-      stubAgentPort.mockResponses = ['Fix it.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Fix it.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Fixed.'];
 
       await useCase.execute(turnRequest());
@@ -725,7 +723,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await sessionStore.saveSession(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app' }],
       }));
-      stubAgentPort.mockResponses = ['Fix it from scratch.\n[DELEGATE:DEVELOPER:my-app:new]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app" session="new">Fix it from scratch.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Fixed.'];
 
       await useCase.execute(turnRequest());
@@ -743,7 +741,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await sessionStore.saveSession(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }, { role: 'CODE_REVIEWER', agentId: 'stub', sessionId: 'rev-old', projectName: 'my-app' }],
       }));
-      stubAgentPort.mockResponses = ['Review it.\n[DELEGATE:CODE_REVIEWER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="CODE_REVIEWER" project="my-app">Review it.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Reviewed.'];
 
       await useCase.execute(turnRequest());
@@ -759,9 +757,9 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should resume the delegate session created in an earlier round of the same turn', async () => {
       stubAgentPort.mockResponses = [
-        'Build it.\n[DELEGATE:DEVELOPER:my-app]',
-        'Now test it.\n[DELEGATE:DEVELOPER:my-app]',
-        'Ok.\n[DONE]',
+        '<delegate role="DEVELOPER" project="my-app">Build it.</delegate>',
+        '<delegate role="DEVELOPER" project="my-app">Now test it.</delegate>',
+        'Ok.',
       ];
       delegateStubPort.mockResponses = ['Built.', 'Tested.'];
 
@@ -781,7 +779,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         ],
       }));
       delegateStubPort.loadSessionResult = false;
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
@@ -826,7 +824,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should apply the global settings to the CEO and to delegates', async () => {
       settingsStore.settings = settings;
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
@@ -906,7 +904,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       settingsStore.settings = settingsOf();
       stubAgentPort.agentName = 'other';
       delegateStubPort.agentName = 'other';
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
       const events: DelegationEvent[] = [];
 
@@ -925,7 +923,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       portFactory.defaultAgentId = 'fallback';
       stubAgentPort.agentName = 'fallback';
       delegateStubPort.agentName = 'fallback';
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       const result = await useCase.execute(turnRequest());
@@ -995,7 +993,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       settingsStore.settings = settingsOf();
       stubAgentPort.agentName = 'other';
       delegateStubPort.agentName = 'other';
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
@@ -1090,12 +1088,36 @@ describe('ExecuteAgentTurnUseCase', () => {
       vi.mocked(statSync).mockImplementation(path => ({
         isFile: () => path === '/mock/workspace/screenshot.png',
       } as any));
-      stubAgentPort.mockResponses = ['Here is the screenshot: ![screen](screenshot.png)'];
+      stubAgentPort.mockResponses = ['Here is the screenshot:\n<attachment path="screenshot.png">Screen</attachment>'];
 
       const result = await useCase.execute(turnRequest({ workspacePath: '/mock/workspace' }));
 
-      expect(result.status).toBe('completed');
+      expect(result).toMatchObject({ status: 'completed', response: 'Here is the screenshot:' });
       expect(result.attachments).toEqual(['/mock/workspace/screenshot.png']);
+    });
+
+    it('should hand the text around the delegations to the channel before the agents start', async () => {
+      const events: string[] = [];
+      stubAgentPort.mockResponses = ['Starting now.\n<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Implemented.'];
+
+      await useCase.execute(turnRequest({
+        onInterimMessage: message => events.push(`message: ${message}`),
+        onDelegation: event => events.push(event.phase),
+      }));
+
+      expect(events).toEqual(['message: Starting now.', 'started', 'finished']);
+      expect(delegateStubPort.promptCalls).toEqual(['Mock system prompt.\n\nGo.']);
+    });
+
+    it('should not send an interim message when a delegation has no text around it', async () => {
+      const onInterimMessage = vi.fn();
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Implemented.'];
+
+      await useCase.execute(turnRequest({ onInterimMessage }));
+
+      expect(onInterimMessage).not.toHaveBeenCalled();
     });
 
     it('should omit attachments when none exist in response', async () => {
@@ -1378,23 +1400,23 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
 
       stubAgentPort.mockResponses = [
-        'Change course.\n[DELEGATE:DEVELOPER:project-a]',
-        'Acknowledged.\n[DONE]',
+        '<delegate role="DEVELOPER" project="project-a">Change course.</delegate>',
+        'Acknowledged.',
       ];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
       expect(steerSpy).toHaveBeenCalledWith('Change course.');
-      expect(stubAgentPort.promptCalls[1]).toContain('[AGENT_RESULT:DEVELOPER:project-a]\nSteering message sent to active agent.');
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="project-a">\nSteering message sent to active agent.\n</agent_result>');
     });
 
     it('should invoke sendSteeringPrompt when active delegation steer() is called and supportsSteering is true', async () => {
       delegateStubPort.supportsSteering = true;
       let steerAccepted: boolean | undefined;
       stubAgentPort.mockResponses = [
-        'Start building.\n[DELEGATE:DEVELOPER:project-a]',
-        'All done.\n[DONE]',
+        '<delegate role="DEVELOPER" project="project-a">Start building.</delegate>',
+        'All done.',
       ];
 
       const conversationKey = 'conv-1';
@@ -1419,7 +1441,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should report the steering as refused when the delegate agent does not accept it', async () => {
       delegateStubPort.supportsSteering = true;
       delegateStubPort.steeringResult = false;
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       let steerAccepted: boolean | undefined;
       delegateStubPort.prompt = async function* () {
         const active = runtime.findActiveDelegation('conv-1', 'DEVELOPER', 'my-app');
@@ -1450,7 +1472,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         steer: steerSpy,
       });
       delegateStubPort.mockResponses = ['Restarted task done.'];
-      stubAgentPort.mockResponses = ['Change course.\n[DELEGATE:DEVELOPER:my-app]', 'Finished.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Change course.</delegate>', 'Finished.'];
 
       const result = await useCase.execute(turnRequest());
 
@@ -1460,7 +1482,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(activeDelegatePort.closeSessionCalls).toBe(1);
       expect(activeDelegatePort.connected).toBe(false);
       expect(delegateStubPort.promptCalls).toEqual([expect.stringContaining('Change course.')]);
-      expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER:my-app]\nRestarted task done.');
+      expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER" project="my-app">\nRestarted task done.\n</agent_result>');
     });
 
     it('should cancel, close, unregister and recreate the delegate in the same project when supportsSteering is false', async () => {
@@ -1489,8 +1511,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       delegateStubPort.mockResponses = ['Completed the new task in project-a.'];
 
       stubAgentPort.mockResponses = [
-        'New task in project-a.\n[DELEGATE:DEVELOPER:project-a]',
-        'All finished.\n[DONE]',
+        '<delegate role="DEVELOPER" project="project-a">New task in project-a.</delegate>',
+        'All finished.',
       ];
 
       const result = await useCase.execute(turnRequest());
@@ -1502,7 +1524,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(firstDisconnectSpy).toHaveBeenCalled();
       expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/project-a']);
       expect(delegateStubPort.promptCalls[0]).toContain('New task in project-a.');
-      expect(stubAgentPort.promptCalls[1]).toContain('[AGENT_RESULT:DEVELOPER:project-a]\nCompleted the new task in project-a.');
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="project-a">\nCompleted the new task in project-a.\n</agent_result>');
       expect(stubAgentPort.promptCalls[1]).not.toContain('Steering message sent to active agent.');
     });
 
@@ -1529,8 +1551,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
 
       stubAgentPort.mockResponses = [
-        'Run initial task.\n[DELEGATE:DEVELOPER:project-a]',
-        'Done.\n[DONE]',
+        '<delegate role="DEVELOPER" project="project-a">Run initial task.</delegate>',
+        'Done.',
       ];
 
       const result = await useCase.execute(turnRequest());
@@ -1605,8 +1627,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
       delegatePorts = [gated('backend', 'API ready.'), gated('frontend', 'Screen ready.')];
       stubAgentPort.mockResponses = [
-        'Build the API.\n[DELEGATE:DEVELOPER:project-a]\nBuild the screen.\n[DELEGATE:DEVELOPER:project-b]',
-        'Both done.\n[DONE]',
+        '<delegate role="DEVELOPER" project="project-a">Build the API.</delegate>\n<delegate role="DEVELOPER" project="project-b">Build the screen.</delegate>',
+        'Both done.',
       ];
 
       const result = await useCase.execute(turnRequest());
@@ -1614,7 +1636,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(result.response).toBe('Both done.');
       expect(started).toEqual(['backend', 'frontend']);
       expect(stubAgentPort.promptCalls[1]).toBe(
-        '[AGENT_RESULT:DEVELOPER:project-a]\nAPI ready.\n\n[AGENT_RESULT:DEVELOPER:project-b]\nScreen ready.',
+        '<agent_result role="DEVELOPER" project="project-a">\nAPI ready.\n</agent_result>\n\n<agent_result role="DEVELOPER" project="project-b">\nScreen ready.\n</agent_result>',
       );
       expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
     });
@@ -1623,19 +1645,19 @@ describe('ExecuteAgentTurnUseCase', () => {
       readOnlyRoles('CODE_REVIEWER');
       delegatePorts = [delegatePort('Implemented.'), delegatePort('Reviewed.')];
       stubAgentPort.mockResponses = [
-        'Implement.\n[DELEGATE:DEVELOPER:my-app]\nReview main.\n[DELEGATE:CODE_REVIEWER:my-app]',
-        'Ok.\n[DONE]',
+        '<delegate role="DEVELOPER" project="my-app">Implement.</delegate>\n<delegate role="CODE_REVIEWER" project="my-app">Review main.</delegate>',
+        'Ok.',
       ];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
-      expect(stubAgentPort.promptCalls[1]).toContain('[AGENT_RESULT:CODE_REVIEWER:my-app]\nReviewed.');
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="CODE_REVIEWER" project="my-app">\nReviewed.\n</agent_result>');
     });
 
     it('should reject two agents that modify the same project in one response', async () => {
       stubAgentPort.mockResponses = [
-        'Implement.\n[DELEGATE:DEVELOPER:my-app]\nPush.\n[DELEGATE:CODE_REVIEWER:my-app]',
+        '<delegate role="DEVELOPER" project="my-app">Implement.</delegate>\n<delegate role="CODE_REVIEWER" project="my-app">Push.</delegate>',
         'Sorry.',
       ];
 
@@ -1648,7 +1670,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should reject the same role twice for the same project', async () => {
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:my-app]\nB.\n[DELEGATE:DEVELOPER:my-app]', 'Sorry.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">A.</delegate>\n<delegate role="DEVELOPER" project="my-app">B.</delegate>', 'Sorry.'];
 
       await useCase.execute(turnRequest());
 
@@ -1658,7 +1680,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should reject the same role twice at the workspaces root', async () => {
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER]\nB.\n[DELEGATE:DEVELOPER]', 'Sorry.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">A.</delegate>\n<delegate role="DEVELOPER">B.</delegate>', 'Sorry.'];
 
       await useCase.execute(turnRequest());
 
@@ -1667,7 +1689,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should reject an agent that modifies a project another agent is already modifying', async () => {
       runtime.registerDelegation('conv-1', activeDelegation('GIT_OPS', 'my-app'));
-      stubAgentPort.mockResponses = ['Implement.\n[DELEGATE:DEVELOPER:my-app]', 'Sorry.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Implement.</delegate>', 'Sorry.'];
 
       await useCase.execute(turnRequest());
 
@@ -1681,7 +1703,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       runtime.registerDelegation('conv-1', activeDelegation('TECH_LEAD', 'my-app'));
       runtime.registerDelegation('conv-1', activeDelegation('DEVELOPER', 'project-a'));
       delegatePorts = [delegatePort('Implemented.')];
-      stubAgentPort.mockResponses = ['Implement.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Implement.</delegate>', 'Ok.'];
 
       const result = await useCase.execute(turnRequest());
 
@@ -1697,7 +1719,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         ],
       }));
       delegatePorts = [delegatePort('Done in b.')];
-      stubAgentPort.mockResponses = ['Work on b.\n[DELEGATE:DEVELOPER:project-b]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-b">Work on b.</delegate>', 'Ok.'];
 
       await useCase.execute(turnRequest());
 
@@ -1710,7 +1732,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should keep the sessions bound by every parallel delegation', async () => {
       delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="DEVELOPER" project="project-b">B.</delegate>', 'Ok.'];
 
       await useCase.execute(turnRequest());
 
@@ -1729,7 +1751,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         await save(session);
       };
       delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="DEVELOPER" project="project-b">B.</delegate>', 'Ok.'];
 
       await useCase.execute(turnRequest());
 
@@ -1741,13 +1763,13 @@ describe('ExecuteAgentTurnUseCase', () => {
       failing.promptErrorToThrow = new Error('agent crashed');
       const healthy = delegatePort('Done.');
       delegatePorts = [failing, healthy];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]', 'Retrying a.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="DEVELOPER" project="project-b">B.</delegate>', 'Retrying a.'];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
       expect(stubAgentPort.promptCalls[1]).toBe(
-        '[AGENT_RESULT:DEVELOPER:project-a]\nThe delegation failed: agent crashed\n\n[AGENT_RESULT:DEVELOPER:project-b]\nDone.',
+        '<agent_result role="DEVELOPER" project="project-a" status="failed">\nagent crashed\n</agent_result>\n\n<agent_result role="DEVELOPER" project="project-b">\nDone.\n</agent_result>',
       );
       expect(healthy.closeSessionCalls).toBe(1);
     });
@@ -1758,11 +1780,11 @@ describe('ExecuteAgentTurnUseCase', () => {
         throw 'transport closed';
       };
       delegatePorts = [failing];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>', 'Ok.'];
 
       await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.promptCalls[1]).toBe('[AGENT_RESULT:DEVELOPER:project-a]\nThe delegation failed: transport closed');
+      expect(stubAgentPort.promptCalls[1]).toBe('<agent_result role="DEVELOPER" project="project-a" status="failed">\ntransport closed\n</agent_result>');
     });
 
     it('should report the turn as cancelled when any parallel delegation was cancelled', async () => {
@@ -1771,7 +1793,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const cancelled = delegatePort('');
       cancelled.promptErrorToThrow = new PromptCancelledError();
       delegatePorts = [failing, cancelled];
-      stubAgentPort.mockResponses = ['A.\n[DELEGATE:DEVELOPER:project-a]\nB.\n[DELEGATE:DEVELOPER:project-b]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="DEVELOPER" project="project-b">B.</delegate>'];
 
       const result = await useCase.execute(turnRequest());
 
@@ -1797,18 +1819,18 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should omit the project in the repair hint when a session mode is sent without a project', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({});
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER::new]', 'Ok, asking you first.'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" session="new">Go.</delegate>', 'Ok, asking you first.'];
 
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toContain(
-        'Role "DEVELOPER" does not take a session mode. Use [DELEGATE:DEVELOPER] without ":new".',
+        'Role "DEVELOPER" does not take a session mode. Use <delegate role="DEVELOPER"> without the session attribute.',
       );
     });
 
     it('should log a shortened preview of long delegation tasks without altering the task', async () => {
       const longTask = `Implement ${'a very long feature '.repeat(10)}`.trim();
-      stubAgentPort.mockResponses = [`${longTask}\n[DELEGATE:DEVELOPER:my-app]`, 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = [`<delegate role="DEVELOPER" project="my-app">${longTask}</delegate>`, 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       await useCase.execute(turnRequest());
@@ -1833,7 +1855,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should ignore failures while closing the delegate after it finishes', async () => {
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
       delegateStubPort.closeSession = async () => {
         throw new Error('close failed');
@@ -1866,7 +1888,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         turn: { cancel: vi.fn().mockResolvedValue(undefined) } as any,
         steer: vi.fn(),
       });
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 
       const result = await useCase.execute(turnRequest());
@@ -1876,7 +1898,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should record the new task without steering a delegate whose agent lacks steering', async () => {
-      stubAgentPort.mockResponses = ['Go.\n[DELEGATE:DEVELOPER:my-app]', 'Ok.\n[DONE]'];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
       let captured: { taskSpec: string } | undefined;
       let steerAccepted: boolean | undefined;
       delegateStubPort.prompt = async function* () {
