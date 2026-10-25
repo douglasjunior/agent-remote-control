@@ -1174,6 +1174,34 @@ describe('DiscordMessageHandler', () => {
     expect(mockThread.send).toHaveBeenCalledWith('A'.repeat(1000));
   });
 
+  it('should show local file links in the response as plain text', async () => {
+    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const mockThread = {
+      id: 'thread-999',
+      send: vi.fn().mockResolvedValue(progressMessage),
+    };
+
+    orchestratorService.mockResult = {
+      sessionId: 'session-1',
+      response: 'Em [`src/Header.js`](file:///home/u/repo/src/Header.js#L51-L54):',
+      status: 'completed',
+    };
+
+    const message = {
+      author: { bot: false, id: 'user-42' },
+      channelId: 'channel-1',
+      cleanContent: 'Plan',
+      content: '<@bot-123> Plan',
+      mentions: { has: vi.fn().mockReturnValue(true) },
+      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      startThread: vi.fn().mockResolvedValue(mockThread),
+    } as unknown as Message;
+
+    await handler.handleMessage(message);
+
+    expect(mockThread.send).toHaveBeenCalledWith('Em `src/Header.js`:');
+  });
+
   it('should send default completion message when response is empty', async () => {
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {
