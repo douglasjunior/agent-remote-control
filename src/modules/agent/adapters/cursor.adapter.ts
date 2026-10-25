@@ -25,7 +25,7 @@ const CURSOR_BINARIES = ['cursor-agent', 'agent'] as const;
 const CURSOR_ARGS = ['--force', '--sandbox', 'disabled', '--trust', '--approve-mcps', 'acp'];
 
 const QUESTION_REDIRECT =
-  'Nobody can answer interactive questions in this session. Write your question in your final response and end your turn.';
+  'Nobody can answer interactive questions in this session. Write your question in your final response with the <question> tags your instructions describe, and end your turn.';
 
 const PLAN_REDIRECT =
   'Plans are not approved interactively in this session. Carry out the task, or write the plan in your final response when the task asks for one.';

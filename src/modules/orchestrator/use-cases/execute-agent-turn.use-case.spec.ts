@@ -391,13 +391,13 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should fail the turn when the repaired response is still invalid', async () => {
-      stubAgentPort.mockResponses = ['Go [DONE] now.', 'Still [DONE] wrong.'];
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Still wrong.</delegate>'];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('failed');
-      expect(result.response).toBe('Still [DONE] wrong.');
-      expect(result.errorMessage).toMatch(/^Invalid CEO response: Bracket markers such as \[DELEGATE:\.\.\.\] and \[DONE\]/);
+      expect(result.response).toBe('Still wrong.</delegate>');
+      expect(result.errorMessage).toBe('Invalid CEO response: Found </delegate> without its opening <delegate> tag.');
       expect(stubAgentPort.promptCalls).toHaveLength(2);
     });
   });
@@ -676,7 +676,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should not resend the system prompt with the repair prompt of a role that asks for it every user message', async () => {
       await persistedSession();
       agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
-      stubAgentPort.mockResponses = ['Go [DONE] now.', 'Fixed.'];
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Fixed.'];
 
       await useCase.execute(turnRequest());
 

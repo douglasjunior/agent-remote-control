@@ -36,6 +36,22 @@ describe('QuestionParserService', () => {
   });
 
   it.each([
+    ['inline code', 'Added `<option>` items to the `<select>`.'],
+    ['a fenced block', 'Done:\n```html\n<select><option value="a">A</option></select>\n```'],
+    ['an unclosed fenced block', 'Done:\n```html\n<option>A</option>'],
+  ])('should leave the tags inside %s as text', (_case, response) => {
+    expect(parser.parse(response)).toEqual({ kind: 'none' });
+  });
+
+  it('should read a question next to quoted markup', () => {
+    expect(parser.parse('The `<option>` list changed.\n<question>Keep it?<option>Yes</option></question>')).toEqual({
+      kind: 'questions',
+      message: 'The `<option>` list changed.',
+      questions: [{ text: 'Keep it?', options: ['Yes'] }],
+    });
+  });
+
+  it.each([
     ['an option outside a question', '<option>A</option>', 'outside a <question>'],
     ['a closing question tag without its opening', 'Text </question>', 'without its opening <question>'],
     ['an unknown question attribute', '<question kind="x">Q?</question>', 'Unknown attribute "kind"'],

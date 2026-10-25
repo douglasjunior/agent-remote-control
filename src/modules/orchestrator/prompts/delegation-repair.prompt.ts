@@ -9,6 +9,7 @@ export function buildDelegationRepairPrompt(reason: string): string {
     'Answer again following the Response Protocol, inside the final response block:',
     '- To delegate, write each task specification inside <delegate role="ROLE" project="project-folder">...</delegate>.',
     '- To answer the user and end the turn, write without any <delegate> tag, adding <attachment path="/absolute/path">description</attachment> for each file to send.',
+    '- To ask the user, write each question as <question rationale="why the answer matters">question text<option>choice</option></question>, without <delegate> or <attachment> tags.',
     '- Text outside the tags is shown to the user; never mention the tags.',
   ].join('\n');
 }
