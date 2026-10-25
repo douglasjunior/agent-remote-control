@@ -153,13 +153,14 @@ e formatadas pelo `DiscordActivityFormatter`:
   - No início (`in_progress`): envia mensagem `⏳ **Executando**: \`<title>\``.
   - Na conclusão (`completed` ou `failed`): edita essa mesma mensagem para `✅ **Concluído**: \`<title>\`` ou `❌ **Falhou**: \`<title>\``, acompanhada de bloco de código com até 5 linhas de detalhes (argumentos ou saída). Se os detalhes tiverem mais de 5 linhas, exibe as 5 primeiras seguidas por `... (+N linhas)`.
 - **Delegação**: `onDelegation` libera o throttler pendente (`flush()`), envia o anúncio de `formatDelegation(event)` na ordem dos eventos. No `started`, o aviso diz qual agente assumiu, com nome e papel (ex.: `DEVELOPER`), e o projeto; no `finished`, a resposta do delegado é publicada com `formatDelegateResult(event)`, que também cita o projeto para distinguir delegações paralelas do mesmo papel, e o rodapé `formatDelegateFooter(event)` (o mesmo de `formatAgentFooter` com agente, modelo, effort e tokens do delegado, mais `· ⏱️ <duração>`), particionada como as respostas finais, e o aviso diz que o CEO está revisando. Se o anúncio falhar, o erro é registrado em log e o fluxo prossegue.
+- **Mensagem intermediária do CEO**: `onInterimMessage` publica o texto que o CEO escreveu fora das tags numa resposta que delega, particionado como as respostas finais e sem rodapé, na mesma fila dos anúncios de delegação, por isso aparece antes do aviso de que o agente assumiu. Se o envio falhar, o erro é registrado em log e o fluxo prossegue.
 
 ## Indicador de Digitação e Watchdog de Inatividade
 
 Durante a execução de um turno em `DiscordMessageHandler`, o feedback visual de digitação ("digitando...") é gerenciado por `DiscordTypingIndicator` (`utils/discord-typing-indicator.util.ts`):
 
 - **Disparo inicial e repetição periódica**: ao iniciar o processamento de um turno, `start()` dispara `sendTyping()` imediatamente no canal e agenda repetições a cada `8000ms` (padrão de `intervalMs`). Rejeições e exceções em `sendTyping()` são suprimidas silenciosamente.
-- **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity` e `onDelegation` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
+- **Watchdog de inatividade e keepalive**: um timer de inatividade configurado para 5 minutos (padrão de `idleTimeoutMs`) interrompe os disparos caso nenhuma atividade seja registrada. Os callbacks `onActivity`, `onDelegation` e `onInterimMessage` chamam `keepAlive()`, reiniciando a contagem do watchdog a cada nova atividade.
 - **Espera curta**: `DiscordTypingIndicator.during(canal, work)` mantém a digitação enquanto `work` roda e chama `stop()` no `finally`, para esperas fora de um turno, como a consulta de agentes, modelos e efforts de uma seleção.
 - **Encerramento no ciclo de vida**: `stop()` cancela os timers de repetição e de inatividade. O método é invocado em bloco `finally` logo após `executeTurn`, garantindo encerramento em conclusões com sucesso, cancelamentos e falhas.
 

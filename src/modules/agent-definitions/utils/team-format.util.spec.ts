@@ -18,13 +18,13 @@ function agent(overrides: Partial<AgentDefinition>): AgentDefinition {
 }
 
 describe('team-format.util', () => {
-  it('should list the marker forms allowed by the project contract', () => {
-    expect(formatDelegationForms(agent({ delegation: {} }))).toBe('[DELEGATE:AGENT]');
+  it('should list the delegate tag forms allowed by the project contract', () => {
+    expect(formatDelegationForms(agent({ delegation: {} }))).toBe('<delegate role="AGENT">');
     expect(formatDelegationForms(agent({ delegation: { project: 'optional' } }))).toBe(
-      '[DELEGATE:AGENT] or [DELEGATE:AGENT:<project-folder>]',
+      '<delegate role="AGENT"> or <delegate role="AGENT" project="<project-folder>">',
     );
     expect(formatDelegationForms(agent({ delegation: { project: 'required' } }))).toBe(
-      '[DELEGATE:AGENT:<project-folder>]',
+      '<delegate role="AGENT" project="<project-folder>">',
     );
   });
 
@@ -39,13 +39,13 @@ describe('team-format.util', () => {
 
   it('should describe an overridable session mode with its default', () => {
     expect(formatSessionMode(agent({ delegation: { sessionMode: 'overridable' } }))).toBe(
-      'Runs in "resume" session mode unless you append :new or :resume.',
+      'Runs in "resume" session mode unless you set session="new" or session="resume".',
     );
   });
 
   it('should forbid a session mode override when the mode is fixed', () => {
     expect(formatSessionMode(agent({ defaultSessionMode: 'new' }))).toBe(
-      'Always runs in "new" session mode, so never append :new or :resume.',
+      'Always runs in "new" session mode, so never set the session attribute.',
     );
   });
 });

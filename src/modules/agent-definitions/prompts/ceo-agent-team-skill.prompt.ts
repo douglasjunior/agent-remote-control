@@ -6,7 +6,7 @@ import { formatDelegationForms, formatProjectAccess, formatSessionMode } from '.
 export function buildAgentTeamSkill(team: readonly AgentDefinition[]): string {
   return `---
 name: ${CEO_SKILLS.agentTeam}
-description: Catalog of the agents the CEO can delegate to, with what each one does, its marker forms, and its session mode. Use when choosing which agent handles a task or planning a request that spans several phases.
+description: Catalog of the agents the CEO can delegate to, with what each one does, its <delegate> tag forms, and its session mode. Use when choosing which agent handles a task or planning a request that spans several phases.
 ---
 
 # Agent Team

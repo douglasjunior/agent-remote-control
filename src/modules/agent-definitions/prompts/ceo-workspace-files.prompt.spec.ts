@@ -55,12 +55,12 @@ describe('ceo-workspace-files.prompt', () => {
   });
 
   describe('agent-team skill', () => {
-    it('should describe every team member with its marker forms and session mode', () => {
+    it('should describe every team member with its delegate tag forms and session mode', () => {
       const skill = contentOf('.agents/skills/agent-team/SKILL.md');
 
       expect(skill).toContain('### GIT_OPS — Git Ops Agent\nAdds repositories to the workspace.');
-      expect(skill).toContain('- Delegate as [DELEGATE:GIT_OPS] or [DELEGATE:GIT_OPS:<project-folder>].');
-      expect(skill).toContain('- Runs in "resume" session mode unless you append :new or :resume.');
+      expect(skill).toContain('- Delegate as <delegate role="GIT_OPS"> or <delegate role="GIT_OPS" project="<project-folder>">.');
+      expect(skill).toContain('- Runs in "resume" session mode unless you set session="new" or session="resume".');
       expect(skill).toContain('- Modifies files, so no other agent that modifies files');
     });
 
@@ -75,17 +75,18 @@ describe('ceo-workspace-files.prompt', () => {
     const skill = contentOf('.agents/skills/delegation-protocol/SKILL.md');
 
     it('should show valid and invalid project folders', () => {
-      expect(skill).toContain('| `[DELEGATE:ROLE:my-app]` | yes |');
-      expect(skill).toContain('| `[DELEGATE:ROLE:my-app/backend]` | no |');
-      expect(skill).toContain(`| \`[DELEGATE:ROLE:${WORKSPACE_DIR}/my-app]\` | no |`);
+      expect(skill).toContain('| `project="my-app"` | yes |');
+      expect(skill).toContain('| `project="my-app/backend"` | no |');
+      expect(skill).toContain(`| \`project="${WORKSPACE_DIR}/my-app"\` | no |`);
     });
 
     it('should explain parallel delegations and their limits', () => {
       expect(skill).toContain('## Parallel Work');
-      expect(skill).toContain('[DELEGATE:DEVELOPER:backend]\nBuild the orders screen');
+      expect(skill).toContain('<delegate role="DEVELOPER" project="frontend">\nBuild the orders screen');
       expect(skill).toContain('Only one agent that modifies files may work in a project folder at a time, counting agents still running');
-      expect(skill).toContain('If any of them fails, the whole round fails.');
-      expect(skill).toContain('`[AGENT_RESULT:ROLE:project-folder]`');
+      expect(skill).toContain('with all results together, including the failures.');
+      expect(skill).toContain('`<agent_result role="ROLE" project="project-folder">...</agent_result>`');
+      expect(skill).toContain('`status="failed"` means the agent stopped with an error');
     });
 
     it('should explain that delegating to a running role in the same project redirects it', () => {
@@ -94,13 +95,13 @@ describe('ceo-workspace-files.prompt', () => {
     });
 
     it('should choose a new session when the task or subject changes', () => {
-      expect(skill).toContain('`:new` when the task or subject changes for that agent');
+      expect(skill).toContain('`session="new"` when the task or subject changes for that agent');
     });
 
     it('should route access requests through the user and a resumed delegation', () => {
       expect(skill).toContain('## Access Requests');
       expect(skill).toContain(`Paths outside \`${WORKSPACE_DIR}\`, write access, and anything holding secrets`);
-      expect(skill).toContain('delegate again to the same agent with `:resume`, naming the exact path');
+      expect(skill).toContain('delegate again to the same agent with `session="resume"`, naming the exact path');
     });
 
     it('should authorize reading user attachments handed to an agent', () => {
@@ -112,8 +113,9 @@ describe('ceo-workspace-files.prompt', () => {
     const skill = contentOf('.agents/skills/response-protocol/SKILL.md');
 
     it('should explain attachments with absolute paths converted from agent reports', () => {
-      expect(skill).toContain('![short description](file:///absolute/path/to/image.png)');
-      expect(skill).toContain(`becomes \`file://${WORKSPACE_DIR}/my-app/docs/report.pdf\``);
+      expect(skill).toContain(`<attachment path="${WORKSPACE_DIR}/my-app/docs/report.pdf">Report</attachment>`);
+      expect(skill).toContain(`becomes \`${WORKSPACE_DIR}/my-app/docs/report.pdf\``);
+      expect(skill).toContain('only in an answer, never in a response that delegates');
     });
   });
 

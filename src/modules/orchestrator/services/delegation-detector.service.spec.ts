@@ -6,214 +6,157 @@ import { DelegationDetectorService } from './delegation-detector.service.js';
 describe('DelegationDetectorService', () => {
   const service = new DelegationDetectorService();
 
-  it('should detect delegate with role and project', () => {
-    const result = service.detect('Please do this.\n[DELEGATE:DEVELOPER:my-app]');
-    expect(result).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'DEVELOPER',
-          projectName: 'my-app',
-          taskSpec: 'Please do this.',
-        },
-      ],
-    });
-  });
+  const reasonOf = (response: string) => {
+    const result = service.detect(response);
+    return result.kind === 'invalid' ? result.reason : undefined;
+  };
 
-  it('should detect delegate with role only', () => {
-    const result = service.detect('Just do this.\n[DELEGATE:DEVELOPER]');
-    expect(result).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'DEVELOPER',
-          projectName: undefined,
-          taskSpec: 'Just do this.',
-        },
-      ],
-    });
-  });
-
-  it('should detect delegate with role, project, and session mode new', () => {
-    const result = service.detect('Review diff.\n[DELEGATE:CODE_REVIEWER:my-app:new]');
-    expect(result).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'CODE_REVIEWER',
-          projectName: 'my-app',
-          taskSpec: 'Review diff.',
-          sessionMode: 'new',
-        },
-      ],
-    });
-  });
-
-  it('should detect delegate with role, project, and session mode resume', () => {
-    const result = service.detect('Continue task.\n[DELEGATE:DEVELOPER:my-app:resume]');
-    expect(result).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'DEVELOPER',
-          projectName: 'my-app',
-          taskSpec: 'Continue task.',
-          sessionMode: 'resume',
-        },
-      ],
-    });
-  });
-
-  it('should detect delegate with role and session mode without project folder', () => {
-    const resultColon = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER::new]');
-    expect(resultColon).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'CODE_REVIEWER',
-          projectName: undefined,
-          taskSpec: 'Clean review.',
-          sessionMode: 'new',
-        },
-      ],
+  describe('replies', () => {
+    it('should treat a response without tags as a reply', () => {
+      expect(service.detect('Hello! How can I help?')).toEqual({ kind: 'reply', message: 'Hello! How can I help?', attachments: [] });
     });
 
-    const resultDirect = service.detect('Clean review.\n[DELEGATE:CODE_REVIEWER:new]');
-    expect(resultDirect).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'CODE_REVIEWER',
-          projectName: undefined,
-          taskSpec: 'Clean review.',
-          sessionMode: 'new',
-        },
-      ],
+    it('should treat an empty response as an empty reply', () => {
+      expect(service.detect('')).toEqual({ kind: 'reply', message: '', attachments: [] });
     });
-  });
 
-  it('should reject delegation marker with invalid session mode', () => {
-    const result = service.detect('Task.\n[DELEGATE:DEVELOPER:my-app:invalid]');
-    expect(result).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('Session mode must be "new" or "resume"'),
-    });
-  });
-
-  it('should detect done marker', () => {
-    const result = service.detect('All finished.\n[DONE]');
-    expect(result).toEqual({
-      kind: 'done',
-      summary: 'All finished.',
-    });
-  });
-
-  it('should return direct_response when no marker is present', () => {
-    const result = service.detect('Hello world!');
-    expect(result).toEqual({ kind: 'direct_response' });
-  });
-
-  it('should detect a delegate marker followed by the task specification', () => {
-    const result = service.detect('Sure, delegating.\n\n[DELEGATE:DEVELOPER:my-app]\n\n> Clone the repo.');
-    expect(result).toEqual({
-      kind: 'delegate',
-      delegations: [
-        {
-          delegateToRole: 'DEVELOPER',
-          projectName: 'my-app',
-          taskSpec: 'Sure, delegating.\n\n> Clone the repo.',
-        },
-      ],
-    });
-  });
-
-  it('should accept markers wrapped in markdown formatting and normalize the role', () => {
-    expect(service.detect('Task.\n**`[delegate:developer:my-app]`**')).toEqual({
-      kind: 'delegate',
-      delegations: [{ delegateToRole: 'DEVELOPER', projectName: 'my-app', taskSpec: 'Task.' }],
-    });
-    expect(service.detect('Finished.\n_[DONE]_')).toEqual({ kind: 'done', summary: 'Finished.' });
-  });
-
-  it('should reject markers that share a line with other text', () => {
-    expect(service.detect('Start [DONE] middle.')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('alone on its own line'),
-    });
-  });
-
-  it('should reject [DONE] combined with other markers', () => {
-    expect(service.detect('Work.\n[DELEGATE:DEVELOPER]\nDone.\n[DONE]')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('[DONE] cannot be combined with other markers'),
-    });
-  });
-
-  describe('parallel delegations', () => {
-    it('should split several delegations, each taking the text right before its marker', () => {
+    it('should collect attachments and keep only the text outside them as the message', () => {
       const result = service.detect([
-        'Build the API.',
-        '[DELEGATE:DEVELOPER:backend]',
-        'Build the screen.',
-        '[DELEGATE:DEVELOPER:frontend:new]',
-        'Plan the migration.',
-        '[DELEGATE:TECH_LEAD]',
+        'Here are the screenshots.',
+        '',
+        '<attachment path="/abs/home.png">Home screen</attachment>',
+        '',
+        '',
+        '<Attachment path=\'/abs/login.png\' />',
+        'Anything else?',
+      ].join('\n'));
+
+      expect(result).toEqual({
+        kind: 'reply',
+        message: 'Here are the screenshots.\n\nAnything else?',
+        attachments: ['/abs/home.png', '/abs/login.png'],
+      });
+    });
+
+    it('should keep other tags as text for the user', () => {
+      expect(service.detect('Use <div> here.')).toEqual({ kind: 'reply', message: 'Use <div> here.', attachments: [] });
+    });
+  });
+
+  describe('delegations', () => {
+    it('should read the role, project and session mode of a delegation', () => {
+      const result = service.detect('<delegate role="developer" project="my-app" session="NEW">\nImplement login.\n</delegate>');
+
+      expect(result).toEqual({
+        kind: 'delegate',
+        message: '',
+        delegations: [{ delegateToRole: 'DEVELOPER', projectName: 'my-app', taskSpec: 'Implement login.', sessionMode: 'new' }],
+      });
+    });
+
+    it('should leave the project and session mode out when the tag has no such attributes', () => {
+      const result = service.detect('<delegate role="GIT_OPS">Clone the repo.</delegate>');
+
+      expect(result).toEqual({
+        kind: 'delegate',
+        message: '',
+        delegations: [{ delegateToRole: 'GIT_OPS', projectName: undefined, taskSpec: 'Clone the repo.' }],
+      });
+    });
+
+    it('should read every delegation and keep the text around them as the message', () => {
+      const result = service.detect([
+        'Splitting this in two.',
+        '<delegate role="DEVELOPER" project="backend">Build the API.</delegate>',
+        '<DELEGATE role="CODE_REVIEWER" project="lib" session="resume">Review the lib.</DELEGATE>',
+        'Back soon.',
       ].join('\n'));
 
       expect(result).toEqual({
         kind: 'delegate',
+        message: 'Splitting this in two.\n\nBack soon.',
         delegations: [
           { delegateToRole: 'DEVELOPER', projectName: 'backend', taskSpec: 'Build the API.' },
-          { delegateToRole: 'DEVELOPER', projectName: 'frontend', taskSpec: 'Build the screen.', sessionMode: 'new' },
-          { delegateToRole: 'TECH_LEAD', projectName: undefined, taskSpec: 'Plan the migration.' },
+          { delegateToRole: 'CODE_REVIEWER', projectName: 'lib', taskSpec: 'Review the lib.', sessionMode: 'resume' },
         ],
       });
     });
 
-    it('should reject text after the last marker', () => {
-      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\nB.\n[DELEGATE:DEVELOPER:b]\nTrailing.')).toEqual({
-        kind: 'invalid',
-        reason: expect.stringContaining('nothing follows the last marker'),
-      });
-    });
+    it('should keep markdown and angle brackets of the task specification', () => {
+      const result = service.detect('<delegate role="DEVELOPER" project="app">\nRun `a > b` and return List<String>.\n</delegate>');
 
-    it('should reject a delegation without its own specification', () => {
-      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\n[DELEGATE:DEVELOPER:b]')).toEqual({
-        kind: 'invalid',
-        reason: expect.stringContaining('Delegation 2 ("[DELEGATE:DEVELOPER:b]") has no task specification'),
-      });
-    });
-
-    it('should reject a malformed marker among several', () => {
-      expect(service.detect('A.\n[DELEGATE:DEVELOPER:a]\nB.\n[DELEGATE:DEVELOPER:b:later]')).toEqual({
-        kind: 'invalid',
-        reason: expect.stringContaining('Session mode must be "new" or "resume"'),
-      });
+      expect(result).toMatchObject({ delegations: [{ taskSpec: 'Run `a > b` and return List<String>.' }] });
     });
   });
 
-  it('should reject a done marker with arguments', () => {
-    expect(service.detect('Ok.\n[DONE:now]')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('Malformed done marker "[DONE:now]"'),
+  describe('invalid responses', () => {
+    it.each([
+      ['Go.\n[DELEGATE:DEVELOPER:my-app]'],
+      ['All done.\n[DONE]'],
+    ])('should reject the bracket markers in %j', (response) => {
+      expect(reasonOf(response)).toMatch(/^Bracket markers such as \[DELEGATE:\.\.\.\] and \[DONE\] are not part of the protocol/);
     });
-  });
 
-  it('should reject a malformed delegation marker', () => {
-    expect(service.detect('Task.\n[DELEGATE DEVELOPER]')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('Malformed delegation marker "[DELEGATE DEVELOPER]"'),
+    it('should reject a closing tag without its opening tag', () => {
+      expect(reasonOf('Done.</delegate>')).toBe('Found </delegate> without its opening <delegate> tag.');
     });
-    expect(service.detect('Task.\n[DELEGATE:DEVELOPER:my app]')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('Malformed delegation marker'),
-    });
-  });
 
-  it('should reject a delegation without task specification', () => {
-    expect(service.detect('[DELEGATE:DEVELOPER:my-app]')).toEqual({
-      kind: 'invalid',
-      reason: expect.stringContaining('no task specification'),
+    it('should reject a delegation that is never closed', () => {
+      expect(reasonOf('<delegate role="DEVELOPER">Build it.')).toBe('Every <delegate> must be closed with </delegate> before the next <delegate> starts.');
+    });
+
+    it('should reject a delegation that starts inside another one', () => {
+      expect(reasonOf('<delegate role="A">One.<delegate role="B">Two.</delegate>')).toBe(
+        'Every <delegate> must be closed with </delegate> before the next <delegate> starts.',
+      );
+    });
+
+    it('should reject an unknown attribute', () => {
+      expect(reasonOf('<delegate role="DEVELOPER" folder="app">Go.</delegate>')).toBe(
+        'Unknown attribute "folder" in <delegate role="DEVELOPER" folder="app">. Use only "role", "project", "session".',
+      );
+    });
+
+    it('should reject an attribute without quotes', () => {
+      expect(reasonOf('<delegate role=DEVELOPER>Go.</delegate>')).toBe('Malformed tag <delegate role=DEVELOPER>. Write each attribute as name="value".');
+    });
+
+    it.each([
+      ['<delegate>Go.</delegate>'],
+      ['<delegate role="1DEV">Go.</delegate>'],
+    ])('should reject a delegation without a valid role in %j', (response) => {
+      expect(reasonOf(response)).toBe('Every <delegate> needs a role attribute with the role name, as in <delegate role="DEVELOPER">.');
+    });
+
+    it('should reject an empty project attribute', () => {
+      expect(reasonOf('<delegate role="DEVELOPER" project="">Go.</delegate>')).toBe(
+        'The project attribute of <delegate role="DEVELOPER"> is empty. Name the project folder, or leave the attribute out.',
+      );
+    });
+
+    it('should reject an unknown session mode', () => {
+      expect(reasonOf('<delegate role="DEVELOPER" session="fresh">Go.</delegate>')).toBe(
+        'The session attribute of <delegate role="DEVELOPER"> must be "new" or "resume".',
+      );
+    });
+
+    it.each([
+      ['<delegate role="DEVELOPER">  </delegate>'],
+      ['<delegate role="DEVELOPER" />'],
+    ])('should reject a delegation without a task specification in %j', (response) => {
+      expect(reasonOf(response)).toBe(
+        '<delegate role="DEVELOPER"> has no task specification. Write the task between <delegate ...> and </delegate>.',
+      );
+    });
+
+    it('should reject an attachment without a path', () => {
+      expect(reasonOf('Here.\n<attachment>Report</attachment>')).toBe('Every <attachment> needs a path attribute with the absolute path of the file.');
+    });
+
+    it('should reject attachments in a response that delegates', () => {
+      expect(reasonOf('<delegate role="DEVELOPER">Go.</delegate>\n<attachment path="/a.png" />')).toBe(
+        'Attachments go in the answer to the user, not in a response that delegates. Send them once the agents have finished.',
+      );
     });
   });
 });
