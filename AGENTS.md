@@ -1,114 +1,109 @@
 # AGENTS — Agent Remote Control
 
-## Visão Geral
+## Overview
 
-O **Agent Remote Control** é uma aplicação NestJS voltada para o controle e orquestração remota de agentes de Inteligência Artificial para desenvolvimento de software, operando sobre o **Agent Client Protocol (ACP)** e oferecendo interface primária através de um **Bot do Discord**.
+**Agent Remote Control** is a NestJS application for remote control and orchestration of AI software development agents, running over the **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
 
-A arquitetura do projeto adota **Clean Architecture com Ports & Adapters**, desacoplando o núcleo de negócio das tecnologias externas (Discord, SDK do ACP, sistema de arquivos e processos). A orquestração do comportamento e das regras de negócio é realizada diretamente por **Casos de Uso (Use Cases)** independentes e coesos.
+The project follows **Clean Architecture with Ports & Adapters**, decoupling the business core from external technologies (Discord, the ACP SDK, the file system and processes). Behavior and business rules are orchestrated directly by independent, cohesive **Use Cases**.
 
-Todo o código-fonte, identificadores e testes são escritos em **inglês**, enquanto a documentação, skills, especificações e mensagens de commit são escritas em **pt-BR**.
+Everything in the repository is written in **English**: source code, identifiers, tests, comments, documentation (`AGENTS.md`, README, skills) and commit messages.
 
-## Estrutura do Repositório
+## Repository Structure
 
 ```text
 agent-remote-control/
-├── .agents/                        # Governança, contexto e habilidades dos agentes de IA
-│   ├── context/                    # Decisões duráveis e descobertas validadas com o usuário
-│   ├── maps/                       # Mapas conceituais e de domínio
-│   ├── skills/                     # Catálogo de habilidades sob demanda (SKILL.md)
-│   └── specs/                      # Especificações, planos e tarefas (fluxo spec-driven)
-├── data/                           # Dados persistidos em runtime (DATA_DIR, fora do Git): sessões e configuração do agente
-├── src/                            # Código-fonte da aplicação NestJS
-│   ├── modules/                    # Módulos verticais segregados por domínio
-│   │   ├── agent/                  # Integração ACP: porta IAgentPort, fábrica, adapters, bridges e demux
-│   │   ├── agent-definitions/      # Catálogo de agentes (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts e registry
-│   │   ├── discord/                # Bot do Discord: handlers, formatters e utils de progresso
-│   │   ├── orchestrator/           # Turnos, fila por conversa, delegação e cancelamento
-│   │   └── workspace/              # Diretório de workspaces e manifest
+├── .agents/                        # AI agent governance
+│   └── skills/                     # Catalog of on-demand skills (SKILL.md)
+├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings and global preferences (user language)
+├── src/                            # NestJS application source code
+│   ├── modules/                    # Vertical modules segregated by domain
+│   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, bridges and demux
+│   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
+│   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
+│   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
+│   │   └── workspace/              # Workspace directory and manifest
 │   │
-│   │   Pastas internas de um módulo (cada módulo usa apenas as que precisa):
-│   │       ├── adapters/           # Adaptadores secundários/tecnológicos (*.adapter.ts)
-│   │       ├── bridges/            # Processos ponte entre protocolos (ex.: ACP ↔ agy)
-│   │       ├── constants/          # Constantes de domínio
-│   │       ├── demux/              # Decomposição de streams em eventos tipados
-│   │       ├── formatters/         # Formatação de saída para o canal
-│   │       ├── handlers/           # Adaptadores primários/driving (Discord events/commands)
-│   │       ├── models/             # Tipos e modelos de domínio (*.model.ts, *.type.ts)
-│   │       ├── ports/              # Interfaces e Symbols de injeção (*.port.ts)
-│   │       ├── prompts/            # System prompts dos agentes (*.prompt.ts)
-│   │       ├── services/           # Serviços concretos de apoio (*.service.ts)
-│   │       ├── testing/            # Stubs, fakes e fixtures compartilhados pelos testes
-│   │       ├── use-cases/          # Regras de negócio e orquestração (*.use-case.ts)
-│   │       ├── utils/              # Utilitários sem estado de domínio (*.util.ts)
-│   │       └── <nome>.module.ts    # Configuração do módulo e amarração de DI NestJS
-│   ├── app.controller.ts           # Controller raiz de diagnóstico/healthcheck
-│   ├── app.module.ts               # Módulo raiz da aplicação
-│   ├── app.service.ts              # Service raiz da aplicação
-│   └── main.ts                     # Bootstrap da aplicação NestJS
-├── test/                           # Testes e2e e utilitários globais de teste
-├── vitest.config.ts                # Configuração do Vitest para testes unitários
-├── vitest.config.e2e.ts            # Configuração do Vitest para testes e2e
-├── tsconfig.json                   # Configuração base do TypeScript
-├── nest-cli.json                   # Configuração da CLI do NestJS
-└── package.json                    # Dependências e scripts do projeto
+│   │   Internal folders of a module (each module uses only the ones it needs):
+│   │       ├── adapters/           # Secondary/technology adapters (*.adapter.ts)
+│   │       ├── bridges/            # Bridge processes between protocols (e.g. ACP ↔ agy)
+│   │       ├── constants/          # Domain constants
+│   │       ├── demux/              # Decomposition of streams into typed events
+│   │       ├── formatters/         # Output formatting for the channel
+│   │       ├── handlers/           # Primary/driving adapters (Discord events/commands)
+│   │       ├── models/             # Domain types and models (*.model.ts, *.type.ts)
+│   │       ├── ports/              # Interfaces and injection Symbols (*.port.ts)
+│   │       ├── prompts/            # Agent system prompts (*.prompt.ts)
+│   │       ├── services/           # Concrete supporting services (*.service.ts)
+│   │       ├── testing/            # Stubs, fakes and fixtures shared by tests
+│   │       ├── use-cases/          # Business rules and orchestration (*.use-case.ts)
+│   │       ├── utils/              # Utilities without domain state (*.util.ts)
+│   │       └── <name>.module.ts    # Module configuration and NestJS DI wiring
+│   ├── app.controller.ts           # Root diagnostics/healthcheck controller
+│   ├── app.module.ts               # Application root module
+│   ├── app.service.ts              # Application root service
+│   └── main.ts                     # NestJS application bootstrap
+├── test/                           # e2e tests and global test utilities
+├── vitest.config.ts                # Vitest configuration for unit tests
+├── vitest.config.e2e.ts            # Vitest configuration for e2e tests
+├── tsconfig.json                   # Base TypeScript configuration
+├── nest-cli.json                   # NestJS CLI configuration
+└── package.json                    # Project dependencies and scripts
 ```
 
-## Estrutura `.agents/`
+## `.agents/` Structure
 
-- `.agents/skills/`: Skills carregadas sob demanda pelo agente. Cada pasta contém um `SKILL.md` prescritivo.
+- `.agents/skills/`: Skills loaded on demand by the agent. Each folder contains a prescriptive `SKILL.md`.
 
-Antes de executar qualquer modificação ou criação de código, consulte o catálogo em `.agents/skills/` inspecionando a `description` de cada frontmatter para carregar as regras mandatórias do tópico.
+Before creating or changing any code, consult the catalog in `.agents/skills/`, inspecting the `description` in each frontmatter to load the mandatory rules for the topic.
 
-## Convenções Transversais
+## Cross-Cutting Conventions
 
-- **Mensagens de commit**: Padrão Conventional Commits (Angular) em **pt-BR**, verbo no presente do indicativo, linha de assunto (*subject*) com até 50 caracteres e sem ponto final. Quando houver contexto detalhado, separe o corpo por uma linha em branco.
-- **Idioma**:
-  - Código em **inglês**: identificadores, nomes de arquivos, classes, interfaces, métodos, variáveis e descrições de testes (`describe`, `it`).
-  - Documentação em **português (pt-BR)**: `AGENTS.md`, README, skills em `.agents/skills/`, especificações em `.agents/specs/` e artefatos de contexto.
-- **Testes com Vitest**:
-  - Testes unitários colocados lado a lado com os arquivos testados sob o padrão `*.spec.ts`.
-  - Meta de **100% de cobertura** das linhas executáveis de código de produção.
-  - `vi.mock` é restrito **exclusivamente a fronteiras externas de I/O** (SDKs de terceiros como Discord.js, ACP SDK e módulos nativos do Node como `node:fs` e `node:child_process`). Código interno em `src/` **nunca** é mockado com `vi.mock`; utiliza-se stubs/fakes que implementam as portas (`implements IMyPort`).
-- **Proibição de barrel exports (`index.ts`)**:
-  - Não use arquivos `index.ts` que reexportam símbolos de pastas ou módulos. Importe sempre diretamente do arquivo de origem do símbolo para evitar acoplamento desnecessário e dependências circulares.
+- **Commit messages**: Conventional Commits (Angular) in **English**, imperative mood in the present tense (e.g. "add", "fix"), subject line of up to 50 characters with no trailing period. When there is detailed context, separate the body with a blank line.
+- **Language**: Everything in **English** — identifiers, file names, classes, interfaces, methods, variables, test descriptions (`describe`, `it`), comments, documentation, skills and commit messages.
+- **Testing with Vitest**:
+  - Unit tests live side by side with the files under test, following the `*.spec.ts` pattern.
+  - Target of **100% coverage** of executable production code lines.
+  - `vi.mock` is restricted **exclusively to external I/O boundaries** (third-party SDKs such as Discord.js and the ACP SDK, and native Node modules such as `node:fs` and `node:child_process`). Internal code in `src/` is **never** mocked with `vi.mock`; use stubs/fakes that implement the ports (`implements IMyPort`).
+- **Ban on barrel exports (`index.ts`)**:
+  - Do not use `index.ts` files that re-export symbols from folders or modules. Always import directly from the symbol's source file to avoid unnecessary coupling and circular dependencies.
 
-## Escrita de Comentários e Documentação
+## Writing Comments and Documentation
 
-Todo texto mantido no repositório descreve o **estado atual**, escrito para quem lê o arquivo hoje sem necessidade de consultar o histórico do repositório ou conversas anteriores:
+All text kept in the repository describes the **current state**, written for whoever reads the file today without consulting the repository history or earlier conversations:
 
-- **Descreva o que é, nunca a transição**: Escreva o texto a partir do resultado consolidado. Expressões como "não mais", "passou a", "agora é", "antes era", "em vez de" e "sem precisar" são proibidas, exceto quando relatam decisões de negócio em mensagens de commit ou specs de migração.
-- **Negue apenas para evitar erro plausível**: Uma restrição negativa ("não utilize X") só se justifica quando um leitor competente tentaria X e a frase explica por que isso causaria falha.
-- **Teste das três perguntas antes de comentar**:
-  1. Ele diz algo que o código não expressa?
-  2. Um leitor competente tentaria a alternativa que ele descarta?
-  3. Ele continuará verdadeiro após a próxima refatoração?
-- **Passe de poda obrigatório**: Antes de concluir qualquer tarefa, inspecione as adições de documentação e comentários no diff (`git diff`) e corte o que for redundante ou óbvio.
+- **Describe what is, never the transition**: Write from the consolidated result. Phrases such as "no longer", "became", "now is", "used to be", "instead of" and "without needing to" are forbidden, except when recording business decisions in commit messages or migration specs.
+- **Negate only to prevent a plausible mistake**: A negative constraint ("do not use X") is only justified when a competent reader would try X and the sentence explains why it would fail.
+- **Three-question test before commenting**:
+  1. Does it say something the code does not express?
+  2. Would a competent reader try the alternative it rules out?
+  3. Will it still be true after the next refactor?
+- **Mandatory pruning pass**: Before finishing any task, inspect the documentation and comment additions in the diff (`git diff`) and cut whatever is redundant or obvious.
 
-## Comandos Essenciais
+## Essential Commands
 
-- Instalação de dependências: `yarn install`
-- Modo de desenvolvimento com watch: `yarn start:dev`
-- Compilação / build: `yarn build`
-- Checagem estática de tipos TypeScript: `yarn ts`
+- Install dependencies: `yarn install`
+- Development mode with watch: `yarn start:dev`
+- Build: `yarn build`
+- TypeScript static type checking: `yarn ts`
 - Linter: `yarn lint`
-- Formatação de código via ESLint: `yarn format` (ou `yarn lint:fix`)
-- Execução de testes unitários: `yarn test`
-- Cobertura de testes: `yarn test:cov`
-- Testes ponta a ponta (e2e): `yarn test:e2e`
+- Code formatting via ESLint: `yarn format` (or `yarn lint:fix`)
+- Run unit tests: `yarn test`
+- Test coverage: `yarn test:cov`
+- End-to-end (e2e) tests: `yarn test:e2e`
 
-## Regras Mandatórias para Agentes de IA
+## Mandatory Rules for AI Agents
 
-1. **Consultar skills antes de agir**: Antes de criar ou alterar código, verifique o catálogo em `.agents/skills/` e siga a skill governante.
-2. **Respeitar o padrão Clean Architecture NestJS**:
-   - Casos de uso orquestram regras de negócio (`*.use-case.ts`).
-   - Portas definem interfaces e Symbols de injeção (`*.port.ts`).
-   - Adaptadores implementam portas técnicas (`*.adapter.ts`).
-   - Injeção de dependência via `@Inject(IMyPort)`.
-   - Módulos NestJS configuram provedores associando Symbol à classe concreta (`{ provide: IMyPort, useClass: MyAdapter }`).
-3. **Orquestração via Use Cases**: Toda a lógica de negócio e coordenação de fluxo é realizada exclusivamente por classes de Use Case (`*.use-case.ts`). Não utilize classes de workflow.
-4. **Sem barrel exports**: Importe classes, portas e tipos diretamente do arquivo de definição, sem `index.ts`.
-5. **Nenhum comentário óbvio**: Não repita o que o código, tipagem ou assinatura já dizem.
-6. **Stubs e Fakes em vez de vi.mock interno**: Isole dependências internas de `src/` injetando stubs no construtor ou substituindo providers no `Test.createTestingModule`.
-7. **Passe de poda antes de encerrar**: Verifique comentários e textos introduzidos no diff e remova qualquer ruído antes de submeter.
-8. **Execução mandatória de checagem de tipos, lint e testes em toda modificação**: Toda e qualquer alteração de código no projeto exige a execução de `yarn ts`, `yarn lint` e `yarn test` (além de `yarn test:e2e` ao tocar em pontos de entrada). A formatação do código é de responsabilidade exclusiva do ESLint (`yarn format`). Nenhuma entrega pode ser concluída com erros de TypeScript, erros de lint ou falhas de testes.
-9. **Skills sincronizadas com o código**: Toda mudança em contrato de porta, assinatura pública, ciclo de vida ou regra descrita em uma skill atualiza a skill no mesmo commit. Antes de concluir, confronte as skills do módulo tocado com o `git diff`.
+1. **Consult skills before acting**: Before creating or changing code, check the catalog in `.agents/skills/` and follow the governing skill.
+2. **Follow the NestJS Clean Architecture pattern**:
+   - Use cases orchestrate business rules (`*.use-case.ts`).
+   - Ports define interfaces and injection Symbols (`*.port.ts`).
+   - Adapters implement technical ports (`*.adapter.ts`).
+   - Dependency injection via `@Inject(IMyPort)`.
+   - NestJS modules configure providers by binding the Symbol to the concrete class (`{ provide: IMyPort, useClass: MyAdapter }`).
+3. **Orchestration via Use Cases**: All business logic and flow coordination is done exclusively by Use Case classes (`*.use-case.ts`). Do not use workflow classes.
+4. **No barrel exports**: Import classes, ports and types directly from their definition file, without `index.ts`.
+5. **No obvious comments**: Do not repeat what the code, typing or signature already says.
+6. **Stubs and fakes for internal dependencies**: Isolate internal `src/` dependencies by injecting stubs in the constructor or overriding providers in `Test.createTestingModule`; `vi.mock` is reserved for external I/O boundaries.
+7. **Pruning pass before finishing**: Check comments and text introduced in the diff and remove any noise before submitting.
+8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `yarn ts`, `yarn lint` and `yarn test` (plus `yarn test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`yarn format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
+9. **Skills in sync with the code**: Every change to a port contract, public signature, lifecycle or rule described in a skill updates the skill in the same commit. Before finishing, compare the skills of the touched module against the `git diff`.

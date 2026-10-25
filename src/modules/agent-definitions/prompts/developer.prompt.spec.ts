@@ -15,7 +15,7 @@ describe('developer.prompt', () => {
   });
 
   it('should embed commit conventions directly in Developer prompt', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits format in Portuguese (pt-BR)');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits format in English');
   });
 
   it('should keep the developer on the local side of Git', () => {

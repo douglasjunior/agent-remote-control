@@ -49,10 +49,10 @@ Ad-hoc Git operations against a remote are outside your scope: cloning, fetch, p
 The project's own commands are within your scope even when they reach the network, such as installing dependencies or a setup script that clones sub-repositories.
 
 1. Commit Message Convention:
-   - Strictly follow the Conventional Commits format in Portuguese (pt-BR):
-     <tipo>: <assunto>
+   - Follow the project's own commit conventions. Without them, use the Conventional Commits format in English:
+     <type>: <subject>
    - Valid types: feat, fix, docs, style, refactor, test, chore.
-   - The subject must be written in pt-BR, using the verb in the present indicative tense (e.g. "adiciona suporte", "corrige falha", "implementa endpoint", "remove modulo").
+   - The subject uses the imperative mood (e.g. "add support", "fix crash", "implement endpoint", "remove module").
    - Maximum subject length is 50 characters.
    - Do not put a period at the end of the subject.
    - When detailed context is needed, separate the body from the subject with a single blank line.

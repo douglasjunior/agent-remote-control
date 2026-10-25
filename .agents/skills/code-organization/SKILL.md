@@ -1,64 +1,65 @@
 ---
 name: code-organization
 description: >
-  Define a organização interna de arquivos e módulos em TypeScript e NestJS:
-  superfície pública mínima, proibição total de barrel exports (index.ts), export
-  restrito a consumo externo real e alocação de helpers como métodos privados em
-  classes de Use Cases, Adapters e Services. Estabelece convenções de legibilidade e
-  imutabilidade com const. Use ao criar, editar ou refatorar classes, métodos e funções.
+  Defines the internal organization of files and modules in TypeScript and NestJS:
+  minimal public surface, a total ban on barrel exports (index.ts), export restricted
+  to real external consumption and placement of helpers as private methods in Use
+  Case, Adapter and Service classes. Establishes readability and immutability
+  conventions with const. Use when creating, editing or refactoring classes, methods
+  and functions.
 ---
 
-# Organização interna de módulos e código
+# Internal organization of modules and code
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar **qualquer regra descrita aqui**. O critério não
-> é *qual* regra — é a natureza da mudança: uma regra de superfície pública, alocação de
-> helpers ou legibilidade do projeto mudou → atualize; refator técnico que preserva o padrão
-> descrito → não toque.
+> Update this document whenever **any rule described here** changes. The criterion is not
+> *which* rule — it is the nature of the change: a project rule on public surface, helper
+> placement or readability changed → update; a technical refactor that preserves the
+> described pattern → leave it alone.
 
-Esta diretriz aplica-se ao código TypeScript e aos módulos NestJS do repositório. Governa
-o conteúdo interno dos arquivos, o que é exposto e como as classes e funções são organizadas.
+This guideline applies to the repository's TypeScript code and NestJS modules. It governs
+the internal content of files, what is exposed and how classes and functions are organized.
 
-## Superfície pública mínima
+## Minimal public surface
 
-### Proibição de barrel exports (`index.ts`)
+### Ban on barrel exports (`index.ts`)
 
-O uso de arquivos `index.ts` para reexportar múltiplos símbolos de uma pasta ou módulo é
-**proibido em todo o repositório**.
+Using `index.ts` files to re-export multiple symbols from a folder or module is
+**forbidden across the whole repository**.
 
-No ecossistema NestJS com injeção de dependência e decoradores de metadados, arquivos de
-barril introduzem dependências circulares ocultas, dificultam o tree-shaking e acoplam
-indevidamente consumidores a detalhes internos.
+In the NestJS ecosystem, with dependency injection and metadata decorators, barrel files
+introduce hidden circular dependencies, hinder tree-shaking and improperly couple consumers
+to internal details.
 
-Correto — importação direta e pontual do arquivo de origem:
+Correct — direct, targeted import from the source file:
 
 ```typescript
 import { ConnectAgentUseCase } from './use-cases/connect-agent.use-case.ts';
 import { IAgentClientPort } from './ports/agent-client.port.ts';
 ```
 
-Evite — reexportação em barril:
+Avoid — barrel re-export:
 
 ```typescript
-// index.ts dentro de use-cases/ ou modules/agent/
+// index.ts inside use-cases/ or modules/agent/
 export * from './connect-agent.use-case.ts';
 export * from './disconnect-agent.use-case.ts';
 ```
 
-### `export` apenas sob consumo externo real
+### `export` only under real external consumption
 
-Não adicione `export` por conveniência ou antecipação. Exporte apenas o que é consumido fora
-do arquivo:
+Do not add `export` for convenience or in anticipation. Export only what is consumed outside
+the file:
 
-1. Mantenha tipos, interfaces internas, constantes e funções auxiliares locais sem `export` se
-   apenas o próprio arquivo os utiliza.
-2. Se após uma refatoração um símbolo deixou de ser importado por outros arquivos, remova a
-   palavra-chave `export`.
-3. Não exporte constantes internas ou chaves de configuração se elas pertencem estritamente à
-   implementação da classe.
+1. Keep types, internal interfaces, constants and helper functions local, without `export`, if
+   only the file itself uses them.
+2. If, after a refactor, a symbol is not imported by any other file, remove the `export`
+   keyword.
+3. Do not export internal constants or configuration keys if they belong strictly to the
+   class implementation.
 
-Correto:
+Correct:
 
 ```typescript
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -70,35 +71,34 @@ export class AgentTimeoutException extends Error {
 }
 ```
 
-Evite:
+Avoid:
 
 ```typescript
-export const DEFAULT_TIMEOUT_MS = 5000; // export sem consumidor externo
+export const DEFAULT_TIMEOUT_MS = 5000; // export without an external consumer
 
 export class AgentTimeoutException extends Error { ... }
 ```
 
-## Onde o helper mora
+## Where the helper lives
 
-### Helper de consumidor único não vira arquivo separado
+### A single-consumer helper does not become a separate file
 
-Uma função auxiliar usada exclusivamente por uma única classe ou componente não deve ser
-extraída para um arquivo separado com sua própria suíte de testes. Mantenha-a no mesmo arquivo
-do consumidor.
+A helper function used exclusively by a single class or component must not be extracted to a
+separate file with its own test suite. Keep it in the same file as its consumer.
 
-Extraia para arquivo próprio apenas quando:
+Extract it to its own file only when:
 
-1. Houver **múltiplos consumidores reais** em locais distintos; ou
-2. A complexidade algorítmica for tão expressiva que justifique uma suíte de testes unitários
-   isolada do consumidor.
+1. There are **multiple real consumers** in different places; or
+2. Its algorithmic complexity is significant enough to justify a unit test suite isolated
+   from the consumer.
 
-### Em classes, o helper é método privado
+### In classes, the helper is a private method
 
-Quando o arquivo contém uma classe dona do comportamento (um Use Case, Adapter, Service ou
-Handler), qualquer função auxiliar de apoio é declarada como **método `private` da classe**,
-e não como função livre solta no corpo do arquivo:
+When the file contains a class that owns the behavior (a Use Case, Adapter, Service or
+Handler), any supporting helper function is declared as a **`private` method of the class**,
+not as a free function loose in the file body:
 
-Correto — responsabilidade contida na classe:
+Correct — responsibility contained in the class:
 
 ```typescript
 @Injectable()
@@ -114,7 +114,7 @@ export class AcpAgentAdapter implements IAgentClientPort {
 }
 ```
 
-Evite — função solta no arquivo da classe:
+Avoid — loose function in the class file:
 
 ```typescript
 function sanitizeUri(uri: string): string {
@@ -130,26 +130,26 @@ export class AcpAgentAdapter implements IAgentClientPort {
 }
 ```
 
-Mesmo que a função seja pura, encapsulá-la como método privado responde objetivamente a quem
-ela pertence, evita que outros desenvolvedores a importem inadvertidamente e preserva o foco
-da classe. O teste unitário da classe exercita o helper através da sua API pública.
+Even if the function is pure, encapsulating it as a private method answers objectively who
+owns it, prevents other developers from importing it inadvertently and keeps the class
+focused. The class's unit test exercises the helper through its public API.
 
-Ficam na raiz do arquivo apenas definições de `type`, `interface`, enums locais ou constantes
-de configuração imutáveis.
+Only `type` and `interface` definitions, local enums and immutable configuration constants
+stay at the file's top level.
 
-## Legibilidade e clareza de fluxo
+## Readability and flow clarity
 
-### `const` por padrão
+### `const` by default
 
-Utilize `const` para todas as declarações de variáveis. Utilize `let` unicamente nos raros casos
-em que a reatribuição de valor for estritamente necessária.
+Use `const` for every variable declaration. Use `let` only in the rare cases where
+reassigning the value is strictly necessary.
 
-### Early return e guard clauses
+### Early return and guard clauses
 
-Evite blocos `if/else` profundamente aninhados. Utilize cláusulas de guarda (*guard clauses*)
-com retorno ou lançamento de exceção antecipado logo no início dos métodos:
+Avoid deeply nested `if/else` blocks. Use guard clauses with an early return or exception
+right at the start of methods:
 
-Correto:
+Correct:
 
 ```typescript
 async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
@@ -165,7 +165,7 @@ async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
 }
 ```
 
-Evite:
+Avoid:
 
 ```typescript
 async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
@@ -183,9 +183,9 @@ async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
 
 ## Checklist
 
-- [ ] Nenhum arquivo `index.ts` criado ou utilizado para reexportação em lote.
-- [ ] Todo `import` aponta diretamente para o arquivo que declara o símbolo.
-- [ ] Apenas classes, interfaces e funções consumidas externamente possuem `export`.
-- [ ] Funções auxiliares de apoio a classes são declaradas como métodos `private`.
-- [ ] Variáveis declaradas exclusivamente com `const`, exceto com reatribuição deliberada.
-- [ ] Métodos estruturados com guard clauses e early returns no lugar de aninhamento de `if/else`.
+- [ ] No `index.ts` file created or used for bulk re-exports.
+- [ ] Every `import` points directly to the file that declares the symbol.
+- [ ] Only externally consumed classes, interfaces and functions have `export`.
+- [ ] Helper functions supporting classes are declared as `private` methods.
+- [ ] Variables declared exclusively with `const`, except for deliberate reassignment.
+- [ ] Methods structured with guard clauses and early returns, without nested `if/else`.

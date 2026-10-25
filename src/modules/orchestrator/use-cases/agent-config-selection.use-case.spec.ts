@@ -5,10 +5,12 @@ import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { AgentSettings } from '../models/agent-settings.model.js';
 import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
+import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
+import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
 import { CancelAgentConfigSelectionUseCase } from './cancel-agent-config-selection.use-case.js';
 import { ResolveConversationInputUseCase } from './resolve-conversation-input.use-case.js';
@@ -64,6 +66,8 @@ describe('agent configuration selection', () => {
   let resolve: ResolveConversationInputUseCase;
   let cancel: CancelAgentConfigSelectionUseCase;
   let questionQueue: UserQuestionQueueService;
+  let languageChangeRequests: LanguageChangeRequestService;
+  let preferencesStore: StubPreferencesStore;
 
   const build = (
     modelsByAgent: Record<string, AgentModelState | null>,
@@ -82,7 +86,17 @@ describe('agent configuration selection', () => {
     start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
     submit = new SubmitAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
     questionQueue = new UserQuestionQueueService();
-    resolve = new ResolveConversationInputUseCase(selectionStore, settingsStore, start, submit, questionQueue);
+    languageChangeRequests = new LanguageChangeRequestService();
+    preferencesStore = new StubPreferencesStore();
+    resolve = new ResolveConversationInputUseCase(
+      selectionStore,
+      settingsStore,
+      start,
+      submit,
+      questionQueue,
+      languageChangeRequests,
+      preferencesStore,
+    );
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
 
@@ -435,13 +449,41 @@ describe('agent configuration selection', () => {
       await expect(answers).resolves.toEqual([{ question: questions[1], answer: '', attachments: [file] }]);
     });
 
+    it('should store the next message as the language while a language change is pending', async () => {
+      languageChangeRequests.request('conv-1');
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '  Spanish ' })).resolves.toEqual({ kind: 'language_set', language: 'Spanish' });
+
+      expect(preferencesStore.preferences.language).toBe('Spanish');
+      expect(languageChangeRequests.isPending('conv-1')).toBe(false);
+    });
+
+    it('should keep the language change pending when the message is not a language', async () => {
+      languageChangeRequests.request('conv-1');
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '<b>Spanish</b>' })).resolves.toEqual({ kind: 'invalid_language' });
+
+      expect(preferencesStore.updates).toEqual([]);
+      expect(languageChangeRequests.isPending('conv-1')).toBe(true);
+    });
+
+    it('should take a message as an answer before a pending language change', async () => {
+      languageChangeRequests.request('conv-1');
+      const answers = questionQueue.ask('conv-1', asker, '', [questions[1]!]);
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
+
+      await expect(answers).resolves.toEqual([{ question: questions[1], answer: '200' }]);
+      expect(languageChangeRequests.isPending('conv-1')).toBe(true);
+    });
+
     it('should give a message with only attachments a prompt that asks to analyze them', async () => {
       await settingsStore.save('conv-1', { agentId: 'stub', agentName: 'Stub', modelId: null, modelName: null, effortId: null, effortName: null, updatedAt: '' });
       const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
         kind: 'execute',
-        prompt: 'O usuário enviou anexos. Analise os arquivos anexados.',
+        prompt: 'The user sent attachments. Analyze the attached files.',
       });
     });
 

@@ -1,158 +1,163 @@
 ---
 name: skill-authoring
 description: >
-  Padrão para criar, revisar, atualizar ou dividir qualquer skill (de domínio ou
-  técnica) em .agents/skills/. Define descoberta pelo agente via name e description,
-  progressive disclosure em 3 níveis, limite de linhas e uso de references/, seções
-  proibidas e manutenção anti-drift. Use ao escrever, editar, revisar ou organizar
-  qualquer SKILL.md no projeto.
+  Standard for creating, reviewing, updating or splitting any skill (domain or
+  technical) in .agents/skills/. Defines agent discovery through name and description,
+  3-level progressive disclosure, line limits and use of references/, forbidden
+  sections, English-only writing and anti-drift maintenance. Use when writing, editing,
+  reviewing or organizing any SKILL.md in the project.
 ---
 
-# Autoria de skills
+# Skill authoring
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar **qualquer regra descrita aqui**. O critério não
-> é *qual* regra — é a natureza da mudança: o padrão de autoria de skills mudou → atualize;
-> ajuste cosmético em uma skill específica que preserva o padrão → não toque.
+> Update this document whenever **any rule described here** changes. The criterion is not
+> *which* rule — it is the nature of the change: the skill authoring standard changed →
+> update; a cosmetic tweak to a specific skill that preserves the standard → leave it alone.
 
-Estas regras aplicam-se a **qualquer** skill no repositório — domínio de negócio ou
-técnica/transversal — e tanto ao **criar** quanto ao **atualizar** uma skill. Uma skill é
-carregada sob demanda; cada decisão de autoria visa **gastar o menor contexto** da janela
-de sessão para a maior utilidade.
+These rules apply to **any** skill in the repository — business domain or
+technical/cross-cutting — both when **creating** and when **updating** a skill. A skill is
+loaded on demand; every authoring decision aims to **spend the least context** of the
+session window for the greatest usefulness.
 
-## O que é uma skill (e o que não é)
+## What a skill is (and what it is not)
 
-Uma skill vive em `.agents/skills/<slug>/SKILL.md` e é a fonte autoritativa das decisões
-duráveis sobre um escopo. Ela é **prescritiva**: define o que **deve** e o que **não deve**
-ser feito, e não apenas o que existe.
+A skill lives in `.agents/skills/<slug>/SKILL.md` and is the authoritative source of the
+durable decisions about a scope. It is **prescriptive**: it defines what **must** and what
+**must not** be done, not merely what exists.
 
-Não crie uma skill cujo propósito exclusivo já pertença a outro canal: documentação de
-API isolada (pertence ao OpenAPI ou testes de contrato), comentário de classe (pertence
-ao código), decisão pontual (pertence ao commit/PR) ou tutorial introdutório passo a passo.
-O que se evita é transformar em skill material que seja mera referência descritiva, sem
-regra prescritiva própria.
+Do not create a skill whose sole purpose already belongs to another channel: standalone API
+documentation (belongs to OpenAPI or contract tests), a class comment (belongs to the code),
+a one-off decision (belongs to the commit/PR) or a step-by-step introductory tutorial. The
+goal is to avoid turning merely descriptive reference material, with no prescriptive rule of
+its own, into a skill.
 
-## Como o agente descobre e carrega skills
+## How the agent discovers and loads skills
 
-O mecanismo de descoberta define a estrutura da skill:
+The discovery mechanism defines the skill's structure:
 
-- **Não há busca vetorial em tempo de execução.** O agente carrega o `name` e a `description`
-  de **todas** as skills como texto estático no system prompt e decide o acionamento lendo esse
-  texto.
-- **Usa o texto literal.** A `description` não é resumida antes de chegar ao modelo. O que
-  está escrito determina o carregamento.
-- **Custo fixo por skill (~100 tokens: `name` + `description`)**, sempre presente na sessão.
-  O corpo do `SKILL.md` só entra no contexto quando a skill é acionada.
+- **There is no vector search at runtime.** The agent loads the `name` and `description` of
+  **all** skills as static text in the system prompt and decides whether to trigger them by
+  reading that text.
+- **It uses the literal text.** The `description` is not summarized before reaching the model.
+  What is written determines loading.
+- **Fixed cost per skill (~100 tokens: `name` + `description`)**, always present in the
+  session. The `SKILL.md` body only enters the context when the skill is triggered.
 
-### Divulgação progressiva (3 níveis)
+### Progressive disclosure (3 levels)
 
-| Nível | Conteúdo | Momento | Custo |
+| Level | Content | When | Cost |
 |---|---|---|---|
-| L1 — Metadados | `name` + `description` | Sempre (startup), para todas as skills | ~100 tokens/skill |
-| L2 — Instruções | Corpo do `SKILL.md` | Quando a skill é acionada | Manter enxuto (< 500 linhas) |
-| L3 — Recursos | Arquivos em `references/`, `assets/`, `scripts/` | Quando referenciados no corpo | Sob demanda |
+| L1 — Metadata | `name` + `description` | Always (startup), for every skill | ~100 tokens/skill |
+| L2 — Instructions | `SKILL.md` body | When the skill is triggered | Keep it lean (< 500 lines) |
+| L3 — Resources | Files in `references/`, `assets/`, `scripts/` | When referenced in the body | On demand |
 
-Os recursos L3 seguem a estrutura padrão da skill (opcionais): `references/` (documentação detalhada
-lida sob demanda), `assets/` (templates e exemplos para cópia) e `scripts/` (código executável auxiliar).
-O `SKILL.md` é o único arquivo obrigatório.
+L3 resources follow the standard skill structure (optional): `references/` (detailed
+documentation read on demand), `assets/` (templates and examples to copy) and `scripts/`
+(auxiliary executable code). `SKILL.md` is the only mandatory file.
 
-## A `description` decide o acionamento
+## The `description` decides triggering
 
-A `description` é o texto que determina se a skill será carregada:
+The `description` is the text that determines whether the skill will be loaded:
 
-- **Limite absoluto: 1024 caracteres** (skills acima desse limite são rejeitadas);
-- **Zona ideal: 300–500 caracteres** (1 a 3 frases densas).
+- **Hard limit: 1024 characters** (skills above this limit are rejected);
+- **Ideal range: 300–500 characters** (1 to 3 dense sentences).
 
-### Estrutura: o que faz + quando usar + termos de gatilho
+### Structure: what it does + when to use it + trigger terms
 
-Coloque o caso de uso principal e os termos de busca no início (*front-loading*):
+Put the main use case and the search terms first (*front-loading*):
 
-- **Skills técnicas/transversais**: ancore em **verbos** e ações reais das requisições ("Use ao
-  escrever, editar ou revisar...").
-- **Skills de domínio/negócio**: ancore no **vocabulário de negócio** do módulo ("Use ao trabalhar
-  com sessões de agentes, reconexão ACP, mensagens do Discord...").
-- Cite os gatilhos em texto corrido, sem listas e sem campos extras como `keywords`.
+- **Technical/cross-cutting skills**: anchor on **verbs** and the real actions of requests
+  ("Use when writing, editing or reviewing...").
+- **Domain/business skills**: anchor on the module's **business vocabulary** ("Use when working
+  with agent sessions, ACP reconnection, Discord messages...").
+- Mention the triggers in running text, without lists and without extra fields such as
+  `keywords`.
 
-## Frontmatter: campos e regras
+## Frontmatter: fields and rules
 
-Mantenha o frontmatter estritamente enxuto:
+Keep the frontmatter strictly lean:
 
-- `name`: 1–64 caracteres, minúsculo, apenas `a-z 0-9 -`, sem hífen no início ou fim, sem `--`,
-  **estritamente idêntico ao nome do diretório**.
-- `description`: obrigatória, não vazia, seguindo as diretrizes de tamanho e gatilhos.
+- `name`: 1–64 characters, lowercase, only `a-z 0-9 -`, no leading or trailing hyphen, no
+  `--`, **strictly identical to the directory name**.
+- `description`: mandatory, non-empty, following the size and trigger guidelines.
 
-Não invente campos como `tags`, `version`, `category` ou `parameters` que apenas inflam o consumo
-de tokens no L1.
+Do not invent fields such as `tags`, `version`, `category` or `parameters` that only inflate
+L1 token consumption.
 
-## Skill ou instrução permanente (`AGENTS.md`)?
+## Skill or permanent instruction (`AGENTS.md`)?
 
-Nem toda regra deve virar skill:
+Not every rule should become a skill:
 
-- **Vira skill**: quando o procedimento é específico, aprofundado, só faz sentido "quando o
-  assunto for X", ou traz exemplos e referências extensas.
-- **Vira instrução em `AGENTS.md`**: quando a regra se aplica a praticamente qualquer tarefa
-  (convenção de pastas, lint, política de commits, regra de comentários).
+- **Becomes a skill**: when the procedure is specific, in-depth, only makes sense "when the
+  subject is X", or carries extensive examples and references.
+- **Becomes an instruction in `AGENTS.md`**: when the rule applies to virtually any task
+  (folder conventions, lint, commit policy, comment rules).
 
-## Estrutura de arquivos
+## File structure
 
 ```text
 .agents/skills/
   <slug>/
-    SKILL.md            (obrigatório, sempre com este nome)
-    references/         (opcional — documentação lida sob demanda)
-    assets/             (opcional — templates e exemplos para cópia)
-    scripts/            (opcional — utilitários executáveis)
+    SKILL.md            (mandatory, always with this name)
+    references/         (optional — documentation read on demand)
+    assets/             (optional — templates and examples to copy)
+    scripts/            (optional — executable utilities)
 ```
 
-- O slug utiliza kebab-case descritivo em inglês quando refletir termos técnicos do projeto;
-- O arquivo principal chama-se invariavelmente `SKILL.md`.
+- The slug uses descriptive kebab-case in English;
+- The main file is always named `SKILL.md`.
 
-## Tamanho do corpo e L2 → L3
+## Body size and L2 → L3
 
-O corpo do `SKILL.md` entra por inteiro no contexto quando acionado. Mantenha o corpo conciso:
+The `SKILL.md` body enters the context in full when triggered. Keep the body concise:
 
-- Trate **500 linhas** como gatilho de reflexão;
-- Detalhes extensos, exemplos longos de configuração e tabelas exaustivas vão para `references/` (L3);
-- A integridade da regra prevalece sobre o tamanho: nunca omita uma regra obrigatória para caber
-  em 500 linhas. O que muda é onde ela reside (`SKILL.md` ou `references/`).
-- Ao mover conteúdo para `references/`, mantenha um resumo no `SKILL.md` acompanhado do link relativo.
+- Treat **500 lines** as a trigger for reflection;
+- Extensive details, long configuration examples and exhaustive tables go to `references/` (L3);
+- Rule integrity prevails over size: never omit a mandatory rule to fit within 500 lines. What
+  changes is where it lives (`SKILL.md` or `references/`).
+- When moving content to `references/`, keep a summary in `SKILL.md` along with the relative
+  link.
 
-## Seções proibidas no corpo
+## Forbidden sections in the body
 
-- **Proibida seção "Quando usar" / "When to use"**: Essa informação pertence exclusivamente à
-  `description` do frontmatter. Repetir no corpo é redundante.
-- **Proibida meta-descrição do arquivo** ("Este arquivo descreve as regras..."): O corpo já é a
-  autoridade prescritiva; não precisa se apresentar.
+- **No "When to use" section**: This information belongs exclusively to the frontmatter
+  `description`. Repeating it in the body is redundant.
+- **No meta-description of the file** ("This file describes the rules..."): The body is
+  already the prescriptive authority; it does not need to introduce itself.
 
-## Bloco de manutenção (anti-drift)
+## Maintenance block (anti-drift)
 
-Logo após o título H1, insira a citação `> **Manutenção desta skill**`. Não enumere as regras
-da skill no bloco; aponte para o documento inteiro ("qualquer regra descrita aqui") e destaque
-o critério de comportamento vs. refatoração técnica.
+Right after the H1 title, insert the `> **Maintaining this skill**` quote. Do not enumerate
+the skill's rules in the block; point to the whole document ("any rule described here") and
+highlight the criterion of behavior change vs. technical refactor.
 
-## Não referenciar outra skill
+## Do not reference another skill
 
-Uma skill **não deve referenciar outra skill** por nome ou link ("veja a skill X"). Quem decide
-o carregamento da skill complementar é o agente, avaliando a `description` de cada uma.
-Cross-references criam acoplamento rígido e distorcem a prioridade de leitura. Descreva os
-conceitos de forma autocontida ou utilize vocabulário neutro suficiente para que o agente acione
-a outra skill autonomamente. Links internos dentro da mesma skill (`SKILL.md` ↔ `references/`)
-são permitidos e encorajados.
+A skill **must not reference another skill** by name or link ("see skill X"). The agent
+decides whether to load the complementary skill by evaluating each one's `description`.
+Cross-references create rigid coupling and distort reading priority. Describe the concepts in
+a self-contained way or use neutral vocabulary sufficient for the agent to trigger the other
+skill on its own. Internal links within the same skill (`SKILL.md` ↔ `references/`) are
+allowed and encouraged.
 
-## Tom e escrita
+## Tone and writing
 
-- Tom **prescritivo e declarativo**: "deve", "não deve", "utilize X ao...".
-- **Estado atual, nunca a transição**: Descreva a regra consolidada para um leitor que não viu
-  as versões anteriores. Proibido narrar histórico ("agora faz", "não usa mais").
-- Negações apenas quando guardam um erro plausível que um desenvolvedor competente cometeria.
+- Skills are written in **English**: frontmatter, body, examples and references.
+- **Prescriptive and declarative** tone: "must", "must not", "use X when...".
+- **Current state, never the transition**: Describe the consolidated rule for a reader who has
+  not seen previous versions. Narrating history ("now does", "no longer uses") is forbidden.
+- Negations only when they guard against a plausible mistake a competent developer would
+  make.
 
 ## Checklist
 
-- [ ] `name` em minúsculo com hífens, idêntico ao nome da pasta da skill.
-- [ ] `description` entre 300–500 caracteres, com caso de uso e gatilhos no início.
-- [ ] Bloco `> **Manutenção desta skill**` imediatamente após o H1, sem listar regras.
-- [ ] Nenhuma seção "Quando usar" e nenhuma meta-descrição no corpo.
-- [ ] Nenhuma referência direta a outra skill por nome ou caminho.
-- [ ] Detalhes pesados transferidos para `references/` se o corpo atingir 500 linhas.
-- [ ] Texto focado no estado atual do sistema, sem narrar histórico ou transição.
+- [ ] `name` in lowercase with hyphens, identical to the skill's folder name.
+- [ ] `description` between 300–500 characters, with use case and triggers first.
+- [ ] `> **Maintaining this skill**` block immediately after the H1, without listing rules.
+- [ ] No "When to use" section and no meta-description in the body.
+- [ ] No direct reference to another skill by name or path.
+- [ ] Heavy details moved to `references/` if the body reaches 500 lines.
+- [ ] Written in English.
+- [ ] Text focused on the current state of the system, without narrating history or transition.
