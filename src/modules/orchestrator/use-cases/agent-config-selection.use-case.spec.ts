@@ -5,6 +5,7 @@ import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { AgentSettings } from '../models/agent-settings.model.js';
 import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
+import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -62,6 +63,7 @@ describe('agent configuration selection', () => {
   let submit: SubmitAgentConfigSelectionUseCase;
   let resolve: ResolveConversationInputUseCase;
   let cancel: CancelAgentConfigSelectionUseCase;
+  let questionQueue: UserQuestionQueueService;
 
   const build = (
     modelsByAgent: Record<string, AgentModelState | null>,
@@ -79,7 +81,8 @@ describe('agent configuration selection', () => {
     const capabilities = new AgentCapabilitiesService(factory);
     start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
     submit = new SubmitAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
-    resolve = new ResolveConversationInputUseCase(selectionStore, settingsStore, start, submit);
+    questionQueue = new UserQuestionQueueService();
+    resolve = new ResolveConversationInputUseCase(selectionStore, settingsStore, start, submit, questionQueue);
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
 
@@ -393,6 +396,55 @@ describe('agent configuration selection', () => {
   });
 
   describe('ResolveConversationInputUseCase', () => {
+    const asker = { role: 'PRODUCT_OWNER', roleName: 'Product Owner', projectName: null };
+    const questions = [
+      { text: 'Who approves the refund?', rationale: 'Defines the flow.', options: ['Manager', 'Finance'] },
+      { text: 'What is the limit?', options: [] },
+    ];
+
+    it('should take the message as the answer to the waiting question before anything else', async () => {
+      await resolve.execute({ conversationId: 'conv-1', prompt: 'Build it' });
+      const answers = questionQueue.ask('conv-1', asker, 'Before planning:', questions);
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '7' })).resolves.toMatchObject({
+        kind: 'invalid_answer',
+        prompt: { number: 1, question: { text: 'Who approves the refund?' } },
+      });
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '2' })).resolves.toMatchObject({
+        kind: 'question',
+        prompt: { number: 2, total: 2, question: { text: 'What is the limit?' } },
+      });
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'R$ 500' })).resolves.toEqual({
+        kind: 'answered',
+        asker,
+      });
+
+      await expect(answers).resolves.toEqual([
+        { question: questions[0], answer: 'Finance', optionNumber: 2 },
+        { question: questions[1], answer: 'R$ 500' },
+      ]);
+      await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingPrompt: 'Build it' });
+    });
+
+    it('should take attached files as the answer to the waiting question', async () => {
+      const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
+      const answers = questionQueue.ask('conv-1', asker, '', [questions[1]!]);
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({ kind: 'answered', asker });
+
+      await expect(answers).resolves.toEqual([{ question: questions[1], answer: '', attachments: [file] }]);
+    });
+
+    it('should give a message with only attachments a prompt that asks to analyze them', async () => {
+      await settingsStore.save('conv-1', { agentId: 'stub', agentName: 'Stub', modelId: null, modelName: null, effortId: null, effortName: null, updatedAt: '' });
+      const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
+        kind: 'execute',
+        prompt: 'O usuário enviou anexos. Analise os arquivos anexados.',
+      });
+    });
+
     it('should start the model step of the only agent keeping the prompt when there are no settings', async () => {
       const resolution = await resolve.execute({ conversationId: 'conv-th-1', prompt: 'Build it' });
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 
 import { DiscordActivityFormatter } from './discord-activity.formatter.js';
 
@@ -545,6 +546,60 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatConfigured({ ...settings, modelId: null, modelName: null })).toBe(
         '✅ **Configuração salva**: 🤖 Claude Code · 🧠 padrão · ⚡ padrão',
       );
+    });
+  });
+
+  describe('questions to the user', () => {
+    const prompt: QuestionPrompt = {
+      asker: { role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', projectName: 'my-app' },
+      question: { text: 'Who approves?', rationale: 'It defines the flow.', options: ['Manager', 'Finance'] },
+      number: 2,
+      total: 5,
+      waitingAskers: 0,
+    };
+
+    it('should show the question with its rationale and numbered options', () => {
+      expect(formatter.formatQuestion(prompt)).toBe([
+        '❓ **Pergunta 2/5** · Product Owner Agent (`my-app`)',
+        '**Who approves?**',
+        '_It defines the flow._',
+        '**1.** Manager',
+        '**2.** Finance',
+        '-# Responda com o número da opção ou digite outra resposta. /cancel interrompe tudo.',
+      ].join('\n'));
+    });
+
+    it('should lead with the agent message and tell how many agents wait for answers', () => {
+      const formatted = formatter.formatQuestion({ ...prompt, message: 'I understood X.', waitingAskers: 2 });
+
+      expect(formatted).toMatch(/^I understood X\.\n\n❓/);
+      expect(formatted).toMatch(/-# ⏳ Mais 2 agente\(s\) aguardando respostas depois deste\.$/);
+    });
+
+    it('should ask for a typed answer when the question has no options', () => {
+      const formatted = formatter.formatQuestion({
+        ...prompt,
+        asker: { ...prompt.asker, projectName: null },
+        question: { text: 'What is the limit?', options: [] },
+      });
+
+      expect(formatted).toBe([
+        '❓ **Pergunta 2/5** · Product Owner Agent',
+        '**What is the limit?**',
+        '-# Digite a sua resposta. /cancel interrompe tudo.',
+      ].join('\n'));
+    });
+
+    it('should repeat the question without the agent message on an invalid option', () => {
+      const formatted = formatter.formatInvalidAnswer({ ...prompt, message: 'I understood X.' });
+
+      expect(formatted).toMatch(/^⚠️ Opção inválida\. Responda com um número de 1 a 2 ou digite outra resposta\.\n\n❓/);
+      expect(formatted).not.toContain('I understood X.');
+    });
+
+    it('should confirm the answers were sent to the asking agent', () => {
+      expect(formatter.formatAnswersSent(prompt.asker)).toBe('✅ Respostas enviadas ao **Product Owner Agent** (`my-app`).');
+      expect(formatter.formatAnswersSent({ ...prompt.asker, projectName: null })).toBe('✅ Respostas enviadas ao **Product Owner Agent**.');
     });
   });
 

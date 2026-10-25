@@ -11,6 +11,7 @@ import type { ResolveConversationInputUseCase } from '../use-cases/resolve-conve
 import type { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
 import { OrchestratorService } from './orchestrator.service.js';
+import { UserQuestionQueueService } from './user-question-queue.service.js';
 
 
 describe('OrchestratorService', () => {
@@ -20,6 +21,7 @@ describe('OrchestratorService', () => {
   let mockResolveUseCase: ResolveConversationInputUseCase;
   let mockStartSelectionUseCase: StartAgentConfigSelectionUseCase;
   let mockCancelSelectionUseCase: CancelAgentConfigSelectionUseCase;
+  let questionQueue: UserQuestionQueueService;
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let mockGetQuotaUseCase: GetAgentQuotaUseCase;
 
@@ -36,6 +38,7 @@ describe('OrchestratorService', () => {
     mockStartSelectionUseCase = { execute: vi.fn() } as unknown as StartAgentConfigSelectionUseCase;
     mockCancelSelectionUseCase = { execute: vi.fn() } as unknown as CancelAgentConfigSelectionUseCase;
     selectionStore = new InMemoryAgentConfigSelectionStoreAdapter();
+    questionQueue = new UserQuestionQueueService();
     mockGetQuotaUseCase = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
 
     service = new OrchestratorService(
@@ -46,6 +49,7 @@ describe('OrchestratorService', () => {
       mockCancelSelectionUseCase,
       selectionStore,
       mockGetQuotaUseCase,
+      questionQueue,
     );
   });
 
@@ -125,5 +129,13 @@ describe('OrchestratorService', () => {
     await selectionStore.save({ conversationId: 'conv-1', step: 'model', options: [] });
 
     await expect(service.hasActiveConfigSelection('conv-1')).resolves.toBe(true);
+  });
+
+  it('should report whether the conversation has questions waiting for the user', () => {
+    expect(service.hasPendingQuestions('conv-1')).toBe(false);
+
+    void questionQueue.ask('conv-1', { role: 'CEO', roleName: 'CEO', projectName: null }, '', [{ text: 'Which?', options: [] }]);
+
+    expect(service.hasPendingQuestions('conv-1')).toBe(true);
   });
 });

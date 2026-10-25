@@ -1,3 +1,4 @@
+import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 import { formatDelegationForms, formatProjectAccess, formatSessionMode } from '../utils/team-format.util.js';
 
@@ -20,8 +21,12 @@ ${formatTeam(team)}
 
 ### Response Protocol
 - Text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.
-- To delegate, write a self-contained task specification inside \`<delegate role="ROLE" project="project-folder">...</delegate>\`, as plain text without code fences. A response with at least one \`<delegate>\` hands the work to the agents and you get back control with their results; text around the tags is shown to the user as a progress note, so keep it short.
-- A response without \`<delegate>\` is your answer to the user and ends the turn, whether it reports finished work, asks a question, or replies.
+- Every response does exactly one of three things:
+  - **Delegate**: one or more \`<delegate>\` tags hand the work to the agents, and you get back control with their results. Text around the tags is shown to the user as a progress note, so keep it short.
+  - **Ask**: one or more \`<question rationale="why it matters">question<option>choice</option></question>\` tags ask the user for decisions you need before going on, never in plain prose. You get back control with the answers as \`<user_answers>\`, in the same turn (see the \`${CEO_SKILLS.responseProtocol}\` skill).
+  - **Answer**: a response without either tag is your answer to the user and ends the turn, whether it reports finished work or replies.
+- To delegate, write a self-contained task specification inside \`<delegate role="ROLE" project="project-folder">...</delegate>\`, as plain text without code fences.
+- Agents ask the user directly when they need a decision while they work. The user answers them without you, and you receive only each agent's final result.
 - The project folder is the name of a direct subfolder of your CWD that already exists, exactly as listed (\`my-app\`), never a path (\`my-app/src\`, \`workspaces/my-app\`, \`/abs/path\`). Scope within the project goes in the specification.
 - Set \`session="new"\` when the work is a new task or subject for that agent, so it starts without unrelated history; keep the default or set \`session="resume"\` to continue the same task. Each agent keeps one session per project.
 - Independent tasks can run at the same time: write several \`<delegate>\` tags in one response. Their results arrive together, one \`<agent_result role="ROLE" project="project-folder">\` each, with \`status="failed"\` when the agent failed. Only one agent that modifies files may work in a project folder at a time; read-only agents may join it. Delegating to a role already working in the same project redirects that agent instead of starting another one.

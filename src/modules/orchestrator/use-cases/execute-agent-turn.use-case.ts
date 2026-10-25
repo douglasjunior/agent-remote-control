@@ -17,6 +17,7 @@ import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
+import type { AnsweredQuestion, QuestionAsker, UserQuestion } from '../models/user-question.model.js';
 import {
   type DelegationContract,
   IAgentRegistryPort,
@@ -25,13 +26,17 @@ import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
+import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
   type CeoDecision,
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
+import { QuestionParserService } from '../services/question-parser.service.js';
+import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
+import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 
 
 const LOG_PREVIEW_LENGTH = 100;
@@ -41,6 +46,8 @@ type ValidatedDelegation = DelegationResult & { readonly cwd: string };
 type ValidatedDecision =
   | Exclude<CeoDecision, { kind: 'delegate' }>
   | { readonly kind: 'delegate'; readonly message: string; readonly delegations: readonly ValidatedDelegation[] };
+
+type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 
 
 @Injectable()
@@ -63,6 +70,8 @@ export class ExecuteAgentTurnUseCase {
     private readonly settingsStore: IAgentSettingsStorePort,
     private readonly delegationDetector: DelegationDetectorService,
     private readonly conversationRuntime: ConversationRuntimeService,
+    private readonly questionParser: QuestionParserService,
+    private readonly questionQueue: UserQuestionQueueService,
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
@@ -265,7 +274,7 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     session: SessionContext,
     isUserMessage: boolean,
-  ): Promise<{ response: string; decision: ValidatedDecision }> {
+  ): Promise<{ response: string; decision: CeoRoundDecision }> {
     const runCeo = (text: string, isUserText = false) => this.runAgentTurn(
       ceoPort,
       request.workspacePath,
@@ -280,17 +289,22 @@ export class ExecuteAgentTurnUseCase {
     );
 
     let response = await runCeo(prompt, isUserMessage);
-    let decision = await this.decide(response, request);
+    for (;;) {
+      let decision = await this.decide(response, request);
+      for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
+        this.logger.warn(
+          `[Delegation Repair] Session=${session.sessionId}, Attempt=${attempt}: ${decision.reason}`,
+        );
+        response = await runCeo(buildDelegationRepairPrompt(decision.reason));
+        decision = await this.decide(response, request);
+      }
+      if (decision.kind !== 'ask') {
+        return { response, decision };
+      }
 
-    for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
-      this.logger.warn(
-        `[Delegation Repair] Session=${session.sessionId}, Attempt=${attempt}: ${decision.reason}`,
-      );
-      response = await runCeo(buildDelegationRepairPrompt(decision.reason));
-      decision = await this.decide(response, request);
+      const answers = await this.askUser(request, this.buildAsker(request.agentRole, undefined), decision.message, decision.questions);
+      response = await runCeo(this.formatAnswers(answers), true);
     }
-
-    return { response, decision };
   }
 
   private async decide(response: string, request: TurnRequest): Promise<ValidatedDecision> {
@@ -453,6 +467,58 @@ export class ExecuteAgentTurnUseCase {
       .join('\n\n');
   }
 
+  private async answerQuestions(
+    firstResponse: string,
+    runAgent: (text: string) => Promise<string>,
+    asker: QuestionAsker,
+    request: TurnRequest,
+  ): Promise<string> {
+    let response = firstResponse;
+    let repairs = 0;
+    for (;;) {
+      const parsed = this.questionParser.parse(response);
+      if (parsed.kind === 'none') {
+        return response;
+      }
+      if (parsed.kind === 'invalid') {
+        if (repairs === this.MAX_REPAIR_ATTEMPTS) {
+          return response;
+        }
+        repairs++;
+        this.logger.warn(`[Question Repair] Role=${asker.role}, Attempt=${repairs}: ${parsed.reason}`);
+        response = await runAgent(buildQuestionRepairPrompt(parsed.reason));
+        continue;
+      }
+      repairs = 0;
+      const answers = await this.askUser(request, asker, parsed.message, parsed.questions);
+      response = await runAgent(this.formatAnswers(answers));
+    }
+  }
+
+  private askUser(
+    request: TurnRequest,
+    asker: QuestionAsker,
+    message: string,
+    questions: readonly UserQuestion[],
+  ): Promise<readonly AnsweredQuestion[]> {
+    this.logger.log(`[Questions Asked] Conversation=${request.conversationId}, Role=${asker.role}, Questions=${questions.length}`);
+    return this.questionQueue.ask(request.conversationId, asker, message, questions, request.onQuestion);
+  }
+
+  private buildAsker(role: string, projectName: string | undefined): QuestionAsker {
+    return { role, roleName: this.agentRegistry.getDisplayName(role), projectName: projectName ?? null };
+  }
+
+  /** Repeats each question, because the agent's context may have been compacted while the user answered. */
+  private formatAnswers(answers: readonly AnsweredQuestion[]): string {
+    const lines = answers.map(({ question, answer, optionNumber, attachments = [] }) => {
+      const choice = optionNumber === undefined ? 'kind="other"' : `option="${optionNumber}"`;
+      const files = attachments.map(file => `\n<attachment path="${escapeTagAttribute(file.path)}" name="${escapeTagAttribute(file.name)}" type="${escapeTagAttribute(file.contentType)}"/>`);
+      return `<answer question="${escapeTagAttribute(question.text)}" ${choice}>${answer}${files.join('')}</answer>`;
+    });
+    return ['<user_answers>', ...lines, '</user_answers>'].join('\n');
+  }
+
   private formatAgentResult(role: string, projectName: string | undefined, body: string, status?: 'failed'): string {
     const project = projectName ? ` project="${projectName}"` : '';
     const failed = status ? ` status="${status}"` : '';
@@ -474,7 +540,8 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<string> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
     if (existing) {
-      if (existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
+      const awaitingAnswers = this.questionQueue.isWaiting(conversationKey, delegateToRole, projectName ?? null);
+      if (!awaitingAnswers && existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
@@ -484,6 +551,7 @@ export class ExecuteAgentTurnUseCase {
       this.logger.log(
         `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unavailable)`,
       );
+      this.questionQueue.discard(conversationKey, delegateToRole, projectName ?? null);
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);
@@ -528,16 +596,22 @@ export class ExecuteAgentTurnUseCase {
     this.conversationRuntime.registerDelegation(conversationKey, activeDelegation);
 
     try {
-      const response = await this.runAgentTurn(
+      const runDelegate = (text: string) => this.runAgentTurn(
         delegatePort,
         cwd,
         delegateToRole,
-        currentTaskSpec,
+        text,
         request,
         delegationTurn,
         session,
         effectiveSessionMode,
         projectName,
+      );
+      const response = await this.answerQuestions(
+        await runDelegate(currentTaskSpec),
+        runDelegate,
+        this.buildAsker(delegateToRole, projectName),
+        request,
       );
       const durationMs = Date.now() - startedAt;
       this.logger.log(

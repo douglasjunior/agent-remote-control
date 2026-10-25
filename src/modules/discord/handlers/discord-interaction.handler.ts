@@ -13,6 +13,8 @@ import { buildConversationId, type ConversationKey, resolveConversationKey } fro
 import { DiscordTypingIndicator, type TypingChannel } from '../utils/discord-typing-indicator.util.js';
 
 
+const PENDING_QUESTIONS_NOTICE = '❓ Há perguntas aguardando a sua resposta nesta conversa. Responda a elas ou use /cancel antes de trocar de agente ou de modelo.';
+
 type SelectionTarget = ConversationKey & {
   readonly publish: (content: string) => Promise<void>;
   /** Present when nothing else signals progress: the deferred reply already shows "thinking". */
@@ -118,6 +120,10 @@ export class DiscordInteractionHandler implements OnModuleInit {
     command: SelectionCommand,
   ): Promise<void> {
     try {
+      if (this.hasPendingQuestionsHere(interaction)) {
+        await this.respond(interaction, PENDING_QUESTIONS_NOTICE, true);
+        return;
+      }
       await interaction.deferReply();
       const target = await this.openSelectionTarget(interaction, command);
       this.logCommand(interaction, target.channelId, target.threadId);
@@ -137,6 +143,15 @@ export class DiscordInteractionHandler implements OnModuleInit {
       this.logger.error(`Error executing /${interaction.commandName} command: ${errorMessage}`);
       await this.respond(interaction, `❌ **Falha ao abrir a seleção de ${command.subject}**: ${errorMessage}`, false);
     }
+  }
+
+  /** Outside a thread or DM the selection opens a new conversation, which has no questions of its own. */
+  private hasPendingQuestionsHere(interaction: ChatInputCommandInteraction): boolean {
+    if (interaction.inGuild() && !interaction.channel?.isThread()) {
+      return false;
+    }
+    const conversationId = buildConversationId(resolveConversationKey(interaction.channelId, interaction.channel));
+    return this.orchestratorService.hasPendingQuestions(conversationId);
   }
 
   /**

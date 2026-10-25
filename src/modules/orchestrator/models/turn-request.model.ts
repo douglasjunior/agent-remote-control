@@ -2,6 +2,7 @@ import type { AgentActivity } from '../../agent/ports/agent.port.js';
 
 import type { DelegationEvent } from './delegation-event.model.js';
 import type { TurnAttachment } from './turn-attachment.model.js';
+import type { QuestionPrompt } from './user-question.model.js';
 
 
 export type TurnRequest = {
@@ -15,5 +16,6 @@ export type TurnRequest = {
   onTextChunk?: (chunk: string) => void;
   onDelegation?: (event: DelegationEvent) => void;
   onInterimMessage?: (message: string) => void;
+  onQuestion?: (prompt: QuestionPrompt) => void;
   onQueued?: () => void;
 };

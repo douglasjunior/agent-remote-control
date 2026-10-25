@@ -7,6 +7,7 @@ import {
 } from '../prompts/code-reviewer.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from '../prompts/developer.prompt.js';
 import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from '../prompts/git-ops.prompt.js';
+import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from '../prompts/product-owner.prompt.js';
 import { TECH_LEAD_SYSTEM_PROMPT, TECH_LEAD_TURN_REMINDER } from '../prompts/tech-lead.prompt.js';
 
 
@@ -30,6 +31,16 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable' },
     turnReminder: GIT_OPS_TURN_REMINDER,
+  },
+  {
+    role: 'PRODUCT_OWNER',
+    name: 'Product Owner Agent',
+    description:
+      'Product discovery before any technical planning: requirements, business rules, exploration of ideas and features, flows, usability, and acceptance criteria. Delegate to it whenever a request is about what to build or why rather than how, or is too vague to plan, before the Tech Lead. It interviews the user directly, round after round, until no loose end is left, and answers with the absolute path of an intent document plus the technical decisions it left for the technical team. With a project folder it reads the code and documentation for context; without one it discusses the idea from scratch. Resume it to refine a document it delivered; start a new session for a new subject.',
+    buildSystemPrompt: () => PRODUCT_OWNER_SYSTEM_PROMPT,
+    defaultSessionMode: 'resume',
+    delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true },
+    turnReminder: PRODUCT_OWNER_TURN_REMINDER,
   },
   {
     role: 'TECH_LEAD',

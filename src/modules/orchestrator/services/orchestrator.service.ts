@@ -18,6 +18,8 @@ import {
 } from '../use-cases/resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
+import { UserQuestionQueueService } from './user-question-queue.service.js';
+
 
 @Injectable()
 export class OrchestratorService {
@@ -30,6 +32,7 @@ export class OrchestratorService {
     @Inject(IAgentConfigSelectionStorePort)
     private readonly selectionStore: IAgentConfigSelectionStorePort,
     private readonly getAgentQuotaUseCase: GetAgentQuotaUseCase,
+    private readonly questionQueue: UserQuestionQueueService,
   ) {}
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
@@ -62,5 +65,9 @@ export class OrchestratorService {
 
   async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
     return (await this.selectionStore.find(conversationId)) !== null;
+  }
+
+  hasPendingQuestions(conversationId: string): boolean {
+    return this.questionQueue.hasPending(conversationId);
   }
 }
