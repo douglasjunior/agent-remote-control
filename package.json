@@ -1,7 +1,7 @@
 {
   "name": "agent-remote-control",
   "version": "0.0.1",
-  "description": "Remote control and orchestration of AI coding agents over the Agent Client Protocol (ACP), driven from Discord.",
+  "description": "Remote control and orchestration of AI coding agents over the Agent Client Protocol (ACP), through pluggable channel interfaces such as Discord.",
   "author": {
     "name": "Douglas Nassif Roma Junior",
     "email": "nassifrroma@gmail.com",
