@@ -28,6 +28,7 @@ COPY --from=deps /app/.yarnrc.yml ./.yarnrc.yml
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
+# ENV OTEL_SERVICE_NAME="agent-remote-control"
 # ENV OTEL_METRICS_EXPORTER="otlp"
 # ENV OTEL_TRACES_EXPORTER="otlp"
 # ENV OTEL_LOGS_EXPORTER="otlp"
