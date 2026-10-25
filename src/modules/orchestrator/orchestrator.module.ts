@@ -6,13 +6,16 @@ import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { InMemoryAgentConfigSelectionStoreAdapter } from './adapters/in-memory-agent-config-selection-store.adapter.js';
 import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
+import { JsonPreferencesStoreAdapter } from './adapters/json-preferences-store.adapter.js';
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
 import { IAgentConfigSelectionStorePort } from './ports/agent-config-selection-store.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
+import { IPreferencesStorePort } from './ports/preferences-store.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
 import { AgentCapabilitiesService } from './services/agent-capabilities.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
+import { LanguageChangeRequestService } from './services/language-change-request.service.js';
 import { OrchestratorService } from './services/orchestrator.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
@@ -38,12 +41,17 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
       useClass: JsonAgentSettingsStoreAdapter,
     },
     {
+      provide: IPreferencesStorePort,
+      useClass: JsonPreferencesStoreAdapter,
+    },
+    {
       provide: IAgentConfigSelectionStorePort,
       useClass: InMemoryAgentConfigSelectionStoreAdapter,
     },
     AgentCapabilitiesService,
     ConversationRuntimeService,
     DelegationDetectorService,
+    LanguageChangeRequestService,
     QuestionParserService,
     UserQuestionQueueService,
     ExecuteAgentTurnUseCase,

@@ -67,19 +67,23 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
       const commands = [
         {
           name: 'cancel',
-          description: 'Cancela o turno ativo do agente de IA',
+          description: 'Cancels the AI agent\'s active turn',
         },
         {
           name: 'model',
-          description: 'Escolhe o modelo e o effort usados pelos agentes',
+          description: 'Chooses the model and effort used by the agents',
         },
         {
           name: 'usage',
-          description: 'Mostra os limites de uso do agente de IA atual',
+          description: 'Shows the current AI agent\'s usage limits',
         },
         {
           name: 'agent',
-          description: 'Troca o agente de IA (Antigravity, Claude Code...)',
+          description: 'Switches the AI agent (Antigravity, Claude Code...)',
+        },
+        {
+          name: 'language',
+          description: 'Changes the language agents use to talk to you',
         },
       ];
 

@@ -1,418 +1,444 @@
 ---
 name: orchestrator
 description: >
-  Orquestração agnóstica a canais para agentes de IA: turnos, delegação do CEO com
-  as tags <delegate>/<attachment>/<agent_result>, delegação paralela, perguntas diretas de qualquer agente
-  ao usuário (<question>/<user_answers>, fila de perguntas por conversa), retomada de sessão ACP persistida por papel e projeto (agentSessions,
-  e agente, DATA_DIR), seleção de agente/modelo/effort por conversa, troca do agente do CEO,
-  rodapé com TurnResult.agentInfo,
-  cancelamento, fila por conversa e ISessionStorePort. Use ao implementar turnos,
-  delegação, cancelamento, persistência de sessões e configurações, seleção de modelo
-  ou novas interfaces de canal.
+  Channel-agnostic orchestration for AI agents: turns, CEO delegation with
+  the <delegate>/<attachment>/<agent_result> tags, parallel delegation, direct questions from any agent
+  to the user (<question>/<user_answers>, per-conversation question queue), persisted ACP session resumption by role and project (agentSessions,
+  and agent, DATA_DIR), per-conversation agent/model/effort selection, switching the CEO agent,
+  footer with TurnResult.agentInfo, global user language preference (<user_language>,
+  IPreferencesStorePort, language change requests), cancellation, per-conversation queue and ISessionStorePort. Use when implementing turns,
+  delegation, cancellation, session and settings persistence, model selection
+  or new channel interfaces.
 ---
 
-# Orquestrador de Agentes Agnóstico a Canais
+# Channel-Agnostic Agent Orchestrator
 
-> **Manutenção desta skill**
+> **Maintaining this skill**
 >
-> Atualize este documento sempre que mudar qualquer regra descrita aqui. O critério não
-> é qual regra — é a natureza da mudança: uma diretriz ou convenção do orquestrador
-> mudou → atualize; refator técnico que preserva o padrão descrito → não toque.
+> Update this document whenever any rule described here changes. The criterion is not
+> which rule — it is the nature of the change: an orchestrator guideline or convention
+> changed → update; technical refactor that preserves the described pattern → leave it alone.
 
-O módulo `OrchestratorModule` reside em `src/modules/orchestrator/` e centraliza
-toda a coordenação de turnos entre clientes de entrada (canais de chat como Discord,
-APIs HTTP ou tarefas agendadas) e os adaptadores de agentes de desenvolvimento.
+The `OrchestratorModule` module lives in `src/modules/orchestrator/` and centralizes
+all turn coordination between input clients (chat channels such as Discord,
+HTTP APIs or scheduled jobs) and the development agent adapters.
 
-O orquestrador é completamente desacoplado da tecnologia de apresentação dos canais.
-Ele recebe requisições padronizadas, mantém o estado conversacional, cria uma sessão
-ACP própria para cada conversa, coordena a delegação do CEO para agentes especialistas
-e repassa fluxos de atividade e texto sob demanda.
+The orchestrator is fully decoupled from the channels' presentation technology.
+It receives standardized requests, keeps the conversational state, creates its own ACP
+session for each conversation, coordinates the CEO's delegation to specialist agents
+and relays activity and text streams on demand.
 
-## Modelos Centrais
+## Core Models
 
-Os modelos residem em `src/modules/orchestrator/models/`:
+The models live in `src/modules/orchestrator/models/`:
 
 ### `SessionContext` (`session-context.model.ts`)
 
-Representa o vínculo durável entre a origem conversacional e o ambiente de trabalho. Contém
-apenas dados serializáveis; o estado de execução (agentes vivos, fila, turno ativo) pertence ao
+Represents the durable link between the conversational origin and the working environment. It contains
+only serializable data; the execution state (live agents, queue, active turn) belongs to
 `ConversationRuntimeService`:
 
-- `sessionId`: identificador único da sessão (UUID v4 ou string estável);
-- `conversationId`: identificador único da conversa (gerado pelo canal ou cliente);
-- `userId`: identificador do usuário autor da sessão;
-- `workspacePath`: caminho absoluto do diretório de trabalho do projeto;
-- `agentRole`: papel raiz da conversa (ex.: `'CEO'`);
-- `agentSessions`: lista de `AgentSession` (`agent-session.model.ts`: `role`, `agentId`, `sessionId`, `projectName`) com a sessão ACP de cada papel (CEO e delegados) em cada agente e projeto, no máximo uma por papel/agente/projeto, usada para retomá-las com `loadSession`. `projectName` é `null` para quem roda na raiz de workspaces (o CEO e delegações sem pasta); por ser parte da chave, o histórico de um papel num projeto nunca é retomado em outro. O `JsonSessionStoreAdapter` carrega entradas gravadas sem `projectName` como `null`. Voltar a um agente já usado na conversa retoma a sessão dele. Uma sessão nova começa com a lista vazia;
-- `createdAt` e `updatedAt`: marcos temporais de ciclo de vida.
+- `sessionId`: unique session identifier (UUID v4 or stable string);
+- `conversationId`: unique conversation identifier (generated by the channel or client);
+- `userId`: identifier of the user who owns the session;
+- `workspacePath`: absolute path of the project's working directory;
+- `agentRole`: root role of the conversation (e.g. `'CEO'`);
+- `agentSessions`: list of `AgentSession` (`agent-session.model.ts`: `role`, `agentId`, `sessionId`, `projectName`) with the ACP session of each role (CEO and delegates) in each agent and project, at most one per role/agent/project, used to resume them with `loadSession`. `projectName` is `null` for whoever runs at the workspaces root (the CEO and delegations without a folder); since it is part of the key, a role's history in one project is never resumed in another. `JsonSessionStoreAdapter` loads entries written without `projectName` as `null`. Returning to an agent already used in the conversation resumes its session. A new session starts with an empty list;
+- `createdAt` and `updatedAt`: lifecycle timestamps.
 
 ### `TurnRequest` (`turn-request.model.ts`)
 
-Encapsula os parâmetros para execução de uma rodada de interação:
+Encapsulates the parameters for running an interaction round:
 
-- `conversationId`: identificador da conversa solicitante;
-- `userId`: autor do prompt;
-- `prompt`: instrução enviada pelo usuário;
-- `workspacePath`: diretório local de trabalho associado ao turno;
-- `agentRole`: papel raiz que recebe o prompt (ex.: `'CEO'`);
-- `attachments`: lista opcional de `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) com arquivos recebidos e baixados localmente;
-- `onActivity`: callback opcional `(activity: AgentActivity) => void` para consumo reativo de pensamentos e ferramentas;
-- `onTextChunk`: callback opcional `(chunk: string) => void` para streaming progressivo da resposta;
-- `onQueued`: callback opcional `() => void` chamado quando o turno entra na fila atrás de outro turno da mesma conversa.
-- `onInterimMessage`: callback opcional `(message: string) => void`, chamado com a `message` de uma resposta do CEO que delega, quando não vazia, antes de as delegações começarem.
-- `onQuestion`: callback opcional `(prompt: QuestionPrompt) => void`, chamado quando um agente deste turno pergunta e a pergunta chega à frente da fila da conversa por conta própria (ver "Perguntas ao Usuário").
-- `onDelegation`: callback opcional `(event: DelegationEvent) => void` (`delegation-event.model.ts`), chamado com `phase: 'started'` antes de o delegado trabalhar e `phase: 'finished'` quando ele conclui com sucesso; carrega `round`, `role`, `roleName` e `projectName?`. O `finished` traz também `response`, `agentInfo` e `usage` do delegado e `durationMs`.
+- `conversationId`: identifier of the requesting conversation;
+- `userId`: author of the prompt;
+- `prompt`: instruction sent by the user;
+- `workspacePath`: local working directory associated with the turn;
+- `agentRole`: root role that receives the prompt (e.g. `'CEO'`);
+- `attachments`: optional list of `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) with files received and downloaded locally;
+- `onActivity`: optional callback `(activity: AgentActivity) => void` for reactive consumption of thoughts and tools;
+- `onTextChunk`: optional callback `(chunk: string) => void` for progressive response streaming;
+- `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
+- `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
+- `onQuestion`: optional callback `(prompt: QuestionPrompt) => void`, called when an agent of this turn asks and the question reaches the front of the conversation queue on its own (see "Questions to the User").
+- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works and `phase: 'finished'` when it completes successfully; carries `round`, `role`, `roleName` and `projectName?`. `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
-Representa o turno em execução de uma conversa:
+Represents a conversation's running turn:
 
-- `activate(agentPort)`: registra o agente que está rodando (CEO ou delegado);
-- `cancel()`: marca o turno como cancelado e chama `cancel()` no agente ativo;
-- `reset()`: redefine o estado de cancelamento para falso;
-- `throwIfCancelled()`: lança `PromptCancelledError` se o turno foi cancelado. O orquestrador o chama antes de `connect`, depois de `connect` e antes de cada `prompt`, para que um cancelamento pedido enquanto o agente ainda conecta interrompa o turno.
+- `activate(agentPort)`: registers the agent that is running (CEO or delegate);
+- `cancel()`: marks the turn as cancelled and calls `cancel()` on the active agent;
+- `reset()`: resets the cancellation state to false;
+- `throwIfCancelled()`: throws `PromptCancelledError` if the turn was cancelled. The orchestrator calls it before `connect`, after `connect` and before each `prompt`, so that a cancellation requested while the agent is still connecting interrupts the turn.
 
 ### `ActiveDelegation` (`active-delegation.model.ts`)
 
-Representa uma delegação técnica atualmente em andamento em segundo plano:
+Represents a technical delegation currently running in the background:
 
-- `role`: papel do agente delegado;
-- `roleName`: nome legível do papel;
-- `projectName`: projeto/diretório alvo da tarefa ou `null`;
-- `taskSpec`: especificação corrente da tarefa delegada;
-- `cwd`: diretório de trabalho do delegado;
-- `startedAt`: timestamp de início;
-- `agentPort`: instância `IAgentPort` do agente delegado;
-- `turn`: instância `ActiveTurn` associada à execução do delegado;
-- `steer(newSpec)`: redireciona a execução da tarefa via steering nativo ACP.
+- `role`: role of the delegated agent;
+- `roleName`: readable role name;
+- `projectName`: target project/directory of the task or `null`;
+- `taskSpec`: current specification of the delegated task;
+- `cwd`: the delegate's working directory;
+- `startedAt`: start timestamp;
+- `agentPort`: `IAgentPort` instance of the delegated agent;
+- `turn`: `ActiveTurn` instance associated with the delegate's execution;
+- `steer(newSpec)`: redirects the task's execution via native ACP steering.
 
 ### `TurnResult` (`turn-result.model.ts`)
 
-Estrutura imutável com o desfecho do turno:
+Immutable structure with the turn outcome:
 
-- `sessionId`: identificador da sessão processada; ausente quando o turno falha antes de abrir a sessão;
-- `response`: resposta textual final consolidada;
-- `status`: `'completed'` em caso de sucesso, `'cancelled'` se interrompido, `'failed'` se abortado por erro, ou `'steered'` quando o prompt foi injetado na rodada do CEO já em andamento (a resposta dele vem no resultado daquele turno, então `response` fica vazio e não há `usage`);
-- `usage`: consumo de tokens da última rodada do CEO (`getLastRoundUsage()`); ausente quando o agente não informa ou a coleta falha;
-- `errorMessage`: mensagem de erro presente exclusivamente em desfechos com falha;
-- `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), preenchido nos três status para o canal exibir com qual agente, modelo e effort a resposta foi gerada;
-- `attachments`: lista opcional de caminhos absolutos dos `<attachment>` da resposta final, resolvidos por `resolveAttachmentPaths` (`utils/attachment-path.util.ts`): caminhos relativos partem de `workspacePath`, o prefixo `file://` é aceito, e só arquivos regulares existentes entram, sem duplicatas.
+- `sessionId`: identifier of the processed session; absent when the turn fails before opening the session;
+- `response`: consolidated final text response;
+- `status`: `'completed'` on success, `'cancelled'` if interrupted, `'failed'` if aborted by an error, or `'steered'` when the prompt was injected into the CEO round already in progress (its response comes in that turn's result, so `response` is empty and there is no `usage`);
+- `usage`: token usage of the CEO's last round (`getLastRoundUsage()`); absent when the agent does not report it or collection fails;
+- `errorMessage`: error message present exclusively in failed outcomes;
+- `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), filled in all three statuses so the channel can show which agent, model and effort generated the response;
+- `attachments`: optional list of absolute paths of the final response's `<attachment>`s, resolved by `resolveAttachmentPaths` (`utils/attachment-path.util.ts`): relative paths start from `workspacePath`, the `file://` prefix is accepted, and only existing regular files are included, without duplicates.
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
-Configuração de agente, modelo e effort de uma conversa: `agentId`, `agentName` (nome de exibição do
-catálogo), `modelId`, `modelName`, `effortId`, `effortName` e `updatedAt`. `modelId === null`
-indica agente sem modelos publicados; `effortId === null`, modelo sem níveis de effort.
+Agent, model and effort configuration of a conversation: `agentId`, `agentName` (catalog display
+name), `modelId`, `modelName`, `effortId`, `effortName` and `updatedAt`. `modelId === null`
+indicates an agent without published models; `effortId === null`, a model without effort levels.
 
 ### `AgentConfigSelection` (`agent-config-selection.model.ts`)
 
-Estado da seleção em andamento numa conversa: `conversationId`, `step`
-(`'agent' | 'model' | 'effort'`), `options` numeradas (`SelectionOption`: `index`, `id`, `label`,
-`description?`), `selectedAgent?` (presente nas etapas `model` e `effort`), `selectedModel?`
-(presente na etapa `effort`) e `pendingPrompt?`. Os desfechos dos use cases de seleção
-estão em `agent-config-outcome.model.ts`.
+State of the selection in progress in a conversation: `conversationId`, `step`
+(`'agent' | 'model' | 'effort'`), numbered `options` (`SelectionOption`: `index`, `id`, `label`,
+`description?`), `selectedAgent?` (present in the `model` and `effort` steps), `selectedModel?`
+(present in the `effort` step) and `pendingPrompt?`. The outcomes of the selection use cases
+are in `agent-config-outcome.model.ts`.
 
-## Portas do Orquestrador
+## Orchestrator Ports
 
-As portas do orquestrador residem em `src/modules/orchestrator/ports/`:
+The orchestrator ports live in `src/modules/orchestrator/ports/`:
 
 ### 1. `ISessionStorePort` (`session-store.port.ts`)
 
-Responsável pela persistência e consulta do estado das sessões:
+Responsible for persisting and querying session state:
 
 - `findSession(conversationId: string): Promise<SessionContext | null>`
 - `saveSession(session: SessionContext): Promise<void>`
-- Symbol homônimo: `export const ISessionStorePort = Symbol('ISessionStorePort');`
+- Symbol of the same name: `export const ISessionStorePort = Symbol('ISessionStorePort');`
 
-A implementação é o `JsonSessionStoreAdapter`, que grava `DATA_DIR/sessions.json`. Os specs
-usam o `InMemorySessionStoreFake` de `testing/`.
+The implementation is `JsonSessionStoreAdapter`, which writes `DATA_DIR/sessions.json`. Specs
+use the `InMemorySessionStoreFake` from `testing/`.
 
 ### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
 
-`load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` e
-`save(conversationId: string, settings: AgentSettings): Promise<void>`. Cada conversa
-tem a própria configuração: `/agent` e `/model` alteram só a conversa (`conversationId`) em que rodam.
-`loadMostRecent()` devolve a configuração mais recente (maior `updatedAt`), permitindo herança automática para novas conversas.
-Implementado por `JsonAgentSettingsStoreAdapter` em `DATA_DIR/agent-settings.json`, um mapa `conversationId` → `AgentSettings`.
+`load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` and
+`save(conversationId: string, settings: AgentSettings): Promise<void>`. Each conversation
+has its own configuration: `/agent` and `/model` change only the conversation (`conversationId`) in which they run.
+`loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
+Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map.
 
 ### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
 
-`find(conversationId: string)`, `save(selection: AgentConfigSelection)` e `remove(conversationId: string): Promise<boolean>`. Implementado em memória por
-`InMemoryAgentConfigSelectionStoreAdapter`: uma seleção interrompida por reinício é descartada.
+`find(conversationId: string)`, `save(selection: AgentConfigSelection)` and `remove(conversationId: string): Promise<boolean>`. Implemented in memory by
+`InMemoryAgentConfigSelectionStoreAdapter`: a selection interrupted by a restart is discarded.
 
-### Persistência em `DATA_DIR`
+### `IPreferencesStorePort` (`preferences-store.port.ts`)
 
-`resolveDataDirectory()` (`utils/data-directory.util.ts`) resolve, nesta ordem, o diretório
-passado ao construtor, `process.env.DATA_DIR` e `./data`. Os adapters JSON carregam o arquivo
-uma única vez, mantêm o conteúdo em memória, tratam arquivo ausente ou inválido como vazio e
-serializam as escritas. O `JsonSessionStoreAdapter` carrega registro sem `agentSessions` com a lista vazia.
-Settings sem `agentId` são tratadas como ausentes, o que reabre a seleção na próxima mensagem, e
-entradas de `agentSessions` sem `agentId` são descartadas na leitura.
+`load(): Promise<Preferences>` and `update(changes): Promise<Preferences>`, which merges the changes and stamps `updatedAt`.
+The preferences are global to the instance, shared by every conversation and channel. `Preferences.language` is the
+language of the text agents write for the user. Implemented by `JsonPreferencesStoreAdapter` in `DATA_DIR/preferences.json`.
+
+### Persistence in `DATA_DIR`
+
+`resolveDataDirectory()` (`utils/data-directory.util.ts`) resolves, in this order, the directory
+passed to the constructor, `process.env.DATA_DIR` and `./data`. The JSON adapters load the file
+only once, keep the content in memory, treat a missing or invalid file as empty and
+serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
+Settings without `agentId` are treated as absent, which reopens the selection on the next message, and
+`agentSessions` entries without `agentId` are discarded on read.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
 
-Contrato para resolução de instruções comportamentais e especificações de modelo:
+Contract for resolving behavioral instructions and model specifications:
 
 - `getSystemPrompt(agentRole: string): string`
 - `getDefaultModel(agentRole: string): string | undefined`
 - `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`
-- `getDisplayName(agentRole: string): string`: nome exibido no rodapé (o próprio papel quando desconhecido)
-- `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
-- `getDelegationContract(agentRole: string): DelegationContract`: atributos de `<delegate>` que o papel aceita (`project`, `sessionMode`); contrato vazio para papel desconhecido
-- `getTurnReminder(agentRole: string): string`: lembrete injetado ao final de cada prompt do turno (sempre string, vazia quando o papel não tem)
-- `isSystemPromptEveryTurn(agentRole: string): boolean`: papel cujo system prompt acompanha toda mensagem do usuário (o CEO)
-- `getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[]`: arquivos de orientação (`workspace-file.model.ts`: `path` relativo à raiz de workspaces, `content`) gravados no boot
-- Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
+- `getDisplayName(agentRole: string): string`: name shown in the footer (the role itself when unknown)
+- `hasRole(agentRole: string): boolean`: validates the role of a delegation
+- `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`); empty contract for an unknown role
+- `getTurnReminder(agentRole: string): string`: reminder injected at the end of every turn prompt (always a string, empty when the role has none)
+- `isSystemPromptEveryTurn(agentRole: string): boolean`: role whose system prompt accompanies every user message (the CEO)
+- `getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[]`: guidance files (`workspace-file.model.ts`: `path` relative to the workspaces root, `content`) written at boot
+- Symbol of the same name: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
-A implementação é o `AgentRegistryService` do `AgentDefinitionsModule`, que resolve os
-prompts completos de cada papel (`CEO`, `TECH_LEAD`, `DEVELOPER`, `CODE_REVIEWER`), fornece lembretes de turno e devolve um prompt genérico para
-papéis desconhecidos.
+The implementation is `AgentRegistryService` from `AgentDefinitionsModule`, which resolves the
+full prompts of each role (`CEO`, `TECH_LEAD`, `DEVELOPER`, `CODE_REVIEWER`), provides turn reminders and returns a generic prompt for
+unknown roles.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
 
-Mantém em memória o estado de execução de cada conversa, identificada por
-`buildConversationKey(channelId, threadId)` (`utils/conversation-key.util.ts`, formato
-`channelId:threadId`). A chave é a conversa e não o `sessionId` porque a sessão só é resolvida
-dentro da fila:
+Keeps in memory the execution state of each conversation, identified by
+`buildConversationKey(channelId, threadId)` (`utils/conversation-key.util.ts`, format
+`channelId:threadId`). The key is the conversation and not the `sessionId` because the session is only resolved
+inside the queue:
 
-- **Agente da conversa**: um `IAgentPort` do CEO criado com `IAgentPortFactory.create(agentId)` na primeira execução e reutilizado enquanto `agentName === agentId`. Quando o turno pede outro agente, a porta anterior recebe `closeSession()` e `disconnect()` (falhas ignoradas) e uma nova é criada. A troca acontece dentro da fila do CEO, depois dos turnos que ainda usam a porta anterior. `getCeoPort(conversationKey)` devolve a porta atual ou `undefined` antes da primeira execução;
-- **Ciclo de vida e concorrência**: `beginTurn(conversationKey)` rastreia `activeTurnsCount` e previne expiração prematura; `runOnCeo(conversationKey, agentId, work, onQueued)` garante exclusão mútua apenas no uso da porta do CEO, liberando-a enquanto agentes delegados rodam em segundo plano;
-- **Fila de turnos do CEO**: turnos que chegam enquanto o CEO está ocupado chamam `onQueued` e aguardam a liberação da porta do CEO, exceto quando entram na rodada por steering. Novas mensagens do usuário processam imediatamente pelo CEO mesmo com delegações ativas;
-- **Steering do CEO**: `steerCeo(conversationKey, agentId, text)` injeta o texto na rodada do CEO em andamento com `sendSteeringPrompt` e devolve se foi entregue. Só tenta quando há turno ativo não cancelado, nenhum outro turno na fila (`pendingTurns === 1`, para não passar à frente de uma mensagem anterior), a porta do CEO é do `agentId` pedido e anuncia `supportsSteering` (lido do `initialize` do ACP);
-- **Delegações ativas**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` e `findActiveDelegation(conversationKey, role, projectName)` mantêm o registro de especialistas em execução em segundo plano, indexado por papel e projeto: o mesmo papel roda em paralelo em projetos diferentes. `unregisterDelegation` ignora uma delegação que já foi substituída por outra mais nova do mesmo papel e projeto;
-- **Cancelamento**: `cancel(conversationKey)` cancela o `ActiveTurn` do CEO e todas as `activeDelegations` ativas da conversa. Devolve `false` quando não há trabalho em andamento;
-- **Expiração por ociosidade**: sem turnos e sem delegações por `SESSION_IDLE_TIMEOUT_MS` (padrão 30 minutos), encerra todos os agentes (`closeSession` + `disconnect`). A `SessionContext` e suas `agentSessions` permanecem no store, e a mensagem seguinte retoma a sessão ACP com `loadSession`;
-- **Shutdown**: `onApplicationShutdown` desconecta todos os agentes (CEO e delegados). Requer `app.enableShutdownHooks()` no bootstrap.
+- **Conversation agent**: a CEO `IAgentPort` created with `IAgentPortFactory.create(agentId)` on the first run and reused while `agentName === agentId`. When the turn asks for another agent, the previous port receives `closeSession()` and `disconnect()` (failures ignored) and a new one is created. The switch happens inside the CEO queue, after the turns that still use the previous port. `getCeoPort(conversationKey)` returns the current port or `undefined` before the first run;
+- **Lifecycle and concurrency**: `beginTurn(conversationKey)` tracks `activeTurnsCount` and prevents premature expiration; `runOnCeo(conversationKey, agentId, work, onQueued)` guarantees mutual exclusion only on the use of the CEO port, releasing it while delegated agents run in the background;
+- **CEO turn queue**: turns that arrive while the CEO is busy call `onQueued` and wait for the CEO port to be released, except when they enter the round through steering. New user messages are processed immediately by the CEO even with active delegations;
+- **CEO steering**: `steerCeo(conversationKey, agentId, text)` injects the text into the CEO round in progress with `sendSteeringPrompt` and returns whether it was delivered. It only tries when there is an active, non-cancelled turn, no other turn in the queue (`pendingTurns === 1`, so as not to jump ahead of an earlier message), the CEO port belongs to the requested `agentId` and advertises `supportsSteering` (read from the ACP `initialize`);
+- **Active delegations**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` and `findActiveDelegation(conversationKey, role, projectName)` keep the registry of specialists running in the background, indexed by role and project: the same role runs in parallel in different projects. `unregisterDelegation` ignores a delegation that has already been replaced by a newer one of the same role and project;
+- **Cancellation**: `cancel(conversationKey)` cancels the CEO's `ActiveTurn` and all active `activeDelegations` of the conversation. Returns `false` when there is no work in progress;
+- **Idle expiration**: with no turns and no delegations for `SESSION_IDLE_TIMEOUT_MS` (default 30 minutes), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
+- **Shutdown**: `onApplicationShutdown` disconnects all agents (CEO and delegates). Requires `app.enableShutdownHooks()` in the bootstrap.
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
 
-Interpreta as tags de protocolo da resposta do CEO e devolve uma `CeoDecision`. Reconhece
-`<delegate>` e `<attachment>`, com nome e atributos em qualquer caixa e valores entre aspas
-duplas ou simples, e entrega o texto restante ao `QuestionParserService` para reconhecer
-`<question>`; qualquer outra tag fica no texto. A leitura de atributos e corpo de tag vem de
-`utils/protocol-tag.util.ts`, compartilhado pelos dois parsers. O texto fora das tags, com linhas
-em branco repetidas colapsadas, é a `message` dirigida ao usuário:
+Interprets the protocol tags of the CEO's response and returns a `CeoDecision`. It recognizes
+`<delegate>` and `<attachment>`, with name and attributes in any case and values in double
+or single quotes, and hands the remaining text to `QuestionParserService` to recognize
+`<question>`; any other tag stays in the text. Reading of tag attributes and body comes from
+`utils/protocol-tag.util.ts`, shared by both parsers. The text outside the tags, with repeated blank
+lines collapsed, is the `message` addressed to the user:
 
-- `{ kind: 'delegate', message, delegations: [{ delegateToRole, projectName, taskSpec, sessionMode? }] }` quando há ao menos um `<delegate role="ROLE" project="pasta" session="new|resume">tarefa</delegate>`. `role` é obrigatório e normalizado para maiúsculas, `project` e `session` são opcionais, e `taskSpec` é o conteúdo da tag sem os espaços das bordas, preservando markdown e `<`/`>` soltos. Só o conteúdo da tag chega ao agente;
-- `{ kind: 'ask', message, questions }` quando há `<question>`: perguntas ao usuário, cujas respostas voltam ao CEO no mesmo turno;
-- `{ kind: 'reply', message, attachments }` quando não há `<delegate>` nem `<question>`: a resposta ao usuário, que encerra o turno. `attachments` lista o atributo `path` de cada `<attachment path="...">descrição</attachment>` ou `<attachment path="..." />`, na ordem em que aparecem;
-- `{ kind: 'invalid', reason }` para tag de fechamento sem abertura; `<delegate>` ou `<attachment>` sem fechamento ou com outra de mesmo nome dentro; atributo desconhecido ou sem aspas; `<delegate>` sem `role` válido, com `project` vazio, `session` diferente de `new`/`resume` ou sem tarefa; `<attachment>` sem `path`; anexos numa resposta que delega; `<question>` malformada; e perguntas junto com `<delegate>` ou com `<attachment>`. `reason` é escrito em inglês para o CEO corrigir a resposta.
+- `{ kind: 'delegate', message, delegations: [{ delegateToRole, projectName, taskSpec, sessionMode? }] }` when there is at least one `<delegate role="ROLE" project="folder" session="new|resume">task</delegate>`. `role` is required and normalized to uppercase, `project` and `session` are optional, and `taskSpec` is the tag content with surrounding whitespace trimmed, preserving markdown and stray `<`/`>`. Only the tag content reaches the agent;
+- `{ kind: 'ask', message, questions }` when there is a `<question>`: questions to the user, whose answers return to the CEO in the same turn;
+- `{ kind: 'reply', message, attachments }` when there is neither `<delegate>` nor `<question>`: the response to the user, which ends the turn. `attachments` lists the `path` attribute of each `<attachment path="...">description</attachment>` or `<attachment path="..." />`, in the order they appear;
+- `{ kind: 'invalid', reason }` for a closing tag without an opening; `<delegate>` or `<attachment>` without closing or with another of the same name inside; an unknown or unquoted attribute; `<delegate>` without a valid `role`, with an empty `project`, `session` other than `new`/`resume` or without a task; `<attachment>` without `path`; attachments in a response that delegates; a malformed `<question>`; and questions together with `<delegate>` or with `<attachment>`. `reason` is written in English for the CEO to fix the response.
 
-## Casos de Uso e Ciclo de Vida do Turno
+## Use Cases and Turn Lifecycle
 
-### Hierarquia de Diretórios
+### Directory Hierarchy
 
-O CEO opera na raiz de workspaces (`IWorkspacePort.getBaseDirectory()`, padrão
-`./workspaces/` ou `WORKSPACE_DIR`), que o canal envia como `TurnRequest.workspacePath`.
-Cada agente delegado opera em `IWorkspacePort.resolveRepositoryPath(project)`:
+The CEO operates at the workspaces root (`IWorkspacePort.getBaseDirectory()`, default
+`./workspaces/` or `WORKSPACE_DIR`), which the channel sends as `TurnRequest.workspacePath`.
+Each delegated agent operates in `IWorkspacePort.resolveRepositoryPath(project)`:
 
 ```text
-./workspaces/                    ← cwd do CEO e do GIT_OPS sem pasta de projeto
-├── AGENTS.md                    ← manual do CEO, regenerado no boot
-├── .agents/skills/              ← skills do CEO, regeneradas no boot
+./workspaces/                    ← cwd of the CEO and of GIT_OPS without a project folder
+├── AGENTS.md                    ← CEO manual, regenerated at boot
+├── .agents/skills/              ← CEO skills, regenerated at boot
 ├── .claude/skills -> ../.agents/skills
-├── workspace-manifest.json      ← de→para URL/pasta, escrito só pelo GIT_OPS
-├── my-backend/                  ← cwd do agente delegado com <delegate role="ROLE" project="my-backend">
+├── workspace-manifest.json      ← URL-to-folder mapping, written only by GIT_OPS
+├── my-backend/                  ← cwd of the delegated agent with <delegate role="ROLE" project="my-backend">
 └── my-frontend/
 ```
 
-Antes de cada `createSession(cwd)`, o orquestrador chama `IWorkspacePort.ensureDirectory(cwd)`, pois o
-`agy` falha ao iniciar em diretório inexistente. `resolveRepositoryPath` e `ensureDirectory` rejeitam
-caminhos fora da raiz de workspaces, já que o nome do projeto vem da resposta do CEO, e
-`resolveRepositoryPath` rejeita também caminhos aninhados (`my-app/src`). Uma pasta de projeto
-precisa ainda constar em `listProjectFolders()` (subpastas diretas não ocultas, incluindo links para diretórios): um nome errado
-viraria um CWD vazio criado pelo `ensureDirectory`, então a delegação vira `invalid` e o reparo
-lista as pastas existentes.
+Before each `createSession(cwd)`, the orchestrator calls `IWorkspacePort.ensureDirectory(cwd)`, because
+`agy` fails to start in a nonexistent directory. `resolveRepositoryPath` and `ensureDirectory` reject
+paths outside the workspaces root, since the project name comes from the CEO's response, and
+`resolveRepositoryPath` also rejects nested paths (`my-app/src`). A project folder
+must also appear in `listProjectFolders()` (direct non-hidden subfolders, including links to directories): a wrong name
+would become an empty CWD created by `ensureDirectory`, so the delegation becomes `invalid` and the repair
+lists the existing folders.
 
-`IWorkspacePort` expõe `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory`,
-`listProjectFolders`, `writeFile` (caminho relativo à raiz, sobrescreve) e `ensureSymlink` (recusa
-substituir arquivo ou diretório real): a app resolve, lista e cria diretórios e grava a orientação
-do CEO, e não executa Git. Clonar um repositório no workspace, registrá-lo no manifest
-e as demais operações avulsas de Git contra um remoto pertencem ao agente `GIT_OPS`, e a URL chega até ele
-pela especificação que o CEO escreve. Scripts do próprio projeto que clonam sub-repositórios, como um
-`init`, são executados pelo `DEVELOPER`.
+`IWorkspacePort` exposes `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory`,
+`listProjectFolders`, `writeFile` (path relative to the root, overwrites) and `ensureSymlink` (refuses to
+replace a real file or directory): the app resolves, lists and creates directories and writes the CEO's
+guidance, and does not run Git. Cloning a repository into the workspace, registering it in the manifest
+and other standalone Git operations against a remote belong to the `GIT_OPS` agent, and the URL reaches it
+through the specification the CEO writes. The project's own scripts that clone sub-repositories, such as an
+`init`, are run by the `DEVELOPER`.
 
-### Orientação do CEO no Workspace (`ProvisionWorkspaceGuidanceUseCase`)
+### CEO Guidance in the Workspace (`ProvisionWorkspaceGuidanceUseCase`)
 
-No `onModuleInit`, antes de os canais conectarem, grava na raiz de workspaces os arquivos de
-`IAgentRegistryPort.getWorkspaceFiles(baseDir)` (o `AGENTS.md` e as skills do CEO), sempre
-sobrescrevendo para seguir o código e o registry, e garante o link `.claude/skills` →
-`../.agents/skills`. Falha é registrada em log e não derruba o serviço, porque o prompt núcleo
-enviado em todo turno mantém o CEO operando. Os agentes delegados rodam numa subpasta e não são
-orientados a ler esses arquivos; por isso não se gera `CLAUDE.md`, que o Claude Code carrega dos
-diretórios pais e vazaria para eles.
+In `onModuleInit`, before the channels connect, it writes at the workspaces root the files from
+`IAgentRegistryPort.getWorkspaceFiles(baseDir)` (the CEO's `AGENTS.md` and skills), always
+overwriting to follow the code and the registry, and ensures the `.claude/skills` →
+`../.agents/skills` link. A failure is logged and does not bring down the service, because the core prompt
+sent on every turn keeps the CEO operating. Delegated agents run in a subfolder and are not
+instructed to read these files; for that reason no `CLAUDE.md` is generated, since Claude Code loads it from
+parent directories and it would leak to them.
 
-### Protocolo de Tags
+### Tag Protocol
 
-| Resposta do CEO | Ação do orquestrador |
+| CEO response | Orchestrator action |
 |---|---|
-| Com `<delegate>` | Entrega a `message` a `onInterimMessage` e, para cada tag, cria novo `IAgentPort` para `ROLE` com `cwd` no projeto, retoma ou inicia sessão conforme `session` / `defaultSessionMode` e envia `taskSpec` (prefixado com `systemPrompt(ROLE)` quando a sessão é criada) |
-| Com `<question>` | Enfileira as perguntas e, com as respostas, roda nova rodada do CEO no mesmo turno |
-| Sem `<delegate>` nem `<question>` | Encerra o loop e devolve a `message` como `response`, com os anexos resolvidos |
-| *(inválida)* | Envia ao CEO o prompt de reparo com o motivo |
+| With `<delegate>` | Hands the `message` to `onInterimMessage` and, for each tag, creates a new `IAgentPort` for `ROLE` with `cwd` in the project, resumes or starts a session according to `session` / `defaultSessionMode` and sends `taskSpec` (prefixed with `systemPrompt(ROLE)` when the session is created) |
+| With `<question>` | Queues the questions and, with the answers, runs a new CEO round in the same turn |
+| Without `<delegate>` or `<question>` | Ends the loop and returns the `message` as `response`, with the resolved attachments |
+| *(invalid)* | Sends the repair prompt with the reason to the CEO |
 
-A resposta classificada é o conteúdo do envelope `<final_response>`, extraído pelo demux, e por
-isso as tags ficam dentro dele. O prompt de reparo reforça essa regra.
+The classified response is the content of the `<final_response>` envelope, extracted by the demux, and
+that is why the tags go inside it. The repair prompt reinforces this rule.
 
-O resultado do agente delegado volta ao CEO como `<agent_result role="ROLE" project="pasta">\n<resposta>\n</agent_result>` (sem `project` quando não há pasta). Numa delegação paralela, os resultados chegam juntos, um bloco por delegação, na ordem das tags, separados por linha em branco.
+The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder">\n<response>\n</agent_result>` (without `project` when there is no folder). In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
 
-### Execução de Turno (`ExecuteAgentTurnUseCase`)
+### Turn Execution (`ExecuteAgentTurnUseCase`)
 
-Injeta `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAgentRegistryPort)`,
-`@Inject(IWorkspacePort)`, `@Inject(IAgentSettingsStorePort)`, `DelegationDetectorService`,
-`ConversationRuntimeService`, `QuestionParserService` e `UserQuestionQueueService`.
+Injects `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAgentRegistryPort)`,
+`@Inject(IWorkspacePort)`, `@Inject(IAgentSettingsStorePort)`, `@Inject(IPreferencesStorePort)`, `DelegationDetectorService`,
+`ConversationRuntimeService`, `QuestionParserService` and `UserQuestionQueueService`.
 
-A execução do método `execute(request: TurnRequest): Promise<TurnResult>` segue a sequência:
+Running the `execute(request: TurnRequest): Promise<TurnResult>` method follows this sequence:
 
-1. **Ciclo de vida do Turno**: invoca `ConversationRuntimeService.beginTurn(conversationKey)`, garantindo rastreamento no contador de turnos ativos até o `finally`.
-2. **Agente do turno**: lê as `AgentSettings` da conversa; o `agentId` do turno é o delas ou `IAgentPortFactory.defaultAgentId`. O CEO e todos os delegados do turno usam esse agente.
-   - **Steering**: antes de entrar na fila, tenta `steerCeo` com `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, bloco `[USER_MESSAGE]` que manda continuar a tarefa atual considerando a mensagem, porque sem isso o modelo tende a responder só a mensagem e encerrar a rodada) sobre o prompt enriquecido com `[ATTACHMENTS]`, seguido do `getTurnReminder(role)`. Entregue, retorna `status: 'steered'` com o `sessionId` salvo e o `agentInfo` do CEO, sem rodar nova rodada. Não entregue (agente sem steering, CEO ainda conectando ou entre rodadas, fila ocupada), segue o fluxo normal.
-3. **Exclusão mútua do CEO**: executa a rodada do CEO via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. A porta do CEO é liberada assim que o CEO decide delegar, permitindo que novas mensagens do usuário sejam atendidas enquanto especialistas trabalham em segundo plano.
-4. **Resolução de Sessão e Enriquecimento de Prompt**: resolvida na primeira rodada do CEO dentro de `runOnCeo` para que mensagens simultâneas compartilhem deterministicamente a mesma sessão persistida. Se houver `request.attachments`, enriquece o prompt com o bloco `[ATTACHMENTS]` detalhando o inventário local (nome, tamanho, tipo MIME e caminho absoluto no disco) e orientando o agente a inspecionar os arquivos utilizando as ferramentas disponíveis em seu ambiente. Se houver delegações em andamento (`getActiveDelegations`), injeta o bloco `[ACTIVE_DELEGATIONS]` no prompt inicial do CEO.
-5. **Loop de Delegação**: repete até `MAX_DELEGATION_ROUNDS` (10) rodadas:
-   1. Executa o turno do CEO com `cwd = request.workspacePath`.
-   2. Classifica a resposta com `DelegationDetectorService.detect()` e valida a delegação: o papel precisa existir (`hasRole`) e ser diferente do papel raiz, os atributos da tag precisam caber no `getDelegationContract(role)` e o projeto precisa ser aceito por `resolveRepositoryPath` e constar em `listProjectFolders()`. Falhas de validação viram `invalid`, e as de projeto listam as pastas existentes no motivo. Com várias delegações, valida cada uma e depois o conjunto: o mesmo papel não aparece duas vezes no mesmo projeto, e no máximo um agente que modifica arquivos trabalha em cada `cwd`, contando as delegações ativas de turnos anteriores; agentes com `readOnly` no contrato não contam, e uma delegação ativa do mesmo papel e projeto também não, porque a nova a redireciona.
-   3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
-   4. `ask` não sai da rodada: o CEO aguarda as respostas na fila e recebe `<user_answers>` na mesma porta, dentro do `runOnCeo`, com `isUserMessage` verdadeiro (o system prompt acompanha); a nova resposta é classificada e reparada como a primeira. `reply` encerra com `status: 'completed'`.
-   5. Em `delegate` na última rodada, encerra sem executar o delegado (item 6), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`, entrega a `message` não vazia a `onInterimMessage` e executa todas as delegações em paralelo (`Promise.allSettled`), cada uma como abaixo, e só devolve o controle ao CEO quando todas terminam, para nenhum agente seguir rodando sem observação. Se alguma foi cancelada, o turno é cancelado. Uma delegação que falhou por outro erro vira o bloco `<agent_result role="ROLE" project="pasta" status="failed">\n<mensagem>\n</agent_result>` (registrado como `[Delegation Failed]`), e o CEO recebe junto os resultados das demais para decidir entre repetir a tarefa ou avisar o usuário:
-      - Quando o papel já possui delegação ativa no mesmo projeto (`findActiveDelegation`):
-        - Se o agente não está aguardando respostas na fila, `existing.agentPort.supportsSteering === true` e `await existing.steer(taskSpec)` confirma a entrega: retorna imediatamente o `<agent_result>` com `Steering message sent to active agent.`. Um agente aguardando respostas não tem rodada em andamento para receber o steering.
-        - Sem steering, com a entrega recusada ou com o agente aguardando respostas: descarta as perguntas dele da fila (`discard`, que rejeita a espera com cancelamento), cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
-      - Cria a porta do delegado com `create(agentId)`, cria `ActiveDelegation` e registra no runtime. O método `steer` atualiza a `taskSpec` e, com `supportsSteering`, devolve o resultado de `sendSteeringPrompt`; sem steering, devolve `false`.
-      - Registra `[Delegation Started]` e emite `onDelegation` `started`; ao concluir, registra `[Delegation Finished]` e emite `finished`.
-      - Entre o início e a conclusão, cada resposta do delegado passa pelo `QuestionParserService`: com perguntas, aguarda as respostas na fila e as devolve ao mesmo agente, na mesma porta e sessão, até ele responder sem perguntas. Marcação malformada recebe um reparo (`buildQuestionRepairPrompt`, iniciado por `[QUESTION_ERROR]`) por resposta; persistindo, a resposta segue como resultado. Só a resposta final vira `<agent_result>`.
-   7. No `finally` da delegação, remove do registro de delegações ativas e encerra o agente delegado (`closeSession()` + `disconnect()`).
-   8. O próximo prompt do CEO são os blocos `<agent_result>` de todas as delegações, separados por linha em branco.
-6. **Limite de Rodadas**: esgotadas as rodadas, retorna `status: 'failed'` com `errorMessage: 'Max delegation rounds exceeded.'`.
+1. **Turn lifecycle**: calls `ConversationRuntimeService.beginTurn(conversationKey)`, ensuring tracking in the active turns counter until the `finally`.
+2. **Turn agent**: reads the conversation's `AgentSettings`; the turn's `agentId` is theirs or `IAgentPortFactory.defaultAgentId`. The CEO and all delegates of the turn use that agent.
+   - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the saved `sessionId` and the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
+3. **CEO mutual exclusion**: runs the CEO round via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. The CEO port is released as soon as the CEO decides to delegate, allowing new user messages to be handled while specialists work in the background.
+4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. If there are delegations in progress (`getActiveDelegations`), it injects the `[ACTIVE_DELEGATIONS]` block into the CEO's initial prompt.
+5. **Delegation loop**: repeats for up to `MAX_DELEGATION_ROUNDS` (10) rounds:
+   1. Runs the CEO turn with `cwd = request.workspacePath`.
+   2. Classifies the response with `DelegationDetectorService.detect()` and validates the delegation: the role must exist (`hasRole`) and differ from the root role, the tag attributes must fit `getDelegationContract(role)` and the project must be accepted by `resolveRepositoryPath` and appear in `listProjectFolders()`. Validation failures become `invalid`, and project failures list the existing folders in the reason. With several delegations, it validates each one and then the set: the same role does not appear twice in the same project, and at most one agent that modifies files works in each `cwd`, counting active delegations from previous turns; agents with `readOnly` in the contract do not count, and neither does an active delegation of the same role and project, because the new one redirects it.
+   3. **Repair**: on `invalid`, sends `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), starting with `[DELEGATION_ERROR]`, to the CEO and classifies the new response. There are up to `MAX_REPAIR_ATTEMPTS` (1) attempts per CEO response, outside the round count. If it remains `invalid`, returns `status: 'failed'` with `errorMessage: 'Invalid CEO response: <reason>'`.
+   4. `ask` does not leave the round: the CEO waits for the answers in the queue and receives `<user_answers>` on the same port, inside `runOnCeo`, with `isUserMessage` true (the system prompt accompanies it); the new response is classified and repaired like the first. `reply` ends with `status: 'completed'`.
+   5. On `delegate` in the last round, it ends without running the delegate (item 6), because the result would not return to the CEO.
+   6. In the other rounds, on `delegate`, it hands the non-empty `message` to `onInterimMessage` and runs all delegations in parallel (`Promise.allSettled`), each as below, and only returns control to the CEO when all finish, so no agent keeps running unobserved. If any was cancelled, the turn is cancelled. A delegation that failed with another error becomes the block `<agent_result role="ROLE" project="folder" status="failed">\n<message>\n</agent_result>` (logged as `[Delegation Failed]`), and the CEO receives it together with the results of the others to decide between retrying the task or notifying the user:
+      - When the role already has an active delegation in the same project (`findActiveDelegation`):
+        - If the agent is not waiting for answers in the queue, `existing.agentPort.supportsSteering === true` and `await existing.steer(taskSpec)` confirms delivery: immediately returns the `<agent_result>` with `Steering message sent to active agent.`. An agent waiting for answers has no round in progress to receive the steering.
+        - Without steering, with delivery refused or with the agent waiting for answers: discards its questions from the queue (`discard`, which rejects the wait with a cancellation), cancels the previous active round (`await existing.turn.cancel()`), closes the session and disconnects the transport with error-tolerant handling (`closeSession()`, `disconnect()`), removes it from the runtime and proceeds to initialize a new port in the requested directory, resuming the corresponding ACP session and waiting for the specialist's consolidated response.
+      - Creates the delegate's port with `create(agentId)`, creates `ActiveDelegation` and registers it in the runtime. The `steer` method updates the `taskSpec` and, with `supportsSteering`, returns the result of `sendSteeringPrompt`; without steering, returns `false`.
+      - Logs `[Delegation Started]` and emits `onDelegation` `started`; on completion, logs `[Delegation Finished]` and emits `finished`.
+      - Between start and completion, each delegate response goes through `QuestionParserService`: with questions, it waits for the answers in the queue and returns them to the same agent, on the same port and session, until it responds without questions. Malformed markup receives one repair (`buildQuestionRepairPrompt`, starting with `[QUESTION_ERROR]`) per response; if it persists, the response goes on as the result. Only the final response becomes `<agent_result>`.
+   7. In the delegation's `finally`, removes it from the active delegations registry and shuts down the delegated agent (`closeSession()` + `disconnect()`).
+   8. The CEO's next prompt is the `<agent_result>` blocks of all delegations, separated by a blank line.
+6. **Round limit**: when the rounds are exhausted, returns `status: 'failed'` with `errorMessage: 'Max delegation rounds exceeded.'`.
 
-Cada turno de agente (CEO ou delegado) executa internamente:
+Each agent turn (CEO or delegate) internally runs:
 
-1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido e, com `isSystemPromptEveryTurn(role)`, prefixa o `getSystemPrompt(role)` na primeira rodada do CEO de cada mensagem do usuário e na rodada que entrega `<user_answers>` ao CEO, inclusive em sessão retomada. As rodadas com `<agent_result>` e os prompts de reparo da mesma mensagem não o repetem, salvo quando a sessão ACP é criada nelas.
-2. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
-3. `connect()` seguido de `turn.throwIfCancelled()`.
-3. Se `currentSessionId` não estiver definido:
-   1. **Com sessão do papel no agente da porta (`agentId === agentPort.agentName`) em `agentSessions` e `sessionMode !== 'new'`**: relê a `SessionContext` do store e chama `loadSession(cwd, sessionId)`. Com sucesso, o system prompt não é reenviado, salvo para papel com `isSystemPromptEveryTurn`. A releitura é necessária porque o objeto do turno não reflete as sessões gravadas pelo CEO e por rodadas anteriores.
-   2. **Sem ID, modo `'new'` ou load com falha**: `ensureDirectory(cwd)`, `createSession(cwd)` e prefixo do prompt com `getSystemPrompt(role)`. O system prompt acompanha a criação da sessão ACP, e não a da `SessionContext`, para que uma sessão recriada receba as instruções do papel.
-   3. Se o ID da sessão ACP mudou, substitui a entrada do par papel/agente em `agentSessions`, preservando as dos outros agentes, e salva no store.
-4. Configuração: com `AgentSettings` do mesmo agente da porta e `modelId` definido, `setConfig({ modelId, effortId: effortId ?? undefined })`; nos demais casos, `setConfig({ modelId })` quando `getDefaultModel(role)` retorna modelo. Settings de outro agente são ignoradas porque os IDs de modelo não valem entre agentes. Vale para o CEO e para os delegados.
-5. Registro de `request.onActivity` via `onActivity(...)`, desfeito no `finally`. Atividades de todos os agentes fluem para o mesmo callback.
-6. `turn.throwIfCancelled()` e drenagem de `prompt(text)`, despachando blocos `agent_message_chunk` para `request.onTextChunk`.
-7. Resposta a partir de `lastAgentMessage` ou dos blocos acumulados, registrada no log como `[Agent Response] Role=<ROLE>, Length=<n>` com prévia de 100 caracteres em linha única.
+1. Appends the role's `getTurnReminder(role)` to the received prompt and, with `isSystemPromptEveryTurn(role)`, prefixes `getSystemPrompt(role)` in the CEO's first round of each user message and in the round that delivers `<user_answers>` to the CEO, including in a resumed session. The rounds with `<agent_result>` and the repair prompts of the same message do not repeat it, unless the ACP session is created in them.
+2. `turn.activate(agentPort)` and `turn.throwIfCancelled()`.
+3. `connect()` followed by `turn.throwIfCancelled()`.
+3. If `currentSessionId` is not set:
+   1. **With a session for the role on the port's agent (`agentId === agentPort.agentName`) in `agentSessions` and `sessionMode !== 'new'`**: rereads the `SessionContext` from the store and calls `loadSession(cwd, sessionId)`. On success, the system prompt is not resent, except for a role with `isSystemPromptEveryTurn`. The reread is necessary because the turn's object does not reflect the sessions written by the CEO and by previous rounds.
+   2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
+   3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
+4. Configuration: with `AgentSettings` for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. Settings for another agent are ignored because model IDs are not valid across agents. Applies to the CEO and to delegates.
+5. Registration of `request.onActivity` via `onActivity(...)`, undone in `finally`. Activities from all agents flow to the same callback.
+6. `turn.throwIfCancelled()` and draining of `prompt(text)`, dispatching `agent_message_chunk` blocks to `request.onTextChunk`.
+7. Response from `lastAgentMessage` or from the accumulated blocks, logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
 
-**Tratamento de Cancelamento e Falhas**: `PromptCancelledError` (ou erro com nome
-homônimo) lançado por qualquer agente ou pelo `ActiveTurn` retorna `status: 'cancelled'`. Demais
-erros retornam `status: 'failed'` com `errorMessage` e desconectam o agente do CEO, para que o
-turno seguinte suba um transporte novo e retome a sessão. Em ambos os casos, `response` recebe
-o `lastAgentMessage` da porta do CEO usada no turno (vazio quando o turno falha antes de haver porta).
+**Cancellation and failure handling**: `PromptCancelledError` (or an error with the same
+name) thrown by any agent or by `ActiveTurn` returns `status: 'cancelled'`. Other
+errors return `status: 'failed'` with `errorMessage` and disconnect the CEO agent, so that the
+next turn starts a new transport and resumes the session. In both cases, `response` receives
+the `lastAgentMessage` of the CEO port used in the turn (empty when the turn fails before there is a port).
 
-**Metadados do turno**: `agentInfo.roleName` vem de `getDisplayName(role)` e `agentName` do
-`IAgentPort` do CEO (o `agentId` do turno quando ainda não há porta). `modelName` e `effortName`
-vêm das `AgentSettings` do mesmo agente; sem elas, `modelName` é o `displayName` de
+**Turn metadata**: `agentInfo.roleName` comes from `getDisplayName(role)` and `agentName` from the
+CEO's `IAgentPort` (the turn's `agentId` when there is no port yet). `modelName` and `effortName`
+come from the `AgentSettings` of the same agent; without them, `modelName` is the `displayName` of
 `getAvailableModels().currentModelId`.
 
-### Perguntas ao Usuário
+### Questions to the User
 
-Qualquer agente, inclusive o CEO, pergunta direto ao usuário quando precisa de uma decisão dele
-para seguir, e a resposta não passa pelo CEO. A gramática vai dentro do `<final_response>`:
+Any agent, including the CEO, asks the user directly when it needs a decision from them
+to proceed, and the answer does not go through the CEO. The grammar goes inside `<final_response>`:
 
 ```text
-Entendi assim: ... (texto livre, mostrado antes da primeira pergunta)
+My understanding is: ... (free text, shown before the first question)
 
-<question rationale="por que a resposta importa">Texto da pergunta
-<option>Caminho A</option>
-<option>Caminho B</option>
+<question rationale="why the answer matters">Question text
+<option>Path A</option>
+<option>Path B</option>
 </question>
-<question>Pergunta aberta, sem opções</question>
+<question>Open question, without options</question>
 ```
 
-- **`QuestionParserService`** (`services/question-parser.service.ts`) devolve `none`, `questions`
-  (`message` e `UserQuestion[]` com `text`, `rationale?` e `options`) ou `invalid`: `<option>` fora de
-  `<question>`, tag sem fechamento ou sem abertura, atributo desconhecido (`<question>` aceita só
-  `rationale`; `<option>` nenhum), pergunta sem texto ou opção vazia. Tags dentro de código Markdown
-  (bloco cercado por crases triplas ou trecho entre crases) são marcação citada, como um `<option>` de
-  HTML, e ficam no texto.
-- **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) mantém em memória uma
-  fila de pedidos por conversa, na ordem em que os agentes perguntaram, e expõe uma pergunta por vez.
-  Fica em memória porque o agente que pergunta aguarda vivo dentro do turno, e um reinício já derruba
-  turnos e delegações. Operações:
-  - `ask(conversationKey, asker, message, questions, notify?)`: enfileira e resolve com
-    `AnsweredQuestion[]` quando o usuário responder todas; `notify` mostra a primeira pergunta quando o
-    pedido chega à frente da fila por conta própria (fila vazia ou pedido da frente descartado);
-  - `submit(conversationKey, { text, attachments? })`: número inteiro entre 1 e N escolhe a opção de
-    uma pergunta com opções; número fora da faixa ou entrada vazia sem anexos devolve `invalid` e
-    repete a pergunta; qualquer outro texto é resposta livre (`kind="other"`); anexos acompanham a
-    resposta e sozinhos também respondem. Desfechos: `next` (próxima pergunta do pedido), `answered`
-    (resolve a espera do agente e traz a pergunta do próximo pedido, se houver) e `invalid`; sem
-    pergunta pendente, `undefined`;
-  - `current`, `hasPending` e `isWaiting(conversationKey, role, projectName)`;
-  - `cancel(conversationKey)`: esvazia a fila e rejeita todas as esperas com `PromptCancelledError`;
-  - `discard(conversationKey, role, projectName)`: tira o pedido de um agente que está sendo
-    substituído, rejeitando a espera dele.
-- `QuestionPrompt` (`models/user-question.model.ts`) é o que o canal mostra: `asker` (`role`,
-  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (só na primeira pergunta) e
+- **`QuestionParserService`** (`services/question-parser.service.ts`) returns `none`, `questions`
+  (`message` and `UserQuestion[]` with `text`, `rationale?` and `options`) or `invalid`: `<option>` outside
+  `<question>`, a tag without closing or without opening, an unknown attribute (`<question>` accepts only
+  `rationale`; `<option>` none), a question without text or an empty option. Tags inside Markdown code
+  (a block fenced by triple backticks or a span between backticks) are quoted markup, like an HTML
+  `<option>`, and stay in the text.
+- **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) keeps in memory a
+  queue of requests per conversation, in the order the agents asked, and exposes one question at a time.
+  It stays in memory because the asking agent waits alive inside the turn, and a restart already brings down
+  turns and delegations. Operations:
+  - `ask(conversationKey, asker, message, questions, notify?)`: queues and resolves with
+    `AnsweredQuestion[]` when the user answers all of them; `notify` shows the first question when the
+    request reaches the front of the queue on its own (empty queue or front request discarded);
+  - `submit(conversationKey, { text, attachments? })`: an integer between 1 and N chooses the option of
+    a question with options; a number outside the range or empty input without attachments returns `invalid` and
+    repeats the question; any other text is a free answer (`kind="other"`); attachments accompany the
+    answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
+    (resolves the agent's wait and carries the question of the next request, if any) and `invalid`; with no
+    pending question, `undefined`;
+  - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
+  - `cancel(conversationKey)`: empties the queue and rejects all waits with `PromptCancelledError`;
+  - `discard(conversationKey, role, projectName)`: removes the request of an agent that is being
+    replaced, rejecting its wait.
+- `QuestionPrompt` (`models/user-question.model.ts`) is what the channel shows: `asker` (`role`,
+  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question) and
   `waitingAskers`.
-- **Respostas ao agente**: um bloco que repete o texto de cada pergunta, para resistir à compactação
-  do contexto enquanto o usuário responde, com um `<attachment>` por arquivo anexado (baixado pelo
-  canal num diretório temporário):
+- **Answers to the agent**: a block that repeats the text of each question, to withstand context
+  compaction while the user answers, with one `<attachment>` per attached file (downloaded by the
+  channel into a temporary directory):
 
   ```text
   <user_answers>
-  <answer question="Texto da pergunta" option="2">Caminho B</answer>
-  <answer question="Outra pergunta" kind="other">texto livre
-  <attachment path="/tmp/.../tela.png" name="tela.png" type="image/png"/></answer>
+  <answer question="Question text" option="2">Path B</answer>
+  <answer question="Another question" kind="other">free text
+  <attachment path="/tmp/.../screen.png" name="screen.png" type="image/png"/></answer>
   </user_answers>
   ```
 
-- **Estado travado**: enquanto a conversa tem perguntas pendentes, toda mensagem do usuário é
-  resposta (`ResolveConversationInputUseCase` consulta a fila antes de tudo) e nada chega ao CEO, nem
-  por steering. `/cancel` destrava a conversa (ver abaixo).
+- **Locked state**: while the conversation has pending questions, every user message is an
+  answer (`ResolveConversationInputUseCase` checks the queue before anything else) and nothing reaches the CEO, not even
+  through steering. `/cancel` unlocks the conversation (see below).
 
-### Cancelamento de Turno (`CancelAgentTurnUseCase`)
+### User Language
 
-Injeta `ConversationRuntimeService` e `UserQuestionQueueService`.
+Agents talk to each other in English; only the text that reaches the user follows `Preferences.language`.
+`ExecuteAgentTurnUseCase` appends a `[USER_LANGUAGE]` block (`prompts/user-language.prompt.ts`) to every prompt, after
+the turn reminder, including CEO steering and steering of an active delegation:
 
-O método `execute(conversationId: string): Promise<boolean>` esvazia a fila de perguntas da conversa
-(`cancel`), aciona `ConversationRuntimeService.cancel(conversationId)` e devolve se havia turno em
-andamento ou pergunta pendente, inclusive num turno que ainda não salvou a sessão. O
-`PromptCancelledError` resultante, vindo do agente ou da espera rejeitada, interrompe o loop de
-delegação, e a conversa volta ao estado padrão.
+- **CEO with a stored language**: `buildCeoLanguagePrompt(language)`: everything shown to the user in that language, delegation specifications in English.
+- **CEO without a stored language**: `buildLanguageDetectionPrompt()` asks it to answer in the language of the user's message and add `<user_language>language name in English</user_language>`.
+- **Delegated agents**: `buildAgentLanguagePrompt(language)`, defaulting to `DEFAULT_USER_LANGUAGE` (`English`), because their final response and questions reach the user unchanged.
 
-## Seleção de Agente, Modelo e Effort
+`extractUserLanguage()` (`utils/user-language.util.ts`) removes every `<user_language>` tag outside Markdown code from
+each CEO response before it is classified. While no language is stored, the first CEO response settles it: the tag's
+language, or English without a valid tag. A stored language changes only through a language change request.
+`normalizeUserLanguage()` collapses whitespace and rejects empty names, names over 64 characters and names with
+`<`, `>`, `[`, `]` or backticks, since the language goes into every prompt.
 
-A escolha é por conversa e persistida. `AgentCapabilitiesService` monta as opções numeradas:
-`listAgentOptions()` a partir de `IAgentPortFactory.listAgents()`, e `listModelOptions(agentId)` /
-`listEffortOptions(agentId, modelId)` numa porta descartável do agente (`create(agentId)` →
-`connect()` → leitura → `disconnect()` no `finally`), isolada da porta da conversa. Sem opções,
-devolvem lista vazia. `resolveAgent(settings)` devolve o agente das settings ou o padrão da fábrica.
+`LanguageChangeRequestService` keeps in memory the conversations whose next message is the new language; the channel
+opens the request through `OrchestratorService.requestLanguageChange()`.
 
-- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: com `step: 'agent'`, lista os agentes e salva a etapa `agent`; com um único agente, pula direto para a etapa `model` dele; sem agentes, `{ kind: 'unavailable' }`. Com `step: 'model'`, lista os modelos do agente atual (`resolveAgent`) e salva a etapa `model` com `selectedAgent`; sem modelos, `unavailable`.
-- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: aceita só `^\d+$` entre 1 e N; outra entrada retorna `invalid` sem mudar o estado. Na etapa `agent`, avança para `model` com os modelos do agente escolhido, ou salva só o agente se ele não tiver modelos. Na etapa `model`, avança para `effort` se o modelo tiver efforts, senão salva com `effortId: null`. Na etapa `effort`, salva. Etapa `model`/`effort` sem `selectedAgent` lança erro. Ao salvar, remove a seleção e retorna `{ kind: 'configured', settings, pendingPrompt? }`.
-- **`ResolveConversationInputUseCase`** `({ conversationId, prompt, attachments? })`: com pergunta pendente na fila, a mensagem é a resposta (`submit` com o texto e os anexos) e o desfecho vira `{ kind: 'question', prompt }` (próxima pergunta), `{ kind: 'invalid_answer', prompt }` ou `{ kind: 'answered', asker, next? }`. Fora disso, `prompt` vazio significa mensagem só com anexos e recebe um prompt que pede a análise deles. Com seleção ativa, delega para `Submit`; sem settings para a conversa, tenta herdar de `loadMostRecent()` (salvando imediatamente para a conversa com `updatedAt` renovado); se não houver histórico, delega para `Start` com `step: 'agent'` e `pendingPrompt` (`unavailable` vira `execute`); com settings, `execute`. Um `configured` com `pendingPrompt` vira `{ kind: 'execute', prompt: pendingPrompt, configured }`.
-- **`CancelAgentConfigSelectionUseCase`**: remove a seleção e retorna se havia uma.
+### Turn Cancellation (`CancelAgentTurnUseCase`)
 
-Trocar de agente não interrompe turnos em andamento: o turno seguinte da conversa troca a porta do
-CEO e os delegados seguintes já nascem no agente novo.
+Injects `ConversationRuntimeService` and `UserQuestionQueueService`.
 
-## Fachada de Serviço (`OrchestratorService`)
+The `execute(conversationId: string): Promise<boolean>` method empties the conversation's question queue
+(`cancel`), triggers `ConversationRuntimeService.cancel(conversationId)` and returns whether there was a turn in
+progress or a pending question, including in a turn that has not yet saved the session. The resulting
+`PromptCancelledError`, coming from the agent or from the rejected wait, interrupts the delegation
+loop, and the conversation returns to the default state.
 
-Interface do orquestrador para os canais:
+## Agent, Model and Effort Selection
 
-- `executeTurn(request)` e `cancelTurn(conversationId: string)`;
-- `getQuota(conversationId: string)`: `GetAgentQuotaUseCase` resolve o agente salvo na conversa (ou o padrão) e devolve `AgentQuotaReport` (`agent` e `quota`, `undefined` quando o agente não expõe cota), sem abrir sessão;
-- `resolveInput({ conversationId, prompt, attachments? })`: decide entre responder a pergunta pendente, conduzir a seleção ou executar o prompt;
-- `startConfigSelection(conversationId: string)` (etapa `model` do agente atual), `startAgentSelection(conversationId: string)` (etapa `agent`) e `cancelConfigSelection(conversationId: string)`;
-- `hasActiveConfigSelection(conversationId: string)` e `hasPendingQuestions(conversationId: string)`.
+The choice is per conversation and persisted. `AgentCapabilitiesService` builds the numbered options:
+`listAgentOptions()` from `IAgentPortFactory.listAgents()`, and `listModelOptions(agentId)` /
+`listEffortOptions(agentId, modelId)` on a disposable port of the agent (`create(agentId)` →
+`connect()` → read → `disconnect()` in `finally`), isolated from the conversation's port. Without options,
+they return an empty list. `resolveAgent(settings)` returns the settings' agent or the factory default.
 
-## Regras Prescritivas Mandatórias
+- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: with `step: 'agent'`, lists the agents and saves the `agent` step; with a single agent, skips straight to its `model` step; without agents, `{ kind: 'unavailable' }`. With `step: 'model'`, lists the models of the current agent (`resolveAgent`) and saves the `model` step with `selectedAgent`; without models, `unavailable`.
+- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: accepts only `^\d+$` between 1 and N; other input returns `invalid` without changing the state. In the `agent` step, advances to `model` with the chosen agent's models, or saves only the agent if it has no models. In the `model` step, advances to `effort` if the model has efforts, otherwise saves with `effortId: null`. In the `effort` step, saves. A `model`/`effort` step without `selectedAgent` throws an error. On saving, removes the selection and returns `{ kind: 'configured', settings, pendingPrompt? }`.
+- **`ResolveConversationInputUseCase`** `({ conversationId, prompt, attachments? })`: with a pending question in the queue, the message is the answer (`submit` with the text and the attachments) and the outcome becomes `{ kind: 'question', prompt }` (next question), `{ kind: 'invalid_answer', prompt }` or `{ kind: 'answered', asker, next? }`. Next, with a pending language change request, the message is the language: a valid name is stored, ends the request and returns `{ kind: 'language_set', language }`; anything else returns `{ kind: 'invalid_language' }` and keeps the request. Otherwise, an empty `prompt` means an attachment-only message and receives a prompt asking for their analysis. With an active selection, delegates to `Submit`; without settings for the conversation, tries to inherit from `loadMostRecent()` (saving immediately for the conversation with a renewed `updatedAt`); if there is no history, delegates to `Start` with `step: 'agent'` and `pendingPrompt` (`unavailable` becomes `execute`); with settings, `execute`. A `configured` with `pendingPrompt` becomes `{ kind: 'execute', prompt: pendingPrompt, configured }`.
+- **`CancelAgentConfigSelectionUseCase`**: removes the selection and returns whether there was one.
 
-- **Proibido acoplamento com Discord ou canais de rede**: o orquestrador manipula unicamente identificadores genéricos (`conversationId`, `userId`), sem importar discord.js, HTTP frameworks ou drivers de terceiros.
-- **Portas e Symbols**: toda dependência externa aos use cases deve utilizar injeção por Symbol (`@Inject(ISessionStorePort)`).
-- **Sem barrel exports**: nunca crie `index.ts` em `models/`, `ports/`, `adapters/`, `services/` ou `use-cases/`.
-- **Limpeza de recursos reativos**: todo callback registrado em `onActivity` deve ser desconectado em bloco `finally`.
-- **Uma sessão ACP por conversa, papel, agente e projeto**: obtenha instâncias de `IAgentPort` exclusivamente pela `IAgentPortFactory`, sempre com o `agentId` do turno. O agente do CEO de cada conversa vive no `ConversationRuntimeService`, e cada delegação usa uma instância descartável que retoma a sessão ACP do papel naquele projeto.
-- **Sessão só com dados**: `SessionContext` guarda apenas dados serializáveis. Agentes vivos, fila e turno ativo ficam no `ConversationRuntimeService`, porque o store é persistido em disco.
-- **Controle de concorrência e exclusão mútua do CEO**: todo turno registra seu ciclo de vida em `ConversationRuntimeService.beginTurn(conversationKey)`, e as interações com o CEO passam por `ConversationRuntimeService.runOnCeo(conversationKey, work)`. O CEO fica liberado durante a execução de delegados em segundo plano, mantendo o enfileiramento estrito de chamadas simultâneas na mesma porta do CEO para evitar chamadas paralelas a `prompt()`.
-- **Delegação cancelável**: todo agente em execução deve ser registrado com `turn.activate(agentPort)`, e `turn.throwIfCancelled()` deve preceder `connect` e `prompt`.
-- **Limite de rodadas**: mantenha `MAX_DELEGATION_ROUNDS` para impedir loops infinitos entre CEO e agentes delegados.
-- **Não vazar exceções em execute()**: `ExecuteAgentTurnUseCase.execute()` deve devolver `TurnResult` com `status: 'failed'` ou `status: 'cancelled'`, nunca lançar erros descontrolados para a camada de apresentação.
+Switching agents does not interrupt turns in progress: the conversation's next turn switches the
+CEO port and the following delegates are born on the new agent.
+
+## Service Facade (`OrchestratorService`)
+
+The orchestrator's interface for the channels:
+
+- `executeTurn(request)` and `cancelTurn(conversationId: string)`;
+- `getQuota(conversationId: string)`: `GetAgentQuotaUseCase` resolves the agent saved in the conversation (or the default) and returns `AgentQuotaReport` (`agent` and `quota`, `undefined` when the agent does not expose a quota), without opening a session;
+- `resolveInput({ conversationId, prompt, attachments? })`: decides between answering the pending question, driving the selection or running the prompt;
+- `startConfigSelection(conversationId: string)` (`model` step of the current agent), `startAgentSelection(conversationId: string)` (`agent` step) and `cancelConfigSelection(conversationId: string)`;
+- `hasActiveConfigSelection(conversationId: string)` and `hasPendingQuestions(conversationId: string)`;
+- `requestLanguageChange(conversationId: string)` (resolves to the current language, `English` when none is stored), `hasPendingLanguageChange(conversationId: string)` and `cancelLanguageChange(conversationId: string)`.
+
+## Mandatory Prescriptive Rules
+
+- **No coupling to Discord or network channels**: the orchestrator handles only generic identifiers (`conversationId`, `userId`), without importing discord.js, HTTP frameworks or third-party drivers.
+- **Ports and Symbols**: every dependency external to the use cases must use Symbol injection (`@Inject(ISessionStorePort)`).
+- **No barrel exports**: never create `index.ts` in `models/`, `ports/`, `adapters/`, `services/` or `use-cases/`.
+- **Cleanup of reactive resources**: every callback registered in `onActivity` must be disconnected in a `finally` block.
+- **One ACP session per conversation, role, agent and project**: obtain `IAgentPort` instances exclusively through `IAgentPortFactory`, always with the turn's `agentId`. Each conversation's CEO agent lives in `ConversationRuntimeService`, and each delegation uses a disposable instance that resumes the role's ACP session in that project.
+- **Session holds only data**: `SessionContext` stores only serializable data. Live agents, queue and active turn stay in `ConversationRuntimeService`, because the store is persisted to disk.
+- **Concurrency control and CEO mutual exclusion**: every turn registers its lifecycle in `ConversationRuntimeService.beginTurn(conversationKey)`, and interactions with the CEO go through `ConversationRuntimeService.runOnCeo(conversationKey, work)`. The CEO is released while delegates run in the background, keeping strict queuing of simultaneous calls on the same CEO port to avoid parallel calls to `prompt()`.
+- **Cancellable delegation**: every running agent must be registered with `turn.activate(agentPort)`, and `turn.throwIfCancelled()` must precede `connect` and `prompt`.
+- **Round limit**: keep `MAX_DELEGATION_ROUNDS` to prevent infinite loops between the CEO and delegated agents.
+- **Do not leak exceptions from execute()**: `ExecuteAgentTurnUseCase.execute()` must return `TurnResult` with `status: 'failed'` or `status: 'cancelled'`, never throw uncontrolled errors to the presentation layer.

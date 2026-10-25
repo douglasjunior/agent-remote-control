@@ -60,6 +60,20 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
   }
 
   startedAgentSelections: string[] = [];
+  languageRequests: string[] = [];
+  pendingLanguageChange = false;
+
+  async requestLanguageChange(conversationId: string): Promise<string> {
+    if (this.throwError) {
+      throw new Error('preferences down');
+    }
+    this.languageRequests.push(conversationId);
+    return 'English';
+  }
+
+  cancelLanguageChange(_conversationId: string): boolean {
+    return this.pendingLanguageChange;
+  }
 
   async cancelTurn(conversationId: string): Promise<boolean> {
     if (this.throwError) {
@@ -207,7 +221,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(orchestratorService.cancelledConversationId).toBe('channel-123');
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
+        content: '🛑 **Cancellation requested.** The active turn will be stopped.',
         ephemeral: true,
       });
     });
@@ -242,7 +256,20 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '🛑 **Seleção cancelada.**',
+        content: '🛑 **Selection cancelled.**',
+        ephemeral: true,
+      });
+    });
+
+    it('should confirm when only a language change was cancelled', async () => {
+      orchestratorService.hasActiveTurn = false;
+      orchestratorService.pendingLanguageChange = true;
+      const interaction = buildInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '🛑 **Selection cancelled.**',
         ephemeral: true,
       });
     });
@@ -254,7 +281,7 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: 'ℹ️ Não há nenhum turno em andamento para cancelar.',
+        content: 'ℹ️ There is no turn in progress to cancel.',
         ephemeral: true,
       });
     });
@@ -265,7 +292,7 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.followUp).toHaveBeenCalledWith({
-        content: '🛑 **Cancelamento solicitado.** O turno ativo será interrompido.',
+        content: '🛑 **Cancellation requested.** The active turn will be stopped.',
         ephemeral: true,
       });
     });
@@ -277,7 +304,7 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao solicitar cancelamento**: Cancel turn failed',
+        content: '❌ **Failed to request cancellation**: Cancel turn failed',
         ephemeral: true,
       });
     });
@@ -289,7 +316,7 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao solicitar cancelamento**: raw cancel error',
+        content: '❌ **Failed to request cancellation**: raw cancel error',
         ephemeral: true,
       });
     });
@@ -313,7 +340,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: 'ℹ️ O agente Antigravity não expõe informações de uso.',
+        content: 'ℹ️ The Antigravity agent does not expose usage information.',
       });
     });
 
@@ -324,13 +351,13 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao consultar o uso**: quota down',
+        content: '❌ **Failed to fetch usage**: quota down',
       });
     });
   });
 
   describe('/model', () => {
-    const optionsText = '🧠 **Escolha o modelo do agente** respondendo com o número da opção:\n**1.** Model 1';
+    const optionsText = '🧠 **Choose the agent model** by replying with the option number:\n**1.** Model 1';
 
     const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
       commandName: 'model',
@@ -345,8 +372,8 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.deferReply).toHaveBeenCalledWith();
-      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o modelo na thread abaixo.' });
-      expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de modelo', autoArchiveDuration: 60 });
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the model in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Model selection', autoArchiveDuration: 60 });
       expect(orchestratorService.startedSelections).toEqual(['channel-123:selection-thread']);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
@@ -373,7 +400,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
 
-      expect(thread.send).toHaveBeenCalledWith('ℹ️ O agente atual não expõe modelos para seleção.');
+      expect(thread.send).toHaveBeenCalledWith('ℹ️ The current agent does not expose any models to select.');
     });
 
     it('should report the failure when the thread cannot be created', async () => {
@@ -383,7 +410,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(orchestratorService.startedSelections).toEqual([]);
       expect(interaction.editReply).toHaveBeenLastCalledWith({
-        content: '❌ **Falha ao abrir a seleção de modelo**: Missing Permissions',
+        content: '❌ **Failed to open model selection**: Missing Permissions',
       });
     });
 
@@ -413,7 +440,7 @@ describe('DiscordInteractionHandler', () => {
       expect(orchestratorService.pendingQuestionLookups).toEqual(['channel-123:thread-1']);
       expect(orchestratorService.startedSelections).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: expect.stringContaining('Há perguntas aguardando a sua resposta'),
+        content: expect.stringContaining('There are questions waiting for your answer'),
         ephemeral: true,
       });
     });
@@ -444,13 +471,13 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao abrir a seleção de modelo**: agent down',
+        content: '❌ **Failed to open model selection**: agent down',
       });
     });
   });
 
   describe('/agent', () => {
-    const optionsText = '🤖 **Escolha o agente** respondendo com o número da opção:\n**1.** Claude Code';
+    const optionsText = '🤖 **Choose the agent** by replying with the option number:\n**1.** Claude Code';
 
     const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
       commandName: 'agent',
@@ -465,8 +492,8 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.deferReply).toHaveBeenCalledWith();
-      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Escolha o agente na thread abaixo.' });
-      expect(startThread).toHaveBeenCalledWith({ name: 'Seleção de agente', autoArchiveDuration: 60 });
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the agent in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Agent selection', autoArchiveDuration: 60 });
       expect(orchestratorService.startedAgentSelections).toEqual(['channel-123:agent-thread']);
       expect(orchestratorService.startedSelections).toEqual([]);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
@@ -478,7 +505,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
 
-      expect(thread.send).toHaveBeenCalledWith('ℹ️ Nenhum agente disponível para seleção.');
+      expect(thread.send).toHaveBeenCalledWith('ℹ️ No agents available to select.');
     });
 
     it('should publish the agent options in the current thread', async () => {
@@ -510,7 +537,60 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: '❌ **Falha ao abrir a seleção de agente**: registry down',
+        content: '❌ **Failed to open agent selection**: registry down',
+      });
+    });
+  });
+
+  describe('/language', () => {
+    const requestText = '🌐 **Current language**: English\nReply with the language the agents should use to talk to you, such as "Spanish" or "Português".';
+
+    it('should ask for the language in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'language-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const startThread = vi.fn().mockResolvedValue(thread);
+      const interaction = buildInteraction({
+        commandName: 'language',
+        editReply: vi.fn().mockResolvedValue({ startThread }),
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the language in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Language selection', autoArchiveDuration: 60 });
+      expect(orchestratorService.languageRequests).toEqual(['channel-123:language-thread']);
+      expect(thread.send).toHaveBeenCalledWith(requestText);
+    });
+
+    it('should ask for the language in a direct message', async () => {
+      const interaction = buildInteraction({ commandName: 'language', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.languageRequests).toEqual(['dm-1']);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: requestText });
+    });
+
+    it('should refuse while questions wait for an answer', async () => {
+      orchestratorService.pendingQuestions = true;
+      const interaction = buildInteraction({ commandName: 'language', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.languageRequests).toEqual([]);
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.',
+        ephemeral: true,
+      });
+    });
+
+    it('should report failures requesting the language', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({ commandName: 'language', inGuild: false, channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Failed to open language selection**: preferences down',
       });
     });
   });

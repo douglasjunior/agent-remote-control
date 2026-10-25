@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
+import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 import type { CancelAgentConfigSelectionUseCase } from '../use-cases/cancel-agent-config-selection.use-case.js';
 import type { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-case.js';
 import type { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
@@ -10,6 +11,7 @@ import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case
 import type { ResolveConversationInputUseCase } from '../use-cases/resolve-conversation-input.use-case.js';
 import type { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
+import { LanguageChangeRequestService } from './language-change-request.service.js';
 import { OrchestratorService } from './orchestrator.service.js';
 import { UserQuestionQueueService } from './user-question-queue.service.js';
 
@@ -24,6 +26,7 @@ describe('OrchestratorService', () => {
   let questionQueue: UserQuestionQueueService;
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let mockGetQuotaUseCase: GetAgentQuotaUseCase;
+  let preferencesStore: StubPreferencesStore;
 
   beforeEach(() => {
     mockExecuteUseCase = {
@@ -50,7 +53,23 @@ describe('OrchestratorService', () => {
       selectionStore,
       mockGetQuotaUseCase,
       questionQueue,
+      new LanguageChangeRequestService(),
+      preferencesStore = new StubPreferencesStore(),
     );
+  });
+
+  it('should request a language change and report English while no language is stored', async () => {
+    await expect(service.requestLanguageChange('conv-1')).resolves.toBe('English');
+
+    expect(service.hasPendingLanguageChange('conv-1')).toBe(true);
+    expect(service.cancelLanguageChange('conv-1')).toBe(true);
+    expect(service.hasPendingLanguageChange('conv-1')).toBe(false);
+  });
+
+  it('should report the stored language when a change is requested', async () => {
+    preferencesStore.preferences = { language: 'Spanish' };
+
+    await expect(service.requestLanguageChange('conv-1')).resolves.toBe('Spanish');
   });
 
   it('should delegate getQuota to GetAgentQuotaUseCase', async () => {

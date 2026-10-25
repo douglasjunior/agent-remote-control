@@ -65,7 +65,7 @@ describe('DiscordAttachmentService', () => {
 
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        expect(result.reason).toContain('excede o tamanho limite de 100 MB');
+        expect(result.reason).toContain('exceeds the 100 MB limit');
       }
     });
 
@@ -81,7 +81,7 @@ describe('DiscordAttachmentService', () => {
 
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        expect(result.reason).toContain('anexo');
+        expect(result.reason).toContain('"attachment"');
       }
     });
 
@@ -97,7 +97,7 @@ describe('DiscordAttachmentService', () => {
 
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        expect(result.reason).toContain('anexo');
+        expect(result.reason).toContain('"attachment"');
       }
     });
 
@@ -122,7 +122,7 @@ describe('DiscordAttachmentService', () => {
 
       expect(result.valid).toBe(false);
       if (!result.valid) {
-        expect(result.reason).toContain('possui um formato não suportado ou incompatível');
+        expect(result.reason).toContain('has an unsupported format or is incompatible');
       }
     });
   });
@@ -261,7 +261,7 @@ describe('DiscordAttachmentService', () => {
       ];
 
       await expect(service.downloadAttachments('ch-1', attachments)).rejects.toThrow(
-        'Falha ao baixar o anexo "large.mp4": The operation was aborted due to timeout',
+        'Failed to download attachment "large.mp4": The operation was aborted due to timeout',
       );
     });
 
@@ -331,7 +331,7 @@ describe('DiscordAttachmentService', () => {
       ];
 
       await expect(service.downloadAttachments('ch-1', attachments)).rejects.toThrow(
-        'Falha ao baixar o anexo "missing.png": HTTP 404 Not Found',
+        'Failed to download attachment "missing.png": HTTP 404 Not Found',
       );
     });
 
@@ -348,7 +348,7 @@ describe('DiscordAttachmentService', () => {
       ];
 
       await expect(service.downloadAttachments('ch-1', attachments)).rejects.toThrow(
-        'Falha ao baixar o anexo "broken.png": Connection reset',
+        'Failed to download attachment "broken.png": Connection reset',
       );
     });
 
@@ -365,7 +365,7 @@ describe('DiscordAttachmentService', () => {
       ];
 
       await expect(service.downloadAttachments('ch-1', attachments)).rejects.toThrow(
-        'Falha ao baixar o anexo "broken.png": Network timeout string',
+        'Failed to download attachment "broken.png": Network timeout string',
       );
     });
 

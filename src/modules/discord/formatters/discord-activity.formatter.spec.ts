@@ -57,7 +57,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('⏳ **Executando**: `git status`');
+      expect(result).toBe('⏳ **Running**: `git status`');
     });
 
     it('should format tool completed status', () => {
@@ -70,7 +70,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('✅ **Concluído**: `git diff`');
+      expect(result).toBe('✅ **Completed**: `git diff`');
     });
 
     it('should format tool failed status', () => {
@@ -83,7 +83,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('❌ **Falhou**: `git push`');
+      expect(result).toBe('❌ **Failed**: `git push`');
     });
 
     it('should format tool completed status with up to 5 lines of details in a code block', () => {
@@ -97,10 +97,10 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('✅ **Concluído**: `git diff`\n```\nline 1\nline 2\nline 3\n```');
+      expect(result).toBe('✅ **Completed**: `git diff`\n```\nline 1\nline 2\nline 3\n```');
     });
 
-    it('should format tool completed status with more than 5 lines truncating with ... (+N linhas)', () => {
+    it('should format tool completed status with more than 5 lines truncating with ... (+N lines)', () => {
       const activity: AgentActivity = {
         kind: 'tool',
         toolCallId: 'call-2',
@@ -112,7 +112,7 @@ describe('DiscordActivityFormatter', () => {
       const result = formatter.formatActivity(activity);
 
       expect(result).toBe(
-        '✅ **Concluído**: `git status`\n```\nl1\nl2\nl3\nl4\nl5\n... (+3 linhas)\n```',
+        '✅ **Completed**: `git status`\n```\nl1\nl2\nl3\nl4\nl5\n... (+3 lines)\n```',
       );
     });
 
@@ -129,7 +129,7 @@ describe('DiscordActivityFormatter', () => {
       const result = formatter.formatActivity(activity);
 
       const expectedContent = `${'x'.repeat(1797)}...`;
-      expect(result).toBe(`✅ **Concluído**: \`git diff\`\n\`\`\`\n${expectedContent}\n\`\`\``);
+      expect(result).toBe(`✅ **Completed**: \`git diff\`\n\`\`\`\n${expectedContent}\n\`\`\``);
       expect(result!.length).toBeLessThanOrEqual(2000);
     });
 
@@ -154,7 +154,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toContain('... (+3 linhas)\n```');
+      expect(result).toContain('... (+3 lines)\n```');
       expect(result).toContain('...');
       expect(result!.length).toBeLessThanOrEqual(2000);
     });
@@ -170,7 +170,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('❌ **Falhou**: `build`\n```\nerror line 1\nerror line 2\n```');
+      expect(result).toBe('❌ **Failed**: `build`\n```\nerror line 1\nerror line 2\n```');
     });
 
     it('should ignore whitespace-only details when formatting completed tool', () => {
@@ -184,7 +184,7 @@ describe('DiscordActivityFormatter', () => {
 
       const result = formatter.formatActivity(activity);
 
-      expect(result).toBe('✅ **Concluído**: `git log`');
+      expect(result).toBe('✅ **Completed**: `git log`');
     });
 
     it('should return null for unhandled tool status', () => {
@@ -389,24 +389,24 @@ describe('DiscordActivityFormatter', () => {
 
     const finishedDetails = {
       response: 'Done.',
-      agentInfo: { roleName: 'Desenvolvedor', agentName: 'agy', modelName: 'Deep Model', effortName: 'High' },
+      agentInfo: { roleName: 'Developer', agentName: 'agy', modelName: 'Deep Model', effortName: 'High' },
       durationMs: 42_100,
     };
 
     it('should announce a delegation with and without a project', () => {
-      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Desenvolvedor' };
+      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Developer' };
 
       expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
-        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',
+        '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` — it is working on it now.',
       );
       expect(formatter.formatDelegation({ ...delegation, phase: 'started' })).toBe(
-        '🔀 **Tarefa delegada** ao agente **Desenvolvedor** (`DEVELOPER`) — ele assumiu a tarefa agora.',
+        '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) — it is working on it now.',
       );
       expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished' })).toBe(
-        '↩️ **Desenvolvedor concluiu** — o CEO está revisando o resultado.',
+        '↩️ **Developer finished** — the CEO is reviewing the result.',
       );
       expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished', projectName: 'my-app' })).toBe(
-        '↩️ **Desenvolvedor concluiu** no projeto `my-app` — o CEO está revisando o resultado.',
+        '↩️ **Developer finished** in project `my-app` — the CEO is reviewing the result.',
       );
     });
 
@@ -415,12 +415,12 @@ describe('DiscordActivityFormatter', () => {
         formatter.formatDelegateResult({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           ...finishedDetails,
           phase: 'finished',
           response: '\nLogin implemented.\n',
         }),
-      ).toBe('📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`):\nLogin implemented.');
+      ).toBe('📋 **Response from agent Developer** (`DEVELOPER`):\nLogin implemented.');
     });
 
     it('should name the project in the delegate response when there is one', () => {
@@ -428,13 +428,13 @@ describe('DiscordActivityFormatter', () => {
         formatter.formatDelegateResult({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           projectName: 'my-app',
           ...finishedDetails,
           phase: 'finished',
           response: 'Done.',
         }),
-      ).toBe('📋 **Resposta do agente Desenvolvedor** (`DEVELOPER`) no projeto `my-app`:\nDone.');
+      ).toBe('📋 **Response from agent Developer** (`DEVELOPER`) in project `my-app`:\nDone.');
     });
 
     it('should show the delegate model, effort, tokens and duration in its footer', () => {
@@ -442,18 +442,18 @@ describe('DiscordActivityFormatter', () => {
         formatter.formatDelegateFooter({
           round: 1,
           role: 'DEVELOPER',
-          roleName: 'Desenvolvedor',
+          roleName: 'Developer',
           ...finishedDetails,
           phase: 'finished',
           usage: { totalTokens: 12_345, inputTokens: 10_000, outputTokens: 2_345 },
         }),
-      ).toBe('-# 🤖 Desenvolvedor (agy) · 🧠 Deep Model · ⚡ High · 🪙 12.3k tokens · ⏱️ 42.1s');
+      ).toBe('-# 🤖 Developer (agy) · 🧠 Deep Model · ⚡ High · 🪙 12.3k tokens · ⏱️ 42.1s');
     });
 
 
     it('should fall back to the default label in the footer', () => {
       expect(formatter.formatAgentFooter({ roleName: 'CEO', agentName: 'agy' })).toBe(
-        '-# 🤖 CEO (agy) · 🧠 padrão · ⚡ padrão',
+        '-# 🤖 CEO (agy) · 🧠 default · ⚡ default',
       );
     });
 
@@ -467,13 +467,13 @@ describe('DiscordActivityFormatter', () => {
           { roleName: 'CEO', agentName: 'agy' },
           { totalTokens, inputTokens: 0, outputTokens: 0 },
         ),
-      ).toBe(`-# 🤖 CEO (agy) · 🧠 padrão · ⚡ padrão · 🪙 ${label} tokens`);
+      ).toBe(`-# 🤖 CEO (agy) · 🧠 default · ⚡ default · 🪙 ${label} tokens`);
     });
 
     it('should list the model options', () => {
       expect(formatter.formatSelection(selection)).toBe(
         [
-          '🧠 **Escolha o modelo do agente** respondendo com o número da opção:',
+          '🧠 **Choose the agent model** by replying with the option number:',
           '**1.** Fast Model — Quick answers',
           '**2.** Deep Model',
         ].join('\n'),
@@ -490,7 +490,7 @@ describe('DiscordActivityFormatter', () => {
         ],
       })).toBe(
         [
-          '🤖 **Escolha o agente** respondendo com o número da opção:',
+          '🤖 **Choose the agent** by replying with the option number:',
           '**1.** Antigravity',
           '**2.** Claude Code',
         ].join('\n'),
@@ -504,7 +504,7 @@ describe('DiscordActivityFormatter', () => {
       });
 
       expect(text.split('\n')[0]).toBe(
-        '🧠 **Escolha o modelo do Claude Code** respondendo com o número da opção:',
+        '🧠 **Choose the Claude Code model** by replying with the option number:',
       );
     });
 
@@ -516,13 +516,13 @@ describe('DiscordActivityFormatter', () => {
       });
 
       expect(text.split('\n')[0]).toBe(
-        '⚡ **Escolha o effort para Deep Model** respondendo com o número da opção:',
+        '⚡ **Choose the effort for Deep Model** by replying with the option number:',
       );
     });
 
     it('should explain the valid range on an invalid answer', () => {
       expect(formatter.formatInvalidSelection(selection)).toMatch(
-        /^⚠️ Opção inválida\. Responda apenas com um número de 1 a 2\.\n\n🧠/,
+        /^⚠️ Invalid option\. Reply only with a number from 1 to 2\.\n\n🧠/,
       );
     });
 
@@ -538,13 +538,13 @@ describe('DiscordActivityFormatter', () => {
       };
 
       expect(formatter.formatConfigured(settings)).toBe(
-        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 Deep Model · ⚡ padrão',
+        '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ default',
       );
       expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
-        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
+        '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
       );
       expect(formatter.formatConfigured({ ...settings, modelId: null, modelName: null })).toBe(
-        '✅ **Configuração salva**: 🤖 Claude Code · 🧠 padrão · ⚡ padrão',
+        '✅ **Settings saved**: 🤖 Claude Code · 🧠 default · ⚡ default',
       );
     });
   });
@@ -560,12 +560,12 @@ describe('DiscordActivityFormatter', () => {
 
     it('should show the question with its rationale and numbered options', () => {
       expect(formatter.formatQuestion(prompt)).toBe([
-        '❓ **Pergunta 2/5** · Product Owner Agent (`my-app`)',
+        '❓ **Question 2/5** · Product Owner Agent (`my-app`)',
         '**Who approves?**',
         '_It defines the flow._',
         '**1.** Manager',
         '**2.** Finance',
-        '-# Responda com o número da opção ou digite outra resposta. /cancel interrompe tudo.',
+        '-# Reply with the option number or type another answer. /cancel stops everything.',
       ].join('\n'));
     });
 
@@ -573,7 +573,7 @@ describe('DiscordActivityFormatter', () => {
       const formatted = formatter.formatQuestion({ ...prompt, message: 'I understood X.', waitingAskers: 2 });
 
       expect(formatted).toMatch(/^I understood X\.\n\n❓/);
-      expect(formatted).toMatch(/-# ⏳ Mais 2 agente\(s\) aguardando respostas depois deste\.$/);
+      expect(formatted).toMatch(/-# ⏳ 2 more agent\(s\) waiting for answers after this one\.$/);
     });
 
     it('should ask for a typed answer when the question has no options', () => {
@@ -584,22 +584,22 @@ describe('DiscordActivityFormatter', () => {
       });
 
       expect(formatted).toBe([
-        '❓ **Pergunta 2/5** · Product Owner Agent',
+        '❓ **Question 2/5** · Product Owner Agent',
         '**What is the limit?**',
-        '-# Digite a sua resposta. /cancel interrompe tudo.',
+        '-# Type your answer. /cancel stops everything.',
       ].join('\n'));
     });
 
     it('should repeat the question without the agent message on an invalid option', () => {
       const formatted = formatter.formatInvalidAnswer({ ...prompt, message: 'I understood X.' });
 
-      expect(formatted).toMatch(/^⚠️ Opção inválida\. Responda com um número de 1 a 2 ou digite outra resposta\.\n\n❓/);
+      expect(formatted).toMatch(/^⚠️ Invalid option\. Reply with a number from 1 to 2 or type another answer\.\n\n❓/);
       expect(formatted).not.toContain('I understood X.');
     });
 
     it('should confirm the answers were sent to the asking agent', () => {
-      expect(formatter.formatAnswersSent(prompt.asker)).toBe('✅ Respostas enviadas ao **Product Owner Agent** (`my-app`).');
-      expect(formatter.formatAnswersSent({ ...prompt.asker, projectName: null })).toBe('✅ Respostas enviadas ao **Product Owner Agent**.');
+      expect(formatter.formatAnswersSent(prompt.asker)).toBe('✅ Answers sent to **Product Owner Agent** (`my-app`).');
+      expect(formatter.formatAnswersSent({ ...prompt.asker, projectName: null })).toBe('✅ Answers sent to **Product Owner Agent**.');
     });
   });
 
@@ -608,7 +608,7 @@ describe('DiscordActivityFormatter', () => {
 
     it('should explain when the agent has no quota information', () => {
       expect(formatter.formatQuota({ agent, quota: undefined })).toBe(
-        'ℹ️ O agente Antigravity não expõe informações de uso.',
+        'ℹ️ The Antigravity agent does not expose usage information.',
       );
     });
 
@@ -643,10 +643,10 @@ describe('DiscordActivityFormatter', () => {
 
       expect(text).toBe(
         [
-          '📊 **Uso do Antigravity**',
+          '📊 **Antigravity usage**',
           '',
           '**Gemini Models**',
-          '• Five Hour Limit Remaining: 94% · reinicia <t:1791759802:R>',
+          '• Five Hour Limit Remaining: 94% · resets <t:1791759802:R>',
           '• Weekly: 100%',
           '• Broken: 0%',
         ].join('\n'),

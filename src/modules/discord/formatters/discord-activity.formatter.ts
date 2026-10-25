@@ -11,7 +11,7 @@ import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/us
 
 const FENCE_PATTERN = /^```\w*/;
 const CLOSE_FENCE = '\n```';
-const DEFAULT_LABEL = 'padrão';
+const DEFAULT_LABEL = 'default';
 const MAX_TOOL_DETAILS_LENGTH = 1800;
 
 @Injectable()
@@ -31,14 +31,14 @@ export class DiscordActivityFormatter {
     if (activity.kind === 'tool') {
       switch (activity.status) {
         case 'in_progress':
-          return `⏳ **Executando**: \`${activity.title}\``;
+          return `⏳ **Running**: \`${activity.title}\``;
         case 'completed': {
-          const header = `✅ **Concluído**: \`${activity.title}\``;
+          const header = `✅ **Completed**: \`${activity.title}\``;
           const details = this.formatToolDetails(activity.details);
           return details ? `${header}\n${details}` : header;
         }
         case 'failed': {
-          const header = `❌ **Falhou**: \`${activity.title}\``;
+          const header = `❌ **Failed**: \`${activity.title}\``;
           const details = this.formatToolDetails(activity.details);
           return details ? `${header}\n${details}` : header;
         }
@@ -61,7 +61,7 @@ export class DiscordActivityFormatter {
     const lines = trimmed.split('\n');
     const hasMoreLines = lines.length > 5;
     const selectedLines = hasMoreLines ? lines.slice(0, 5) : lines;
-    const lineSuffix = hasMoreLines ? `\n... (+${lines.length - 5} linhas)` : '';
+    const lineSuffix = hasMoreLines ? `\n... (+${lines.length - 5} lines)` : '';
     const availableLength = MAX_TOOL_DETAILS_LENGTH - lineSuffix.length;
     let content = selectedLines.join('\n');
     if (content.length > availableLength) {
@@ -72,13 +72,13 @@ export class DiscordActivityFormatter {
 
   formatDelegation(event: DelegationEvent): string {
     if (event.phase === 'finished') {
-      return `↩️ **${event.roleName} concluiu**${this.formatProject(event)} — o CEO está revisando o resultado.`;
+      return `↩️ **${event.roleName} finished**${this.formatProject(event)} — the CEO is reviewing the result.`;
     }
-    return `🔀 **Tarefa delegada** ao agente **${event.roleName}** (\`${event.role}\`)${this.formatProject(event)} — ele assumiu a tarefa agora.`;
+    return `🔀 **Task delegated** to agent **${event.roleName}** (\`${event.role}\`)${this.formatProject(event)} — it is working on it now.`;
   }
 
   formatDelegateResult(event: DelegationEvent & { phase: 'finished' }): string {
-    return `📋 **Resposta do agente ${event.roleName}** (\`${event.role}\`)${this.formatProject(event)}:\n${event.response.trim()}`;
+    return `📋 **Response from agent ${event.roleName}** (\`${event.role}\`)${this.formatProject(event)}:\n${event.response.trim()}`;
   }
 
   formatDelegateFooter(event: DelegationEvent & { phase: 'finished' }): string {
@@ -93,7 +93,7 @@ export class DiscordActivityFormatter {
   formatQuestion(prompt: QuestionPrompt): string {
     const { question, asker } = prompt;
     const lines = [
-      `❓ **Pergunta ${prompt.number}/${prompt.total}** · ${asker.roleName}${this.formatAskerProject(asker)}`,
+      `❓ **Question ${prompt.number}/${prompt.total}** · ${asker.roleName}${this.formatAskerProject(asker)}`,
       `**${question.text}**`,
     ];
     if (question.rationale) {
@@ -101,21 +101,21 @@ export class DiscordActivityFormatter {
     }
     lines.push(...question.options.map((option, index) => `**${index + 1}.** ${option}`));
     lines.push(question.options.length > 0
-      ? '-# Responda com o número da opção ou digite outra resposta. /cancel interrompe tudo.'
-      : '-# Digite a sua resposta. /cancel interrompe tudo.');
+      ? '-# Reply with the option number or type another answer. /cancel stops everything.'
+      : '-# Type your answer. /cancel stops everything.');
     if (prompt.waitingAskers > 0) {
-      lines.push(`-# ⏳ Mais ${prompt.waitingAskers} agente(s) aguardando respostas depois deste.`);
+      lines.push(`-# ⏳ ${prompt.waitingAskers} more agent(s) waiting for answers after this one.`);
     }
     const formatted = lines.join('\n');
     return prompt.message ? `${prompt.message}\n\n${formatted}` : formatted;
   }
 
   formatInvalidAnswer(prompt: QuestionPrompt): string {
-    return `⚠️ Opção inválida. Responda com um número de 1 a ${prompt.question.options.length} ou digite outra resposta.\n\n${this.formatQuestion({ ...prompt, message: undefined })}`;
+    return `⚠️ Invalid option. Reply with a number from 1 to ${prompt.question.options.length} or type another answer.\n\n${this.formatQuestion({ ...prompt, message: undefined })}`;
   }
 
   formatAnswersSent(asker: QuestionAsker): string {
-    return `✅ Respostas enviadas ao **${asker.roleName}**${this.formatAskerProject(asker)}.`;
+    return `✅ Answers sent to **${asker.roleName}**${this.formatAskerProject(asker)}.`;
   }
 
   formatSelection(selection: AgentConfigSelection): string {
@@ -128,14 +128,26 @@ export class DiscordActivityFormatter {
   }
 
   formatInvalidSelection(selection: AgentConfigSelection): string {
-    return `⚠️ Opção inválida. Responda apenas com um número de 1 a ${selection.options.length}.\n\n${this.formatSelection(selection)}`;
+    return `⚠️ Invalid option. Reply only with a number from 1 to ${selection.options.length}.\n\n${this.formatSelection(selection)}`;
+  }
+
+  formatLanguageRequest(currentLanguage: string): string {
+    return `🌐 **Current language**: ${currentLanguage}\nReply with the language the agents should use to talk to you, such as "Spanish" or "Português".`;
+  }
+
+  formatLanguageSet(language: string): string {
+    return `✅ **Language saved**: ${language}`;
+  }
+
+  formatInvalidLanguage(): string {
+    return '⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".';
   }
 
   formatQuota(report: AgentQuotaReport): string {
     if (!report.quota) {
-      return `ℹ️ O agente ${report.agent.name} não expõe informações de uso.`;
+      return `ℹ️ The ${report.agent.name} agent does not expose usage information.`;
     }
-    const lines = [`📊 **Uso do ${report.agent.name}**`];
+    const lines = [`📊 **${report.agent.name} usage**`];
     for (const group of report.quota.groups) {
       lines.push('', `**${group.name}**`);
       for (const bucket of group.buckets) {
@@ -149,23 +161,23 @@ export class DiscordActivityFormatter {
 
   private formatReset(resetTime: string | undefined): string {
     const timestamp = resetTime ? Date.parse(resetTime) : Number.NaN;
-    return Number.isNaN(timestamp) ? '' : ` · reinicia <t:${Math.floor(timestamp / 1000)}:R>`;
+    return Number.isNaN(timestamp) ? '' : ` · resets <t:${Math.floor(timestamp / 1000)}:R>`;
   }
 
   formatConfigured(settings: AgentSettings): string {
-    return `✅ **Configuração salva**: 🤖 ${settings.agentName} · 🧠 ${settings.modelName ?? DEFAULT_LABEL} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+    return `✅ **Settings saved**: 🤖 ${settings.agentName} · 🧠 ${settings.modelName ?? DEFAULT_LABEL} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
   }
 
   private formatSelectionHeader(selection: AgentConfigSelection): string {
     if (selection.step === 'agent') {
-      return '🤖 **Escolha o agente** respondendo com o número da opção:';
+      return '🤖 **Choose the agent** by replying with the option number:';
     }
     if (selection.step === 'model') {
       return selection.selectedAgent
-        ? `🧠 **Escolha o modelo do ${selection.selectedAgent.name}** respondendo com o número da opção:`
-        : '🧠 **Escolha o modelo do agente** respondendo com o número da opção:';
+        ? `🧠 **Choose the ${selection.selectedAgent.name} model** by replying with the option number:`
+        : '🧠 **Choose the agent model** by replying with the option number:';
     }
-    return `⚡ **Escolha o effort para ${selection.selectedModel?.name}** respondendo com o número da opção:`;
+    return `⚡ **Choose the effort for ${selection.selectedModel?.name}** by replying with the option number:`;
   }
 
   private formatTokenCount(tokens: number): string {
@@ -236,6 +248,6 @@ export class DiscordActivityFormatter {
   }
 
   private formatProject(event: DelegationEvent): string {
-    return event.projectName ? ` no projeto \`${event.projectName}\`` : '';
+    return event.projectName ? ` in project \`${event.projectName}\`` : '';
   }
 }
