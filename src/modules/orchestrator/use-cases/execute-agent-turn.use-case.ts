@@ -31,7 +31,7 @@ import {
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
-import { extractAttachments } from '../utils/attachment-extractor.util.js';
+import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
 
 
 const LOG_PREVIEW_LENGTH = 100;
@@ -40,7 +40,7 @@ type ValidatedDelegation = DelegationResult & { readonly cwd: string };
 
 type ValidatedDecision =
   | Exclude<CeoDecision, { kind: 'delegate' }>
-  | { readonly kind: 'delegate'; readonly delegations: readonly ValidatedDelegation[] };
+  | { readonly kind: 'delegate'; readonly message: string; readonly delegations: readonly ValidatedDelegation[] };
 
 
 @Injectable()
@@ -83,7 +83,7 @@ export class ExecuteAgentTurnUseCase {
     let ceoPort: IAgentPort | undefined;
     let agentId = this.agentPortFactory.defaultAgentId;
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
-    const finish = (status: TurnStatus, response: string, errorMessage?: string) =>
+    const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) =>
       this.buildResult({
         sessionId: session?.sessionId,
         ceoPort: currentCeoPort(),
@@ -92,6 +92,7 @@ export class ExecuteAgentTurnUseCase {
         status,
         response,
         errorMessage,
+        attachments,
         workspacePath: request.workspacePath,
         conversationId: request.conversationId,
       });
@@ -133,7 +134,7 @@ export class ExecuteAgentTurnUseCase {
     conversationKey: string,
     agentId: string,
     request: TurnRequest,
-    finish: (status: TurnStatus, response: string, errorMessage?: string) => Promise<TurnResult>,
+    finish: (status: TurnStatus, response: string, errorMessage?: string, attachments?: readonly string[]) => Promise<TurnResult>,
     observers: {
       readonly onSessionResolved: (session: SessionContext) => void;
       readonly onCeoPort: (ceoPort: IAgentPort) => void;
@@ -168,18 +169,17 @@ export class ExecuteAgentTurnUseCase {
         return finish('failed', response, `Invalid CEO response: ${decision.reason}`);
       }
 
-      if (decision.kind === 'direct_response') {
-        return finish('completed', response);
-      }
-
-      if (decision.kind === 'done') {
-        return finish('completed', decision.summary);
+      if (decision.kind === 'reply') {
+        return finish('completed', decision.message, undefined, decision.attachments);
       }
 
       if (round === this.MAX_DELEGATION_ROUNDS) {
         return finish('failed', 'Limite de delegação atingido.', 'Max delegation rounds exceeded.');
       }
 
+      if (decision.message) {
+        request.onInterimMessage?.(decision.message);
+      }
       prompt = await this.delegateAll(session!, decision.delegations, request, round, conversationKey, agentId);
     }
   }
@@ -309,7 +309,7 @@ export class ExecuteAgentTurnUseCase {
     }
 
     const conflict = this.findParallelConflict(delegations, request.conversationId);
-    return conflict ? { kind: 'invalid', reason: conflict } : { kind: 'delegate', delegations };
+    return conflict ? { kind: 'invalid', reason: conflict } : { kind: 'delegate', message: decision.message, delegations };
   }
 
   private async validateDelegation(
@@ -410,13 +410,13 @@ export class ExecuteAgentTurnUseCase {
     { projectName, sessionMode }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
-      return `Role "${role}" does not take a project folder. Use [DELEGATE:${role}].`;
+      return `Role "${role}" does not take a project folder. Use <delegate role="${role}"> without the project attribute.`;
     }
     if (!projectName && contract.project === 'required') {
-      return `Role "${role}" requires a project folder. Use [DELEGATE:${role}:<project-folder>].`;
+      return `Role "${role}" requires a project folder. Use <delegate role="${role}" project="<project-folder>">.`;
     }
     if (sessionMode && !contract.sessionMode) {
-      return `Role "${role}" does not take a session mode. Use [DELEGATE:${role}${projectName ? `:${projectName}` : ''}] without ":${sessionMode}".`;
+      return `Role "${role}" does not take a session mode. Use <delegate role="${role}"> without the session attribute.`;
     }
     return undefined;
   }
@@ -448,13 +448,15 @@ export class ExecuteAgentTurnUseCase {
         const { delegateToRole, projectName } = delegations[index];
         const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
         this.logger.error(`[Delegation Failed] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}: ${message}`);
-        return `${this.buildResultHeader(delegateToRole, projectName)}\nThe delegation failed: ${message}`;
+        return this.formatAgentResult(delegateToRole, projectName, message, 'failed');
       })
       .join('\n\n');
   }
 
-  private buildResultHeader(role: string, projectName: string | undefined): string {
-    return `[AGENT_RESULT:${role}${projectName ? `:${projectName}` : ''}]`;
+  private formatAgentResult(role: string, projectName: string | undefined, body: string, status?: 'failed'): string {
+    const project = projectName ? ` project="${projectName}"` : '';
+    const failed = status ? ` status="${status}"` : '';
+    return `<agent_result role="${role}"${project}${failed}>\n${body}\n</agent_result>`;
   }
 
   private isCancellation(error: unknown): boolean {
@@ -470,14 +472,13 @@ export class ExecuteAgentTurnUseCase {
     conversationKey: string,
     agentId: string,
   ): Promise<string> {
-    const resultHeader = this.buildResultHeader(delegateToRole, projectName);
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
     if (existing) {
       if (existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
-        return `${resultHeader}\nSteering message sent to active agent.`;
+        return this.formatAgentResult(delegateToRole, projectName, 'Steering message sent to active agent.');
       }
 
       this.logger.log(
@@ -550,7 +551,7 @@ export class ExecuteAgentTurnUseCase {
         usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
         durationMs,
       });
-      return `${resultHeader}\n${response}`;
+      return this.formatAgentResult(delegateToRole, projectName, response);
     } finally {
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);
@@ -711,10 +712,11 @@ export class ExecuteAgentTurnUseCase {
     status: TurnStatus;
     response: string;
     errorMessage?: string;
-    workspacePath?: string;
+    attachments: readonly string[];
+    workspacePath: string;
     conversationId: string;
   }): Promise<TurnResult> {
-    const attachments = extractAttachments(input.response, input.workspacePath);
+    const attachments = resolveAttachmentPaths(input.attachments, input.workspacePath);
     return {
       sessionId: input.sessionId,
       response: input.response,

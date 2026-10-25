@@ -433,8 +433,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     seedAgentSettings(dataDir, 'channel-delegation:thread-delegation');
     mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
-      'Implement the login screen.\n[DELEGATE:DEVELOPER:my-app]',
-      'Login delivered.\n[DONE]',
+      'On it.\n<delegate role="DEVELOPER" project="my-app">\nImplement the login screen.\n</delegate>',
+      'Login delivered.',
     ]);
     const developer = new ScriptedAgentFake(['Login screen implemented.']);
     const agents = [ceo, developer];
@@ -481,12 +481,16 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(ceo.sessionCwds).toEqual([workspaceDir]);
     expect(ceo.prompts[0]).toContain('[ORCHESTRATOR_INSTRUCTIONS]');
-    expect(ceo.prompts[1]).toContain('[ORCHESTRATOR_INSTRUCTIONS]');
+    expect(ceo.prompts[1]).not.toContain('[ORCHESTRATOR_INSTRUCTIONS]');
     expect(developer.sessionCwds).toEqual([join(workspaceDir, 'my-app')]);
     expect(developer.prompts[0]).toContain('Developer Agent');
     expect(developer.prompts[0]).toContain('Implement the login screen.');
+    expect(developer.prompts[0]).not.toContain('On it.');
     expect(ceo.prompts[1]).toContain(
-      '[AGENT_RESULT:DEVELOPER:my-app]\nLogin screen implemented.',
+      '<agent_result role="DEVELOPER" project="my-app">\nLogin screen implemented.\n</agent_result>',
+    );
+    expect(threadMessages.indexOf('On it.')).toBeLessThan(
+      threadMessages.findIndex(content => content.startsWith('🔀 **Tarefa delegada**')),
     );
     expect(threadMessages).toContain(
       '🔀 **Tarefa delegada** ao agente **Developer Agent** (`DEVELOPER`) no projeto `my-app` — ele assumiu a tarefa agora.',

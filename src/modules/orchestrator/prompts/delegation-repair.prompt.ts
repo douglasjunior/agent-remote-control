@@ -6,10 +6,9 @@ export function buildDelegationRepairPrompt(reason: string): string {
     'Reason (fix exactly this):',
     reason,
     '',
-    'Answer again following the Delegation Protocol, inside the final response block:',
-    '- To delegate, write the task specification and end with [DELEGATE:ROLE:project-folder] alone on the last line.',
-    '- To delegate several independent tasks at once, write each task specification right before its own marker, with nothing after the last marker.',
-    '- To finish, end with [DONE] alone on the last line.',
-    '- To talk to the user, answer without any marker and without mentioning markers.',
+    'Answer again following the Response Protocol, inside the final response block:',
+    '- To delegate, write each task specification inside <delegate role="ROLE" project="project-folder">...</delegate>.',
+    '- To answer the user and end the turn, write without any <delegate> tag, adding <attachment path="/absolute/path">description</attachment> for each file to send.',
+    '- Text outside the tags is shown to the user; never mention the tags.',
   ].join('\n');
 }

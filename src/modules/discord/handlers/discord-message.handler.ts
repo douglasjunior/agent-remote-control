@@ -261,6 +261,20 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       };
 
+      const onInterimMessage = (text: string): void => {
+        typing.keepAlive();
+        void cleanInitialProgress();
+
+        delegationChain = delegationChain.then(async () => {
+          await throttler.flush();
+          try {
+            await this.sendChunks(targetChannel!, text);
+          } catch (error) {
+            this.logger.warn(`Failed to send the interim message: ${this.describeError(error)}`);
+          }
+        });
+      };
+
       let result: TurnResult;
       try {
         result = await this.orchestratorService.executeTurn({
@@ -272,6 +286,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
           onActivity,
           onDelegation,
+          onInterimMessage,
           onQueued: () => {
             void progressMessage
               .edit('⏳ *Aguardando a tarefa anterior desta conversa terminar...*')
