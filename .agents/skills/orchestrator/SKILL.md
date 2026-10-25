@@ -157,7 +157,7 @@ Contrato para resolução de instruções comportamentais e especificações de 
 - `hasRole(agentRole: string): boolean`: valida o papel de uma delegação
 - `getDelegationContract(agentRole: string): DelegationContract`: parâmetros de marcador que o papel aceita (`project`, `sessionMode`); contrato vazio para papel desconhecido
 - `getTurnReminder(agentRole: string): string`: lembrete injetado ao final de cada prompt do turno (sempre string, vazia quando o papel não tem)
-- `isSystemPromptEveryTurn(agentRole: string): boolean`: papel cujo system prompt acompanha toda rodada (o CEO)
+- `isSystemPromptEveryTurn(agentRole: string): boolean`: papel cujo system prompt acompanha toda mensagem do usuário (o CEO)
 - `getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[]`: arquivos de orientação (`workspace-file.model.ts`: `path` relativo à raiz de workspaces, `content`) gravados no boot
 - Symbol homônimo: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
@@ -270,7 +270,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
    3. **Reparo**: em `invalid`, envia ao CEO `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), iniciado por `[DELEGATION_ERROR]`, e classifica a nova resposta. São até `MAX_REPAIR_ATTEMPTS` (1) tentativas por resposta do CEO, fora da contagem de rodadas. Persistindo `invalid`, retorna `status: 'failed'` com `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `direct_response` e `done` encerram com `status: 'completed'`.
    5. Em `delegate` na última rodada, encerra sem executar o delegado (item 6), porque o resultado não voltaria ao CEO.
-   6. Nas demais rodadas, em `delegate`, executa todas as delegações em paralelo (`Promise.allSettled`), cada uma como abaixo, e só devolve o controle ao CEO quando todas terminam, para nenhum agente seguir rodando sem observação. Se alguma falhou, o turno falha com o primeiro erro, ou é cancelado se alguma foi cancelada:
+   6. Nas demais rodadas, em `delegate`, executa todas as delegações em paralelo (`Promise.allSettled`), cada uma como abaixo, e só devolve o controle ao CEO quando todas terminam, para nenhum agente seguir rodando sem observação. Se alguma foi cancelada, o turno é cancelado. Uma delegação que falhou por outro erro vira o bloco `[AGENT_RESULT:ROLE:project]\nThe delegation failed: <mensagem>` (registrado como `[Delegation Failed]`), e o CEO recebe junto os resultados das demais para decidir entre repetir a tarefa ou avisar o usuário:
       - Quando o papel já possui delegação ativa no mesmo projeto (`findActiveDelegation`):
         - Se `existing.agentPort.supportsSteering === true` e `await existing.steer(taskSpec)` confirma a entrega: retorna imediatamente `[AGENT_RESULT:ROLE:project]\nSteering message sent to active agent.`.
         - Sem steering ou com a entrega recusada: cancela a rodada ativa anterior (`await existing.turn.cancel()`), fecha a sessão e desconecta o transporte com tratamento tolerante a erros (`closeSession()`, `disconnect()`), remove do runtime e prossegue para inicializar nova porta no diretório solicitado, retomando a sessão ACP correspondente e aguardando a resposta consolidada do especialista.
@@ -282,7 +282,7 @@ A execução do método `execute(request: TurnRequest): Promise<TurnResult>` seg
 
 Cada turno de agente (CEO ou delegado) executa internamente:
 
-1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido e, com `isSystemPromptEveryTurn(role)`, prefixa o `getSystemPrompt(role)` em toda rodada, inclusive em sessão retomada e no prompt de reparo.
+1. Anexa o `getTurnReminder(role)` do papel ao prompt recebido e, com `isSystemPromptEveryTurn(role)`, prefixa o `getSystemPrompt(role)` na primeira rodada do CEO de cada mensagem do usuário, inclusive em sessão retomada. As rodadas com `[AGENT_RESULT]` e os prompts de reparo da mesma mensagem não o repetem, salvo quando a sessão ACP é criada nelas.
 2. `turn.activate(agentPort)` e `turn.throwIfCancelled()`.
 3. `connect()` seguido de `turn.throwIfCancelled()`.
 3. Se `currentSessionId` não estiver definido:
