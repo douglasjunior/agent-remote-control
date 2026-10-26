@@ -1,28 +1,111 @@
-# Agent Remote Control
+<p align="center">
+  <img src=".github/assets/banner.svg" alt="Agent Remote Control: your AI dev team, one message away. The CEO agent delegates to the Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agents while a Discord thread shows each step finishing, up to an opened pull request." width="100%">
+</p>
 
-A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases** for remote control and orchestration of AI software development agents, running over the community **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
+<p align="center">
+  Send a message from anywhere and a team of specialized AI coding agents, running on <em>your</em> machine with the CLIs <em>you</em> already use, scopes the request, plans it, writes the code, reviews it and opens the pull request.
+</p>
 
-The system fully decouples business rules from technology details (Discord.js, the ACP SDK, file systems and command execution), making it possible to orchestrate multiple specialized agents (e.g. a CEO/router agent and a Developer agent) and trigger automated skills (Git, planning mode, tests).
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/douglasjunior/agent-remote-control?style=flat-square&color=7C3AED" alt="MIT License"></a>
+  <a href="https://agentclientprotocol.com"><img src="https://img.shields.io/badge/protocol-ACP-0EA5E9?style=flat-square" alt="Agent Client Protocol"></a>
+  <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 24">
+  <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript strict">
+  <img src="https://img.shields.io/badge/built_with-NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white" alt="Built with NestJS">
+  <img src="https://img.shields.io/badge/Discord-bot-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord bot">
+  <a href="https://github.com/douglasjunior/agent-remote-control/pulls"><img src="https://img.shields.io/badge/PRs-welcome-22C55E?style=flat-square" alt="PRs welcome"></a>
+</p>
+
+<p align="center">
+  <a href="#-quick-start"><b>Quick Start</b></a> ·
+  <a href="#-why-agent-remote-control">Why</a> ·
+  <a href="#-supported-agents">Agents</a> ·
+  <a href="#-meet-the-team">The Team</a> ·
+  <a href="#-how-it-works">How It Works</a> ·
+  <a href="#-discord-setup">Discord Setup</a> ·
+  <a href="#-contributing">Contributing</a>
+</p>
 
 ---
 
-## 1. Modules and Architecture
+## 💡 Why Agent Remote Control?
 
-The code is structured as autonomous vertical modules in `src/modules/`:
+AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor and Antigravity into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
 
-- **`agent`** (`src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`) and `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`).
-- **`orchestrator`** (`src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`). Defines roles such as **CEO** (orchestration and triage), **Tech Lead** (technical planning and architecture), **Developer** (implementation and tests) and **Code Reviewer** (independent code review).
-- **`workspace`** (`src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
-- **`discord`** (`src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
+- 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
+- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
+- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, and every agent keeps its own session.
+- 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
+- 👀 **Watch it work, live.** Reasoning and tool calls stream into the Discord thread as they happen, with a typing indicator and rate-limit-safe updates.
+- 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
+- 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
+- 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
+- 🌍 **Speaks your language.** Answers follow the language you write in; agents talk to each other in English.
+- 🧱 **Built to be extended.** Clean Architecture with Ports & Adapters: Discord is the first channel, ACP is the agent contract, and new channels or agents are adapters away.
 
-Project governance and additional technical rules are documented in [`.agents/skills/`](.agents/skills/) and in [`AGENTS.md`](AGENTS.md).
+## 🚀 Quick Start
 
----
+You need **Node.js 24+**, **Git**, at least one [supported agent CLI](#-supported-agents) installed and logged in, and a [Discord bot token](#-discord-setup).
 
-## 2. Flow Diagram
+```bash
+git clone https://github.com/douglasjunior/agent-remote-control.git
+cd agent-remote-control
+yarn install                 # Yarn 4 is pinned in the repository
+cp .env.example .env         # then set DISCORD_BOT_TOKEN
+yarn start:dev
+```
 
-The diagram below shows the full lifecycle of a request, from its arrival in the channel to the completion of the task:
+Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run.
+
+> [!WARNING]
+> **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container.
+
+## 🤖 Supported Agents
+
+| Agent | Command on `PATH` | How it connects | Setup |
+|---|---|---|---|
+| **Claude Code** | `claude` | Official ACP adapter [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (bundled) | Install and log in to Claude Code |
+| **OpenAI Codex** | `codex` | ACP adapter [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (bundled) | `codex login` |
+| **GitHub Copilot** | `copilot` | Native ACP mode (`copilot --acp`) | `copilot login` |
+| **Cursor** | `cursor-agent` or `agent` | Native ACP mode (`cursor-agent acp`) | `cursor-agent login` |
+| **Google Antigravity** | `agy` | Built-in ACP ↔ `agy` bridge | Install and log in to the Antigravity CLI |
+
+You only need one of them. The bot lists every agent on the first message and you can switch at any time with `/agent`.
+
+## 👥 Meet the Team
+
+Every conversation is handled by a **CEO** agent that never touches the code itself: it talks to you, decides who does what and reviews the results before answering.
+
+| Role | What it does |
+|---|---|
+| 🧭 **CEO** | Talks with you, scopes requests, delegates all hands-on work and reviews the results. |
+| 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left. |
+| 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and actionable implementation plans. |
+| 🛠️ **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
+| 🔍 **Code Reviewer** | Unbiased review in a fresh session against project conventions, security and correctness. Can publish comments on PRs. |
+| 🔀 **Git Ops** | Clones and locates repositories, pulls, pushes, rebases, opens pull requests and sets up SSH keys. |
+
+## 🧠 How It Works
+
+```mermaid
+flowchart LR
+    U(["📱 You"]) -->|message| D["Discord Bot"]
+    D --> O["Orchestrator<br/>turns · queue<br/>sessions"]
+    O --> CEO{{"🧭 CEO"}}
+    CEO --> PO["Product Owner"]
+    CEO --> TL["Tech Lead"]
+    CEO --> DEV["Developer"]
+    CEO --> CR["Code Reviewer"]
+    CEO --> GIT["Git Ops"]
+    PO & TL & DEV & CR & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity"]
+    CLI --> WS[("Workspace<br/>your repositories")]
+    O -.->|live activity<br/>+ final answer| D
+```
+
+Every persona runs on the agent CLI you selected, over the [Agent Client Protocol](https://agentclientprotocol.com). The orchestrator keeps a queue per conversation, persists ACP sessions per role and project, and streams every thought and tool call back to the channel.
+
+<details>
+<summary><b>Full request lifecycle (sequence diagram)</b></summary>
 
 ```mermaid
 sequenceDiagram
@@ -51,7 +134,7 @@ sequenceDiagram
     loop Turn Execution Streaming
         AgentBridge-->>AgentPort: ACP notifications (ndjson)
         AgentPort->>Demux: Processes event chunks
-        
+
         alt Thought Block
             Demux-->>DiscordBot: Emits activity: thought
             DiscordBot->>User: Updates reasoning embed in the Thread
@@ -71,39 +154,29 @@ sequenceDiagram
     DiscordBot->>User: Posts the consolidated final answer in the Thread
 ```
 
+</details>
+
 ---
 
-## 3. Prerequisites
+## 📋 Prerequisites
 
 - **Node.js** `>=24`
-- **Yarn** `1.22+`
-- At least one agent installed and authenticated:
-  - **Google Antigravity CLI** (`agy` available on the machine's global `PATH`);
-  - **Claude Code CLI** (`claude` available on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
-  - **GitHub Copilot CLI** (`copilot` available on the `PATH`, authenticated with `copilot login`). Sessions run with tool autonomy (`allow_all`) enabled;
-  - **OpenAI Codex CLI** (`codex` on the `PATH`, authenticated with `codex login`). The ACP adapter `@agentclientprotocol/codex-acp` ships with the dependencies; sessions run in full-access mode, with no approval requests and no sandbox;
-  - **Cursor CLI** (`cursor-agent` or `agent` on the `PATH`, authenticated with `cursor-agent login`). Sessions run without interactive approvals and without a sandbox.
+- **Yarn**: the repository pins Yarn 4 in `.yarn/releases`, so any globally installed Yarn (or `corepack enable`) works.
 - **Git** installed and configured
+- At least one agent installed and authenticated:
+  - **Claude Code CLI** (`claude` on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
+  - **OpenAI Codex CLI** (`codex` on the `PATH`, authenticated with `codex login`). The ACP adapter `@agentclientprotocol/codex-acp` ships with the dependencies; sessions run in full-access mode, with no approval requests and no sandbox;
+  - **GitHub Copilot CLI** (`copilot` on the `PATH`, authenticated with `copilot login`). Sessions run with tool autonomy (`allow_all`) enabled;
+  - **Cursor CLI** (`cursor-agent` or `agent` on the `PATH`, authenticated with `cursor-agent login`). Sessions run without interactive approvals and without a sandbox;
+  - **Google Antigravity CLI** (`agy` on the `PATH`).
 
----
-
-## 4. Installing Dependencies
-
-```bash
-yarn install
-```
-
----
-
-## 5. Environment Variables
+## ⚙️ Environment Variables
 
 Copy the example file to `.env` at the project root and configure your credentials:
 
 ```bash
 cp .env.example .env
 ```
-
-Supported parameters:
 
 | Variable | Description | Where to Get It in Discord | Default |
 |---|---|---|---|
@@ -114,9 +187,7 @@ Supported parameters:
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
----
-
-## 6. Discord Developer Portal Setup
+## 🔧 Discord Setup
 
 For the Discord bot to authenticate, listen to messages, reply in direct messages (DM) or create threads in servers:
 
@@ -192,21 +263,15 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
 - Type `/language` to change it: the bot asks for the language and your next message sets it. Any language name works, e.g. `Spanish` or `português`.
 - Agents talk to each other in English, regardless of the preference.
 
----
-
-## 7. Operational Guide: Using the Bot Day to Day
+## 📘 Using the Bot Day to Day
 
 ### What Can the Bot Do?
 - **Clone repositories**: Safely clones Git projects into isolated directories under `./workspaces/<repo>`.
 - **Explore codebases**: Inspects files, existing architecture, dependencies, scripts and documented rules.
-- **Plan before coding (Plan Mode)**: Breaks complex tasks into executable milestones with upfront validation.
+- **Discover and plan before coding**: Turns vague ideas into acceptance criteria and breaks complex tasks into executable steps before any code changes.
 - **Implement and refactor**: Writes clean code that adapts to the target project's architecture (Clean Architecture, MVC, microservices, etc.).
-- **Ensure quality**: Identifies the target project's test, lint and build tools and runs validations before finishing.
-- **Git operations**: Creates topic branches, writes standardized commits (Conventional Commits in English) and pushes code.
-
-### Available Agents and Personas
-- **`CEO / Router Agent`**: Executive triage agent. Receives your request, clarifies ambiguities, drafts the architectural plan and routes the requirements to the developer.
-- **`Developer Agent`**: Autonomous senior software engineer. Called for technical execution: reads the code, implements solutions in the repository's stack, runs the test suite and performs Git operations.
+- **Ensure quality**: Identifies the target project's test, lint and build tools, runs validations and gets an independent code review before finishing.
+- **Git operations**: Creates topic branches, writes standardized commits (Conventional Commits in English), pushes code and opens pull requests.
 
 ### Practical Interaction Examples
 
@@ -243,9 +308,17 @@ Create the feature/password-reset branch in the my-backend project, commit the c
   - Each **Thread** opened in a server channel represents an **isolated, independent agent session**.
   - **How to open a new session**: Go to the server's main channel and mention the bot with a new request (`@BotName ...`). It automatically creates a new Thread with a clean session, with no interference from previous tasks.
 
----
+## 🏗️ Architecture
 
-## 8. Running in Development
+A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `src/modules/`:
+
+- **`agent`** (`src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
+- **`orchestrator`** (`src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
+- **`agent-definitions`** (`src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
+- **`workspace`** (`src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
+- **`discord`** (`src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
+
+## 🧪 Development
 
 Start the NestJS application in watch mode:
 
@@ -260,41 +333,39 @@ yarn build
 yarn start:prod
 ```
 
----
-
-## 9. Tests and Quality
-
 The project targets **100% unit test coverage** of executable production code lines, with end-to-end (e2e) tests for the entry points:
 
 ```bash
-# Run unit tests
-yarn test
-
-# Run unit tests with a coverage report
-yarn test:cov
-
-# Run end-to-end (e2e) tests
-yarn test:e2e
-
-# TypeScript static type checking
-yarn ts
-
-# Static analysis with ESLint
-yarn lint
-
-# Formatting and autofix via ESLint
-yarn format
+yarn test        # unit tests
+yarn test:cov    # unit tests with a coverage report
+yarn test:e2e    # end-to-end tests
+yarn ts          # TypeScript static type checking
+yarn lint        # static analysis with ESLint
+yarn format      # formatting and autofix via ESLint
 ```
 
----
+## 🤝 Contributing
 
-## 10. Documentation and Governance
+Contributions are very welcome, from bug reports and ideas to new agents and new channels (Slack, Telegram, WhatsApp…).
 
-- [**`AGENTS.md`**](AGENTS.md): General governance guidelines, project architecture, cross-cutting conventions and mandatory rules for AI agents.
-- [**Skills Catalog (`.agents/skills/`)**](.agents/skills/): Catalog of on-demand skills containing mandatory rules for the agents. The agent autonomously consults and loads the skills it needs according to the nature of the task.
+1. Read [`AGENTS.md`](AGENTS.md) for the architecture, conventions and mandatory rules, and the [skills catalog](.agents/skills/) for the rules of the module you are touching.
+2. Fork the repository and create a topic branch.
+3. Make sure `yarn ts`, `yarn lint` and `yarn test` pass.
+4. Write commit messages following [Conventional Commits](https://www.conventionalcommits.org/) in English and open a pull request.
 
----
+Found a bug or have an idea? [Open an issue](https://github.com/douglasjunior/agent-remote-control/issues).
 
-## License
+## ⭐ Star History
+
+If Agent Remote Control saves you a trip to the desk, consider giving it a star. It helps other people find the project.
+
+<a href="https://star-history.com/#douglasjunior/agent-remote-control&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=douglasjunior/agent-remote-control&type=Date&theme=dark">
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=douglasjunior/agent-remote-control&type=Date" width="600">
+  </picture>
+</a>
+
+## 📄 License
 
 [MIT](LICENSE) © Douglas Nassif Roma Junior
