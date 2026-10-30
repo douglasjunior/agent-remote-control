@@ -6,15 +6,10 @@ export class InMemorySessionStoreFake implements ISessionStorePort {
   private readonly sessions = new Map<string, SessionContext>();
 
   async findSession(conversationId: string): Promise<SessionContext | null> {
-    for (const session of this.sessions.values()) {
-      if (session.conversationId === conversationId) {
-        return session;
-      }
-    }
-    return null;
+    return this.sessions.get(conversationId) ?? null;
   }
 
   async saveSession(session: SessionContext): Promise<void> {
-    this.sessions.set(session.sessionId, session);
+    this.sessions.set(session.conversationId, session);
   }
 }

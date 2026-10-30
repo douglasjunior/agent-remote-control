@@ -57,7 +57,6 @@ class MockDiscordClientService {
 class MockOrchestratorService {
   public lastRequest?: TurnRequest;
   public mockResult: TurnResult = {
-    sessionId: 'session-1',
     response: 'Hello from agent!',
     status: 'completed',
   };
@@ -544,7 +543,7 @@ describe('DiscordMessageHandler', () => {
           durationMs: 3_000,
         });
         request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' });
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(message);
@@ -598,7 +597,7 @@ describe('DiscordMessageHandler', () => {
           phase: 'started',
         });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(message);
@@ -630,7 +629,7 @@ describe('DiscordMessageHandler', () => {
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
         request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Developer', phase: 'started' });
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(message);
@@ -664,7 +663,7 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(message);
@@ -709,7 +708,7 @@ describe('DiscordMessageHandler', () => {
           phase: 'started',
         });
         resolveDelete();
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(message);
@@ -1153,7 +1152,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'A'.repeat(3000),
       status: 'completed',
     };
@@ -1182,7 +1180,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'Em [`src/Header.js`](file:///home/u/repo/src/Header.js#L51-L54):',
       status: 'completed',
     };
@@ -1210,7 +1207,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: '',
       status: 'completed',
     };
@@ -1240,7 +1236,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: '',
       status: 'cancelled',
     };
@@ -1270,7 +1265,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: '',
       status: 'failed',
       errorMessage: 'Workspace not found',
@@ -1301,7 +1295,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'Here is the report.',
       status: 'completed',
       attachments: ['/path/to/report.pdf'],
@@ -1333,7 +1326,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'A'.repeat(3000),
       status: 'completed',
       attachments: ['/path/to/screenshot.png'],
@@ -1366,7 +1358,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'Task done.',
       status: 'completed',
       attachments: [],
@@ -1399,7 +1390,6 @@ describe('DiscordMessageHandler', () => {
     };
 
     orchestratorService.mockResult = {
-      sessionId: 'session-1',
       response: 'Here is the report.',
       status: 'completed',
       attachments: ['/path/to/invalid-folder'],
@@ -1627,7 +1617,6 @@ describe('DiscordMessageHandler', () => {
     it('should append the footer only to the last chunk of a long response', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = {
-        sessionId: 'session-1',
         response: 'A'.repeat(3000),
         status: 'completed',
         agentInfo,
@@ -1645,7 +1634,6 @@ describe('DiscordMessageHandler', () => {
     it('should show the token usage in the footer', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = {
-        sessionId: 'session-1',
         response: 'Done.',
         status: 'completed',
         agentInfo,
@@ -1660,7 +1648,6 @@ describe('DiscordMessageHandler', () => {
     it('should split a long failure message and keep the footer on the last chunk', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = {
-        sessionId: 'session-1',
         response: '',
         status: 'failed',
         errorMessage: 'stderr line\n'.repeat(400),
@@ -1697,7 +1684,7 @@ describe('DiscordMessageHandler', () => {
       ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Execution error**: boom'],
     ] as const)('should append the footer when the turn is %s', async (_label, partial, text) => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = { sessionId: 'session-1', ...partial, agentInfo };
+      orchestratorService.mockResult = { ...partial, agentInfo };
 
       await handler.handleMessage(threadMessage(send));
 
@@ -1707,7 +1694,6 @@ describe('DiscordMessageHandler', () => {
     it('should send only the steering notice without footer when the message joined a running turn', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
       orchestratorService.mockResult = {
-        sessionId: 'session-1',
         response: '',
         status: 'steered',
         agentInfo,
@@ -2050,7 +2036,7 @@ describe('DiscordMessageHandler', () => {
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onDelegation?.({ round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', phase: 'started' });
         request.onQuestion?.(prompt);
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
@@ -2071,7 +2057,7 @@ describe('DiscordMessageHandler', () => {
       });
       orchestratorService.executeTurn = async (request: TurnRequest) => {
         request.onQuestion?.(prompt);
-        return { sessionId: 'session-1', response: 'Done.', status: 'completed' };
+        return { response: 'Done.', status: 'completed' };
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
@@ -2109,7 +2095,6 @@ describe('DiscordMessageHandler', () => {
       orchestratorService.executeTurn = async () => {
         typingCallsDuringTurn = sendTyping.mock.calls.length;
         return {
-          sessionId: 'session-1',
           response: 'Done',
           status: 'completed',
         };
@@ -2188,7 +2173,6 @@ describe('DiscordMessageHandler', () => {
         vi.advanceTimersByTime(2 * 60 * 1000);
         expect(sendTyping).toHaveBeenCalled();
         return {
-          sessionId: 'session-1',
           response: 'Done',
           status: 'completed',
         };
@@ -2231,7 +2215,6 @@ describe('DiscordMessageHandler', () => {
         vi.advanceTimersByTime(2 * 60 * 1000);
         expect(sendTyping).toHaveBeenCalled();
         return {
-          sessionId: 'session-1',
           response: 'Done',
           status: 'completed',
         };
@@ -2298,7 +2281,6 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
 
       orchestratorService.executeTurn = async () => ({
-        sessionId: 'session-1',
         response: '',
         status: 'cancelled',
       });

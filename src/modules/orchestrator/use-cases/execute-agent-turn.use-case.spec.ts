@@ -147,7 +147,6 @@ describe('ExecuteAgentTurnUseCase', () => {
     const result = await useCase.execute(turnRequest());
 
     expect(result).toEqual({
-      sessionId: expect.any(String),
       response: 'All set.',
       status: 'completed',
       agentInfo: { roleName: 'CEO', agentName: 'stub' },
@@ -487,10 +486,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     stubAgentPort.errorToThrowOnCreateSession = null;
     stubAgentPort.mockResponses = ['Hello.'];
 
-    const result = await useCase.execute(turnRequest({ prompt: 'Hello?' }));
+    await useCase.execute(turnRequest({ prompt: 'Hello?' }));
 
     expect(failed.status).toBe('failed');
-    expect(result.sessionId).toBe(failed.sessionId);
     expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\nHello?')]);
   });
 
@@ -554,9 +552,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     const second = useCase.execute(turnRequest({ prompt: 'two' }));
     await firstStarted;
     releaseFirst();
-    const [firstResult, secondResult] = await Promise.all([first, second]);
+    await Promise.all([first, second]);
 
-    expect(secondResult.sessionId).toBe(firstResult.sessionId);
     expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\none'), toCeo('two')]);
   });
 
@@ -569,7 +566,6 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('EACCES: permission denied');
-    expect(result.sessionId).toBeUndefined();
     expect(stubAgentPort.promptCalls).toHaveLength(0);
   });
 
@@ -716,9 +712,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       await persistedSession();
       stubAgentPort.mockResponses = ['Welcome back.'];
 
-      const result = await useCase.execute(turnRequest({ prompt: 'Continue' }));
+      await useCase.execute(turnRequest({ prompt: 'Continue' }));
 
-      expect(result.sessionId).toBe('sess-1');
       expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual([toCeo('Continue')]);
@@ -1065,7 +1060,6 @@ describe('ExecuteAgentTurnUseCase', () => {
       const result = await useCase.execute(turnRequest());
 
       expect(result).toEqual({
-        sessionId: undefined,
         response: '',
         status: 'failed',
         errorMessage: 'settings unreadable',
@@ -1442,12 +1436,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       const second = await useCase.execute(turnRequest({ prompt: 'two', onQueued }));
 
       expect(second).toEqual({
-        sessionId: (await sessionStore.findSession('conv-1'))?.sessionId,
         response: '',
         status: 'steered',
         agentInfo: expect.objectContaining({ roleName: 'CEO', agentName: 'stub' }),
       });
-      expect(second.sessionId).toBeDefined();
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       expect(stubAgentPort.steeringPrompts[0]).toMatch(/^\[USER_MESSAGE\]\n[\s\S]*\n\ntwo\n\n\[USER_LANGUAGE\]/);
       expect(stubAgentPort.promptCalls).toHaveLength(1);
@@ -1489,7 +1481,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await first;
     });
 
-    it('should leave the session id undefined when the conversation has no stored session', async () => {
+    it('should steer the running turn when the conversation has no stored session', async () => {
       stubAgentPort.supportsSteering = true;
       let release: () => void = () => undefined;
       const conversationKey = 'conv-1';
@@ -1500,7 +1492,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest({ prompt: 'two' }));
 
-      expect(result).toMatchObject({ status: 'steered', sessionId: undefined });
+      expect(result).toMatchObject({ status: 'steered' });
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       expect(stubAgentPort.steeringPrompts[0]).toContain('two');
 

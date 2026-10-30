@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import {
@@ -105,7 +104,6 @@ export class ExecuteAgentTurnUseCase {
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) =>
       this.buildResult({
-        sessionId: session?.sessionId,
         ceoPort: currentCeoPort(),
         agentId: agentId ?? this.agentPortFactory.defaultAgentId,
         role: request.agentRole,
@@ -137,14 +135,14 @@ export class ExecuteAgentTurnUseCase {
         },
       );
     } catch (error) {
-      const sessionLabel = session?.sessionId ?? 'none';
+      const conversationLabel = session?.conversationId ?? 'none';
       if (this.isCancellation(error)) {
-        this.logger.warn(`[Turn Cancelled] Active turn was cancelled for session=${sessionLabel}`);
+        this.logger.warn(`[Turn Cancelled] Active turn was cancelled for conversation=${conversationLabel}`);
         return finish('cancelled', currentCeoPort()?.lastAgentMessage ?? '');
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`[Turn Failed] Session=${sessionLabel}: ${errorMessage}`);
+      this.logger.error(`[Turn Failed] Conversation=${conversationLabel}: ${errorMessage}`);
 
       return finish('failed', currentCeoPort()?.lastAgentMessage ?? '', errorMessage);
     }
@@ -173,7 +171,7 @@ export class ExecuteAgentTurnUseCase {
             session = await this.resolveSession(request);
             observers.onSessionResolved(session);
             this.logger.log(
-              `[Turn Started] Session=${session.sessionId}, User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
+              `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
             );
             const activeDelegations = this.conversationRuntime.getActiveDelegations(conversationKey);
             if (activeDelegations.length > 0) {
@@ -226,10 +224,8 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async buildSteeredResult(conversationKey: string, request: TurnRequest): Promise<TurnResult> {
-    const session = await this.sessionStore.findSession(request.conversationId);
     const ceoPort = this.conversationRuntime.getCeoPort(conversationKey)!;
     return {
-      sessionId: session?.sessionId,
       response: '',
       status: 'steered',
       agentInfo: await this.buildAgentInfo(ceoPort, request.agentRole, request.conversationId),
@@ -260,21 +256,10 @@ export class ExecuteAgentTurnUseCase {
 
   private async resolveSession(request: TurnRequest): Promise<SessionContext> {
     const existing = await this.sessionStore.findSession(request.conversationId);
-    const now = new Date();
-
-    const session: SessionContext = existing
-      ? { ...existing, updatedAt: now }
-      : {
-        sessionId: randomUUID(),
-        conversationId: request.conversationId,
-        userId: request.userId,
-        workspacePath: request.workspacePath,
-        agentRole: request.agentRole,
-        agentSessions: [],
-        createdAt: now,
-        updatedAt: now,
-      };
-
+    if (existing) {
+      return existing;
+    }
+    const session: SessionContext = { conversationId: request.conversationId, agentSessions: [] };
     await this.sessionStore.saveSession(session);
     return session;
   }
@@ -305,7 +290,7 @@ export class ExecuteAgentTurnUseCase {
       let decision = await this.decide(response, request);
       for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
         this.logger.warn(
-          `[Delegation Repair] Session=${session.sessionId}, Attempt=${attempt}: ${decision.reason}`,
+          `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
         );
         response = await runCeo(buildDelegationRepairPrompt(decision.reason));
         decision = await this.decide(response, request);
@@ -494,7 +479,7 @@ export class ExecuteAgentTurnUseCase {
         }
         const { delegateToRole, projectName } = delegations[index];
         const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
-        this.logger.error(`[Delegation Failed] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}: ${message}`);
+        this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
         return this.formatAgentResult(delegateToRole, projectName, message, 'failed');
       })
       .join('\n\n');
@@ -602,7 +587,7 @@ export class ExecuteAgentTurnUseCase {
     const startedAt = Date.now();
 
     this.logger.log(
-      `[Delegation Started] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole} (${event.roleName}), Project=${projectName ?? 'none'}, Cwd=${cwd}, Task="${this.preview(taskSpec)}"`,
+      `[Delegation Started] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole} (${event.roleName}), Project=${projectName ?? 'none'}, Cwd=${cwd}, Task="${this.preview(taskSpec)}"`,
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
@@ -650,7 +635,7 @@ export class ExecuteAgentTurnUseCase {
       );
       const durationMs = Date.now() - startedAt;
       this.logger.log(
-        `[Delegation Finished] Session=${session.sessionId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+        `[Delegation Finished] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
       );
       request.onDelegation?.({
         ...event,
@@ -776,7 +761,6 @@ export class ExecuteAgentTurnUseCase {
       await this.sessionStore.saveSession({
         ...latest,
         agentSessions: [...others, binding],
-        updatedAt: new Date(),
       });
     });
     this.sessionBindings = bound.catch(() => undefined);
@@ -829,7 +813,6 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async buildResult(input: {
-    sessionId?: string;
     ceoPort?: IAgentPort;
     agentId: string;
     role: string;
@@ -842,7 +825,6 @@ export class ExecuteAgentTurnUseCase {
   }): Promise<TurnResult> {
     const attachments = resolveAttachmentPaths(input.attachments, input.workspacePath);
     return {
-      sessionId: input.sessionId,
       response: input.response,
       status: input.status,
       errorMessage: input.errorMessage,
