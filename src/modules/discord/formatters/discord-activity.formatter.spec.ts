@@ -755,9 +755,7 @@ describe('DiscordActivityFormatter', () => {
       expect(text).toBe(
         [
           '📊 **Antigravity usage**',
-          '',
-          '**Gemini**',
-          '• Weekly: 50%',
+          '🟢 ▰▰▰▰▰▱▱▱▱▱ 50% Week',
           '',
           '📊 **GitHub Copilot usage**',
           'ℹ️ Usage could not be queried.',
@@ -768,7 +766,7 @@ describe('DiscordActivityFormatter', () => {
       );
     });
 
-    it('should list buckets with percentage and relative reset time', () => {
+    it('should draw a bar, a marker and a label per bucket with the relative reset time', () => {
       const text = formatter.formatQuota([
         {
           agent,
@@ -785,14 +783,17 @@ describe('DiscordActivityFormatter', () => {
                     remainingFraction: 0.9364,
                     resetTime: '2026-10-11T23:03:22Z',
                   },
-                  { id: 'g-w', name: 'Weekly', window: 'weekly', remainingFraction: 1 },
+                  { id: 'g-m', name: 'Monthly', window: 'monthly', remainingFraction: 0.4 },
+                  { id: 'g-7', name: 'Seven', window: '7d', remainingFraction: 0.2 },
                   {
                     id: 'g-x',
                     name: 'Broken',
-                    window: '5h',
+                    window: 'custom',
                     remainingFraction: 0,
                     resetTime: 'not-a-date',
                   },
+                  { id: 'g-o', name: 'Over', window: '5h', remainingFraction: 1.5 },
+                  { id: 'g-n', name: 'Under', window: '5h', remainingFraction: -1 },
                 ],
               },
             ],
@@ -803,11 +804,39 @@ describe('DiscordActivityFormatter', () => {
       expect(text).toBe(
         [
           '📊 **Antigravity usage**',
+          '🟢 ▰▰▰▰▰▰▰▰▰▱ 94% 5h · resets <t:1791759802:R>',
+          '🟡 ▰▰▰▰▱▱▱▱▱▱ 40% Month',
+          '🟡 ▰▰▱▱▱▱▱▱▱▱ 20% Week',
+          '🔴 ▱▱▱▱▱▱▱▱▱▱ 0% Broken',
+          '🟢 ▰▰▰▰▰▰▰▰▰▰ 100% 5h',
+          '🔴 ▱▱▱▱▱▱▱▱▱▱ 0% 5h',
+        ].join('\n'),
+      );
+    });
+
+    it('should title each group when the agent has more than one', () => {
+      const text = formatter.formatQuota([
+        {
+          agent,
+          status: 'ok',
+          quota: {
+            groups: [
+              { name: 'Gemini', buckets: [{ id: 'a', name: 'A', window: 'weekly', remainingFraction: 1 }] },
+              { name: 'Claude', buckets: [{ id: 'b', name: 'B', window: '5h', remainingFraction: 0.1 }] },
+            ],
+          },
+        },
+      ]);
+
+      expect(text).toBe(
+        [
+          '📊 **Antigravity usage**',
           '',
-          '**Gemini Models**',
-          '• Five Hour Limit Remaining: 94% · resets <t:1791759802:R>',
-          '• Weekly: 100%',
-          '• Broken: 0%',
+          '**Gemini**',
+          '🟢 ▰▰▰▰▰▰▰▰▰▰ 100% Week',
+          '',
+          '**Claude**',
+          '🔴 ▰▱▱▱▱▱▱▱▱▱ 10% 5h',
         ].join('\n'),
       );
     });

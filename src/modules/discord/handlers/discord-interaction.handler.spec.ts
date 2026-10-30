@@ -155,7 +155,7 @@ function buildInteraction({ inGuild = true, ...overrides }: InteractionOverrides
 }
 
 function buildLongQuotaReports(): AgentQuotaReport[] {
-  return Array.from({ length: 12 }, (_, position) => ({
+  return Array.from({ length: 30 }, (_, position) => ({
     agent: { id: `agent-${position}`, name: `Agent ${position}` },
     status: 'ok' as const,
     quota: {
@@ -387,7 +387,7 @@ describe('DiscordInteractionHandler', () => {
       expect(followUps.length).toBeGreaterThan(0);
       expect(followUps.every(options => options.ephemeral)).toBe(true);
       expect(contents.every(content => content.length <= 2000)).toBe(true);
-      expect(contents.join('\n')).toContain('📊 **Agent 11 usage**');
+      expect(contents.join('\n')).toContain('📊 **Agent 29 usage**');
     });
 
     it('should log and stop sending chunks when a follow-up fails', async () => {
