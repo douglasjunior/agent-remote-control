@@ -183,7 +183,7 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
 | `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`sessions.json` with the conversation → agent session binding, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
+| `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
