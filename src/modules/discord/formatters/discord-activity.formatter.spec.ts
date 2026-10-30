@@ -634,13 +634,36 @@ describe('DiscordActivityFormatter', () => {
       };
 
       expect(formatter.formatConfigured(settings)).toBe(
-        '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ default',
+        '✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Deep Model · ⚡ default',
       );
       expect(formatter.formatConfigured(withCeo(settings, { effortId: 'high', effortName: 'High' }))).toBe(
-        '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
+        '✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
       );
       expect(formatter.formatConfigured(withCeo(settings, { modelId: null, modelName: null }))).toBe(
-        '✅ **Settings saved**: 🤖 Claude Code · 🧠 default · ⚡ default',
+        '✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 default · ⚡ default',
+      );
+    });
+  });
+
+  describe('settings confirmation fallbacks', () => {
+    const claude: AgentProfileSettings = {
+      agentId: 'claude',
+      agentName: 'Claude Code',
+      modelId: null,
+      modelName: null,
+      effortId: null,
+      effortName: null,
+    };
+
+    it('should describe the first profile when the settings have no CEO profile', () => {
+      expect(formatter.formatConfigured({ profiles: { DEVELOPER: claude }, updatedAt: '' })).toBe(
+        '✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 default · ⚡ default',
+      );
+    });
+
+    it('should omit the details when the settings have no profile', () => {
+      expect(formatter.formatConfigured({ profiles: {}, updatedAt: '' })).toBe(
+        '✅ **Settings saved for all profiles**',
       );
     });
   });

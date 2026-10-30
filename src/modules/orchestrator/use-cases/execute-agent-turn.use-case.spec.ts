@@ -1009,6 +1009,15 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(result.agentInfo?.agentName).toBe('fallback');
     });
 
+    it('should not evaluate the factory default agent when the role has a saved profile', async () => {
+      settingsStore.settings = settingsOf({ agentId: 'stub' });
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(portFactory.defaultAgentIdReads).toBe(0);
+    });
+
     it('should apply the role default model when the settings carry only the agent', async () => {
       settingsStore.settings = settingsOf({ agentId: 'stub', modelId: null, modelName: null });
       stubAgentPort.modelsToReturn = {
@@ -2000,6 +2009,23 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toBe(toCeo('<agent_result role="DEVELOPER" project="project-a" status="failed">\ntransport closed\n</agent_result>'));
+    });
+
+    it('should hand a missing delegate agent CLI to the CEO and still complete the turn', async () => {
+      const message = 'The cursor agent CLI was not found in PATH (spawn cursor ENOENT).';
+      const missing = delegatePort('');
+      missing.connect = async () => {
+        throw new Error(message);
+      };
+      delegatePorts = [missing];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>', 'Ok.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toBe(
+        toCeo(`<agent_result role="DEVELOPER" project="project-a" status="failed">\n${message}\n</agent_result>`),
+      );
     });
 
     it('should report the turn as cancelled when any parallel delegation was cancelled', async () => {

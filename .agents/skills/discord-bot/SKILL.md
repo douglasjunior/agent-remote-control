@@ -116,7 +116,7 @@ The `formatSelection` header depends on the step (`AgentConfigSelection.step`):
 
 The agent, model and effort steps of a selection with `targetRoles` add `Type 0 to go back to the profile list.` to the header.
 
-`formatConfigured(settings)` confirms the CEO profile with `✅ **Settings saved**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
+`formatConfigured(settings)` confirms, for every profile written by /agent, /model and the first-message selection, the CEO profile (or the first profile when none is the CEO) with `✅ **Settings saved for all profiles**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
 with `default` when the model or the effort is null. `formatProfilesUpdated` confirms `✅ **Profiles updated** (<roles>): 🤖 ... · 🧠 ... · ⚡ ...` and `formatProfilesClosed` replies `✅ **Profile configuration closed.**`.
 
 ## Agent Questions to the User

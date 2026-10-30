@@ -120,6 +120,33 @@ describe('GetAgentQuotaUseCase', () => {
     ]);
   });
 
+  it('should not surface a rejection that arrives after the timeout as unhandled', async () => {
+    const copilot = new StubAgentPort();
+    let rejectLate: (reason: Error) => void = () => undefined;
+    copilot.getQuota = () => new Promise((_, reject) => {
+      rejectLate = reject;
+    });
+    const factory = buildFactory({ copilot });
+    factory.agents = [{ agentId: 'copilot', displayName: 'GitHub Copilot' }];
+    const unhandled: unknown[] = [];
+    const record = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', record);
+    vi.useFakeTimers();
+
+    try {
+      const pending = new GetAgentQuotaUseCase(factory).execute();
+      await vi.advanceTimersByTimeAsync(15_000);
+      await pending;
+      rejectLate(new Error('connection closed'));
+      vi.useRealTimers();
+      await new Promise(resolve => setImmediate(resolve));
+    } finally {
+      process.off('unhandledRejection', record);
+    }
+
+    expect(unhandled).toEqual([]);
+  });
+
   it('should disconnect every port after its query, even when it fails', async () => {
     const disconnected: string[] = [];
     const ports: Record<string, StubAgentPort> = {};

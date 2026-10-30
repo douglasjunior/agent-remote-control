@@ -179,8 +179,11 @@ export class DiscordActivityFormatter {
   }
 
   formatConfigured(settings: AgentSettings): string {
-    const profile = resolveProfile(settings, 'CEO');
-    return `✅ **Settings saved**: 🤖 ${profile?.agentName} · 🧠 ${profile?.modelName ?? DEFAULT_LABEL} · ⚡ ${profile?.effortName ?? DEFAULT_LABEL}`;
+    const profile = resolveProfile(settings, 'CEO') ?? Object.values(settings.profiles)[0];
+    if (!profile) {
+      return '✅ **Settings saved for all profiles**';
+    }
+    return `✅ **Settings saved for all profiles**: 🤖 ${profile.agentName} · 🧠 ${profile.modelName ?? DEFAULT_LABEL} · ⚡ ${profile.effortName ?? DEFAULT_LABEL}`;
   }
 
   formatProfilesUpdated(

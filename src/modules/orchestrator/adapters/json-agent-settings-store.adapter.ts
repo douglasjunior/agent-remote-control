@@ -1,9 +1,9 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
+import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import type { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { profileForAllRoles } from '../utils/agent-profile.util.js';
 import { resolveDataDirectory } from '../utils/data-directory.util.js';
@@ -23,7 +23,11 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
   private readonly filePath: string;
   private settings: Promise<Map<string, AgentSettings>> | null = null;
 
-  constructor(@Optional() customDataDir?: string) {
+  constructor(
+    @Inject(IAgentRegistryPort)
+    private readonly agentRegistry: IAgentRegistryPort,
+    @Optional() customDataDir?: string,
+  ) {
     this.dataDirectory = resolveDataDirectory(customDataDir);
     this.filePath = join(this.dataDirectory, SETTINGS_FILENAME);
   }
@@ -75,7 +79,7 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
     const updatedAt = raw.updatedAt ?? '';
     if (typeof raw.agentId === 'string') {
       const legacyProfile = this.parseProfile(raw);
-      return legacyProfile ? { profiles: profileForAllRoles(AGENT_ROLES, legacyProfile), updatedAt } : null;
+      return legacyProfile ? { profiles: profileForAllRoles(this.agentRegistry.listRoles(), legacyProfile), updatedAt } : null;
     }
     const profiles: Record<string, AgentProfileSettings> = {};
     for (const [role, rawProfile] of Object.entries(raw.profiles ?? {})) {

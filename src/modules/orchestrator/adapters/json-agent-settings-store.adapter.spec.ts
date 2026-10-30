@@ -3,11 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
+import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 
 import { JsonAgentSettingsStoreAdapter } from './json-agent-settings-store.adapter.js';
 
+
+class ExtendedRegistry extends AgentRegistryService {
+  override listRoles(): string[] {
+    return [...super.listRoles(), 'DESIGNER'];
+  }
+}
+
+const registry = new AgentRegistryService();
 
 const CLAUDE: AgentProfileSettings = {
   agentId: 'claude',
@@ -35,21 +43,21 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   });
 
   it('should return null when nothing was saved', async () => {
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toBeNull();
+    await expect(new JsonAgentSettingsStoreAdapter(registry, rootDir).load('conv')).resolves.toBeNull();
   });
 
   it('should persist settings across instances', async () => {
     const dataDir = join(rootDir, 'nested');
-    const store = new JsonAgentSettingsStoreAdapter(dataDir);
+    const store = new JsonAgentSettingsStoreAdapter(registry, dataDir);
 
     await store.save('conv', SETTINGS);
 
     await expect(store.load('conv')).resolves.toEqual(SETTINGS);
-    await expect(new JsonAgentSettingsStoreAdapter(dataDir).load('conv')).resolves.toEqual(SETTINGS);
+    await expect(new JsonAgentSettingsStoreAdapter(registry, dataDir).load('conv')).resolves.toEqual(SETTINGS);
   });
 
   it('should keep settings isolated per conversation', async () => {
-    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    const store = new JsonAgentSettingsStoreAdapter(registry, rootDir);
     const copilot: AgentSettings = { ...SETTINGS, profiles: { CEO: { ...CLAUDE, agentId: 'copilot' } } };
 
     await store.save('ch:thread-1', SETTINGS);
@@ -60,17 +68,17 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     await expect(store.load('ch:thread-2')).resolves.toEqual(copilot);
     await expect(store.load('dm')).resolves.toEqual(SETTINGS);
     await expect(store.load('ch')).resolves.toBeNull();
-    const reloaded = new JsonAgentSettingsStoreAdapter(rootDir);
+    const reloaded = new JsonAgentSettingsStoreAdapter(registry, rootDir);
     await expect(reloaded.load('ch:thread-1')).resolves.toEqual(SETTINGS);
   });
 
   it('should return null for loadMostRecent when store is empty', async () => {
-    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    const store = new JsonAgentSettingsStoreAdapter(registry, rootDir);
     await expect(store.loadMostRecent()).resolves.toBeNull();
   });
 
   it('should return the most recently updated settings', async () => {
-    const store = new JsonAgentSettingsStoreAdapter(rootDir);
+    const store = new JsonAgentSettingsStoreAdapter(registry, rootDir);
     const older = { ...SETTINGS, updatedAt: '2026-01-01T10:00:00.000Z' };
     const newer = { ...SETTINGS, profiles: { CEO: CLAUDE }, updatedAt: '2026-01-02T10:00:00.000Z' };
 
@@ -84,18 +92,26 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     const legacy = { ...CLAUDE, updatedAt: '2026-01-01T00:00:00.000Z' };
     writeFileSync(join(rootDir, 'agent-settings.json'), JSON.stringify({ conv: legacy }));
 
-    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+    const loaded = await new JsonAgentSettingsStoreAdapter(registry, rootDir).load('conv');
 
-    expect(Object.keys(loaded?.profiles ?? {})).toEqual([...AGENT_ROLES]);
+    expect(Object.keys(loaded?.profiles ?? {})).toEqual(registry.listRoles());
     expect(Object.values(loaded?.profiles ?? {}).every(profile => profile.agentId === 'claude')).toBe(true);
     expect(loaded?.profiles.CEO).toEqual(CLAUDE);
     expect(loaded?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('should migrate a legacy flat record to the roles listed by the registry', async () => {
+    writeFileSync(join(rootDir, 'agent-settings.json'), JSON.stringify({ conv: CLAUDE }));
+
+    const loaded = await new JsonAgentSettingsStoreAdapter(new ExtendedRegistry(), rootDir).load('conv');
+
+    expect(Object.keys(loaded?.profiles ?? {})).toEqual([...registry.listRoles(), 'DESIGNER']);
+  });
+
   it('should normalize missing optional fields of a legacy record', async () => {
     writeFileSync(join(rootDir, 'agent-settings.json'), JSON.stringify({ conv: { agentId: 'claude' } }));
 
-    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+    const loaded = await new JsonAgentSettingsStoreAdapter(registry, rootDir).load('conv');
 
     expect(loaded?.updatedAt).toBe('');
     expect(loaded?.profiles.GIT_OPS).toEqual({
@@ -116,7 +132,7 @@ describe('JsonAgentSettingsStoreAdapter', () => {
       }),
     );
 
-    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+    const loaded = await new JsonAgentSettingsStoreAdapter(registry, rootDir).load('conv');
 
     expect(Object.keys(loaded?.profiles ?? {})).toEqual(['CEO']);
     expect(loaded?.profiles.CEO.agentName).toBe('claude');
@@ -135,6 +151,6 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   ])('should return null for %s', async (_label, content) => {
     writeFileSync(join(rootDir, 'agent-settings.json'), content);
 
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toBeNull();
+    await expect(new JsonAgentSettingsStoreAdapter(registry, rootDir).load('conv')).resolves.toBeNull();
   });
 });

@@ -8,12 +8,22 @@ import { StubAgentPort } from './stub-agent.port.js';
 
 
 export class StubAgentPortFactory implements IAgentPortFactory {
-  defaultAgentId = 'stub';
+  defaultAgentIdReads = 0;
+  private fallbackAgentId = 'stub';
   agents: AgentProviderInfo[] = [{ agentId: 'stub', displayName: 'Stub Agent' }];
   readonly unavailableAgentIds = new Set<string>();
   readonly createdAgentIds: string[] = [];
 
   constructor(private readonly build: (agentId: string) => IAgentPort = StubAgentPortFactory.buildStub) {}
+
+  get defaultAgentId(): string {
+    this.defaultAgentIdReads += 1;
+    return this.fallbackAgentId;
+  }
+
+  set defaultAgentId(agentId: string) {
+    this.fallbackAgentId = agentId;
+  }
 
   listAgents(): readonly AgentProviderInfo[] {
     return this.agents;

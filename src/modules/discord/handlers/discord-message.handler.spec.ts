@@ -1785,7 +1785,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send).toHaveBeenCalledWith('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
+      expect(send).toHaveBeenCalledWith('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
       expect(orchestratorService.lastRequest).toBeUndefined();
     });
 
@@ -1795,7 +1795,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send.mock.calls[0]![0]).toBe('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
+      expect(send.mock.calls[0]![0]).toBe('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
       expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
     });
 
@@ -1892,7 +1892,7 @@ describe('DiscordMessageHandler', () => {
 
       expect(orchestratorService.selectionLookups).toEqual(['channel-1:thread-9']);
       expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-9', prompt: '1' }]);
-      expect(send).toHaveBeenCalledWith('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
+      expect(send).toHaveBeenCalledWith('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
     });
 
     it('should take a message without mention as the language while a language change is pending', async () => {
