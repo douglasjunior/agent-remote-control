@@ -78,10 +78,25 @@ describe('AgentCapabilitiesService', () => {
       ]);
     });
 
+    it('should offer only the agents whose CLI is available', () => {
+      factory.unavailableAgentIds.add('stub');
+
+      expect(service.listAgentOptions()).toEqual([{ index: 1, id: 'other', label: 'Other Agent' }]);
+    });
+
     it('should return an empty list when no agent is available', () => {
       factory.agents = [];
 
       expect(service.listAgentOptions()).toEqual([]);
+    });
+  });
+
+  describe('isAgentAvailable', () => {
+    it('should follow the factory availability', () => {
+      factory.unavailableAgentIds.add('other');
+
+      expect(service.isAgentAvailable('stub')).toBe(true);
+      expect(service.isAgentAvailable('other')).toBe(false);
     });
   });
 

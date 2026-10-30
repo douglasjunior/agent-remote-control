@@ -27,8 +27,12 @@ export class AgentCapabilitiesService {
     return { id: agentId, name: agent?.displayName ?? agentId };
   }
 
+  isAgentAvailable(agentId: string): boolean {
+    return this.agentPortFactory.isAgentAvailable(agentId);
+  }
+
   listAgentOptions(): readonly SelectionOption[] {
-    return this.agentPortFactory.listAgents().map((agent: AgentProviderInfo, position) => ({
+    return this.agentPortFactory.listAvailableAgents().map((agent: AgentProviderInfo, position) => ({
       index: position + 1,
       id: agent.agentId,
       label: agent.displayName,

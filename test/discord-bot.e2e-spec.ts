@@ -34,6 +34,8 @@ function agentFactory(create: (agentId: string) => Partial<IAgentPort> | undefin
   return {
     defaultAgentId: 'agy',
     listAgents: () => AGENTS,
+    listAvailableAgents: () => AGENTS,
+    isAgentAvailable: () => true,
     create: agentId => create(agentId) as IAgentPort,
   };
 }

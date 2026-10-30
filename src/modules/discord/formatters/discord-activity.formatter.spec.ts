@@ -702,40 +702,80 @@ describe('DiscordActivityFormatter', () => {
   describe('formatQuota', () => {
     const agent = { id: 'agy', name: 'Antigravity' };
 
+    it('should explain when no agent CLI was found', () => {
+      expect(formatter.formatQuota([])).toBe('ℹ️ No agent CLI was found in the PATH.');
+    });
+
     it('should explain when the agent has no quota information', () => {
-      expect(formatter.formatQuota({ agent, quota: undefined })).toBe(
-        'ℹ️ The Antigravity agent does not expose usage information.',
+      expect(formatter.formatQuota([{ agent, status: 'unsupported' }])).toBe(
+        '📊 **Antigravity usage**\nℹ️ This agent does not expose usage information.',
+      );
+    });
+
+    it('should explain when the agent could not be queried', () => {
+      expect(formatter.formatQuota([{ agent, status: 'failed' }])).toBe(
+        '📊 **Antigravity usage**\nℹ️ Usage could not be queried.',
+      );
+    });
+
+    it('should give each agent its own section', () => {
+      const text = formatter.formatQuota([
+        {
+          agent,
+          status: 'ok',
+          quota: { groups: [{ name: 'Gemini', buckets: [{ id: 'b', name: 'Weekly', window: 'weekly', remainingFraction: 0.5 }] }] },
+        },
+        { agent: { id: 'copilot', name: 'GitHub Copilot' }, status: 'failed' },
+        { agent: { id: 'codex', name: 'OpenAI Codex' }, status: 'unsupported' },
+      ]);
+
+      expect(text).toBe(
+        [
+          '📊 **Antigravity usage**',
+          '',
+          '**Gemini**',
+          '• Weekly: 50%',
+          '',
+          '📊 **GitHub Copilot usage**',
+          'ℹ️ Usage could not be queried.',
+          '',
+          '📊 **OpenAI Codex usage**',
+          'ℹ️ This agent does not expose usage information.',
+        ].join('\n'),
       );
     });
 
     it('should list buckets with percentage and relative reset time', () => {
-      const text = formatter.formatQuota({
-        agent,
-        quota: {
-          groups: [
-            {
-              name: 'Gemini Models',
-              buckets: [
-                {
-                  id: 'g-5h',
-                  name: 'Five Hour Limit Remaining',
-                  window: '5h',
-                  remainingFraction: 0.9364,
-                  resetTime: '2026-10-11T23:03:22Z',
-                },
-                { id: 'g-w', name: 'Weekly', window: 'weekly', remainingFraction: 1 },
-                {
-                  id: 'g-x',
-                  name: 'Broken',
-                  window: '5h',
-                  remainingFraction: 0,
-                  resetTime: 'not-a-date',
-                },
-              ],
-            },
-          ],
+      const text = formatter.formatQuota([
+        {
+          agent,
+          status: 'ok',
+          quota: {
+            groups: [
+              {
+                name: 'Gemini Models',
+                buckets: [
+                  {
+                    id: 'g-5h',
+                    name: 'Five Hour Limit Remaining',
+                    window: '5h',
+                    remainingFraction: 0.9364,
+                    resetTime: '2026-10-11T23:03:22Z',
+                  },
+                  { id: 'g-w', name: 'Weekly', window: 'weekly', remainingFraction: 1 },
+                  {
+                    id: 'g-x',
+                    name: 'Broken',
+                    window: '5h',
+                    remainingFraction: 0,
+                    resetTime: 'not-a-date',
+                  },
+                ],
+              },
+            ],
+          },
         },
-      });
+      ]);
 
       expect(text).toBe(
         [

@@ -57,16 +57,13 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     return this.profilesSelectionResult;
   }
 
-  quotaReport: AgentQuotaReport = {
-    agent: { id: 'agy', name: 'Antigravity' },
-    quota: undefined,
-  };
+  quotaReports: AgentQuotaReport[] = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
 
-  async getQuota(): Promise<AgentQuotaReport> {
+  async getQuota(): Promise<readonly AgentQuotaReport[]> {
     if (this.throwError) {
       throw new Error('quota down');
     }
-    return this.quotaReport;
+    return this.quotaReports;
   }
 
   startedSelections: string[] = [];
@@ -155,6 +152,19 @@ function buildInteraction({ inGuild = true, ...overrides }: InteractionOverrides
     ...overrides,
   };
   return interaction as unknown as ChatInputCommandInteraction;
+}
+
+function buildLongQuotaReports(): AgentQuotaReport[] {
+  return Array.from({ length: 12 }, (_, position) => ({
+    agent: { id: `agent-${position}`, name: `Agent ${position}` },
+    status: 'ok' as const,
+    quota: {
+      groups: Array.from({ length: 4 }, (_unused, group) => ({
+        name: `Group ${group}`,
+        buckets: [{ id: `b-${position}-${group}`, name: 'Weekly limit remaining', window: 'weekly', remainingFraction: 0.5 }],
+      })),
+    },
+  }));
 }
 
 describe('DiscordInteractionHandler', () => {
@@ -359,8 +369,36 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: 'ℹ️ The Antigravity agent does not expose usage information.',
+        content: '📊 **Antigravity usage**\nℹ️ This agent does not expose usage information.',
       });
+    });
+
+    it('should split a report over 2000 characters into an editReply and ephemeral follow-ups', async () => {
+      orchestratorService.quotaReports = buildLongQuotaReports();
+      const interaction = buildInteraction({ commandName: 'usage' });
+
+      await handler.handleInteraction(interaction);
+
+      const followUps = vi.mocked(interaction.followUp).mock.calls.map(([options]) => options as { content: string; ephemeral: boolean });
+      const contents = [
+        (vi.mocked(interaction.editReply).mock.calls[0]![0] as { content: string }).content,
+        ...followUps.map(options => options.content),
+      ];
+      expect(followUps.length).toBeGreaterThan(0);
+      expect(followUps.every(options => options.ephemeral)).toBe(true);
+      expect(contents.every(content => content.length <= 2000)).toBe(true);
+      expect(contents.join('\n')).toContain('📊 **Agent 11 usage**');
+    });
+
+    it('should log and stop sending chunks when a follow-up fails', async () => {
+      orchestratorService.quotaReports = buildLongQuotaReports();
+      const interaction = buildInteraction({
+        commandName: 'usage',
+        followUp: vi.fn().mockRejectedValue(new Error('Unknown webhook')),
+      });
+
+      await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
+      expect(interaction.followUp).toHaveBeenCalledTimes(1);
     });
 
     it('should report the failure when the quota lookup throws', async () => {

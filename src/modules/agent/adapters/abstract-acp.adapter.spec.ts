@@ -220,6 +220,32 @@ describe('AbstractAcpAdapter', () => {
       );
     });
 
+    it('should report a missing agent CLI when the process cannot be spawned', async () => {
+      const enoent = Object.assign(new Error('spawn test-agent ENOENT'), { code: 'ENOENT' });
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockImplementation(async () => {
+          acpHarness.spawnedProcs[0]!.emit('error', enoent);
+          throw new Error('write EPIPE');
+        }),
+      };
+
+      const failure = await new TestAcpAdapter().connect().then(() => undefined, (error: unknown) => error as Error);
+
+      expect(failure?.message).toBe('The test agent CLI was not found in PATH (spawn test-agent ENOENT).');
+      expect(failure?.cause).toBe(enoent);
+    });
+
+    it('should keep the transport error for process errors other than a missing binary', async () => {
+      acpHarness.pendingConnectionOverrides = {
+        initialize: vi.fn().mockImplementation(async () => {
+          acpHarness.spawnedProcs[0]!.emit('error', new Error('spawn EACCES'));
+          throw new Error('write EPIPE');
+        }),
+      };
+
+      await expect(new TestAcpAdapter().connect()).rejects.toThrow('Error returned by the agent (test)');
+    });
+
     it('should log "Unknown error" when discovery fails with a non-Error value', async () => {
       const adapter = new TestAcpAdapter();
       const warnSpy = vi
