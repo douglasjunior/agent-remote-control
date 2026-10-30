@@ -3,9 +3,10 @@ import type { ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 
-import type { AgentConfig } from '../ports/agent.port.js';
+import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
 import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
+import { parseClaudeUsageOutput } from '../utils/claude-usage.util.js';
 
 import {
   AbstractAcpAdapter,
@@ -39,6 +40,18 @@ export class ClaudeCodeAdapter extends AbstractAcpAdapter {
     @Optional() preferredConfig?: AgentConfig,
   ) {
     super(preferredConfig ?? {});
+  }
+
+  override async getQuota(): Promise<AgentQuota | undefined> {
+    try {
+      const { exitCode, output } = await this.processRunner.run('claude', ['-p', '/usage']);
+      return exitCode === 0 ? parseClaudeUsageOutput(output) : undefined;
+    } catch (error) {
+      this.logger.debug(
+        `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return undefined;
+    }
   }
 
   protected spawnAgentProcess(): ChildProcess {

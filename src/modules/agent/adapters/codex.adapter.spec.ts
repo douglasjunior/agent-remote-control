@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,7 +26,7 @@ function fileSystemStub(resolvedInPath: string | null = null): IFileSystemPort {
 
 function buildAdapter(fileSystem: IFileSystemPort = fileSystemStub()) {
   const { runner, spawn } = createProcessRunnerMock();
-  return { adapter: new CodexAdapter(fileSystem, runner), spawn };
+  return { adapter: new CodexAdapter(fileSystem, runner), spawn, runner };
 }
 
 function spawnCall(spawn: ReturnType<typeof createProcessRunnerMock>['spawn']) {
@@ -171,6 +172,122 @@ describe('CodexAdapter', () => {
         configId: 'mode',
         value: 'agent-full-access',
       });
+    });
+  });
+
+  describe('getQuota', () => {
+    const rateLimits = {
+      rateLimits: {
+        primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1_793_413_800 },
+      },
+    };
+
+    function fakeAppServer(reply: (request: { id?: number; method: string }) => string | undefined) {
+      const proc = new EventEmitter() as EventEmitter & {
+        stdin: { write: ReturnType<typeof vi.fn> };
+        stdout: EventEmitter;
+        kill: ReturnType<typeof vi.fn>;
+      };
+      proc.stdout = new EventEmitter();
+      proc.kill = vi.fn();
+      proc.stdin = {
+        write: vi.fn((line: string) => {
+          const response = reply(JSON.parse(line));
+          if (response !== undefined) {
+            queueMicrotask(() => proc.stdout.emit('data', Buffer.from(response)));
+          }
+        }),
+      };
+      return proc;
+    }
+
+    const respond = (result: object) => (request: { id?: number; method: string }) => {
+      if (request.method === 'initialize') return `${JSON.stringify({ id: 1, result: {} })}\n`;
+      if (request.method === 'account/rateLimits/read') {
+        return `not json\nnull\n${JSON.stringify({ id: 7 })}\n${JSON.stringify({ id: 2, ...result })}\n`;
+      }
+      return undefined;
+    };
+
+    it('should read the rate limits from codex app-server', async () => {
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+      const proc = fakeAppServer(respond({ result: rateLimits }));
+      spawn.mockReturnValueOnce(proc as never);
+
+      const quota = await adapter.getQuota();
+
+      expect(spawn.mock.calls[0]?.[0]).toBe('/usr/bin/codex');
+      expect(spawn.mock.calls[0]?.[1]).toEqual(['app-server']);
+      expect(proc.stdin.write.mock.calls.map(([line]) => JSON.parse(line).method)).toEqual([
+        'initialize',
+        'initialized',
+        'account/rateLimits/read',
+      ]);
+      expect(quota?.groups[0]?.buckets[0]).toMatchObject({ id: 'primary', remainingFraction: 0.75 });
+      expect(proc.kill).toHaveBeenCalled();
+    });
+
+    it('should prefer CODEX_PATH over the PATH lookup', async () => {
+      vi.stubEnv('CODEX_PATH', '/opt/codex');
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+      spawn.mockReturnValueOnce(fakeAppServer(respond({ result: rateLimits })) as never);
+
+      await adapter.getQuota();
+
+      expect(spawn.mock.calls[0]?.[0]).toBe('/opt/codex');
+      vi.unstubAllEnvs();
+    });
+
+    it('should return undefined when codex is not installed', async () => {
+      vi.stubEnv('CODEX_PATH', '');
+      const { adapter, spawn } = buildAdapter();
+
+      expect(await adapter.getQuota()).toBeUndefined();
+      expect(spawn).not.toHaveBeenCalled();
+      vi.unstubAllEnvs();
+    });
+
+    it('should return undefined when the server answers with an error', async () => {
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+      const proc = fakeAppServer(respond({ error: { message: 'no auth' } }));
+      spawn.mockReturnValueOnce(proc as never);
+
+      expect(await adapter.getQuota()).toBeUndefined();
+      expect(proc.kill).toHaveBeenCalled();
+    });
+
+    it('should return undefined when the server exits or fails to start', async () => {
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+      const exiting = fakeAppServer(() => undefined);
+      spawn.mockReturnValueOnce(exiting as never);
+      const pending = adapter.getQuota();
+      exiting.emit('exit');
+      expect(await pending).toBeUndefined();
+
+      const failing = fakeAppServer(() => undefined);
+      spawn.mockReturnValueOnce(failing as never);
+      const failed = adapter.getQuota();
+      failing.emit('error', new Error('ENOENT'));
+      expect(await failed).toBeUndefined();
+
+      spawn.mockImplementationOnce(() => {
+        throw 'x';
+      });
+      expect(await adapter.getQuota()).toBeUndefined();
+    });
+
+    it('should give up when the server does not answer in time', async () => {
+      vi.useFakeTimers();
+      const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+      const proc = fakeAppServer(() => undefined);
+      spawn.mockReturnValueOnce(proc as never);
+
+      const pending = adapter.getQuota();
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(await pending).toBeUndefined();
+      expect(proc.kill).toHaveBeenCalled();
+      vi.useRealTimers();
     });
   });
 });
