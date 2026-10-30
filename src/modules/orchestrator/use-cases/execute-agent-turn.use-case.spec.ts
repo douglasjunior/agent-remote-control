@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
-import type { AgentSettings } from '../models/agent-settings.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { QuestionPrompt } from '../models/user-question.model.js';
@@ -22,7 +22,7 @@ import { UserQuestionQueueService } from '../services/user-question-queue.servic
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
-import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
+import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
@@ -40,6 +40,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
+  listRoles = vi.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER']);
   hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER'].includes(role));
   getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
   getDelegationContract = vi.fn(
@@ -887,15 +888,15 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   describe('agent settings', () => {
-    const settings: AgentSettings = {
-      agentId: 'stub',
-      agentName: 'Stub Agent',
-      modelId: 'm-fast',
-      modelName: 'Fast Model',
-      effortId: 'high',
-      effortName: 'High',
-      updatedAt: '2026-01-01T00:00:00.000Z',
-    };
+    const settings = buildStubSettings({
+      CEO: buildStubProfile('stub', {
+        agentName: 'Stub Agent',
+        modelId: 'm-fast',
+        modelName: 'Fast Model',
+        effortId: 'high',
+        effortName: 'High',
+      }),
+    });
 
     it('should apply the global settings to the CEO and to delegates', async () => {
       settingsStore.settings = settings;
@@ -910,7 +911,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should omit the effort when the selected model has none', async () => {
-      settingsStore.settings = { ...settings, effortId: null, effortName: null };
+      settingsStore.settings = buildStubSettings({
+        CEO: { ...settings.profiles.CEO!, effortId: null, effortName: null },
+      });
       stubAgentPort.mockResponses = ['Hi.'];
 
       const result = await useCase.execute(turnRequest());
@@ -963,16 +966,15 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   describe('agent selection', () => {
-    const settingsOf = (overrides: Partial<AgentSettings> = {}): AgentSettings => ({
-      agentId: 'other',
-      agentName: 'Other Agent',
-      modelId: 'opus',
-      modelName: 'Opus',
-      effortId: null,
-      effortName: null,
-      updatedAt: '2026-01-01T00:00:00.000Z',
-      ...overrides,
-    });
+    const settingsOf = (overrides: Partial<AgentProfileSettings> = {}): AgentSettings =>
+      buildStubSettings({
+        CEO: buildStubProfile('other', {
+          agentName: 'Other Agent',
+          modelId: 'opus',
+          modelName: 'Opus',
+          ...overrides,
+        }),
+      });
     const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
 
     it('should run the CEO and create delegates with the agent of the settings', async () => {
@@ -1005,6 +1007,15 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(portFactory.createdAgentIds).toEqual(['fallback', 'fallback']);
       expect(result.agentInfo?.agentName).toBe('fallback');
+    });
+
+    it('should not evaluate the factory default agent when the role has a saved profile', async () => {
+      settingsStore.settings = settingsOf({ agentId: 'stub' });
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(portFactory.defaultAgentIdReads).toBe(0);
     });
 
     it('should apply the role default model when the settings carry only the agent', async () => {
@@ -1155,6 +1166,152 @@ describe('ExecuteAgentTurnUseCase', () => {
         { role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null },
         { role: 'CEO', agentId: 'other', sessionId: 'session-1', projectName: null },
       ]);
+    });
+  });
+
+  describe('per-role profiles', () => {
+    const ceoProfile = buildStubProfile('stub', { modelId: 'opus', modelName: 'Opus' });
+    const developerProfile = (agentId: string, modelId = 'flash') =>
+      buildStubProfile(agentId, { modelId, modelName: modelId.toUpperCase(), effortId: 'low', effortName: 'Low' });
+    const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
+    let created: StubAgentPort[];
+    let responses: Map<string, string[]>;
+    const portsOf = (agentId: string) => created.filter(port => port.agentName === agentId);
+
+    beforeEach(() => {
+      created = [];
+      responses = new Map();
+      portFactory = new StubAgentPortFactory((agentId) => {
+        const port = new StubAgentPort();
+        port.agentName = agentId;
+        port.mockResponses = responses.get(agentId) ?? [];
+        created.push(port);
+        return port;
+      });
+      wire(portFactory);
+    });
+
+    it('should run the CEO and a delegate on the agents of their own profiles', async () => {
+      settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-a') });
+      responses.set('stub', ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.']);
+      responses.set('dev-a', ['Done.']);
+      const events: DelegationEvent[] = [];
+
+      const result = await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+
+      expect(portFactory.createdAgentIds).toEqual(['stub', 'dev-a']);
+      expect(portsOf('stub')[0].configCalls).toEqual([
+        { modelId: 'opus', effortId: undefined },
+        { modelId: 'opus', effortId: undefined },
+      ]);
+      expect(portsOf('dev-a')[0].configCalls).toEqual([{ modelId: 'flash', effortId: 'low' }]);
+      expect(result.agentInfo).toEqual({ roleName: 'CEO', agentName: 'stub', modelName: 'Opus', effortName: undefined });
+      expect(events.find(event => event.phase === 'finished')?.agentInfo).toEqual({
+        roleName: 'DEVELOPER',
+        agentName: 'dev-a',
+        modelName: 'FLASH',
+        effortName: 'Low',
+      });
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null },
+        { role: 'DEVELOPER', agentId: 'dev-a', sessionId: 'session-1', projectName: 'my-app' },
+      ]);
+    });
+
+    it('should resolve the delegate agent at delegation start and open a new session for a new agent', async () => {
+      settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-a') });
+      responses.set('stub', [
+        '<delegate role="DEVELOPER" project="my-app">Build it.</delegate>',
+        '<delegate role="DEVELOPER" project="my-app">Test it.</delegate>',
+        'Ok.',
+      ]);
+      responses.set('dev-a', ['Built.']);
+      responses.set('dev-b', ['Tested.']);
+      const switchDeveloperAgent = (event: DelegationEvent) => {
+        if (event.phase === 'finished') {
+          settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-b') });
+        }
+      };
+
+      await useCase.execute(turnRequest({ onDelegation: switchDeveloperAgent }));
+
+      expect(portFactory.createdAgentIds).toEqual(['stub', 'dev-a', 'dev-b']);
+      expect(portsOf('dev-b')[0].loadSessionCalls).toHaveLength(0);
+      expect(portsOf('dev-b')[0].createSessionCalls).toEqual(['/mock/workspace/my-app']);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null },
+        { role: 'DEVELOPER', agentId: 'dev-a', sessionId: 'session-1', projectName: 'my-app' },
+        { role: 'DEVELOPER', agentId: 'dev-b', sessionId: 'session-1', projectName: 'my-app' },
+      ]);
+    });
+
+    it('should keep the delegate session and reapply the config when only the model changes', async () => {
+      settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-a') });
+      responses.set('stub', [
+        '<delegate role="DEVELOPER" project="my-app">Build it.</delegate>',
+        '<delegate role="DEVELOPER" project="my-app">Test it.</delegate>',
+        'Ok.',
+      ]);
+      responses.set('dev-a', ['Built.', 'Tested.']);
+      const switchDeveloperModel = (event: DelegationEvent) => {
+        if (event.phase === 'finished') {
+          settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-a', 'pro') });
+        }
+      };
+
+      await useCase.execute(turnRequest({ onDelegation: switchDeveloperModel }));
+
+      const [first, second] = portsOf('dev-a');
+      expect(first.configCalls).toEqual([{ modelId: 'flash', effortId: 'low' }]);
+      expect(second.createSessionCalls).toHaveLength(0);
+      expect(second.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'session-1' }]);
+      expect(second.configCalls).toEqual([{ modelId: 'pro', effortId: 'low' }]);
+      expect(await storedAgentSessions()).toEqual([
+        { role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null },
+        { role: 'DEVELOPER', agentId: 'dev-a', sessionId: 'session-1', projectName: 'my-app' },
+      ]);
+    });
+
+    it('should run a role without a profile on the default agent with its default model', async () => {
+      portFactory.defaultAgentId = 'fallback';
+      settingsStore.settings = buildStubSettings({ DEVELOPER: developerProfile('dev-a') });
+      responses.set('fallback', ['<delegate role="CODE_REVIEWER" project="my-app">Review it.</delegate>', 'Reviewed.', 'Ok.']);
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(portFactory.createdAgentIds).toEqual(['fallback', 'fallback']);
+      expect(created[1].configCalls).toEqual([{ modelId: 'mock-model-v1' }]);
+      expect(result).toMatchObject({ status: 'completed', response: 'Ok.', agentInfo: { agentName: 'fallback' } });
+    });
+
+    it('should only steer an active delegation whose role moved to another agent', async () => {
+      const activePort = new StubAgentPort();
+      activePort.agentName = 'dev-a';
+      activePort.supportsSteering = true;
+      const cancel = vi.fn();
+      const steer = vi.fn().mockResolvedValue(true);
+      runtime.registerDelegation('conv-1', {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'my-app',
+        taskSpec: 'Original task',
+        cwd: '/mock/workspace/my-app',
+        startedAt: Date.now(),
+        agentPort: activePort,
+        turn: { cancel } as any,
+        steer,
+      });
+      settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-b') });
+      responses.set('stub', ['<delegate role="DEVELOPER" project="my-app">Change course.</delegate>', 'Ok.']);
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(steer).toHaveBeenCalledWith('Change course.');
+      expect(cancel).not.toHaveBeenCalled();
+      expect(activePort.closeSessionCalls).toBe(0);
+      expect(portFactory.createdAgentIds).toEqual(['stub']);
+      expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER', 'my-app')?.agentPort).toBe(activePort);
     });
   });
 
@@ -1399,15 +1556,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
-      settingsStore.settings = {
-        agentId: 'other',
-        agentName: 'Other',
-        modelId: null,
-        modelName: null,
-        effortId: null,
-        effortName: null,
-        updatedAt: '2026-01-01T00:00:00Z',
-      };
+      settingsStore.settings = buildStubSettings({ CEO: buildStubProfile('other', { agentName: 'Other' }) });
       const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
       await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
@@ -1860,6 +2009,23 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.promptCalls[1]).toBe(toCeo('<agent_result role="DEVELOPER" project="project-a" status="failed">\ntransport closed\n</agent_result>'));
+    });
+
+    it('should hand a missing delegate agent CLI to the CEO and still complete the turn', async () => {
+      const message = 'The cursor agent CLI was not found in PATH (spawn cursor ENOENT).';
+      const missing = delegatePort('');
+      missing.connect = async () => {
+        throw new Error(message);
+      };
+      delegatePorts = [missing];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>', 'Ok.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toBe(
+        toCeo(`<agent_result role="DEVELOPER" project="project-a" status="failed">\n${message}\n</agent_result>`),
+      );
     });
 
     it('should report the turn as cancelled when any parallel delegation was cancelled', async () => {

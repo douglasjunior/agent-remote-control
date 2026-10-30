@@ -36,6 +36,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue(undefined);
   getDisplayName = vi.fn((role: string) => role);
   hasRole = vi.fn().mockReturnValue(false);
+  listRoles = vi.fn().mockReturnValue([]);
   getDefaultSessionMode = vi.fn().mockReturnValue('resume');
   getDelegationContract = vi.fn().mockReturnValue({});
   getTurnReminder = vi.fn().mockReturnValue('');

@@ -34,6 +34,8 @@ function agentFactory(create: (agentId: string) => Partial<IAgentPort> | undefin
   return {
     defaultAgentId: 'agy',
     listAgents: () => AGENTS,
+    listAvailableAgents: () => AGENTS,
+    isAgentAvailable: () => true,
     create: agentId => create(agentId) as IAgentPort,
   };
 }
@@ -575,8 +577,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
-    expect(sent).toContain('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select']).toMatchObject({
+    expect(sent).toContain('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select'].profiles.CEO).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'two',
@@ -644,8 +646,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const sent: string[] = [];
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
-    expect(sent).toEqual(['✅ **Settings saved**: 🤖 Antigravity · 🧠 Model One · ⚡ default']);
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].modelId).toBe('one');
+    expect(sent).toEqual(['✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default']);
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].profiles.CEO.modelId).toBe('one');
 
     await app.close();
   });
@@ -701,8 +703,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
-    expect(sent.at(-1)).toBe('✅ **Settings saved**: 🤖 Antigravity · 🧠 Model One · ⚡ default');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].modelId).toBe('one');
+    expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default');
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].profiles.CEO.modelId).toBe('one');
 
     await app.close();
   });
@@ -758,9 +760,9 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
-    expect(sent.at(-1)).toBe('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model One · ⚡ default');
+    expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model One · ⚡ default');
     expect(createdAgentIds).toContain('claude');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent']).toMatchObject({
+    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent'].profiles.CEO).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'one',

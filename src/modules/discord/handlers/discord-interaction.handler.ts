@@ -78,6 +78,16 @@ export class DiscordInteractionHandler implements OnModuleInit {
           'ℹ️ No agents available to select.',
         ),
       });
+    } else if (interaction.commandName === 'profiles') {
+      await this.handleSelectionCommand(interaction, {
+        subject: 'profile',
+        notice: '🧵 Configure the profiles in the thread below.',
+        threadName: 'Profile configuration',
+        start: async conversationId => this.describeSelection(
+          await this.orchestratorService.startProfilesSelection(conversationId),
+          'ℹ️ No profiles available to configure.',
+        ),
+      });
     } else if (interaction.commandName === 'language') {
       await this.handleSelectionCommand(interaction, {
         subject: 'language',
@@ -119,9 +129,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
   ): Promise<void> {
     try {
       await interaction.deferReply({ ephemeral: true });
-      const conversationId = buildConversationId(resolveConversationKey(interaction.channelId, interaction.channel));
-      const report = await this.orchestratorService.getQuota(conversationId);
-      await this.respond(interaction, this.activityFormatter.formatQuota(report), true);
+      const reports = await this.orchestratorService.getQuota();
+      await this.respondInChunks(interaction, this.activityFormatter.formatQuota(reports));
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /usage command: ${errorMessage}`);
@@ -154,7 +163,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
   }
 
   private describeSelection(result: StartAgentConfigSelectionResult, unavailable: string): string {
-    return result.kind === 'selection' ? this.activityFormatter.formatSelection(result.selection) : unavailable;
+    return result.kind === 'selection' || result.kind === 'profiles_menu' ? this.activityFormatter.formatSelection(result.selection) : unavailable;
   }
 
   /** Outside a thread or DM the selection opens a new conversation, which has no questions of its own. */
@@ -232,6 +241,20 @@ export class DiscordInteractionHandler implements OnModuleInit {
       }
     } catch (error) {
       this.logger.warn(`interaction_reply_failed (/${interaction.commandName}): ${this.describeError(error)}`);
+    }
+  }
+
+  /** The first chunk answers the deferred reply and the rest follow as ephemeral messages. */
+  private async respondInChunks(interaction: ChatInputCommandInteraction, content: string): Promise<void> {
+    const [first = '', ...rest] = this.activityFormatter.splitMessage(content);
+    await this.respond(interaction, first, true);
+    for (const chunk of rest) {
+      try {
+        await interaction.followUp({ content: chunk, ephemeral: true });
+      } catch (error) {
+        this.logger.warn(`interaction_reply_failed (/${interaction.commandName}): ${this.describeError(error)}`);
+        return;
+      }
     }
   }
 

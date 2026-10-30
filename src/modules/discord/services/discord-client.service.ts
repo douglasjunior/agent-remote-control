@@ -82,6 +82,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           description: 'Switches the AI agent (Antigravity, Claude Code...)',
         },
         {
+          name: 'profiles',
+          description: 'Configure agent, model and effort for each profile',
+        },
+        {
           name: 'language',
           description: 'Changes the language agents use to talk to you',
         },

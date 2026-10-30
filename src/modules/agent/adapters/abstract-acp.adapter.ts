@@ -91,6 +91,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private stderrBuffer = '';
   private stderrListener: ((chunk: Buffer) => void) | null = null;
   private transportLostListener: ((reason: unknown) => void) | null = null;
+  private missingBinaryError: Error | null = null;
   private cachedConfigOptions: SessionConfigOption[] = [];
   private preferredConfig: AgentConfig;
   protected readonly logger = new Logger(this.constructor.name);
@@ -184,6 +185,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
 
     this.stderrBuffer = '';
+    this.missingBinaryError = null;
 
     try {
       const proc = this.spawnAgentProcess();
@@ -200,8 +202,12 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       };
       proc.stderr.on('data', this.stderrListener);
 
-      const transportLostListener = (reason: unknown) =>
+      const transportLostListener = (reason: unknown) => {
+        if (this.isMissingBinaryError(reason)) {
+          this.missingBinaryError = reason;
+        }
         this.handleTransportLost(reason);
+      };
       this.transportLostListener = transportLostListener;
       proc.once('exit', transportLostListener);
       proc.once('error', transportLostListener);
@@ -246,12 +252,26 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       );
       this.connection = connection;
     } catch (err) {
-      const error = this.buildTransportError(err, 'connect');
+      const error = this.missingBinaryError
+        ? this.buildMissingBinaryError(this.missingBinaryError)
+        : this.buildTransportError(err, 'connect');
       this.releaseTransport();
       throw error;
     }
 
     await this.discoverConfigOptions(this.connection);
+  }
+
+  private isMissingBinaryError(reason: unknown): reason is Error {
+    return reason instanceof Error && (reason as NodeJS.ErrnoException).code === 'ENOENT';
+  }
+
+  private buildMissingBinaryError(spawnError: Error): Error {
+    this.logger.error(`transport_error (connect): ${spawnError.message}`);
+    return new Error(
+      `The ${this.agentName} agent CLI was not found in PATH (${spawnError.message}).`,
+      { cause: spawnError },
+    );
   }
 
   private readSteeringSupport(initializeResponse: unknown): boolean {

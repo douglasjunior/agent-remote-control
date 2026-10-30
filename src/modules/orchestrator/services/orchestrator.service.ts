@@ -49,8 +49,8 @@ export class OrchestratorService {
     return this.cancelAgentTurnUseCase.execute(conversationId);
   }
 
-  getQuota(conversationId: string): Promise<AgentQuotaReport> {
-    return this.getAgentQuotaUseCase.execute(conversationId);
+  getQuota(): Promise<readonly AgentQuotaReport[]> {
+    return this.getAgentQuotaUseCase.execute();
   }
 
   resolveInput(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
@@ -63,6 +63,10 @@ export class OrchestratorService {
 
   startAgentSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
     return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'agent' });
+  }
+
+  startProfilesSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'profile' });
   }
 
   cancelConfigSelection(conversationId: string): Promise<boolean> {

@@ -11,7 +11,7 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
-import type { AgentSettings } from '../models/agent-settings.model.js';
+import type { AgentProfileSettings } from '../models/agent-settings.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
@@ -42,6 +42,7 @@ import {
 } from '../services/delegation-detector.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
+import { resolveProfile } from '../utils/agent-profile.util.js';
 import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
@@ -100,13 +101,13 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let ceoPort: IAgentPort | undefined;
-    let agentId = this.agentPortFactory.defaultAgentId;
+    let agentId: string | undefined;
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) =>
       this.buildResult({
         sessionId: session?.sessionId,
         ceoPort: currentCeoPort(),
-        agentId,
+        agentId: agentId ?? this.agentPortFactory.defaultAgentId,
         role: request.agentRole,
         status,
         response,
@@ -117,7 +118,7 @@ export class ExecuteAgentTurnUseCase {
       });
 
     try {
-      agentId = (await this.settingsStore.load(request.conversationId))?.agentId ?? agentId;
+      agentId = await this.resolveRoleAgentId(request.conversationId, request.agentRole);
       if (await this.steerRunningCeo(conversationKey, agentId, request)) {
         return await this.buildSteeredResult(conversationKey, request);
       }
@@ -199,7 +200,7 @@ export class ExecuteAgentTurnUseCase {
       if (decision.message) {
         request.onInterimMessage?.(decision.message);
       }
-      prompt = await this.delegateAll(session!, decision.delegations, request, round, conversationKey, agentId);
+      prompt = await this.delegateAll(session!, decision.delegations, request, round, conversationKey);
     }
   }
 
@@ -478,10 +479,9 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
-    agentId: string,
   ): Promise<string> {
     const outcomes = await Promise.allSettled(
-      delegations.map(delegation => this.delegate(session, delegation, request, round, conversationKey, agentId)),
+      delegations.map(delegation => this.delegate(session, delegation, request, round, conversationKey)),
     );
     const cancellation = outcomes.find(outcome => outcome.status === 'rejected' && this.isCancellation(outcome.reason));
     if (cancellation) {
@@ -569,7 +569,6 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
-    agentId: string,
   ): Promise<string> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
     if (existing) {
@@ -591,7 +590,9 @@ export class ExecuteAgentTurnUseCase {
       this.conversationRuntime.unregisterDelegation(conversationKey, existing);
     }
 
-    const delegatePort = this.agentPortFactory.create(agentId);
+    const delegatePort = this.agentPortFactory.create(
+      await this.resolveRoleAgentId(request.conversationId, delegateToRole),
+    );
     const event = {
       round,
       role: delegateToRole,
@@ -792,11 +793,11 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async applyAgentConfig(agentPort: IAgentPort, role: string, conversationId: string): Promise<void> {
-    const settings = await this.findAgentSettings(agentPort, conversationId);
-    if (settings?.modelId) {
+    const profile = await this.findAgentProfile(agentPort, role, conversationId);
+    if (profile?.modelId) {
       await agentPort.setConfig({
-        modelId: settings.modelId,
-        effortId: settings.effortId ?? undefined,
+        modelId: profile.modelId,
+        effortId: profile.effortId ?? undefined,
       });
       return;
     }
@@ -808,9 +809,23 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /** Settings saved for another agent carry model ids that this agent does not know. */
-  private async findAgentSettings(agentPort: IAgentPort, conversationId: string): Promise<AgentSettings | undefined> {
+  private async findAgentProfile(
+    agentPort: IAgentPort,
+    role: string,
+    conversationId: string,
+  ): Promise<AgentProfileSettings | undefined> {
+    const profile = await this.findProfile(conversationId, role);
+    return profile?.agentId === agentPort.agentName ? profile : undefined;
+  }
+
+  /** Read at every turn and delegation start, so a saved change applies to the next one without interrupting any. */
+  private async resolveRoleAgentId(conversationId: string, role: string): Promise<string> {
+    return (await this.findProfile(conversationId, role))?.agentId ?? this.agentPortFactory.defaultAgentId;
+  }
+
+  private async findProfile(conversationId: string, role: string): Promise<AgentProfileSettings | undefined> {
     const settings = await this.settingsStore.load(conversationId);
-    return settings?.agentId === agentPort.agentName ? settings : undefined;
+    return settings ? resolveProfile(settings, role) : undefined;
   }
 
   private async buildResult(input: {
@@ -840,12 +855,12 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async buildAgentInfo(agentPort: IAgentPort, role: string, conversationId: string): Promise<TurnAgentInfo> {
-    const settings = await this.findAgentSettings(agentPort, conversationId);
+    const profile = await this.findAgentProfile(agentPort, role, conversationId);
     return {
       roleName: this.agentRegistry.getDisplayName(role),
       agentName: agentPort.agentName,
-      modelName: settings?.modelName ?? this.currentModelName(agentPort),
-      effortName: settings?.effortName ?? undefined,
+      modelName: profile?.modelName ?? this.currentModelName(agentPort),
+      effortName: profile?.effortName ?? undefined,
     };
   }
 

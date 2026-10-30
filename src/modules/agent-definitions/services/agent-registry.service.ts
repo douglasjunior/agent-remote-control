@@ -39,6 +39,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole) !== undefined;
   }
 
+  listRoles(): string[] {
+    return this.getAllDefinitions().map(definition => definition.role);
+  }
+
   getDefaultSessionMode(agentRole: string): 'resume' | 'new' {
     return this.getDefinition(agentRole)?.defaultSessionMode ?? 'resume';
   }

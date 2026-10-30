@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
-import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { AgentConfigSelection, SelectedValue } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
-import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
 
 
 const FENCE_PATTERN = /^```\w*/;
@@ -145,11 +146,22 @@ export class DiscordActivityFormatter {
     return '⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".';
   }
 
-  formatQuota(report: AgentQuotaReport): string {
-    if (!report.quota) {
-      return `ℹ️ The ${report.agent.name} agent does not expose usage information.`;
+  formatQuota(reports: readonly AgentQuotaReport[]): string {
+    if (reports.length === 0) {
+      return 'ℹ️ No agent CLI was found in the PATH.';
     }
-    const lines = [`📊 **${report.agent.name} usage**`];
+    return reports.map(report => this.formatAgentQuota(report)).join('\n\n');
+  }
+
+  private formatAgentQuota(report: AgentQuotaReport): string {
+    const heading = `📊 **${report.agent.name} usage**`;
+    if (report.status === 'failed') {
+      return `${heading}\nℹ️ Usage could not be queried.`;
+    }
+    if (report.status === 'unsupported' || !report.quota) {
+      return `${heading}\nℹ️ This agent does not expose usage information.`;
+    }
+    const lines = [heading];
     for (const group of report.quota.groups) {
       lines.push('', `**${group.name}**`);
       for (const bucket of group.buckets) {
@@ -167,10 +179,34 @@ export class DiscordActivityFormatter {
   }
 
   formatConfigured(settings: AgentSettings): string {
-    return `✅ **Settings saved**: 🤖 ${settings.agentName} · 🧠 ${settings.modelName ?? DEFAULT_LABEL} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+    const profile = resolveProfile(settings, 'CEO') ?? Object.values(settings.profiles)[0];
+    if (!profile) {
+      return '✅ **Settings saved for all profiles**';
+    }
+    return `✅ **Settings saved for all profiles**: 🤖 ${profile.agentName} · 🧠 ${profile.modelName ?? DEFAULT_LABEL} · ⚡ ${profile.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  formatProfilesUpdated(
+    updatedRoles: readonly SelectedValue[],
+    profile: AgentProfileSettings,
+  ): string {
+    const roles = updatedRoles.map(role => role.name).join(', ');
+    return `✅ **Profiles updated** (${roles}): 🤖 ${profile.agentName} · 🧠 ${profile.modelName ?? DEFAULT_LABEL} · ⚡ ${profile.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  formatProfilesClosed(): string {
+    return '✅ **Profile configuration closed.**';
   }
 
   private formatSelectionHeader(selection: AgentConfigSelection): string {
+    if (selection.step === 'profile') {
+      return '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:';
+    }
+    const header = this.formatInnerSelectionHeader(selection);
+    return selection.targetRoles ? `${header}\nType 0 to go back to the profile list.` : header;
+  }
+
+  private formatInnerSelectionHeader(selection: AgentConfigSelection): string {
     if (selection.step === 'agent') {
       return '🤖 **Choose the agent** by replying with the option number:';
     }

@@ -4,7 +4,7 @@ description: >
   Channel-agnostic orchestration for AI agents: turns, CEO delegation with
   the <delegate>/<attachment>/<agent_result> tags, parallel delegation, direct questions from any agent
   to the user (<question>/<user_answers>, per-conversation question queue), persisted ACP session resumption by role and project (agentSessions,
-  and agent, DATA_DIR), per-conversation agent/model/effort selection, switching the CEO agent,
+  and agent, DATA_DIR), per-conversation per-profile (role) agent/model/effort selection, switching the CEO agent,
   footer with TurnResult.agentInfo, global user language preference (<user_language>,
   IPreferencesStorePort, language change requests), cancellation, per-conversation queue and ISessionStorePort. Use when implementing turns,
   delegation, cancellation, session and settings persistence, model selection
@@ -100,16 +100,24 @@ Immutable structure with the turn outcome:
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
-Agent, model and effort configuration of a conversation: `agentId`, `agentName` (catalog display
-name), `modelId`, `modelName`, `effortId`, `effortName` and `updatedAt`. `modelId === null`
-indicates an agent without published models; `effortId === null`, a model without effort levels.
+Configuration of a conversation: `profiles` (role → `AgentProfileSettings`) and `updatedAt`.
+`AgentProfileSettings` holds `agentId`, `agentName` (catalog display name), `modelId`, `modelName`,
+`effortId` and `effortName`. `modelId === null` indicates an agent without published models;
+`effortId === null`, a model without effort levels.
+
+`utils/agent-profile.util.ts` is the single access point to the profiles: `resolveProfile(settings, role)`
+returns the role's profile, falling back to the `CEO` profile; `withProfiles(settings, roles, profile)`
+returns settings with the profile applied to those roles and a renewed `updatedAt`;
+`profileForAllRoles(roles, profile)` builds the role → profile record.
 
 ### `AgentConfigSelection` (`agent-config-selection.model.ts`)
 
 State of the selection in progress in a conversation: `conversationId`, `step`
-(`'agent' | 'model' | 'effort'`), numbered `options` (`SelectionOption`: `index`, `id`, `label`,
+(`'profile' | 'agent' | 'model' | 'effort'`), numbered `options` (`SelectionOption`: `index`, `id`, `label`,
 `description?`), `selectedAgent?` (present in the `model` and `effort` steps), `selectedModel?`
-(present in the `effort` step) and `pendingPrompt?`. The outcomes of the selection use cases
+(present in the `effort` step), `pendingPrompt?` and `targetRoles?` (roles chosen at the `profile` step;
+`undefined` means every role). In the `profile` step each option is a role and its description is
+`<agent> - <model> - <effort>`. The outcomes of the selection use cases
 are in `agent-config-outcome.model.ts`.
 
 ## Orchestrator Ports
@@ -131,9 +139,9 @@ use the `InMemorySessionStoreFake` from `testing/`.
 
 `load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` and
 `save(conversationId: string, settings: AgentSettings): Promise<void>`. Each conversation
-has its own configuration: `/agent` and `/model` change only the conversation (`conversationId`) in which they run.
+has its own configuration: `/agent`, `/model` and `/profiles` change only the conversation (`conversationId`) in which they run.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
-Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map.
+Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
 
 ### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
 
@@ -152,7 +160,7 @@ language of the text agents write for the user. Implemented by `JsonPreferencesS
 passed to the constructor, `process.env.DATA_DIR` and `./data`. The JSON adapters load the file
 only once, keep the content in memory, treat a missing or invalid file as empty and
 serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
-Settings without `agentId` are treated as absent, which reopens the selection on the next message, and
+Settings without any profile with an `agentId` are treated as absent, which reopens the selection on the next message, and
 `agentSessions` entries without `agentId` are discarded on read.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
@@ -164,6 +172,7 @@ Contract for resolving behavioral instructions and model specifications:
 - `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`
 - `getDisplayName(agentRole: string): string`: name shown in the footer (the role itself when unknown)
 - `hasRole(agentRole: string): boolean`: validates the role of a delegation
+- `listRoles(): string[]`: every registered role, in registration order
 - `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`); empty contract for an unknown role
 - `getTurnReminder(agentRole: string): string`: reminder injected at the end of every turn prompt (always a string, empty when the role has none)
 - `isSystemPromptEveryTurn(agentRole: string): boolean`: role whose system prompt accompanies every user message (the CEO)
@@ -271,7 +280,7 @@ Injects `@Inject(IAgentPortFactory)`, `@Inject(ISessionStorePort)`, `@Inject(IAg
 Running the `execute(request: TurnRequest): Promise<TurnResult>` method follows this sequence:
 
 1. **Turn lifecycle**: calls `ConversationRuntimeService.beginTurn(conversationKey)`, ensuring tracking in the active turns counter until the `finally`.
-2. **Turn agent**: reads the conversation's `AgentSettings`; the turn's `agentId` is theirs or `IAgentPortFactory.defaultAgentId`. The CEO and all delegates of the turn use that agent.
+2. **Turn agent**: each role resolves its agent from the conversation's `AgentSettings` through `resolveProfile`, falling back to `IAgentPortFactory.defaultAgentId`, which is read only when no profile exists because it scans PATH. The CEO port uses the CEO profile; each delegate uses its own role's profile, read when the delegation starts. The settings are read at every turn and delegation start, so a saved change applies to the next one without interrupting work in progress.
    - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the saved `sessionId` and the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
 3. **CEO mutual exclusion**: runs the CEO round via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. The CEO port is released as soon as the CEO decides to delegate, allowing new user messages to be handled while specialists work in the background.
 4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. If there are delegations in progress (`getActiveDelegations`), it injects the `[ACTIVE_DELEGATIONS]` block into the CEO's initial prompt.
@@ -301,7 +310,7 @@ Each agent turn (CEO or delegate) internally runs:
    1. **With a session for the role on the port's agent (`agentId === agentPort.agentName`) in `agentSessions` and `sessionMode !== 'new'`**: rereads the `SessionContext` from the store and calls `loadSession(cwd, sessionId)`. On success, the system prompt is not resent, except for a role with `isSystemPromptEveryTurn`. The reread is necessary because the turn's object does not reflect the sessions written by the CEO and by previous rounds.
    2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
    3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
-4. Configuration: with `AgentSettings` for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. Settings for another agent are ignored because model IDs are not valid across agents. Applies to the CEO and to delegates.
+4. Configuration: with the role's profile for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. A profile for another agent is ignored because model IDs are not valid across agents. Applies to the CEO and to delegates. Since sessions are keyed by role, agent and project, changing a role's agent starts a new session for it, while changing only its model or effort keeps the session.
 5. Registration of `request.onActivity` via `onActivity(...)`, undone in `finally`. Activities from all agents flow to the same callback.
 6. `turn.throwIfCancelled()` and draining of `prompt(text)`, dispatching `agent_message_chunk` blocks to `request.onTextChunk`.
 7. Response from `lastAgentMessage` or from the accumulated blocks, logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
@@ -314,7 +323,7 @@ the `lastAgentMessage` of the CEO port used in the turn (empty when the turn fai
 
 **Turn metadata**: `agentInfo.roleName` comes from `getDisplayName(role)` and `agentName` from the
 CEO's `IAgentPort` (the turn's `agentId` when there is no port yet). `modelName` and `effortName`
-come from the `AgentSettings` of the same agent; without them, `modelName` is the `displayName` of
+come from the role's profile of the same agent; without them, `modelName` is the `displayName` of
 `getAvailableModels().currentModelId`.
 
 ### Questions to the User
@@ -406,13 +415,13 @@ loop, and the conversation returns to the default state.
 ## Agent, Model and Effort Selection
 
 The choice is per conversation and persisted. `AgentCapabilitiesService` builds the numbered options:
-`listAgentOptions()` from `IAgentPortFactory.listAgents()`, and `listModelOptions(agentId)` /
+`listAgentOptions()` from `IAgentPortFactory.listAvailableAgents()` (only agents whose CLI is in the `PATH`), `isAgentAvailable(agentId)` from the factory, and `listModelOptions(agentId)` /
 `listEffortOptions(agentId, modelId)` on a disposable port of the agent (`create(agentId)` →
 `connect()` → read → `disconnect()` in `finally`), isolated from the conversation's port. Without options,
-they return an empty list. `resolveAgent(settings)` returns the settings' agent or the factory default.
+they return an empty list. `resolveAgent(settings)` returns the CEO profile's agent or the factory default. `AgentProfileListService.open(conversationId)` saves and returns a `profile` step with one option per role from `IAgentRegistryPort.listRoles()`, described by the profile of the conversation's settings (or of `loadMostRecent()`). A row whose saved profile agent is not available gets `(not installed)` after the agent name; the saved settings are untouched and execution keeps using the saved agent, so its turns fail at `connect()` with the agent's CLI-not-found error.
 
-- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: with `step: 'agent'`, lists the agents and saves the `agent` step; with a single agent, skips straight to its `model` step; without agents, `{ kind: 'unavailable' }`. With `step: 'model'`, lists the models of the current agent (`resolveAgent`) and saves the `model` step with `selectedAgent`; without models, `unavailable`.
-- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: accepts only `^\d+$` between 1 and N; other input returns `invalid` without changing the state. In the `agent` step, advances to `model` with the chosen agent's models, or saves only the agent if it has no models. In the `model` step, advances to `effort` if the model has efforts, otherwise saves with `effortId: null`. In the `effort` step, saves. A `model`/`effort` step without `selectedAgent` throws an error. On saving, removes the selection and returns `{ kind: 'configured', settings, pendingPrompt? }`.
+- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: with `step: 'agent'`, lists the agents and saves the `agent` step; with a single agent, skips straight to its `model` step; without agents, `{ kind: 'unavailable' }`. With `step: 'profile'`, returns `{ kind: 'profiles_menu', selection }` from `AgentProfileListService.open` (`unavailable` without agents). With `step: 'model'`, lists the models of the current agent (`resolveAgent`) and saves the `model` step with `selectedAgent`; without models, `unavailable`.
+- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: accepts only `^\d+$` between 1 and N; other input returns `invalid` without changing the state. In the `profile` step, accepts one or more numbers separated by commas or spaces (duplicates ignored), stores them as `targetRoles` and moves to the `agent` step (or straight to `model` with a single agent); `0` removes the selection and returns `{ kind: 'profiles_closed' }`. In a step with `targetRoles`, `0` goes back to the profile list (`profiles_menu`). In the `agent` step, advances to `model` with the chosen agent's models, or saves only the agent if it has no models. In the `model` step, advances to `effort` if the model has efforts, otherwise saves with `effortId: null`. In the `effort` step, saves. A `model`/`effort` step without `selectedAgent` throws an error. On saving, `withProfiles` applies the profile to `targetRoles` (every role from `listRoles()` when undefined, as in `/agent` and `/model`) over the conversation's current or most recent settings. Without `targetRoles` it removes the selection and returns `{ kind: 'configured', settings, pendingPrompt? }`; with them it keeps the loop open and returns `{ kind: 'profiles_updated', selection, updatedRoles, profile }` carrying a refreshed profile list.
 - **`ResolveConversationInputUseCase`** `({ conversationId, prompt, attachments? })`: with a pending question in the queue, the message is the answer (`submit` with the text and the attachments) and the outcome becomes `{ kind: 'question', prompt }` (next question), `{ kind: 'invalid_answer', prompt }` or `{ kind: 'answered', asker, next? }`. Next, with a pending language change request, the message is the language: a valid name is stored, ends the request and returns `{ kind: 'language_set', language }`; anything else returns `{ kind: 'invalid_language' }` and keeps the request. Otherwise, an empty `prompt` means an attachment-only message and receives a prompt asking for their analysis. With an active selection, delegates to `Submit`; without settings for the conversation, tries to inherit from `loadMostRecent()` (saving immediately for the conversation with a renewed `updatedAt`); if there is no history, delegates to `Start` with `step: 'agent'` and `pendingPrompt` (`unavailable` becomes `execute`); with settings, `execute`. A `configured` with `pendingPrompt` becomes `{ kind: 'execute', prompt: pendingPrompt, configured }`.
 - **`CancelAgentConfigSelectionUseCase`**: removes the selection and returns whether there was one.
 
@@ -424,9 +433,9 @@ CEO port and the following delegates are born on the new agent.
 The orchestrator's interface for the channels:
 
 - `executeTurn(request)` and `cancelTurn(conversationId: string)`;
-- `getQuota(conversationId: string)`: `GetAgentQuotaUseCase` resolves the agent saved in the conversation (or the default) and returns `AgentQuotaReport` (`agent` and `quota`, `undefined` when the agent does not expose a quota), without opening a session;
+- `getQuota(): Promise<readonly AgentQuotaReport[]>`: `GetAgentQuotaUseCase` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: SelectedValue; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty;
 - `resolveInput({ conversationId, prompt, attachments? })`: decides between answering the pending question, driving the selection or running the prompt;
-- `startConfigSelection(conversationId: string)` (`model` step of the current agent), `startAgentSelection(conversationId: string)` (`agent` step) and `cancelConfigSelection(conversationId: string)`;
+- `startConfigSelection(conversationId: string)` (`model` step of the current agent), `startAgentSelection(conversationId: string)` (`agent` step), `startProfilesSelection(conversationId: string)` (`profile` step) and `cancelConfigSelection(conversationId: string)`;
 - `hasActiveConfigSelection(conversationId: string)` and `hasPendingQuestions(conversationId: string)`;
 - `requestLanguageChange(conversationId: string)` (resolves to the current language, `English` when none is stored), `hasPendingLanguageChange(conversationId: string)` and `cancelLanguageChange(conversationId: string)`.
 

@@ -73,11 +73,10 @@ describe('OrchestratorService', () => {
   });
 
   it('should delegate getQuota to GetAgentQuotaUseCase', async () => {
-    const report = { agent: { id: 'a', name: 'A' }, quota: undefined };
-    vi.mocked(mockGetQuotaUseCase.execute).mockResolvedValue(report);
+    const reports = [{ agent: { id: 'a', name: 'A' }, status: 'unsupported' as const }];
+    vi.mocked(mockGetQuotaUseCase.execute).mockResolvedValue(reports);
 
-    expect(await service.getQuota('conv-th-1')).toBe(report);
-    expect(mockGetQuotaUseCase.execute).toHaveBeenCalledWith('conv-th-1');
+    expect(await service.getQuota()).toBe(reports);
   });
 
   it('should delegate executeTurn to ExecuteAgentTurnUseCase', async () => {
@@ -139,6 +138,16 @@ describe('OrchestratorService', () => {
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
       conversationId: 'conv-th-1',
       step: 'agent',
+    });
+  });
+
+  it('should start the profiles selection at the profile step', async () => {
+    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+
+    await expect(service.startProfilesSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
+    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
+      conversationId: 'conv-th-1',
+      step: 'profile',
     });
   });
 

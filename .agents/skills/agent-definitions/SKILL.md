@@ -233,6 +233,7 @@ The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `
 - `isSystemPromptEveryTurn(agentRole: string)`: indicates whether the role receives the system prompt with every user message (`false` for an unknown role);
 - `getWorkspaceFiles(workspaceDir: string)`: aggregates the `buildWorkspaceFiles` of all definitions, each with its own team;
 - `hasRole(agentRole: string)`: indicates, case-insensitively, whether the role is registered;
+- `listRoles()`: returns the role of every registered definition, in registration order;
 - `getDefinition(roleOrId: string)`: retrieves the full `AgentDefinition` entity;
 - `getAllDefinitions()`: lists all registered definitions;
 - `registerDefinition(definition: AgentDefinition)`: allows dynamic inclusion or overriding at runtime. A registered agent appears in the "Your Team" section of the CEO's prompt.

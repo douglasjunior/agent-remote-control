@@ -9,6 +9,7 @@ const COMMANDS = [
   { name: 'model', description: 'Chooses the model and effort used by the agents' },
   { name: 'usage', description: 'Shows the current AI agent\'s usage limits' },
   { name: 'agent', description: 'Switches the AI agent (Antigravity, Claude Code...)' },
+  { name: 'profiles', description: 'Configure agent, model and effort for each profile' },
   { name: 'language', description: 'Changes the language agents use to talk to you' },
 ];
 

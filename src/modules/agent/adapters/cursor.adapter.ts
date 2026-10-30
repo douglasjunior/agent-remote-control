@@ -14,7 +14,7 @@ import {
 
 
 /** Older installations only ship `cursor-agent`; the generic `agent` comes last because it may belong to another tool. */
-const CURSOR_BINARIES = ['cursor-agent', 'agent'] as const;
+export const CURSOR_BINARIES = ['cursor-agent', 'agent'] as const;
 
 /**
  * Global flags, so they come before the `acp` subcommand. A remote session has no one to answer
