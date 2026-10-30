@@ -3,9 +3,10 @@ import type { ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 
-import type { AgentConfig } from '../ports/agent.port.js';
+import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
 import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
+import { parseCodexRateLimits } from '../utils/codex-usage.util.js';
 
 import {
   AbstractAcpAdapter,
@@ -28,6 +29,8 @@ const SESSION_PRESETS: readonly SessionConfigPreset[] = [{ category: 'mode', val
  */
 const SKILL_LISTING_TOKEN_BUDGET = 10_000;
 
+const QUOTA_TIMEOUT_MS = 10_000;
+
 @Injectable()
 export class CodexAdapter extends AbstractAcpAdapter {
   readonly agentName = 'codex';
@@ -39,6 +42,84 @@ export class CodexAdapter extends AbstractAcpAdapter {
     @Optional() preferredConfig?: AgentConfig,
   ) {
     super(preferredConfig ?? {});
+  }
+
+  /**
+   * Asks `codex app-server`, the JSON-RPC server behind the Codex TUI, for the account rate limits:
+   * `initialize`, the `initialized` notification and then `account/rateLimits/read`.
+   */
+  override async getQuota(): Promise<AgentQuota | undefined> {
+    let server: ChildProcess | undefined;
+    try {
+      const cwd = tmpdir();
+      const env = this.buildAgentEnv(cwd);
+      const codexPath = env.CODEX_PATH ?? this.fileSystem.resolveInPath('codex');
+      if (!codexPath) {
+        return undefined;
+      }
+      server = this.processRunner.spawn(codexPath, ['app-server'], {
+        cwd,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env,
+      });
+      return parseCodexRateLimits(await this.readRateLimits(server));
+    } catch (error) {
+      this.logger.debug(
+        `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return undefined;
+    } finally {
+      server?.kill();
+    }
+  }
+
+  private readRateLimits(server: ChildProcess): Promise<unknown> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('app-server timed out')),
+        QUOTA_TIMEOUT_MS,
+      );
+      const finish = (settle: () => void): void => {
+        clearTimeout(timer);
+        settle();
+      };
+      const send = (message: object): void => {
+        server.stdin?.write(`${JSON.stringify(message)}\n`);
+      };
+      let buffer = '';
+      server.once('error', error => finish(() => reject(error)));
+      server.once('exit', () => finish(() => reject(new Error('app-server exited'))));
+      server.stdout?.on('data', (chunk: Buffer | string) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop()!;
+        for (const line of lines) {
+          const message = this.parseRpcLine(line);
+          if (message?.id === 1) {
+            send({ method: 'initialized' });
+            send({ id: 2, method: 'account/rateLimits/read' });
+          } else if (message?.id === 2) {
+            finish(() => (message.error
+              ? reject(new Error(JSON.stringify(message.error)))
+              : resolve(message.result)));
+          }
+        }
+      });
+      send({
+        id: 1,
+        method: 'initialize',
+        params: { clientInfo: { name: 'agent-remote-control', version: '1.0.0' } },
+      });
+    });
+  }
+
+  private parseRpcLine(line: string): { id?: unknown; result?: unknown; error?: unknown } | undefined {
+    try {
+      const parsed: unknown = JSON.parse(line);
+      return parsed && typeof parsed === 'object' ? parsed : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   protected spawnAgentProcess(): ChildProcess {

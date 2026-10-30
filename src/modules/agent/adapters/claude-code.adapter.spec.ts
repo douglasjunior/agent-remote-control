@@ -25,7 +25,7 @@ function fileSystemStub(resolvedInPath: string | null = null): IFileSystemPort {
 
 function buildAdapter(fileSystem: IFileSystemPort = fileSystemStub()) {
   const { runner, spawn } = createProcessRunnerMock();
-  return { adapter: new ClaudeCodeAdapter(fileSystem, runner), spawn };
+  return { adapter: new ClaudeCodeAdapter(fileSystem, runner), spawn, runner };
 }
 
 function spawnCall(spawn: ReturnType<typeof createProcessRunnerMock>['spawn']) {
@@ -199,6 +199,40 @@ describe('ClaudeCodeAdapter', () => {
 
       expect(adapter.currentSessionId).toBe('session-1');
       expect(acpHarness.connectionInstance?.setSessionConfigOption).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getQuota', () => {
+    const output = 'Current session: 9% used · resets Oct 30, 11:29pm (UTC)\n';
+
+    it('should run claude /usage and return the parsed quota', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
+
+      const quota = await adapter.getQuota();
+
+      expect(runner.run).toHaveBeenCalledWith('claude', ['-p', '/usage']);
+      expect(quota?.groups[0]?.buckets[0]).toMatchObject({
+        id: 'current-session',
+        window: '5h',
+        remainingFraction: 0.91,
+      });
+    });
+
+    it('should return undefined on non-zero exit code', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output });
+
+      expect(await adapter.getQuota()).toBeUndefined();
+    });
+
+    it('should return undefined when the runner throws', async () => {
+      const { adapter, runner } = buildAdapter();
+      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      expect(await adapter.getQuota()).toBeUndefined();
+
+      vi.mocked(runner.run).mockRejectedValue('x');
+      expect(await adapter.getQuota()).toBeUndefined();
     });
   });
 });
