@@ -211,7 +211,8 @@ The agents authenticate with the files in their configuration directories, so mo
 
 The mounted files must be readable and writable by UID `1000` (the `node` user). `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
 
-**`docker run`**
+<details>
+<summary><b><code>docker run</code></b></summary>
 
 ```bash
 docker run -d --name agent-remote-control \
@@ -227,7 +228,13 @@ docker run -d --name agent-remote-control \
   douglasjunior/agent-remote-control:latest
 ```
 
-**`docker-compose.yml`**
+</details>
+
+<br />
+
+<details>
+
+<summary><b><code>docker-compose.yml</code></b></summary>
 
 ```yaml
 services:
@@ -260,6 +267,8 @@ volumes:
 ```
 
 Start it with `docker compose up -d`. The [full-autonomy warning](#-quick-start) applies: the agents run inside the container with the credentials you mount into it.
+
+</details>
 
 ## 🔧 Discord Setup
 
