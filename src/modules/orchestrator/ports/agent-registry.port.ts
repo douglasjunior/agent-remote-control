@@ -12,6 +12,7 @@ export interface IAgentRegistryPort {
   getDefaultModel(agentRole: string): string | undefined;
   getDisplayName(agentRole: string): string;
   hasRole(agentRole: string): boolean;
+  listRoles(): string[];
   getDefaultSessionMode(agentRole: string): 'resume' | 'new';
   getDelegationContract(agentRole: string): DelegationContract;
   getTurnReminder(agentRole: string): string;

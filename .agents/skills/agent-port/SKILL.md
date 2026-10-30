@@ -36,9 +36,13 @@ const agentPort = this.agentPortFactory.create('claude');
 
 The factory exposes:
 
-- `defaultAgentId: string`: agent used while no choice is saved (`'agy'`);
-- `listAgents(): readonly AgentProviderInfo[]`: catalog (`agentId`, `displayName`) in display order — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex) and `cursor` (Cursor);
-- `create(agentId: string): IAgentPort`: new agent instance; throws `Unknown agent "<id>". Available agents: ...` for an ID outside the catalog.
+- `defaultAgentId: string` (a getter): agent used while no choice is saved — `'agy'` when available, otherwise the first available agent, otherwise `'agy'`;
+- `listAgents(): readonly AgentProviderInfo[]`: full catalog (`agentId`, `displayName`) in display order — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex) and `cursor` (Cursor);
+- `listAvailableAgents(): readonly AgentProviderInfo[]`: the catalog entries whose CLI is visible in the `PATH`, in catalog order;
+- `isAgentAvailable(agentId: string): boolean`: whether that agent's CLI is visible in the `PATH`; `false` for an unknown ID;
+- `create(agentId: string): IAgentPort`: new agent instance, built regardless of the `PATH`; throws `Unknown agent "<id>". Available agents: ...` for an ID outside the catalog.
+
+**PATH visibility**: each catalog entry declares the binaries that identify it — `agy` → `agy`, `claude` → `claude`, `copilot` → `copilot`, `codex` → `codex`, `cursor` → `cursor-agent` or `agent` (`CURSOR_BINARIES`). Claude Code and Codex also need their CLI in the `PATH`, although they run through bundled npm bridges. An agent is available when any of its binaries is found by `IFileSystemPort.isInPath`. Availability is evaluated on every call and never cached, so installing an agent while the application runs makes it appear.
 
 The catalog `agentId` equals the `agentName` of the created port, and it is what the orchestrator
 uses to compare the live port with the chosen agent.
@@ -56,7 +60,7 @@ same ACP session and the same `cwd`.
 
 ### Methods
 
-- `connect(): Promise<void>`: initializes the transport, reads the capabilities (`agentCapabilities.loadSession` and `_meta.steering.supported`) and discovers the configuration options. It is idempotent. If the handshake fails, the subprocess is terminated and the state cleared, allowing a retry.
+- `connect(): Promise<void>`: initializes the transport, reads the capabilities (`agentCapabilities.loadSession` and `_meta.steering.supported`) and discovers the configuration options. It is idempotent. If the handshake fails, the subprocess is terminated and the state cleared, allowing a retry. When the subprocess cannot be spawned because its binary does not exist (`ENOENT`), the error is `The <agent> agent CLI was not found in PATH (<spawn error>).`
 - `createSession(cwd: string): Promise<void>`: creates a session (`session/new`) bound to the given directory.
 - `loadSession(cwd: string, sessionId: string): Promise<boolean>`: resumes an existing session via `session/load`. Returns `false`, without throwing, when the agent does not advertise `loadSession` or when the load fails; returns `true` with `currentSessionId` set.
 - `prompt(text: string): AsyncGenerator<AgentUpdate>`: sends a turn and delivers the consolidated final block.
@@ -211,7 +215,8 @@ mode, with no bridge or extra dependency:
 ## Prescriptive Rules
 
 - **Do not instantiate adapters directly in use cases**: obtain instances via `@Inject(IAgentPortFactory)` and `create(agentId)`.
-- **A new agent enters through the factory**: a new adapter extends `AbstractAcpAdapter`, uses `buildAgentEnv` when spawning and is registered in the `AcpAgentPortFactoryAdapter` catalog with an `agentId` equal to its `agentName`.
+- **A new agent enters through the factory**: a new adapter extends `AbstractAcpAdapter`, uses `buildAgentEnv` when spawning and is registered in the `AcpAgentPortFactoryAdapter` catalog with an `agentId` equal to its `agentName` and the `binaries` that identify it in the `PATH`.
+- **Offer only available agents**: consumers that present choices use `listAvailableAgents()`; `listAgents()` is the full catalog for resolving names.
 - **Do not couple the core to the ACP SDK**: use cases handle only the types from `agent.port.ts`.
 - **I/O isolation in concrete adapters**: file system and processes go through `IFileSystemPort` and `IProcessRunnerPort`.
 - **Mandatory resource cleanup**: ensure `closeSession()` or `disconnect()` in `finally` blocks or when disposing of orchestration resources.

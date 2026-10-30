@@ -38,16 +38,32 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     },
   };
 
-  quotaReport: AgentQuotaReport = {
-    agent: { id: 'agy', name: 'Antigravity' },
-    quota: undefined,
+  profilesSelectionResult: StartAgentConfigSelectionResult = {
+    kind: 'profiles_menu',
+    selection: {
+      conversationId: 'channel-123',
+      step: 'profile',
+      options: [{ index: 1, id: 'CEO', label: 'CEO', description: 'Claude Code - default - default' }],
+    },
   };
 
-  async getQuota(): Promise<AgentQuotaReport> {
+  startedProfilesSelections: string[] = [];
+
+  async startProfilesSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    if (this.throwError) {
+      throw new Error('profiles down');
+    }
+    this.startedProfilesSelections.push(conversationId);
+    return this.profilesSelectionResult;
+  }
+
+  quotaReports: AgentQuotaReport[] = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
+
+  async getQuota(): Promise<readonly AgentQuotaReport[]> {
     if (this.throwError) {
       throw new Error('quota down');
     }
-    return this.quotaReport;
+    return this.quotaReports;
   }
 
   startedSelections: string[] = [];
@@ -136,6 +152,19 @@ function buildInteraction({ inGuild = true, ...overrides }: InteractionOverrides
     ...overrides,
   };
   return interaction as unknown as ChatInputCommandInteraction;
+}
+
+function buildLongQuotaReports(): AgentQuotaReport[] {
+  return Array.from({ length: 12 }, (_, position) => ({
+    agent: { id: `agent-${position}`, name: `Agent ${position}` },
+    status: 'ok' as const,
+    quota: {
+      groups: Array.from({ length: 4 }, (_unused, group) => ({
+        name: `Group ${group}`,
+        buckets: [{ id: `b-${position}-${group}`, name: 'Weekly limit remaining', window: 'weekly', remainingFraction: 0.5 }],
+      })),
+    },
+  }));
 }
 
 describe('DiscordInteractionHandler', () => {
@@ -340,8 +369,36 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
       expect(interaction.editReply).toHaveBeenCalledWith({
-        content: 'ℹ️ The Antigravity agent does not expose usage information.',
+        content: '📊 **Antigravity usage**\nℹ️ This agent does not expose usage information.',
       });
+    });
+
+    it('should split a report over 2000 characters into an editReply and ephemeral follow-ups', async () => {
+      orchestratorService.quotaReports = buildLongQuotaReports();
+      const interaction = buildInteraction({ commandName: 'usage' });
+
+      await handler.handleInteraction(interaction);
+
+      const followUps = vi.mocked(interaction.followUp).mock.calls.map(([options]) => options as { content: string; ephemeral: boolean });
+      const contents = [
+        (vi.mocked(interaction.editReply).mock.calls[0]![0] as { content: string }).content,
+        ...followUps.map(options => options.content),
+      ];
+      expect(followUps.length).toBeGreaterThan(0);
+      expect(followUps.every(options => options.ephemeral)).toBe(true);
+      expect(contents.every(content => content.length <= 2000)).toBe(true);
+      expect(contents.join('\n')).toContain('📊 **Agent 11 usage**');
+    });
+
+    it('should log and stop sending chunks when a follow-up fails', async () => {
+      orchestratorService.quotaReports = buildLongQuotaReports();
+      const interaction = buildInteraction({
+        commandName: 'usage',
+        followUp: vi.fn().mockRejectedValue(new Error('Unknown webhook')),
+      });
+
+      await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
+      expect(interaction.followUp).toHaveBeenCalledTimes(1);
     });
 
     it('should report the failure when the quota lookup throws', async () => {
@@ -538,6 +595,80 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.editReply).toHaveBeenCalledWith({
         content: '❌ **Failed to open agent selection**: registry down',
+      });
+    });
+  });
+
+  describe('/profiles', () => {
+    const menuText = '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:\n**1.** CEO — Claude Code - default - default';
+
+    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+      commandName: 'profiles',
+      editReply: vi.fn().mockResolvedValue({ startThread }),
+    });
+
+    it('should open the profile list in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'profiles-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const startThread = vi.fn().mockResolvedValue(thread);
+      const interaction = guildChannelInteraction(startThread);
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Configure the profiles in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Profile configuration', autoArchiveDuration: 60 });
+      expect(orchestratorService.startedProfilesSelections).toEqual(['channel-123:profiles-thread']);
+      expect(thread.send).toHaveBeenCalledWith(menuText);
+    });
+
+    it('should explain inside the new thread when no profile is available', async () => {
+      orchestratorService.profilesSelectionResult = { kind: 'unavailable' };
+      const thread = { id: 'profiles-thread', send: vi.fn().mockResolvedValue(undefined) };
+
+      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+
+      expect(thread.send).toHaveBeenCalledWith('ℹ️ No profiles available to configure.');
+    });
+
+    it('should publish the profile list in the current thread', async () => {
+      const interaction = buildInteraction({
+        commandName: 'profiles',
+        channelId: 'thread-1',
+        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedProfilesSelections).toEqual(['channel-123:thread-1']);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: menuText });
+    });
+
+    it('should publish the profile list in a direct message', async () => {
+      const interaction = buildInteraction({ commandName: 'profiles', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedProfilesSelections).toEqual(['dm-1']);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: menuText });
+    });
+
+    it('should refuse while questions wait for an answer', async () => {
+      orchestratorService.pendingQuestions = true;
+      const interaction = buildInteraction({ commandName: 'profiles', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(orchestratorService.startedProfilesSelections).toEqual([]);
+      expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ ephemeral: true }));
+    });
+
+    it('should report failures starting the profile configuration', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildInteraction({ commandName: 'profiles', inGuild: false, channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Failed to open profile selection**: profiles down',
       });
     });
   });

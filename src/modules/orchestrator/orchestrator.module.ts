@@ -13,6 +13,7 @@ import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
 import { IPreferencesStorePort } from './ports/preferences-store.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
 import { AgentCapabilitiesService } from './services/agent-capabilities.service.js';
+import { AgentProfileListService } from './services/agent-profile-list.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
 import { LanguageChangeRequestService } from './services/language-change-request.service.js';
@@ -49,6 +50,7 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
       useClass: InMemoryAgentConfigSelectionStoreAdapter,
     },
     AgentCapabilitiesService,
+    AgentProfileListService,
     ConversationRuntimeService,
     DelegationDetectorService,
     LanguageChangeRequestService,
