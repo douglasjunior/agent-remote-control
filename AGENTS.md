@@ -42,9 +42,10 @@ agent-remote-control/
 │   ├── app.module.ts               # Application root module
 │   ├── app.service.ts              # Application root service
 │   └── main.ts                     # NestJS application bootstrap
-├── .github/workflows/              # CI/CD: publishes the Docker image to Docker Hub on every GitHub release
+├── .github/workflows/              # CI/CD: publishes the multi-platform Docker image to Docker Hub on every GitHub release
 ├── test/                           # e2e tests and global test utilities
-├── Dockerfile                      # Production image with the app and every agent CLI (Debian-based)
+├── Dockerfile                      # Production image (Debian-based) with the app and Codex
+├── docker-entrypoint.sh            # Provides the CLIs listed in ARC_AGENTS at container startup
 ├── .dockerignore                   # Files excluded from the Docker build context
 ├── vitest.config.ts                # Vitest configuration for unit tests
 ├── vitest.config.e2e.ts            # Vitest configuration for e2e tests
