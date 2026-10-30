@@ -4,6 +4,7 @@ import type {
   AgentConfigSelection,
   SelectionOption,
 } from '../models/agent-config-selection.model.js';
+import type { AgentProfileSettings } from '../models/agent-settings.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
@@ -13,6 +14,7 @@ import { AgentCapabilitiesService } from './agent-capabilities.service.js';
 
 
 const UNSET_VALUE_LABEL = 'default';
+const NOT_INSTALLED_SUFFIX = ' (not installed)';
 
 @Injectable()
 export class AgentProfileListService {
@@ -35,7 +37,7 @@ export class AgentProfileListService {
     const options = this.agentRegistry.listRoles().map((role, position): SelectionOption => {
       const profile = settings ? resolveProfile(settings, role) : undefined;
       const description = [
-        profile?.agentName ?? defaultAgentName,
+        profile ? this.describeAgent(profile) : defaultAgentName,
         profile?.modelName ?? UNSET_VALUE_LABEL,
         profile?.effortName ?? UNSET_VALUE_LABEL,
       ].join(' - ');
@@ -50,5 +52,11 @@ export class AgentProfileListService {
     const selection: AgentConfigSelection = { conversationId, step: 'profile', options };
     await this.selectionStore.save(selection);
     return selection;
+  }
+
+  private describeAgent(profile: AgentProfileSettings): string {
+    return this.capabilities.isAgentAvailable(profile.agentId)
+      ? profile.agentName
+      : `${profile.agentName}${NOT_INSTALLED_SUFFIX}`;
   }
 }

@@ -49,8 +49,8 @@ export class OrchestratorService {
     return this.cancelAgentTurnUseCase.execute(conversationId);
   }
 
-  getQuota(conversationId: string): Promise<AgentQuotaReport> {
-    return this.getAgentQuotaUseCase.execute(conversationId);
+  getQuota(): Promise<readonly AgentQuotaReport[]> {
+    return this.getAgentQuotaUseCase.execute();
   }
 
   resolveInput(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {

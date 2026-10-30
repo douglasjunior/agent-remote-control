@@ -70,7 +70,7 @@ Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-
 | **Cursor** | `cursor-agent` or `agent` | Native ACP mode (`cursor-agent acp`) | `cursor-agent login` |
 | **Google Antigravity** | `agy` | Built-in ACP ↔ `agy` bridge | Install and log in to the Antigravity CLI |
 
-You only need one of them. The bot lists every agent on the first message and you can switch at any time with `/agent`.
+You only need one of them. An agent is listed only when its command is on the `PATH` (including Claude Code and Codex, whose adapters ship with the dependencies). The bot lists the available agents on the first message and you can switch at any time with `/agent`; an agent installed while the bot runs shows up on the next listing.
 
 ## 👥 Meet the Team
 
@@ -163,7 +163,7 @@ sequenceDiagram
 - **Node.js** `>=24`
 - **Yarn**: the repository pins Yarn 4 in `.yarn/releases`, so any globally installed Yarn (or `corepack enable`) works.
 - **Git** installed and configured
-- At least one agent installed and authenticated:
+- At least one agent installed and authenticated, with its command on the `PATH` (an agent without it is not offered):
   - **Claude Code CLI** (`claude` on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
   - **OpenAI Codex CLI** (`codex` on the `PATH`, authenticated with `codex login`). The ACP adapter `@agentclientprotocol/codex-acp` ships with the dependencies; sessions run in full-access mode, with no approval requests and no sandbox;
   - **GitHub Copilot CLI** (`copilot` on the `PATH`, authenticated with `copilot login`). Sessions run with tool autonomy (`allow_all`) enabled;
@@ -246,10 +246,10 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
   - In any text channel the bot has access to, mention it: `@BotName Create a healthcheck route`.
   - The bot automatically opens an isolated **Thread** for that task, keeping the history organized and streaming progress with anti-rate-limit throttling.
 - **Choosing Agent, Model and Effort**:
-  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents (Antigravity, Claude Code, GitHub Copilot, OpenAI Codex and Cursor). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
+  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex and Cursor). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
   - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
-  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. Changes apply to the next turn or delegation without interrupting work in progress.
-  - Type `/usage` to see the usage limits of the current agent.
+  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
+  - Type `/usage` to see the usage limits of every available agent, one section per agent.
   - Every answer ends with a footer showing the role, agent, model and effort used, for example: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
 - **Messages During a Task**:
   - With Claude Code, a message sent while the agent is working joins the task in progress (steering) and is answered along with it. With Antigravity, which does not support steering, the message waits for the previous task to finish.

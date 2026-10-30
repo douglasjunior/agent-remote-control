@@ -129,9 +129,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
   ): Promise<void> {
     try {
       await interaction.deferReply({ ephemeral: true });
-      const conversationId = buildConversationId(resolveConversationKey(interaction.channelId, interaction.channel));
-      const report = await this.orchestratorService.getQuota(conversationId);
-      await this.respond(interaction, this.activityFormatter.formatQuota(report), true);
+      const reports = await this.orchestratorService.getQuota();
+      await this.respondInChunks(interaction, this.activityFormatter.formatQuota(reports));
     } catch (error) {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /usage command: ${errorMessage}`);
@@ -242,6 +241,20 @@ export class DiscordInteractionHandler implements OnModuleInit {
       }
     } catch (error) {
       this.logger.warn(`interaction_reply_failed (/${interaction.commandName}): ${this.describeError(error)}`);
+    }
+  }
+
+  /** The first chunk answers the deferred reply and the rest follow as ephemeral messages. */
+  private async respondInChunks(interaction: ChatInputCommandInteraction, content: string): Promise<void> {
+    const [first = '', ...rest] = this.activityFormatter.splitMessage(content);
+    await this.respond(interaction, first, true);
+    for (const chunk of rest) {
+      try {
+        await interaction.followUp({ content: chunk, ephemeral: true });
+      } catch (error) {
+        this.logger.warn(`interaction_reply_failed (/${interaction.commandName}): ${this.describeError(error)}`);
+        return;
+      }
     }
   }
 

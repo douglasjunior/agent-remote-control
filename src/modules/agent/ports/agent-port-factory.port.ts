@@ -9,6 +9,8 @@ export type AgentProviderInfo = {
 export interface IAgentPortFactory {
   readonly defaultAgentId: string;
   listAgents(): readonly AgentProviderInfo[];
+  listAvailableAgents(): readonly AgentProviderInfo[];
+  isAgentAvailable(agentId: string): boolean;
   create(agentId: string): IAgentPort;
 }
 

@@ -146,11 +146,22 @@ export class DiscordActivityFormatter {
     return '⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".';
   }
 
-  formatQuota(report: AgentQuotaReport): string {
-    if (!report.quota) {
-      return `ℹ️ The ${report.agent.name} agent does not expose usage information.`;
+  formatQuota(reports: readonly AgentQuotaReport[]): string {
+    if (reports.length === 0) {
+      return 'ℹ️ No agent CLI was found in the PATH.';
     }
-    const lines = [`📊 **${report.agent.name} usage**`];
+    return reports.map(report => this.formatAgentQuota(report)).join('\n\n');
+  }
+
+  private formatAgentQuota(report: AgentQuotaReport): string {
+    const heading = `📊 **${report.agent.name} usage**`;
+    if (report.status === 'failed') {
+      return `${heading}\nℹ️ Usage could not be queried.`;
+    }
+    if (report.status === 'unsupported' || !report.quota) {
+      return `${heading}\nℹ️ This agent does not expose usage information.`;
+    }
+    const lines = [heading];
     for (const group of report.quota.groups) {
       lines.push('', `**${group.name}**`);
       for (const bucket of group.buckets) {
