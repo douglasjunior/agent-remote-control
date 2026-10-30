@@ -101,13 +101,13 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let ceoPort: IAgentPort | undefined;
-    let agentId = this.agentPortFactory.defaultAgentId;
+    let agentId: string | undefined;
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) =>
       this.buildResult({
         sessionId: session?.sessionId,
         ceoPort: currentCeoPort(),
-        agentId,
+        agentId: agentId ?? this.agentPortFactory.defaultAgentId,
         role: request.agentRole,
         status,
         response,

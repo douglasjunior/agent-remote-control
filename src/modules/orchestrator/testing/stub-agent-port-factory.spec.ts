@@ -12,6 +12,15 @@ describe('StubAgentPortFactory', () => {
     expect(factory.listAgents()).toEqual([{ agentId: 'stub', displayName: 'Stub Agent' }]);
   });
 
+  it('should count the reads of the default agent', () => {
+    const factory = new StubAgentPortFactory();
+    factory.defaultAgentId = 'other';
+
+    expect(factory.defaultAgentIdReads).toBe(0);
+    expect(factory.defaultAgentId).toBe('other');
+    expect(factory.defaultAgentIdReads).toBe(1);
+  });
+
   it('should treat every listed agent as available by default', () => {
     const factory = new StubAgentPortFactory();
     factory.agents = [

@@ -36,7 +36,10 @@ export class GetAgentQuotaUseCase {
     const agent = { id: agentId, name: displayName };
     const port = this.agentPortFactory.create(agentId);
     try {
-      const quota = await this.withTimeout(port.getQuota());
+      const pending = port.getQuota();
+      // A query that loses the race may still reject after disconnect().
+      pending.catch(() => undefined);
+      const quota = await this.withTimeout(pending);
       return quota ? { agent, status: 'ok', quota } : { agent, status: 'unsupported' };
     } finally {
       await port.disconnect().catch(() => undefined);

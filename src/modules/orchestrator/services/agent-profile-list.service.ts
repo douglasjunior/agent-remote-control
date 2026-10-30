@@ -32,12 +32,12 @@ export class AgentProfileListService {
   async open(conversationId: string): Promise<AgentConfigSelection> {
     const settings = (await this.settingsStore.load(conversationId))
       ?? (await this.settingsStore.loadMostRecent());
-    const defaultAgentName = this.capabilities.resolveAgent(null).name;
+    let defaultAgentName: string | undefined;
 
     const options = this.agentRegistry.listRoles().map((role, position): SelectionOption => {
       const profile = settings ? resolveProfile(settings, role) : undefined;
       const description = [
-        profile ? this.describeAgent(profile) : defaultAgentName,
+        profile ? this.describeAgent(profile) : (defaultAgentName ??= this.capabilities.resolveAgent(null).name),
         profile?.modelName ?? UNSET_VALUE_LABEL,
         profile?.effortName ?? UNSET_VALUE_LABEL,
       ].join(' - ');
