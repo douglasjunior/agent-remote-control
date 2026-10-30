@@ -15,13 +15,11 @@ type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName'> & {
   readonly projectName?: string | null;
 };
 
-type StoredSession = Omit<SessionContext, 'agentSessions' | 'conversationId' | 'createdAt' | 'updatedAt'> & {
+type StoredSession = {
   readonly conversationId?: string;
   readonly channelId?: string;
   readonly threadId?: string;
   readonly agentSessions?: readonly StoredAgentSession[];
-  readonly createdAt: string;
-  readonly updatedAt: string;
 };
 
 @Injectable()
@@ -38,19 +36,17 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
   }
 
   async findSession(conversationId: string): Promise<SessionContext | null> {
-    const sessions = await this.load();
-    for (const session of sessions.values()) {
-      if (session.conversationId === conversationId) {
-        return session;
-      }
-    }
-    return null;
+    return (await this.load()).get(conversationId) ?? null;
   }
 
   async saveSession(session: SessionContext): Promise<void> {
     const sessions = await this.load();
-    sessions.set(session.sessionId, session);
-    const content = JSON.stringify(Array.from(sessions.values()), null, 2);
+    sessions.set(session.conversationId, session);
+    const content = JSON.stringify(
+      Object.fromEntries(Array.from(sessions, ([conversationId, { agentSessions }]) => [conversationId, { agentSessions }])),
+      null,
+      2,
+    );
     this.writeChain = this.writeChain
       .catch(() => undefined)
       .then(() => this.write(content));
@@ -65,16 +61,15 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
   private async read(): Promise<Map<string, SessionContext>> {
     const sessions = new Map<string, SessionContext>();
     try {
-      const items = JSON.parse(await readFile(this.filePath, 'utf-8')) as StoredSession[];
-      for (const item of items) {
-        const { channelId, threadId, ...rest } = item;
-        sessions.set(item.sessionId, {
-          ...rest,
-          conversationId: item.conversationId ?? (threadId ? `${channelId}:${threadId}` : channelId ?? ''),
+      const parsed = JSON.parse(await readFile(this.filePath, 'utf-8')) as StoredSession[] | Record<string, StoredSession>;
+      const entries: [string, StoredSession][] = Array.isArray(parsed)
+        ? parsed.map(item => [this.resolveLegacyConversationId(item), item])
+        : Object.entries(parsed);
+      for (const [conversationId, item] of entries) {
+        sessions.set(conversationId, {
+          conversationId,
           agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, ...agentSession }) =>
             typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null }] : []),
-          createdAt: new Date(item.createdAt),
-          updatedAt: new Date(item.updatedAt),
         });
       }
     } catch {
@@ -82,6 +77,10 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
       sessions.clear();
     }
     return sessions;
+  }
+
+  private resolveLegacyConversationId({ conversationId, channelId, threadId }: StoredSession): string {
+    return conversationId ?? (threadId ? `${channelId}:${threadId}` : channelId ?? '');
   }
 
   private async write(content: string): Promise<void> {

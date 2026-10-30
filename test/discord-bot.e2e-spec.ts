@@ -342,8 +342,6 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       'channel-e2e-111:thread-e2e-999',
     );
     expect(storedSession).not.toBeNull();
-    expect(storedSession?.userId).toBe('discord-user-777');
-    expect(storedSession?.agentRole).toBe('CEO');
     expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123', projectName: null }]);
     expect(readFileSync(join(dataDir, 'sessions.json'), 'utf-8')).toContain('e2e-session-123');
 

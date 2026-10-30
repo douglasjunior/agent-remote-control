@@ -1,13 +1,19 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 
 import { JsonAgentSettingsStoreAdapter } from './json-agent-settings-store.adapter.js';
 
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+});
 
 class ExtendedRegistry extends AgentRegistryService {
   override listRoles(): string[] {
@@ -70,6 +76,30 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     await expect(store.load('ch')).resolves.toBeNull();
     const reloaded = new JsonAgentSettingsStoreAdapter(registry, rootDir);
     await expect(reloaded.load('ch:thread-1')).resolves.toEqual(SETTINGS);
+  });
+
+  it('should leave the last saved settings on disk when saves overlap', async () => {
+    const store = new JsonAgentSettingsStoreAdapter(registry, rootDir);
+    const later: AgentSettings = { ...SETTINGS, updatedAt: '2026-01-02T00:00:00.000Z' };
+    const realWriteFile = vi.mocked(writeFile).getMockImplementation()!;
+    vi.mocked(writeFile).mockImplementationOnce(async (...args) => {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      return realWriteFile(...args);
+    });
+
+    await Promise.all([store.save('conv', SETTINGS), store.save('conv', later)]);
+
+    expect(JSON.parse(readFileSync(join(rootDir, 'agent-settings.json'), 'utf-8'))).toEqual({ conv: later });
+  });
+
+  it('should keep saving after a failed write', async () => {
+    const store = new JsonAgentSettingsStoreAdapter(registry, rootDir);
+    vi.mocked(writeFile).mockRejectedValueOnce(new Error('disk full'));
+
+    await expect(store.save('conv', SETTINGS)).rejects.toThrow('disk full');
+    await store.save('conv', SETTINGS);
+
+    expect(JSON.parse(readFileSync(join(rootDir, 'agent-settings.json'), 'utf-8'))).toEqual({ conv: SETTINGS });
   });
 
   it('should return null for loadMostRecent when store is empty', async () => {

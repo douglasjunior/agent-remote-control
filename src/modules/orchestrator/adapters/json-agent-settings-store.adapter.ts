@@ -22,6 +22,7 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
   private readonly dataDirectory: string;
   private readonly filePath: string;
   private settings: Promise<Map<string, AgentSettings>> | null = null;
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(
     @Inject(IAgentRegistryPort)
@@ -51,8 +52,16 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
     this.settings ??= this.read();
     const all = await this.settings;
     all.set(conversationId, settings);
+    const content = JSON.stringify(Object.fromEntries(all), null, 2);
+    this.writeChain = this.writeChain
+      .catch(() => undefined)
+      .then(() => this.write(content));
+    await this.writeChain;
+  }
+
+  private async write(content: string): Promise<void> {
     await mkdir(this.dataDirectory, { recursive: true });
-    await writeFile(this.filePath, JSON.stringify(Object.fromEntries(all), null, 2), 'utf-8');
+    await writeFile(this.filePath, content, 'utf-8');
   }
 
   private async read(): Promise<Map<string, AgentSettings>> {

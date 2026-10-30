@@ -89,7 +89,6 @@ describe('OrchestratorService', () => {
     };
 
     const expectedResult: TurnResult = {
-      sessionId: 'sess-1',
       response: 'Ok',
       status: 'completed',
     };

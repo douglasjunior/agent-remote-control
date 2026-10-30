@@ -358,7 +358,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       throttler.destroy();
       await Promise.all(Array.from(toolMessages.values()).map(p => p.catch(() => undefined)));
 
-      await this.sendTurnResult(targetChannel, result);
+      await this.sendTurnResult(targetChannel, conversationId, result);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -465,14 +465,14 @@ export class DiscordMessageHandler implements OnModuleInit {
     return { channelId: message.channelId, threadId: thread.id, target: thread };
   }
 
-  private async sendTurnResult(targetChannel: SendableChannel, result: TurnResult): Promise<void> {
+  private async sendTurnResult(targetChannel: SendableChannel, conversationId: string, result: TurnResult): Promise<void> {
     const footer = result.agentInfo
       ? this.activityFormatter.formatAgentFooter(result.agentInfo, result.usage)
       : '';
 
     if (result.status === 'completed') {
       this.logger.log(
-        `[Response Sent] Turn completed for session ${result.sessionId}. Length: ${result.response.length} chars`,
+        `[Response Sent] Turn completed for conversation ${conversationId}. Length: ${result.response.length} chars`,
       );
       await this.sendChunks(
         targetChannel,
@@ -484,21 +484,21 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
 
     if (result.status === 'steered') {
-      this.logger.log(`[Turn Steered] Prompt joined the running turn of session ${result.sessionId}`);
+      this.logger.log(`[Turn Steered] Prompt joined the running turn of conversation ${conversationId}`);
       await targetChannel.send(STEERED_NOTICE);
       return;
     }
 
     if (result.status === 'cancelled') {
       this.logger.warn(
-        `[Turn Cancelled] Active turn was cancelled for session ${result.sessionId}`,
+        `[Turn Cancelled] Active turn was cancelled for conversation ${conversationId}`,
       );
       await this.sendChunks(targetChannel, '⚠️ **Turn cancelled by the user.**', footer, result.attachments);
       return;
     }
 
     this.logger.error(
-      `[Turn Failed] Turn execution failed for session ${result.sessionId ?? 'none'}: ${result.errorMessage}`,
+      `[Turn Failed] Turn execution failed for conversation ${conversationId}: ${result.errorMessage}`,
     );
     await this.sendChunks(
       targetChannel,
