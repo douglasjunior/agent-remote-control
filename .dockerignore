@@ -1,0 +1,16 @@
+node_modules
+dist
+coverage
+.git
+.github
+.eslintcache
+*.tsbuildinfo
+.env*
+data
+workspaces
+.claude
+.vscode
+test
+**/*.spec.ts
+Dockerfile
+.dockerignore
