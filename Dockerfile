@@ -21,9 +21,10 @@ COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 RUN yarn workspaces focus --production
 
-# Final stage that runs the application. Claude Code and Codex come with the application
-# dependencies; Copilot, Cursor and Antigravity are installed at startup by the entrypoint
-# according to ARC_AGENTS. Cursor and Antigravity ship glibc binaries, hence a Debian base.
+# Final stage that runs the application. Codex comes with the application dependencies; Claude
+# Code (linked from the SDK binary), Copilot, Cursor and Antigravity are made available at startup
+# by the entrypoint according to ARC_AGENTS. Cursor and Antigravity ship glibc binaries, hence
+# a Debian base.
 FROM base AS runner
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates curl git gh openssh-client \
@@ -42,8 +43,7 @@ COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-RUN ln -s /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude /usr/local/bin/claude \
-  && chmod +x /usr/local/bin/docker-entrypoint.sh \
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
   && mkdir -p "$DATA_DIR" "$WORKSPACE_DIR" /home/node/.local/bin \
   && chown -R node:node "$DATA_DIR" "$WORKSPACE_DIR" /home/node
 
