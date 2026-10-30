@@ -34,7 +34,7 @@ AI coding agents are incredible, as long as you are sitting in front of the term
 
 - 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
 - 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
-- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, and every agent keeps its own session.
+- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, and every agent keeps its own session.
 - 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
 - 👀 **Watch it work, live.** Reasoning and tool calls stream into the Discord thread as they happen, with a typing indicator and rate-limit-safe updates.
 - 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
@@ -183,7 +183,7 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
 | `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`sessions.json` with the conversation → agent session binding, `agent-settings.json` with the chosen agent, model and effort, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
+| `DATA_DIR` | Directory for persisted data (`sessions.json` with the conversation → agent session binding, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
@@ -213,7 +213,7 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
 2. Enable **Developer Mode**.
 3. Close the settings.
 4. In Discord's left sidebar, **right-click** your server icon and select **Copy Server ID**.
-5. Paste the value into `DISCORD_GUILD_ID` in `.env`. *(With the variable set, the `/agent`, `/model`, `/usage`, `/cancel` and `/language` commands are registered only in this server, taking effect immediately; without it, registration is global.)*
+5. Paste the value into `DISCORD_GUILD_ID` in `.env`. *(With the variable set, the `/agent`, `/model`, `/profiles`, `/usage`, `/cancel` and `/language` commands are registered only in this server, taking effect immediately; without it, registration is global.)*
 
 ### Step 4: Invite the Bot to the Server
 1. In the Developer Portal, go to **OAuth2 > URL Generator**.
@@ -247,7 +247,8 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
   - The bot automatically opens an isolated **Thread** for that task, keeping the history organized and streaming progress with anti-rate-limit throttling.
 - **Choosing Agent, Model and Effort**:
   - On the first message, if there is no saved configuration yet, the bot lists the numbered agents (Antigravity, Claude Code, GitHub Copilot, OpenAI Codex and Cursor). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
-  - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. The configuration is global and applies to every conversation; each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
+  - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
+  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. Changes apply to the next turn or delegation without interrupting work in progress.
   - Type `/usage` to see the usage limits of the current agent.
   - Every answer ends with a footer showing the role, agent, model and effort used, for example: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
 - **Messages During a Task**:

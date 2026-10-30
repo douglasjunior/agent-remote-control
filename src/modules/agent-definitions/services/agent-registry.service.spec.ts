@@ -110,6 +110,13 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('listRoles', () => {
+    it('should list every registered role in definition order', () => {
+      expect(service.listRoles()).toEqual(service.getAllDefinitions().map(definition => definition.role));
+      expect(service.listRoles()).toContain('CEO');
+    });
+  });
+
   describe('getDefaultSessionMode', () => {
     it('should return resume for DEVELOPER role in case-insensitive manner', () => {
       expect(service.getDefaultSessionMode('developer')).toBe('resume');

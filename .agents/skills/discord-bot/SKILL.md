@@ -2,7 +2,7 @@
 name: discord-bot
 description: >
   Discord bot as the primary input adapter for AI agents. Governs the
-  /agent, /model, /usage, /language and /cancel commands, the numbered agent/model/effort selection, agent
+  /agent, /model, /profiles, /usage, /language and /cancel commands, the numbered agent/model/effort and per-profile selection, agent
   questions to the user one at a time, the agent
   footer on responses, slash command registration per guild or global, the client and intents,
   per-conversation threads, activity streaming, typing indicator with watchdog,
@@ -36,7 +36,7 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
   - `Partials.Channel` and `Partials.Message`: ensure events are received in DM channels not previously cached.
 - **Bot permissions (Permissions Integer)**:
   - The default set of text and channel permissions totals the integer `380104727616` in the Discord permissions calculator.
-- **Slash command registration**: In the `onApplicationBootstrap` hook, registers `/cancel`, `/model`, `/usage`, `/agent` and `/language`. With `DISCORD_GUILD_ID` set and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without the variable, or when the guild is not found, it registers only globally.
+- **Slash command registration**: In the `onApplicationBootstrap` hook, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles` and `/language`. With `DISCORD_GUILD_ID` set and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without the variable, or when the guild is not found, it registers only globally.
 - **Tolerance to a missing token**: If the `DISCORD_BOT_TOKEN` variable is not defined
   in the environment, the service must emit a warning via `Logger.warn` and not throw exceptions.
   The application must start normally in CI environments and unit tests.
@@ -66,8 +66,8 @@ To keep channels clean and concurrent conversations strictly isolated:
      if the bot is mentioned in the message body, if there are agent questions awaiting
      an answer in the thread (`hasPendingQuestions`), if a language change waits for the next message in it
      (`hasPendingLanguageChange`, opened by `/language`) or if there is a configuration selection open in it
-     (`hasActiveConfigSelection`, opened by `/agent` or `/model` in a thread not owned by the bot).
-   - Messages without a mention in a regular channel are always ignored. A `/agent` or `/model` selection
+     (`hasActiveConfigSelection`, awaited; opened by `/agent`, `/model` or `/profiles` in a thread not owned by the bot).
+   - Messages without a mention in a regular channel are always ignored. A `/agent`, `/model` or `/profiles` selection
      in a regular channel happens in a bot thread, so no loose channel conversation is treated
      as an answer.
 3. **Thread creation**: On receiving a mention in a regular channel, the handler creates a new
@@ -95,24 +95,29 @@ seconds:
 - `question`: sends `formatQuestion` with the next question and stops;
 - `invalid_answer`: sends `formatInvalidAnswer` (valid range followed by the question) and stops;
 - `answered`: sends `formatAnswersSent` and, when another agent is waiting, `formatQuestion` with its question, and stops;
-- `selection`: sends `formatSelection` (numbered list of agents, models or efforts) and stops;
+- `selection` and `profiles_menu`: sends `formatSelection` (numbered list of agents, models, efforts or profiles) and stops;
+- `profiles_updated`: sends `formatProfilesUpdated(updatedRoles, profile)` followed by the refreshed `formatSelection` and stops;
+- `profiles_closed`: sends `formatProfilesClosed` and stops;
 - `invalid`: sends `formatInvalidSelection` (valid range followed by the list) and stops;
 - `configured`: sends `formatConfigured` and stops;
 - `execute`: if it carries `configured`, sends the confirmation and runs the resolved `prompt` (the pending prompt of the first message).
 
 The selection starts on its own with the first message while there is no saved configuration, and is
-reopened with `/agent` (starting from the agent) or `/model` (model and effort of the current agent). The
+reopened with `/agent` (starting from the agent), `/model` (model and effort of the current agent) or `/profiles` (profile list). `/agent` and `/model` overwrite every profile. The
 state is per conversation (channel + thread).
 
 The `formatSelection` header depends on the step (`AgentConfigSelection.step`):
 
+- `profile`: `👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:`;
 - `agent`: `🤖 **Choose the agent** by replying with the option number:`;
 - `model`: `🧠 **Choose the <selectedAgent.name> model** by replying with the option number:`,
   or `🧠 **Choose the agent model** ...` without `selectedAgent`;
 - `effort`: `⚡ **Choose the effort for <selectedModel.name>** by replying with the option number:`.
 
-`formatConfigured(settings)` confirms with `✅ **Settings saved**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
-with `default` when the model or the effort is null.
+The agent, model and effort steps of a selection with `targetRoles` add `Type 0 to go back to the profile list.` to the header.
+
+`formatConfigured(settings)` confirms the CEO profile with `✅ **Settings saved**: 🤖 <agentName> · 🧠 <modelName> · ⚡ <effortName>`,
+with `default` when the model or the effort is null. `formatProfilesUpdated` confirms `✅ **Profiles updated** (<roles>): 🤖 ... · 🧠 ... · ⚡ ...` and `formatProfilesClosed` replies `✅ **Profile configuration closed.**`.
 
 ## Agent Questions to the User
 
@@ -232,12 +237,13 @@ anything inside fenced code blocks stay untouched.
 Slash commands are intercepted by `DiscordInteractionHandler`:
 
 - **/cancel**: locates the interaction's channel and thread, calls `cancelConfigSelection`, `cancelLanguageChange` and then `cancelTurn`, which also discards pending questions and unlocks the conversation. With a turn in progress or pending questions, replies `🛑 **Cancellation requested.** The active turn will be stopped.`; with only a closed selection (of agent, model, effort or language), `🛑 **Selection cancelled.**`; with neither, `ℹ️ There is no turn in progress to cancel.` The reply is ephemeral.
-- **/model**, **/agent** and **/language** in a conversation with pending questions (DM or thread) reply ephemerally `❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.` without opening the selection. In a guild channel the selection opens another conversation, in a new thread, and is not blocked.
+- **/model**, **/agent**, **/profiles** and **/language** in a conversation with pending questions (DM or thread) reply ephemerally `❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, profiles or language.` without opening the selection. In a guild channel the selection opens another conversation, in a new thread, and is not blocked.
 - **/model**: public `deferReply()`. The options are answered by message in the conversation, which is why the reply is public:
-  - In a guild channel: `editReply('🧵 Choose the model in the thread below.')`, a thread created from that notice (`startThread({ name: 'Model selection', autoArchiveDuration: 60 })`), `startConfigSelection(channelId, thread.id)` with the typing indicator in the thread (`DiscordTypingIndicator.during`) and `formatSelection` split inside the thread. The thread belongs to the bot, so answers come in without a mention and, after configuring, it continues as a normal conversation. If the thread cannot be created, replies `❌ **Failed to open model selection**: <error>`.
+  - In a guild channel: `editReply('🧵 Choose the model in the thread below.')`, a thread created from that notice (`startThread({ name: 'Model selection', autoArchiveDuration: 60 })`), `startConfigSelection(conversationId)` with the typing indicator in the thread (`DiscordTypingIndicator.during`) and `formatSelection` split inside the thread. The thread belongs to the bot, so answers come in without a mention and, after configuring, it continues as a normal conversation. If the thread cannot be created, replies `❌ **Failed to open model selection**: <error>`.
   - In a DM or thread: `startConfigSelection` with the current conversation key and `editReply(formatSelection)`; the deferred reply already shows "thinking..." during the query.
   - With `unavailable`, posts `ℹ️ The current agent does not expose any models to select.` in the same destination as the options.
 - **/usage**: replies ephemerally (`deferReply({ ephemeral: true })`) with `formatQuota(await orchestratorService.getQuota())`: `📊 **<agent> usage**` followed by each group and its buckets (`• <name>: <N>% · resets <t:unix:R>`). An agent without a quota posts `ℹ️ The <name> agent does not expose usage information.` and failure replies `❌ **Failed to fetch usage**: <error>`.
-- **/agent**: same flow as `/model`, with `startAgentSelection(channelId, threadId?)`, which opens the selection at the `agent` step; once the agent is chosen, model and effort follow through the same numbered reply. In a guild channel the notice is `🧵 Choose the agent in the thread below.` and the thread is named `Agent selection`. Failure replies `❌ **Failed to open agent selection**: <error>` and `unavailable` posts `ℹ️ No agents available to select.`
+- **/agent**: same flow as `/model`, with `startAgentSelection(conversationId)`, which opens the selection at the `agent` step; once the agent is chosen, model and effort follow through the same numbered reply. In a guild channel the notice is `🧵 Choose the agent in the thread below.` and the thread is named `Agent selection`. Failure replies `❌ **Failed to open agent selection**: <error>` and `unavailable` posts `ℹ️ No agents available to select.`
+- **/profiles**: same flow as `/model`, with `startProfilesSelection(conversationId)`, which opens the `profile` step listing each role with its `<agent> - <model> - <effort>`. The user replies with comma-separated numbers, then chooses agent, model and effort for those roles; the list reappears after each save and `0` exits (or goes back one level inside a role selection). In a guild channel the notice is `🧵 Configure the profiles in the thread below.` and the thread is named `Profile configuration`. `unavailable` posts `ℹ️ No profiles available to configure.`
 - **/language**: same flow as `/model`, with `requestLanguageChange(conversationId)`, which marks the conversation so its next message is the language and resolves to the current one. Publishes `🌐 **Current language**: <language>` with the instruction to reply with the language name. In a guild channel the notice is `🧵 Choose the language in the thread below.` and the thread is named `Language selection`. Failure replies `❌ **Failed to open language selection**: <error>`. The next message resolves to `language_set`, answered with `✅ **Language saved**: <language>`, or `invalid_language`, answered with `⚠️ Invalid language. ...` while the request stays open. The language applies to the text agents write for the user in every conversation; the bot's own messages are English.
 - **Guarded replies**: every reply goes through a single method that uses `editReply` when the interaction was deferred, `followUp` when already replied and `reply` otherwise, and only logs send failures. The `InteractionCreate` listener chains `.catch(...)` with logging, and `main.ts` registers `process.on('unhandledRejection')` as a safety net: an unhandled rejection would bring down the process.

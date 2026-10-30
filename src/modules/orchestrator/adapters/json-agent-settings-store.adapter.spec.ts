@@ -3,18 +3,23 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { AgentSettings } from '../models/agent-settings.model.js';
+import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
+import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 
 import { JsonAgentSettingsStoreAdapter } from './json-agent-settings-store.adapter.js';
 
 
-const SETTINGS: AgentSettings = {
+const CLAUDE: AgentProfileSettings = {
   agentId: 'claude',
   agentName: 'Claude Code',
   modelId: 'm1',
   modelName: 'Model 1',
   effortId: 'high',
   effortName: 'High',
+};
+
+const SETTINGS: AgentSettings = {
+  profiles: { CEO: CLAUDE, DEVELOPER: { ...CLAUDE, agentId: 'agy', agentName: 'Antigravity' } },
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
@@ -45,7 +50,7 @@ describe('JsonAgentSettingsStoreAdapter', () => {
 
   it('should keep settings isolated per conversation', async () => {
     const store = new JsonAgentSettingsStoreAdapter(rootDir);
-    const copilot = { ...SETTINGS, agentId: 'copilot', agentName: 'Copilot' };
+    const copilot: AgentSettings = { ...SETTINGS, profiles: { CEO: { ...CLAUDE, agentId: 'copilot' } } };
 
     await store.save('ch:thread-1', SETTINGS);
     await store.save('ch:thread-2', copilot);
@@ -66,8 +71,8 @@ describe('JsonAgentSettingsStoreAdapter', () => {
 
   it('should return the most recently updated settings', async () => {
     const store = new JsonAgentSettingsStoreAdapter(rootDir);
-    const older = { ...SETTINGS, agentId: 'agy', updatedAt: '2026-01-01T10:00:00.000Z' };
-    const newer = { ...SETTINGS, agentId: 'copilot', updatedAt: '2026-01-02T10:00:00.000Z' };
+    const older = { ...SETTINGS, updatedAt: '2026-01-01T10:00:00.000Z' };
+    const newer = { ...SETTINGS, profiles: { CEO: CLAUDE }, updatedAt: '2026-01-02T10:00:00.000Z' };
 
     await store.save('conv-1', older);
     await store.save('conv-2', newer);
@@ -75,21 +80,47 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     await expect(store.loadMostRecent()).resolves.toEqual(newer);
   });
 
-  it('should normalize missing optional fields', async () => {
-    writeFileSync(
-      join(rootDir, 'agent-settings.json'),
-      JSON.stringify({ conv: { agentId: 'claude' } }),
-    );
+  it('should migrate a legacy flat record to every role', async () => {
+    const legacy = { ...CLAUDE, updatedAt: '2026-01-01T00:00:00.000Z' };
+    writeFileSync(join(rootDir, 'agent-settings.json'), JSON.stringify({ conv: legacy }));
 
-    await expect(new JsonAgentSettingsStoreAdapter(rootDir).load('conv')).resolves.toEqual({
+    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+
+    expect(Object.keys(loaded?.profiles ?? {})).toEqual([...AGENT_ROLES]);
+    expect(Object.values(loaded?.profiles ?? {}).every(profile => profile.agentId === 'claude')).toBe(true);
+    expect(loaded?.profiles.CEO).toEqual(CLAUDE);
+    expect(loaded?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('should normalize missing optional fields of a legacy record', async () => {
+    writeFileSync(join(rootDir, 'agent-settings.json'), JSON.stringify({ conv: { agentId: 'claude' } }));
+
+    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+
+    expect(loaded?.updatedAt).toBe('');
+    expect(loaded?.profiles.GIT_OPS).toEqual({
       agentId: 'claude',
       agentName: 'claude',
       modelId: null,
       modelName: null,
       effortId: null,
       effortName: null,
-      updatedAt: '',
     });
+  });
+
+  it('should drop invalid profiles from the new format and keep the valid ones', async () => {
+    writeFileSync(
+      join(rootDir, 'agent-settings.json'),
+      JSON.stringify({
+        conv: { profiles: { CEO: { agentId: 'claude' }, DEVELOPER: { modelId: 'm1' }, GIT_OPS: null } },
+      }),
+    );
+
+    const loaded = await new JsonAgentSettingsStoreAdapter(rootDir).load('conv');
+
+    expect(Object.keys(loaded?.profiles ?? {})).toEqual(['CEO']);
+    expect(loaded?.profiles.CEO.agentName).toBe('claude');
+    expect(loaded?.updatedAt).toBe('');
   });
 
   it.each([
@@ -99,6 +130,8 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     ['missing agent', JSON.stringify({ conv: { modelId: 'm1' } })],
     ['non-string agent', JSON.stringify({ conv: { agentId: 42 } })],
     ['null entry', JSON.stringify({ conv: null })],
+    ['no valid profiles', JSON.stringify({ conv: { profiles: { CEO: { modelId: 'm1' } } } })],
+    ['empty profiles', JSON.stringify({ conv: { profiles: {} } })],
   ])('should return null for %s', async (_label, content) => {
     writeFileSync(join(rootDir, 'agent-settings.json'), content);
 

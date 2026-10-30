@@ -142,6 +142,16 @@ describe('OrchestratorService', () => {
     });
   });
 
+  it('should start the profiles selection at the profile step', async () => {
+    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+
+    await expect(service.startProfilesSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
+    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({
+      conversationId: 'conv-th-1',
+      step: 'profile',
+    });
+  });
+
   it('should report whether a configuration selection is active', async () => {
     await expect(service.hasActiveConfigSelection('conv-1')).resolves.toBe(false);
 

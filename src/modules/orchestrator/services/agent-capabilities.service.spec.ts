@@ -42,12 +42,16 @@ describe('AgentCapabilitiesService', () => {
 
   describe('resolveAgent', () => {
     const settings: AgentSettings = {
-      agentId: 'other',
-      agentName: 'Other Agent',
-      modelId: null,
-      modelName: null,
-      effortId: null,
-      effortName: null,
+      profiles: {
+        CEO: {
+          agentId: 'other',
+          agentName: 'Other Agent',
+          modelId: null,
+          modelName: null,
+          effortId: null,
+          effortName: null,
+        },
+      },
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
 

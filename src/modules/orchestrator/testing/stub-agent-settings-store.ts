@@ -1,6 +1,28 @@
-import type { AgentSettings } from '../models/agent-settings.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 
+
+export function buildStubSettings(
+  profiles: Record<string, AgentProfileSettings>,
+  updatedAt = '2026-01-01T00:00:00Z',
+): AgentSettings {
+  return { profiles, updatedAt };
+}
+
+export function buildStubProfile(
+  agentId: string,
+  overrides?: Partial<AgentProfileSettings>,
+): AgentProfileSettings {
+  return {
+    agentId,
+    agentName: agentId,
+    modelId: null,
+    modelName: null,
+    effortId: null,
+    effortName: null,
+    ...overrides,
+  };
+}
 
 export class StubAgentSettingsStore implements IAgentSettingsStorePort {
   /** Returned for every conversation that has no entry in `byConversation`. */

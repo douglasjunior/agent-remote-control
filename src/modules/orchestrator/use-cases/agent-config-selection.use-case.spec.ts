@@ -2,15 +2,20 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AgentProviderInfo } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.port.js';
+import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
+import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
-import type { AgentSettings } from '../models/agent-settings.model.js';
+import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
+import { AgentProfileListService } from '../services/agent-profile-list.service.js';
 import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
-import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
+import { buildStubProfile, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
+import { profileForAllRoles } from '../utils/agent-profile.util.js';
 
 import { CancelAgentConfigSelectionUseCase } from './cancel-agent-config-selection.use-case.js';
 import { ResolveConversationInputUseCase } from './resolve-conversation-input.use-case.js';
@@ -46,15 +51,28 @@ const TWO_AGENTS: AgentProviderInfo[] = [
   { agentId: 'other', displayName: 'Other Agent' },
 ];
 
-const settingsOf = (overrides: Partial<AgentSettings> = {}): AgentSettings => ({
-  agentId: 'stub',
-  agentName: 'Stub Agent',
-  modelId: 'fast',
-  modelName: 'Fast Model',
-  effortId: null,
-  effortName: null,
+const menuOf = (outcome: { readonly kind: string }): AgentConfigSelection => {
+  if (!('selection' in outcome) || !outcome.selection) {
+    throw new Error(`Expected an outcome carrying a selection, got ${outcome.kind}.`);
+  }
+  return outcome.selection as AgentConfigSelection;
+};
+
+const ROLE_IDS = new AgentRegistryService().listRoles();
+
+const everyRole = (profile: unknown) => Object.fromEntries(AGENT_ROLES.map(role => [role, profile]));
+
+const settingsOf = (overrides: Partial<AgentProfileSettings> = {}): AgentSettings => ({
+  profiles: profileForAllRoles(AGENT_ROLES, {
+    agentId: 'stub',
+    agentName: 'Stub Agent',
+    modelId: 'fast',
+    modelName: 'Fast Model',
+    effortId: null,
+    effortName: null,
+    ...overrides,
+  }),
   updatedAt: '',
-  ...overrides,
 });
 
 describe('agent configuration selection', () => {
@@ -83,8 +101,16 @@ describe('agent configuration selection', () => {
     });
     factory.agents = agents;
     const capabilities = new AgentCapabilitiesService(factory);
-    start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
-    submit = new SubmitAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore);
+    const registry = new AgentRegistryService();
+    const profileList = new AgentProfileListService(capabilities, selectionStore, settingsStore, registry);
+    start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore, profileList);
+    submit = new SubmitAgentConfigSelectionUseCase(
+      capabilities,
+      selectionStore,
+      settingsStore,
+      registry,
+      profileList,
+    );
     questionQueue = new UserQuestionQueueService();
     languageChangeRequests = new LanguageChangeRequestService();
     preferencesStore = new StubPreferencesStore();
@@ -232,6 +258,83 @@ describe('agent configuration selection', () => {
         await expect(selectionStore.find('conv-1')).resolves.toBeNull();
       });
     });
+
+    describe('profile step', () => {
+      const ROLE_LABELS = ROLE_IDS.map(role => new AgentRegistryService().getDisplayName(role));
+
+      it('should list every role with the agent, model and effort of its profile', async () => {
+        settingsStore.byConversation.set('conv-1', {
+          profiles: {
+            ...settingsOf({ modelId: 'fast', modelName: 'Fast Model' }).profiles,
+            DEVELOPER: {
+              agentId: 'other',
+              agentName: 'Other Agent',
+              modelId: 'opus',
+              modelName: 'Opus',
+              effortId: 'high',
+              effortName: 'High',
+            },
+          },
+          updatedAt: '',
+        });
+
+        const result = await start.execute({ conversationId: 'conv-1', step: 'profile' });
+
+        expect(result.kind).toBe('profiles_menu');
+        const selection = menuOf(result);
+        expect(selection).toMatchObject({ conversationId: 'conv-1', step: 'profile' });
+        expect(selection.targetRoles).toBeUndefined();
+        expect(selection.options.map(option => option.id)).toEqual(ROLE_IDS);
+        expect(selection.options.map(option => option.label)).toEqual(ROLE_LABELS);
+        expect(selection.options.map(option => option.index)).toEqual([1, 2, 3, 4, 5, 6]);
+        expect(selection.options.find(option => option.id === 'DEVELOPER')?.description)
+          .toBe('Other Agent - Opus - High');
+        expect(selection.options.find(option => option.id === 'CEO')?.description)
+          .toBe('Stub Agent - Fast Model - default');
+        await expect(selectionStore.find('conv-1')).resolves.toEqual(selection);
+      });
+
+      it('should show default for a null model and effort and use the CEO profile for roles without one', async () => {
+        settingsStore.byConversation.set('conv-1', {
+          profiles: { CEO: buildStubProfile('other', { agentName: 'Other Agent' }) },
+          updatedAt: '',
+        });
+
+        const result = await start.execute({ conversationId: 'conv-1', step: 'profile' });
+
+        const descriptions = menuOf(result).options.map(option => option.description);
+        expect(descriptions).toEqual(AGENT_ROLES.map(() => 'Other Agent - default - default'));
+      });
+
+      it('should fall back to the most recent settings of another conversation', async () => {
+        settingsStore.byConversation.set('older', settingsOf({ modelName: 'Old Model' }));
+        settingsStore.byConversation.set('recent', {
+          ...settingsOf({ modelName: 'Recent Model' }),
+          updatedAt: '2030-01-01T00:00:00Z',
+        });
+
+        const result = await start.execute({ conversationId: 'brand-new', step: 'profile' });
+
+        expect(menuOf(result).options[0]?.description)
+          .toBe('Stub Agent - Recent Model - default');
+      });
+
+      it('should describe every role with the factory default agent when nothing is configured', async () => {
+        const result = await start.execute({ conversationId: 'conv-1', step: 'profile' });
+
+        const descriptions = menuOf(result).options.map(option => option.description);
+        expect(descriptions).toEqual(AGENT_ROLES.map(() => 'Stub Agent - default - default'));
+      });
+
+      it('should be unavailable when no agent is listed', async () => {
+        build({}, {}, []);
+
+        await expect(start.execute({ conversationId: 'conv-1', step: 'profile' })).resolves.toEqual({
+          kind: 'unavailable',
+        });
+        await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+      });
+    });
   });
 
   describe('SubmitAgentConfigSelectionUseCase', () => {
@@ -271,17 +374,19 @@ describe('agent configuration selection', () => {
         expect(configured).toEqual({
           kind: 'configured',
           settings: {
-            agentId: 'stub',
-            agentName: 'Stub Agent',
-            modelId: 'deep',
-            modelName: 'Deep Model',
-            effortId: 'high',
-            effortName: 'High',
+            profiles: everyRole({
+              agentId: 'stub',
+              agentName: 'Stub Agent',
+              modelId: 'deep',
+              modelName: 'Deep Model',
+              effortId: 'high',
+              effortName: 'High',
+            }),
             updatedAt: expect.any(String),
           },
           pendingPrompt: undefined,
         });
-        expect(settingsStore.settings?.modelId).toBe('deep');
+        expect(settingsStore.settings?.profiles.CEO?.modelId).toBe('deep');
         await expect(selectionStore.find('conv-1')).resolves.toBeNull();
       });
 
@@ -290,7 +395,7 @@ describe('agent configuration selection', () => {
 
         expect(outcome).toMatchObject({
           kind: 'configured',
-          settings: { agentId: 'stub', modelId: 'fast', effortId: null, effortName: null },
+          settings: { profiles: everyRole(expect.objectContaining({ agentId: 'stub', modelId: 'fast', effortId: null, effortName: null })) },
         });
       });
 
@@ -300,7 +405,7 @@ describe('agent configuration selection', () => {
 
         await expect(submit.execute({ conversationId: 'conv-1', input: '2' })).resolves.toMatchObject({
           kind: 'configured',
-          settings: { modelId: 'deep', effortId: null },
+          settings: { profiles: everyRole(expect.objectContaining({ modelId: 'deep', effortId: null })) },
         });
       });
 
@@ -312,7 +417,9 @@ describe('agent configuration selection', () => {
         await submit.execute({ conversationId: 'conv-2', input: '1' });
 
         expect(factory.createdAgentIds).toEqual(['other']);
-        expect(settingsStore.saved.at(-1)).toMatchObject({ agentId: 'other', modelId: 'opus' });
+        expect(settingsStore.saved.at(-1)).toMatchObject({
+          profiles: everyRole(expect.objectContaining({ agentId: 'other', modelId: 'opus' })),
+        });
       });
 
       it.each(['model', 'effort'] as const)('should fail when the %s step has no agent', async (step) => {
@@ -369,10 +476,12 @@ describe('agent configuration selection', () => {
         expect(outcome).toMatchObject({
           kind: 'configured',
           settings: {
-            agentId: 'stub',
-            agentName: 'Stub Agent',
-            modelId: 'deep',
-            effortId: 'low',
+            profiles: everyRole(expect.objectContaining({
+              agentId: 'stub',
+              agentName: 'Stub Agent',
+              modelId: 'deep',
+              effortId: 'low',
+            })),
           },
           pendingPrompt: 'Build it',
         });
@@ -387,18 +496,197 @@ describe('agent configuration selection', () => {
         expect(outcome).toEqual({
           kind: 'configured',
           settings: {
-            agentId: 'other',
-            agentName: 'Other Agent',
-            modelId: null,
-            modelName: null,
-            effortId: null,
-            effortName: null,
+            profiles: everyRole({
+              agentId: 'other',
+              agentName: 'Other Agent',
+              modelId: null,
+              modelName: null,
+              effortId: null,
+              effortName: null,
+            }),
             updatedAt: expect.any(String),
           },
           pendingPrompt: 'Go',
         });
         await expect(selectionStore.find('ch-2')).resolves.toBeNull();
-        expect(settingsStore.settings?.agentId).toBe('other');
+        expect(settingsStore.settings?.profiles.CEO?.agentId).toBe('other');
+      });
+    });
+
+    describe('profile step', () => {
+      const openProfiles = async (agents: AgentProviderInfo[] = TWO_AGENTS) => {
+        build({ stub: MODELS, other: OTHER_MODELS }, { deep: DEEP_EFFORTS }, agents);
+        settingsStore.byConversation.set('conv-1', settingsOf());
+        await start.execute({ conversationId: 'conv-1', step: 'profile' });
+      };
+
+      it('should close the list and remove the selection when the input is 0', async () => {
+        await openProfiles();
+
+        await expect(submit.execute({ conversationId: 'conv-1', input: ' 0 ' })).resolves.toEqual({
+          kind: 'profiles_closed',
+        });
+        await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+        expect(settingsStore.saved).toHaveLength(0);
+      });
+
+      it.each(['abc', '7', '1,7', '1 x', '0,1', '', ' , ', '1.5'])(
+        'should reject %j keeping the same list',
+        async (input) => {
+          await openProfiles();
+          const before = await selectionStore.find('conv-1');
+
+          await expect(submit.execute({ conversationId: 'conv-1', input })).resolves.toEqual({
+            kind: 'invalid',
+            selection: before,
+          });
+          await expect(selectionStore.find('conv-1')).resolves.toEqual(before);
+        },
+      );
+
+      it.each(['1, 4', '1,4', '1 4', '4 1,4, 1', ' 1 ,  4 '])(
+        'should store the unique chosen roles and ask for the agent with %j',
+        async (input) => {
+          await openProfiles();
+
+          const outcome = await submit.execute({ conversationId: 'conv-1', input });
+
+          expect(outcome).toMatchObject({
+            kind: 'selection',
+            selection: {
+              step: 'agent',
+              targetRoles: expect.arrayContaining(['CEO', 'TECH_LEAD']),
+              options: [
+                { index: 1, id: 'stub', label: 'Stub Agent' },
+                { index: 2, id: 'other', label: 'Other Agent' },
+              ],
+            },
+          });
+          const stored = await selectionStore.find('conv-1');
+          expect(stored?.targetRoles).toHaveLength(2);
+        },
+      );
+
+      it('should skip to the model step when there is a single agent', async () => {
+        await openProfiles(SINGLE_AGENT);
+
+        const outcome = await submit.execute({ conversationId: 'conv-1', input: '2' });
+
+        expect(outcome).toMatchObject({
+          kind: 'selection',
+          selection: {
+            step: 'model',
+            targetRoles: ['GIT_OPS'],
+            selectedAgent: { id: 'stub', name: 'Stub Agent' },
+            options: [{ id: 'fast' }, { id: 'deep' }],
+          },
+        });
+      });
+
+      it('should save the agent alone and return to the list when the single agent exposes no models', async () => {
+        build({ stub: null }, {}, SINGLE_AGENT);
+        settingsStore.byConversation.set('conv-1', settingsOf());
+        await start.execute({ conversationId: 'conv-1', step: 'profile' });
+
+        const outcome = await submit.execute({ conversationId: 'conv-1', input: '5' });
+
+        expect(outcome).toMatchObject({
+          kind: 'profiles_updated',
+          profile: { agentId: 'stub', modelId: null, effortId: null },
+          updatedRoles: [{ id: 'DEVELOPER', name: 'Developer Agent' }],
+        });
+      });
+
+      it('should change only the selected roles and return to the refreshed list', async () => {
+        await openProfiles();
+        await submit.execute({ conversationId: 'conv-1', input: '1,5' });
+        await submit.execute({ conversationId: 'conv-1', input: '2' });
+
+        const outcome = await submit.execute({ conversationId: 'conv-1', input: '1' });
+
+        const opus = {
+          agentId: 'other',
+          agentName: 'Other Agent',
+          modelId: 'opus',
+          modelName: 'Opus',
+          effortId: null,
+          effortName: null,
+        };
+        expect(outcome).toEqual({
+          kind: 'profiles_updated',
+          selection: {
+            conversationId: 'conv-1',
+            step: 'profile',
+            options: expect.any(Array),
+          },
+          updatedRoles: [
+            { id: 'CEO', name: 'CEO' },
+            { id: 'DEVELOPER', name: 'Developer Agent' },
+          ],
+          profile: opus,
+        });
+        const saved = settingsStore.saved.at(-1)!;
+        expect(saved.profiles.CEO).toEqual(opus);
+        expect(saved.profiles.DEVELOPER).toEqual(opus);
+        expect(saved.profiles.GIT_OPS).toEqual(settingsOf().profiles.GIT_OPS);
+        expect(saved.profiles.TECH_LEAD).toEqual(settingsOf().profiles.TECH_LEAD);
+        const list = menuOf(outcome).options;
+        expect(list.find(option => option.id === 'DEVELOPER')?.description).toBe('Other Agent - Opus - default');
+        expect(list.find(option => option.id === 'GIT_OPS')?.description).toBe('Stub Agent - Fast Model - default');
+        const stored = await selectionStore.find('conv-1');
+        expect(stored).toEqual(outcome.kind === 'profiles_updated' ? outcome.selection : null);
+        expect(stored?.targetRoles).toBeUndefined();
+      });
+
+      it('should build the profiles from empty settings when none exist yet', async () => {
+        build({ stub: MODELS }, {}, SINGLE_AGENT);
+        await start.execute({ conversationId: 'conv-1', step: 'profile' });
+        await submit.execute({ conversationId: 'conv-1', input: '3' });
+
+        await submit.execute({ conversationId: 'conv-1', input: '2' });
+
+        expect(Object.keys(settingsStore.saved.at(-1)!.profiles)).toEqual(['PRODUCT_OWNER']);
+      });
+
+      it('should go back to the list from the agent, model and effort steps with 0 without saving', async () => {
+        await openProfiles();
+        await submit.execute({ conversationId: 'conv-1', input: '1' });
+
+        const fromAgent = await submit.execute({ conversationId: 'conv-1', input: '0' });
+        expect(fromAgent).toMatchObject({ kind: 'profiles_menu', selection: { step: 'profile' } });
+        expect((await selectionStore.find('conv-1'))?.targetRoles).toBeUndefined();
+
+        await submit.execute({ conversationId: 'conv-1', input: '1' });
+        await submit.execute({ conversationId: 'conv-1', input: '1' });
+        const fromModel = await submit.execute({ conversationId: 'conv-1', input: '0' });
+        expect(fromModel).toMatchObject({ kind: 'profiles_menu', selection: { step: 'profile' } });
+
+        await submit.execute({ conversationId: 'conv-1', input: '1' });
+        await submit.execute({ conversationId: 'conv-1', input: '1' });
+        await submit.execute({ conversationId: 'conv-1', input: '2' });
+        const fromEffort = await submit.execute({ conversationId: 'conv-1', input: '0' });
+        expect(fromEffort).toMatchObject({ kind: 'profiles_menu', selection: { step: 'profile' } });
+        expect(settingsStore.saved).toHaveLength(0);
+      });
+    });
+
+    describe('every role overwrite', () => {
+      it('should overwrite every profile and keep the pending prompt when targetRoles is undefined', async () => {
+        settingsStore.byConversation.set('conv-1', {
+          profiles: {
+            CEO: buildStubProfile('stub'),
+            DEVELOPER: buildStubProfile('other', { agentName: 'Other Agent' }),
+          },
+          updatedAt: '',
+        });
+        await start.execute({ conversationId: 'conv-1', step: 'model' });
+
+        const outcome = await submit.execute({ conversationId: 'conv-1', input: '1' });
+
+        expect(outcome).toMatchObject({ kind: 'configured' });
+        const { profiles } = settingsStore.saved.at(-1)!;
+        expect(Object.keys(profiles).sort()).toEqual([...ROLE_IDS].sort());
+        expect(new Set(Object.values(profiles).map(profile => profile.modelId))).toEqual(new Set(['fast']));
       });
     });
 
@@ -478,7 +766,7 @@ describe('agent configuration selection', () => {
     });
 
     it('should give a message with only attachments a prompt that asks to analyze them', async () => {
-      await settingsStore.save('conv-1', { agentId: 'stub', agentName: 'Stub', modelId: null, modelName: null, effortId: null, effortName: null, updatedAt: '' });
+      await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
       const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
@@ -521,7 +809,9 @@ describe('agent configuration selection', () => {
       expect(resolution).toEqual({
         kind: 'execute',
         prompt: 'Build it',
-        configured: expect.objectContaining({ agentId: 'stub', modelId: 'deep', effortId: 'low' }),
+        configured: expect.objectContaining({
+          profiles: everyRole(expect.objectContaining({ agentId: 'stub', modelId: 'deep', effortId: 'low' })),
+        }),
       });
     });
 
@@ -530,8 +820,18 @@ describe('agent configuration selection', () => {
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '1' })).resolves.toEqual({
         kind: 'configured',
-        settings: expect.objectContaining({ modelId: 'fast' }),
+        settings: expect.objectContaining({ profiles: everyRole(expect.objectContaining({ modelId: 'fast' })) }),
       });
+    });
+
+    it('should route a profile list answer through the selection and return the outcome', async () => {
+      settingsStore.settings = settingsOf();
+      await start.execute({ conversationId: 'conv-1', step: 'profile' });
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '0' })).resolves.toEqual({
+        kind: 'profiles_closed',
+      });
+      await expect(selectionStore.find('conv-1')).resolves.toBeNull();
     });
 
     it('should execute directly when settings already exist', async () => {
@@ -562,10 +862,12 @@ describe('agent configuration selection', () => {
       });
       const inherited = await settingsStore.load('new-conv');
       expect(inherited).toMatchObject({
-        agentId: 'other',
-        agentName: 'Other Agent',
-        modelId: 'opus',
-        modelName: 'Opus',
+        profiles: everyRole(expect.objectContaining({
+          agentId: 'other',
+          agentName: 'Other Agent',
+          modelId: 'opus',
+          modelName: 'Opus',
+        })),
       });
     });
 
