@@ -193,8 +193,8 @@ Every release is published to Docker Hub as [`douglasjunior/agent-remote-control
 
 **Agent CLIs**
 
-- **Claude Code** and **OpenAI Codex** are always available: they come with the application dependencies.
-- **GitHub Copilot**, **Cursor** and **Antigravity** are installed when the container starts, according to `ARC_AGENTS` (comma-separated: `copilot`, `cursor`, `antigravity`). The installers fetch the latest version of each CLI. An already installed CLI is kept; set `ARC_AGENTS_UPDATE=true` to install it again on startup.
+- **OpenAI Codex** is always available: it comes with the application dependencies.
+- **Claude Code**, **GitHub Copilot**, **Cursor** and **Antigravity** are made available when the container starts, according to `ARC_AGENTS` (comma-separated: `claude`, `copilot`, `cursor`, `antigravity`). Claude Code uses the binary bundled with the dependencies; the others are downloaded by their installers, which fetch the latest version. An already installed CLI is kept; set `ARC_AGENTS_UPDATE=true` to install it again on startup.
 - By default the installation is lost when the container is recreated. To install each CLI only once, mount a volume at `/home/node/.local` (optional; it also keeps the installed versions fixed until you update them).
 
 **Authentication**
@@ -218,7 +218,7 @@ docker run -d --name agent-remote-control \
   --restart unless-stopped \
   -e DISCORD_BOT_TOKEN=your-discord-bot-token-here \
   -e DISCORD_GUILD_ID=your-server-id \
-  -e ARC_AGENTS=copilot,cursor \
+  -e ARC_AGENTS=claude,copilot,cursor \
   -v arc-agents:/home/node/.local \
   -v arc-data:/app/data \
   -v arc-workspaces:/app/workspaces \
@@ -237,7 +237,7 @@ services:
     environment:
       DISCORD_BOT_TOKEN: your-discord-bot-token-here
       DISCORD_GUILD_ID: your-server-id
-      ARC_AGENTS: copilot,cursor,antigravity
+      ARC_AGENTS: claude,copilot,cursor,antigravity
     ports:
       - "3000:3000"
     volumes:

@@ -1,7 +1,7 @@
 #!/bin/sh
-# Installs the agent CLIs listed in ARC_AGENTS (comma-separated: copilot, cursor, antigravity)
-# into ~/.local, then starts the application. An already installed CLI is kept unless
-# ARC_AGENTS_UPDATE=true.
+# Makes the agent CLIs listed in ARC_AGENTS (comma-separated: claude, copilot, cursor,
+# antigravity) available in ~/.local, then starts the application. An already available CLI is
+# kept unless ARC_AGENTS_UPDATE=true.
 
 install_agent() {
   binary="$1"
@@ -17,6 +17,7 @@ install_agent() {
 
 for agent in $(echo "$ARC_AGENTS" | tr ',' ' '); do
   case "$agent" in
+    claude) install_agent claude sh -c 'ln -sf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude "$HOME/.local/bin/claude"' ;;
     copilot) install_agent copilot npm install --global @github/copilot ;;
     cursor) install_agent cursor-agent sh -c 'curl -fsSL https://cursor.com/install | bash' ;;
     antigravity) install_agent agy sh -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash' ;;
