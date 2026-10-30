@@ -245,8 +245,6 @@ services:
       DISCORD_BOT_TOKEN: your-discord-bot-token-here
       DISCORD_GUILD_ID: your-server-id
       ARC_AGENTS: claude,copilot,cursor,antigravity
-    ports:
-      - "3000:3000"
     volumes:
       # Optional: installs the ARC_AGENTS CLIs only once
       - arc-agents:/home/node/.local
