@@ -78,6 +78,16 @@ export class DiscordInteractionHandler implements OnModuleInit {
           'ℹ️ No agents available to select.',
         ),
       });
+    } else if (interaction.commandName === 'profiles') {
+      await this.handleSelectionCommand(interaction, {
+        subject: 'profile',
+        notice: '🧵 Configure the profiles in the thread below.',
+        threadName: 'Profile configuration',
+        start: async conversationId => this.describeSelection(
+          await this.orchestratorService.startProfilesSelection(conversationId),
+          'ℹ️ No profiles available to configure.',
+        ),
+      });
     } else if (interaction.commandName === 'language') {
       await this.handleSelectionCommand(interaction, {
         subject: 'language',
@@ -154,7 +164,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
   }
 
   private describeSelection(result: StartAgentConfigSelectionResult, unavailable: string): string {
-    return result.kind === 'selection' ? this.activityFormatter.formatSelection(result.selection) : unavailable;
+    return result.kind === 'selection' || result.kind === 'profiles_menu' ? this.activityFormatter.formatSelection(result.selection) : unavailable;
   }
 
   /** Outside a thread or DM the selection opens a new conversation, which has no questions of its own. */

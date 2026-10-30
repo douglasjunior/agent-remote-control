@@ -65,6 +65,10 @@ export class OrchestratorService {
     return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'agent' });
   }
 
+  startProfilesSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'profile' });
+  }
+
   cancelConfigSelection(conversationId: string): Promise<boolean> {
     return this.cancelAgentConfigSelectionUseCase.execute(conversationId);
   }

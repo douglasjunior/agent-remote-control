@@ -1730,12 +1730,16 @@ describe('DiscordMessageHandler', () => {
       options: [{ index: 1, id: 'm1', label: 'Model 1' }],
     };
     const settings = {
-      agentId: 'claude',
-      agentName: 'Claude Code',
-      modelId: 'm1',
-      modelName: 'Model 1',
-      effortId: null,
-      effortName: null,
+      profiles: {
+        CEO: {
+          agentId: 'claude',
+          agentName: 'Claude Code',
+          modelId: 'm1',
+          modelName: 'Model 1',
+          effortId: null,
+          effortName: null,
+        },
+      },
       updatedAt: '',
     };
 
@@ -1793,6 +1797,75 @@ describe('DiscordMessageHandler', () => {
 
       expect(send.mock.calls[0]![0]).toBe('✅ **Settings saved**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
       expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
+    });
+
+    const profilesSelection = {
+      conversationId: 'channel-1:thread-1',
+      step: 'profile' as const,
+      options: [{ index: 1, id: 'CEO', label: 'CEO', description: 'Claude Code - default - default' }],
+    };
+
+    it('should post the profile list on profiles_menu', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'profiles_menu', selection: profilesSelection };
+
+      await handler.handleMessage(threadMessage(send, '0'));
+
+      expect(send).toHaveBeenCalledWith(expect.stringContaining('**1.** CEO — Claude Code - default - default'));
+      expect(orchestratorService.lastRequest).toBeUndefined();
+    });
+
+    it('should confirm the update and show the refreshed list on profiles_updated', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = {
+        kind: 'profiles_updated',
+        selection: profilesSelection,
+        updatedRoles: [{ id: 'CEO', name: 'CEO' }],
+        profile: settings.profiles.CEO!,
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledWith(
+        '✅ **Profiles updated** (CEO): 🤖 Claude Code · 🧠 Model 1 · ⚡ default\n\n'
+        + '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:\n'
+        + '**1.** CEO — Claude Code - default - default',
+      );
+    });
+
+    it('should split a long profiles_updated message into several messages', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = {
+        kind: 'profiles_updated',
+        selection: {
+          ...profilesSelection,
+          options: Array.from({ length: 60 }, (_, i) => ({
+            index: i + 1,
+            id: `R${i}`,
+            label: `Role ${i}`,
+            description: 'x'.repeat(50),
+          })),
+        },
+        updatedRoles: [{ id: 'CEO', name: 'CEO' }],
+        profile: settings.profiles.CEO!,
+      };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send.mock.calls.length).toBeGreaterThan(1);
+      for (const [chunk] of send.mock.calls) {
+        expect((chunk as string).length).toBeLessThanOrEqual(2000);
+      }
+    });
+
+    it('should announce that the profile configuration closed on profiles_closed', async () => {
+      const send = vi.fn().mockResolvedValue(undefined);
+      orchestratorService.resolution = { kind: 'profiles_closed' };
+
+      await handler.handleMessage(threadMessage(send, '0'));
+
+      expect(send).toHaveBeenCalledWith('✅ **Profile configuration closed.**');
     });
 
     const unmanagedThreadMessage = (send: ReturnType<typeof vi.fn>) => ({

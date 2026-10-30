@@ -2,19 +2,22 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentSettings } from '../models/agent-settings.model.js';
 
-import { StubAgentSettingsStore } from './stub-agent-settings-store.js';
+import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from './stub-agent-settings-store.js';
 
 
 describe('StubAgentSettingsStore', () => {
-  const buildSettings = (overrides?: Partial<AgentSettings>): AgentSettings => ({
-    agentId: 'agy',
-    agentName: 'Antigravity',
-    modelId: 'pro',
-    modelName: 'Pro',
-    effortId: null,
-    effortName: null,
-    updatedAt: '2026-01-01T00:00:00Z',
-    ...overrides,
+  const buildSettings = (agentId: string, updatedAt = '2026-01-01T00:00:00Z'): AgentSettings =>
+    buildStubSettings({ CEO: buildStubProfile(agentId, { modelId: 'pro' }) }, updatedAt);
+
+  it('should build a profile with null model and effort by default', () => {
+    expect(buildStubProfile('agy')).toEqual({
+      agentId: 'agy',
+      agentName: 'agy',
+      modelId: null,
+      modelName: null,
+      effortId: null,
+      effortName: null,
+    });
   });
 
   it('should return null or default settings when conversation is not present', async () => {
@@ -22,7 +25,7 @@ describe('StubAgentSettingsStore', () => {
     expect(await store.load('conv-1')).toBeNull();
     expect(await store.loadMostRecent()).toBeNull();
 
-    const fallback = buildSettings({ agentId: 'fallback' });
+    const fallback = buildSettings('fallback');
     store.settings = fallback;
     expect(await store.load('conv-1')).toBe(fallback);
     expect(await store.loadMostRecent()).toBe(fallback);
@@ -30,7 +33,7 @@ describe('StubAgentSettingsStore', () => {
 
   it('should save and load settings by conversationId', async () => {
     const store = new StubAgentSettingsStore();
-    const settings = buildSettings({ agentId: 'agy' });
+    const settings = buildSettings('agy');
 
     await store.save('conv-1', settings);
 
@@ -40,9 +43,9 @@ describe('StubAgentSettingsStore', () => {
 
   it('should return the most recent settings among multiple conversations', async () => {
     const store = new StubAgentSettingsStore();
-    const older = buildSettings({ agentId: 'older', updatedAt: '2026-01-01T00:00:00Z' });
-    const newer = buildSettings({ agentId: 'newer', updatedAt: '2026-01-02T00:00:00Z' });
-    const intermediate = buildSettings({ agentId: 'mid', updatedAt: '2026-01-01T12:00:00Z' });
+    const older = buildSettings('older');
+    const newer = buildSettings('newer', '2026-01-02T00:00:00Z');
+    const intermediate = buildSettings('mid', '2026-01-01T12:00:00Z');
 
     await store.save('conv-1', older);
     await store.save('conv-2', newer);

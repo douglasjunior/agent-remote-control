@@ -7,6 +7,7 @@ import {
 import type { IAgentPort } from '../../agent/ports/agent.port.js';
 import type { SelectedValue, SelectionOption } from '../models/agent-config-selection.model.js';
 import type { AgentSettings } from '../models/agent-settings.model.js';
+import { resolveProfile } from '../utils/agent-profile.util.js';
 
 
 @Injectable()
@@ -17,8 +18,9 @@ export class AgentCapabilitiesService {
   ) {}
 
   resolveAgent(settings: AgentSettings | null): SelectedValue {
-    if (settings) {
-      return { id: settings.agentId, name: settings.agentName };
+    const profile = settings ? resolveProfile(settings, 'CEO') : undefined;
+    if (profile) {
+      return { id: profile.agentId, name: profile.agentName };
     }
     const agentId = this.agentPortFactory.defaultAgentId;
     const agent = this.agentPortFactory.listAgents().find(provider => provider.agentId === agentId);

@@ -161,6 +161,24 @@ export class DiscordMessageHandler implements OnModuleInit {
         await targetChannel.send(this.activityFormatter.formatInvalidLanguage());
         return;
       }
+      if (resolution.kind === 'profiles_menu') {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));
+        return;
+      }
+      if (resolution.kind === 'profiles_updated') {
+        await this.sendChunks(
+          targetChannel,
+          [
+            this.activityFormatter.formatProfilesUpdated(resolution.updatedRoles, resolution.profile),
+            this.activityFormatter.formatSelection(resolution.selection),
+          ].join('\n\n'),
+        );
+        return;
+      }
+      if (resolution.kind === 'profiles_closed') {
+        await targetChannel.send(this.activityFormatter.formatProfilesClosed());
+        return;
+      }
       if (resolution.configured) {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
       }
@@ -427,7 +445,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
     return this.orchestratorService.hasPendingQuestions(conversationId)
       || this.orchestratorService.hasPendingLanguageChange(conversationId)
-      || this.orchestratorService.hasActiveConfigSelection(conversationId);
+      || await this.orchestratorService.hasActiveConfigSelection(conversationId);
   }
 
   private async openConversation(message: Message): Promise<Conversation | null> {

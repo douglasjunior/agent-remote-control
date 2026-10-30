@@ -35,12 +35,16 @@ describe('GetAgentQuotaUseCase', () => {
     const factory = new StubAgentPortFactory();
     const store = new StubAgentSettingsStore();
     const settings: AgentSettings = {
-      agentId: 'agy',
-      agentName: 'Antigravity',
-      modelId: null,
-      modelName: null,
-      effortId: null,
-      effortName: null,
+      profiles: {
+        CEO: {
+          agentId: 'agy',
+          agentName: 'Antigravity',
+          modelId: null,
+          modelName: null,
+          effortId: null,
+          effortName: null,
+        },
+      },
       updatedAt: '2026-01-01T00:00:00Z',
     };
     await store.save('conv', settings);
@@ -63,12 +67,16 @@ describe('GetAgentQuotaUseCase', () => {
     const factory = new StubAgentPortFactory();
     const store = new StubAgentSettingsStore();
     const settings: AgentSettings = {
-      agentId: 'copilot',
-      agentName: 'Copilot',
-      modelId: null,
-      modelName: null,
-      effortId: null,
-      effortName: null,
+      profiles: {
+        CEO: {
+          agentId: 'copilot',
+          agentName: 'Copilot',
+          modelId: null,
+          modelName: null,
+          effortId: null,
+          effortName: null,
+        },
+      },
       updatedAt: '2026-01-01T00:00:00Z',
     };
     await store.save('prev-conv', settings);

@@ -1,11 +1,19 @@
-import type { AgentConfigSelection } from './agent-config-selection.model.js';
-import type { AgentSettings } from './agent-settings.model.js';
+import type { AgentConfigSelection, SelectedValue } from './agent-config-selection.model.js';
+import type { AgentProfileSettings, AgentSettings } from './agent-settings.model.js';
 import type { QuestionAsker, QuestionPrompt } from './user-question.model.js';
 
 
 export type AgentConfigSelectionOutcome =
   | { readonly kind: 'selection'; readonly selection: AgentConfigSelection }
   | { readonly kind: 'invalid'; readonly selection: AgentConfigSelection }
+  | { readonly kind: 'profiles_menu'; readonly selection: AgentConfigSelection }
+  | {
+    readonly kind: 'profiles_updated';
+    readonly selection: AgentConfigSelection;
+    readonly updatedRoles: readonly SelectedValue[];
+    readonly profile: AgentProfileSettings;
+  }
+  | { readonly kind: 'profiles_closed' }
   | {
     readonly kind: 'configured';
     readonly settings: AgentSettings;
@@ -14,6 +22,7 @@ export type AgentConfigSelectionOutcome =
 
 export type StartAgentConfigSelectionResult =
   | { readonly kind: 'selection'; readonly selection: AgentConfigSelection }
+  | { readonly kind: 'profiles_menu'; readonly selection: AgentConfigSelection }
   | { readonly kind: 'unavailable' };
 
 export type ConversationInputResolution =

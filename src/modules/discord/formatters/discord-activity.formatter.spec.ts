@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 
 import { DiscordActivityFormatter } from './discord-activity.formatter.js';
@@ -556,30 +557,89 @@ describe('DiscordActivityFormatter', () => {
       );
     });
 
-    it('should explain the valid range on an invalid answer', () => {
-      expect(formatter.formatInvalidSelection(selection)).toMatch(
-        /^⚠️ Invalid option\. Reply only with a number from 1 to 2\.\n\n🧠/,
+    it('should list the profiles with the exit instructions', () => {
+      expect(formatter.formatSelection({
+        conversationId: 'ch-1',
+        step: 'profile',
+        options: [
+          { index: 1, id: 'CEO', label: 'CEO', description: 'Claude Code - Opus - default' },
+          { index: 2, id: 'DEVELOPER', label: 'Developer' },
+        ],
+      })).toBe(
+        [
+          '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:',
+          '**1.** CEO — Claude Code - Opus - default',
+          '**2.** Developer',
+        ].join('\n'),
       );
     });
 
-    it('should confirm the saved settings', () => {
-      const settings = {
+    it('should mention that 0 goes back in the inner steps of the profiles flow', () => {
+      const text = formatter.formatSelection({ ...selection, targetRoles: ['CEO'] });
+
+      expect(text.split('\n').slice(0, 2)).toEqual([
+        '🧠 **Choose the agent model** by replying with the option number:',
+        'Type 0 to go back to the profile list.',
+      ]);
+    });
+
+    it('should name the updated profiles and the applied settings', () => {
+      const profile = {
         agentId: 'claude',
         agentName: 'Claude Code',
         modelId: 'deep',
         modelName: 'Deep Model',
         effortId: null,
         effortName: null,
+      };
+
+      expect(formatter.formatProfilesUpdated(
+        [{ id: 'CEO', name: 'CEO' }, { id: 'DEVELOPER', name: 'Developer' }],
+        profile,
+      )).toBe('✅ **Profiles updated** (CEO, Developer): 🤖 Claude Code · 🧠 Deep Model · ⚡ default');
+      expect(formatter.formatProfilesUpdated(
+        [{ id: 'CEO', name: 'CEO' }],
+        { ...profile, modelId: null, modelName: null, effortId: 'high', effortName: 'High' },
+      )).toBe('✅ **Profiles updated** (CEO): 🤖 Claude Code · 🧠 default · ⚡ High');
+    });
+
+    it('should confirm that the profile configuration was closed', () => {
+      expect(formatter.formatProfilesClosed()).toBe('✅ **Profile configuration closed.**');
+    });
+
+    it('should explain the valid range on an invalid answer', () => {
+      expect(formatter.formatInvalidSelection(selection)).toMatch(
+        /^⚠️ Invalid option\. Reply only with a number from 1 to 2\.\n\n🧠/,
+      );
+    });
+
+    const withCeo = (settings: AgentSettings, overrides: Partial<AgentProfileSettings>): AgentSettings => ({
+      ...settings,
+      profiles: { CEO: { ...settings.profiles.CEO!, ...overrides } },
+    });
+
+    it('should confirm the saved settings', () => {
+      const settings = {
+        profiles: {
+          CEO: {
+            agentId: 'claude',
+            agentName: 'Claude Code',
+            modelId: 'deep',
+            modelName: 'Deep Model',
+            effortId: null,
+            effortName: null,
+          },
+        },
         updatedAt: '',
       };
 
       expect(formatter.formatConfigured(settings)).toBe(
         '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ default',
       );
-      expect(formatter.formatConfigured({ ...settings, effortId: 'high', effortName: 'High' })).toBe(
+      expect(formatter.formatConfigured(withCeo(settings, { effortId: 'high', effortName: 'High' }))).toBe(
         '✅ **Settings saved**: 🤖 Claude Code · 🧠 Deep Model · ⚡ High',
       );
-      expect(formatter.formatConfigured({ ...settings, modelId: null, modelName: null })).toBe(
+      expect(formatter.formatConfigured(withCeo(settings, { modelId: null, modelName: null }))).toBe(
         '✅ **Settings saved**: 🤖 Claude Code · 🧠 default · ⚡ default',
       );
     });

@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
-import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
+import type { AgentConfigSelection, SelectedValue } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
-import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
 
 
 const FENCE_PATTERN = /^```\w*/;
@@ -167,10 +168,31 @@ export class DiscordActivityFormatter {
   }
 
   formatConfigured(settings: AgentSettings): string {
-    return `✅ **Settings saved**: 🤖 ${settings.agentName} · 🧠 ${settings.modelName ?? DEFAULT_LABEL} · ⚡ ${settings.effortName ?? DEFAULT_LABEL}`;
+    const profile = resolveProfile(settings, 'CEO');
+    return `✅ **Settings saved**: 🤖 ${profile?.agentName} · 🧠 ${profile?.modelName ?? DEFAULT_LABEL} · ⚡ ${profile?.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  formatProfilesUpdated(
+    updatedRoles: readonly SelectedValue[],
+    profile: AgentProfileSettings,
+  ): string {
+    const roles = updatedRoles.map(role => role.name).join(', ');
+    return `✅ **Profiles updated** (${roles}): 🤖 ${profile.agentName} · 🧠 ${profile.modelName ?? DEFAULT_LABEL} · ⚡ ${profile.effortName ?? DEFAULT_LABEL}`;
+  }
+
+  formatProfilesClosed(): string {
+    return '✅ **Profile configuration closed.**';
   }
 
   private formatSelectionHeader(selection: AgentConfigSelection): string {
+    if (selection.step === 'profile') {
+      return '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:';
+    }
+    const header = this.formatInnerSelectionHeader(selection);
+    return selection.targetRoles ? `${header}\nType 0 to go back to the profile list.` : header;
+  }
+
+  private formatInnerSelectionHeader(selection: AgentConfigSelection): string {
     if (selection.step === 'agent') {
       return '🤖 **Choose the agent** by replying with the option number:';
     }
