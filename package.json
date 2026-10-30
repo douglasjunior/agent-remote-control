@@ -9,6 +9,7 @@
   },
   "private": true,
   "license": "MIT",
+  "tags": ["llm", "ai", "claude-code", "copilot", "codex", "cursor", "antigravity"],
   "repository": {
     "type": "git",
     "url": "https://github.com/douglasjunior/agent-remote-control.git"
