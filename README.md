@@ -187,6 +187,66 @@ cp .env.example .env
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
+## 🐳 Docker
+
+Every release is published to Docker Hub as [`douglasjunior/agent-remote-control`](https://hub.docker.com/r/douglasjunior/agent-remote-control) (`linux/amd64` and `linux/arm64`) with the tags `X.Y.Z`, `X.Y`, `X` and `latest`. The image runs as the non-root `node` user and ships Git, the GitHub CLI and every agent CLI (Claude Code, Codex, Copilot, Cursor and Antigravity) on the `PATH`.
+
+The agents authenticate with the files in their configuration directories, so mount only the ones for the agents you use, after logging in on the host (or run `docker exec -it <container> <cli> login`):
+
+| Agent | Host path | Container path |
+|---|---|---|
+| Claude Code | `~/.claude` and `~/.claude.json` | `/home/node/.claude` and `/home/node/.claude.json` |
+| OpenAI Codex | `~/.codex` | `/home/node/.codex` |
+| GitHub Copilot | `~/.copilot` | `/home/node/.copilot` |
+| Cursor | `~/.cursor` | `/home/node/.cursor` |
+| Antigravity | `~/.gemini` | `/home/node/.gemini` |
+
+The mounted files must be readable and writable by UID `1000` (the `node` user). `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
+
+**`docker run`**
+
+```bash
+docker run -d --name agent-remote-control \
+  --restart unless-stopped \
+  -e DISCORD_BOT_TOKEN=your-discord-bot-token-here \
+  -e DISCORD_GUILD_ID=your-server-id \
+  -v arc-data:/app/data \
+  -v arc-workspaces:/app/workspaces \
+  -v ~/.claude:/home/node/.claude \
+  -v ~/.claude.json:/home/node/.claude.json \
+  douglasjunior/agent-remote-control:latest
+```
+
+**`docker-compose.yml`**
+
+```yaml
+services:
+  agent-remote-control:
+    image: douglasjunior/agent-remote-control:latest
+    restart: unless-stopped
+    environment:
+      DISCORD_BOT_TOKEN: your-discord-bot-token-here
+      DISCORD_GUILD_ID: your-server-id
+    ports:
+      - "3000:3000"
+    volumes:
+      - arc-data:/app/data
+      - arc-workspaces:/app/workspaces
+      # Keep only the agents you use
+      - ${HOME}/.claude:/home/node/.claude
+      - ${HOME}/.claude.json:/home/node/.claude.json
+      - ${HOME}/.codex:/home/node/.codex
+      - ${HOME}/.copilot:/home/node/.copilot
+      - ${HOME}/.cursor:/home/node/.cursor
+      - ${HOME}/.gemini:/home/node/.gemini
+
+volumes:
+  arc-data:
+  arc-workspaces:
+```
+
+Start it with `docker compose up -d`. The [full-autonomy warning](#-quick-start) applies: the agents run inside the container with the credentials you mount into it.
+
 ## 🔧 Discord Setup
 
 For the Discord bot to authenticate, listen to messages, reply in direct messages (DM) or create threads in servers:
