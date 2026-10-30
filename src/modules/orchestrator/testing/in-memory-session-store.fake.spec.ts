@@ -18,14 +18,9 @@ describe('InMemorySessionStoreFake', () => {
     expect(result).toBeNull();
   });
 
-  it('should save and find session by conversationId without threadId', async () => {
+  it('should save and find session by conversation id', async () => {
     const session: SessionContext = buildSessionContext({
-      sessionId: 'sess-1',
       conversationId: 'conv-1',
-      userId: 'usr-1',
-      workspacePath: '/path/workspace',
-      createdAt: new Date('2026-01-01T00:00:00Z'),
-      updatedAt: new Date('2026-01-01T00:00:00Z'),
     });
 
     await store.saveSession(session);
@@ -34,14 +29,9 @@ describe('InMemorySessionStoreFake', () => {
     expect(found).toEqual(session);
   });
 
-  it('should save and find session by conversationId and threadId', async () => {
+  it('should save and find session with a thread conversation id', async () => {
     const session: SessionContext = buildSessionContext({
-      sessionId: 'sess-2',
       conversationId: 'conv-th-1',
-      userId: 'usr-1',
-      workspacePath: '/path/workspace',
-      createdAt: new Date('2026-01-01T00:00:00Z'),
-      updatedAt: new Date('2026-01-01T00:00:00Z'),
     });
 
     await store.saveSession(session);
@@ -52,12 +42,7 @@ describe('InMemorySessionStoreFake', () => {
 
   it('should not match a different conversation id', async () => {
     const session: SessionContext = buildSessionContext({
-      sessionId: 'sess-3',
       conversationId: 'conv-th-1',
-      userId: 'usr-1',
-      workspacePath: '/path/workspace',
-      createdAt: new Date(),
-      updatedAt: new Date(),
     });
 
     await store.saveSession(session);
@@ -69,28 +54,12 @@ describe('InMemorySessionStoreFake', () => {
     expect(foundDifferentThread).toBeNull();
   });
 
-  it('should update existing session when saved with same sessionId', async () => {
-    const initial: SessionContext = buildSessionContext({
-      sessionId: 'sess-4',
-      conversationId: 'conv-1',
-      userId: 'usr-1',
-      workspacePath: '/path/old',
-      createdAt: new Date('2026-01-01T00:00:00Z'),
-      updatedAt: new Date('2026-01-01T00:00:00Z'),
-    });
+  it('should replace the session saved again for the same conversation', async () => {
+    await store.saveSession(buildSessionContext());
+    const agentSessions = [{ role: 'CEO', agentId: 'stub', sessionId: 'acp-1', projectName: null }];
 
-    await store.saveSession(initial);
+    await store.saveSession(buildSessionContext({ agentSessions }));
 
-    const updated: SessionContext = {
-      ...initial,
-      workspacePath: '/path/new',
-      updatedAt: new Date('2026-01-02T00:00:00Z'),
-    };
-
-    await store.saveSession(updated);
-    const found = await store.findSession('conv-1');
-
-    expect(found?.workspacePath).toBe('/path/new');
-    expect(found?.updatedAt).toEqual(new Date('2026-01-02T00:00:00Z'));
+    expect((await store.findSession('conv-1'))?.agentSessions).toEqual(agentSessions);
   });
 });

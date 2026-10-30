@@ -4,14 +4,11 @@ import { buildSessionContext } from './session-context.fixture.js';
 
 
 describe('buildSessionContext', () => {
-  it('should build a CEO session with defaults', () => {
-    const session = buildSessionContext();
-
-    expect(session.sessionId).toBe('sess-1');
-    expect(session.agentRole).toBe('CEO');
+  it('should build an empty session with defaults', () => {
+    expect(buildSessionContext()).toEqual({ conversationId: 'conv-1', agentSessions: [] });
   });
 
   it('should apply overrides', () => {
-    expect(buildSessionContext({ sessionId: 'sess-x' }).sessionId).toBe('sess-x');
+    expect(buildSessionContext({ conversationId: 'conv-x' }).conversationId).toBe('conv-x');
   });
 });
