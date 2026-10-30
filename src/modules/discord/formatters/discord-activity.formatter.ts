@@ -16,6 +16,13 @@ const LOCAL_LINK_PATTERN = /!?\[([^\]\n]+)\]\(<?(?!https?:\/\/|mailto:)[^\s)>]+>
 const CLOSE_FENCE = '\n```';
 const DEFAULT_LABEL = 'default';
 const MAX_TOOL_DETAILS_LENGTH = 1800;
+const QUOTA_BAR_LENGTH = 10;
+const QUOTA_WINDOW_LABELS: Readonly<Record<string, string>> = {
+  '5h': '5h',
+  '7d': 'Week',
+  weekly: 'Week',
+  monthly: 'Month',
+};
 
 @Injectable()
 export class DiscordActivityFormatter {
@@ -161,16 +168,27 @@ export class DiscordActivityFormatter {
     if (report.status === 'unsupported' || !report.quota) {
       return `${heading}\nℹ️ This agent does not expose usage information.`;
     }
+    const { groups } = report.quota;
     const lines = [heading];
-    for (const group of report.quota.groups) {
-      lines.push('', `**${group.name}**`);
+    for (const group of groups) {
+      if (groups.length > 1) {
+        lines.push('', `**${group.name}**`);
+      }
       for (const bucket of group.buckets) {
-        const percent = Math.round(bucket.remainingFraction * 100);
+        const label = QUOTA_WINDOW_LABELS[bucket.window] ?? bucket.name;
         const reset = this.formatReset(bucket.resetTime);
-        lines.push(`• ${bucket.name}: ${percent}%${reset}`);
+        lines.push(`${this.formatQuotaBar(bucket.remainingFraction)} ${label}${reset}`);
       }
     }
     return lines.join('\n');
+  }
+
+  private formatQuotaBar(remainingFraction: number): string {
+    const fraction = Math.min(1, Math.max(0, remainingFraction));
+    const filled = Math.round(fraction * QUOTA_BAR_LENGTH);
+    const bar = '▰'.repeat(filled) + '▱'.repeat(QUOTA_BAR_LENGTH - filled);
+    const marker = fraction >= 0.5 ? '🟢' : fraction >= 0.2 ? '🟡' : '🔴';
+    return `${marker} ${bar} ${Math.round(fraction * 100)}%`;
   }
 
   private formatReset(resetTime: string | undefined): string {
