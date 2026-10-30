@@ -199,7 +199,7 @@ Every release is published to Docker Hub as [`douglasjunior/agent-remote-control
 
 **Authentication**
 
-The agents authenticate with the files in their configuration directories, so mount only the ones for the agents you use, after logging in on the host (or run `docker exec -it <container> <cli> login`):
+Claude Code, Codex, Cursor and Antigravity keep their login in files, so mounting their configuration directories reuses the login of the host. Mount only the ones for the agents you use:
 
 | Agent | Host path | Container path |
 |---|---|---|
@@ -209,7 +209,9 @@ The agents authenticate with the files in their configuration directories, so mo
 | Cursor | `~/.cursor` | `/home/node/.cursor` |
 | Antigravity | `~/.gemini` | `/home/node/.gemini` |
 
-The mounted files must be readable and writable by UID `1000` (the `node` user). `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
+GitHub Copilot may keep its login in the system keychain of the host, which the container cannot read. Pass a token instead: `COPILOT_GITHUB_TOKEN` for Copilot and `GH_TOKEN` for the `gh` and `git` of the agents, for example `-e COPILOT_GITHUB_TOKEN="$(gh auth token)"`. The variables are read when the container is created.
+
+The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
 
 <details>
 <summary><b><code>docker run</code></b></summary>
@@ -219,13 +221,44 @@ docker run -d --name agent-remote-control \
   --restart unless-stopped \
   -e DISCORD_BOT_TOKEN=your-discord-bot-token-here \
   -e DISCORD_GUILD_ID=your-server-id \
-  -e ARC_AGENTS=claude,copilot,cursor \
+  -e ARC_AGENTS=claude,copilot,antigravity \
+  -e COPILOT_GITHUB_TOKEN="$(gh auth token)" \
+  -e GH_TOKEN="$(gh auth token)" \
   -v arc-agents:/home/node/.local \
   -v arc-data:/app/data \
   -v arc-workspaces:/app/workspaces \
   -v ~/.claude:/home/node/.claude \
   -v ~/.claude.json:/home/node/.claude.json \
+  -v ~/.codex:/home/node/.codex \
+  -v ~/.copilot:/home/node/.copilot \
+  -v ~/.gemini:/home/node/.gemini \
   douglasjunior/agent-remote-control:latest
+```
+
+Create `~/.claude.json` beforehand if it does not exist; otherwise Docker creates a directory with that name.
+
+**Rootless Docker**
+
+Check with `docker info | grep -i rootless`. The root of the container is your user on the host, so the mounted files only belong to someone the container can read when it runs as root. Add:
+
+```bash
+  --user 0:0 \
+  -e HOME=/home/node \
+  -e IS_SANDBOX=1 \
+```
+
+`IS_SANDBOX=1` lets Claude Code run in `bypassPermissions` mode as root.
+
+**Host user other than UID 1000 (regular Docker)**
+
+Files owned by another UID, such as `0600` tokens, are unreadable for `node`. Derive an image whose `node` user has your UID (`id -u`, here `1001`) and run it in place of the original:
+
+```dockerfile
+FROM douglasjunior/agent-remote-control:latest
+USER root
+RUN usermod -u 1001 node && groupmod -g 1001 node \
+  && chown -R node:node /app/data /app/workspaces
+USER node
 ```
 
 </details>
@@ -241,10 +274,17 @@ services:
   agent-remote-control:
     image: douglasjunior/agent-remote-control:latest
     restart: unless-stopped
+    # Rootless Docker: run as root, which is your user on the host
+    # user: "0:0"
     environment:
       DISCORD_BOT_TOKEN: your-discord-bot-token-here
       DISCORD_GUILD_ID: your-server-id
-      ARC_AGENTS: claude,copilot,cursor,antigravity
+      ARC_AGENTS: claude,copilot,antigravity
+      COPILOT_GITHUB_TOKEN: ${COPILOT_GITHUB_TOKEN}
+      GH_TOKEN: ${GH_TOKEN}
+      # Rootless Docker only
+      # HOME: /home/node
+      # IS_SANDBOX: "1"
     volumes:
       # Optional: installs the ARC_AGENTS CLIs only once
       - arc-agents:/home/node/.local
@@ -264,7 +304,7 @@ volumes:
   arc-workspaces:
 ```
 
-Start it with `docker compose up -d`. The [full-autonomy warning](#-quick-start) applies: the agents run inside the container with the credentials you mount into it.
+Start it with `export COPILOT_GITHUB_TOKEN="$(gh auth token)" GH_TOKEN="$(gh auth token)"` followed by `docker compose up -d`. The [full-autonomy warning](#-quick-start) applies: the agents run inside the container with the credentials you mount into it.
 
 </details>
 
