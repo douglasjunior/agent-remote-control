@@ -189,7 +189,15 @@ cp .env.example .env
 
 ## 🐳 Docker
 
-Every release is published to Docker Hub as [`douglasjunior/agent-remote-control`](https://hub.docker.com/r/douglasjunior/agent-remote-control) (`linux/amd64` and `linux/arm64`) with the tags `X.Y.Z`, `X.Y`, `X` and `latest`. The image runs as the non-root `node` user and ships Git, the GitHub CLI and every agent CLI (Claude Code, Codex, Copilot, Cursor and Antigravity) on the `PATH`.
+Every release is published to Docker Hub as [`douglasjunior/agent-remote-control`](https://hub.docker.com/r/douglasjunior/agent-remote-control) (`linux/amd64` and `linux/arm64`) with the tags `X.Y.Z`, `X.Y`, `X` and `latest`. The image runs as the non-root `node` user and ships Git and the GitHub CLI.
+
+**Agent CLIs**
+
+- **Claude Code** and **OpenAI Codex** are always available: they come with the application dependencies.
+- **GitHub Copilot**, **Cursor** and **Antigravity** are installed when the container starts, according to `ARC_AGENTS` (comma-separated: `copilot`, `cursor`, `antigravity`). The installers fetch the latest version of each CLI. An already installed CLI is kept; set `ARC_AGENTS_UPDATE=true` to install it again on startup.
+- By default the installation is lost when the container is recreated. To install each CLI only once, mount a volume at `/home/node/.local` (optional; it also keeps the installed versions fixed until you update them).
+
+**Authentication**
 
 The agents authenticate with the files in their configuration directories, so mount only the ones for the agents you use, after logging in on the host (or run `docker exec -it <container> <cli> login`):
 
@@ -210,6 +218,8 @@ docker run -d --name agent-remote-control \
   --restart unless-stopped \
   -e DISCORD_BOT_TOKEN=your-discord-bot-token-here \
   -e DISCORD_GUILD_ID=your-server-id \
+  -e ARC_AGENTS=copilot,cursor \
+  -v arc-agents:/home/node/.local \
   -v arc-data:/app/data \
   -v arc-workspaces:/app/workspaces \
   -v ~/.claude:/home/node/.claude \
@@ -227,9 +237,12 @@ services:
     environment:
       DISCORD_BOT_TOKEN: your-discord-bot-token-here
       DISCORD_GUILD_ID: your-server-id
+      ARC_AGENTS: copilot,cursor,antigravity
     ports:
       - "3000:3000"
     volumes:
+      # Optional: installs the ARC_AGENTS CLIs only once
+      - arc-agents:/home/node/.local
       - arc-data:/app/data
       - arc-workspaces:/app/workspaces
       # Keep only the agents you use
@@ -241,6 +254,7 @@ services:
       - ${HOME}/.gemini:/home/node/.gemini
 
 volumes:
+  arc-agents:
   arc-data:
   arc-workspaces:
 ```
