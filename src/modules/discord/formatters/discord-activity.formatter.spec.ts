@@ -850,4 +850,46 @@ describe('DiscordActivityFormatter', () => {
       );
     });
   });
+
+  describe('formatShellResult', () => {
+    const baseResult = {
+      command: 'echo hi',
+      exitCode: 0,
+      output: 'hi\n',
+      truncated: false,
+      timedOut: false,
+      cancelled: false,
+    };
+
+    it('should render the command, the output and a successful exit code', () => {
+      expect(new DiscordActivityFormatter().formatShellResult(baseResult))
+        .toBe('```\n$ echo hi\nhi\n```\n✅ **Exit code 0**');
+    });
+
+    it('should omit the output block content when there is no output and flag a failing exit code', () => {
+      expect(new DiscordActivityFormatter().formatShellResult({ ...baseResult, output: '', exitCode: 3 }))
+        .toBe('```\n$ echo hi\n```\n❌ **Exit code 3**');
+    });
+
+    it('should escape code fences coming from the command or the output', () => {
+      const text = new DiscordActivityFormatter().formatShellResult({
+        ...baseResult,
+        command: 'echo ```',
+        output: '```',
+      });
+
+      expect(text.match(/```/g)).toHaveLength(2);
+    });
+
+    it('should flag truncation, timeout and cancellation', () => {
+      const formatter = new DiscordActivityFormatter();
+
+      expect(formatter.formatShellResult({ ...baseResult, truncated: true }))
+        .toContain('✅ **Exit code 0** · output truncated to the last characters');
+      expect(formatter.formatShellResult({ ...baseResult, timedOut: true, truncated: true }))
+        .toContain('⏱️ **Timed out** · output truncated');
+      expect(formatter.formatShellResult({ ...baseResult, cancelled: true }))
+        .toContain('🛑 **Cancelled**');
+    });
+  });
 });

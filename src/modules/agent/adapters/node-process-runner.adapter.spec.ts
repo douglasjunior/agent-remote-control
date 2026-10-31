@@ -84,10 +84,21 @@ describe('NodeProcessRunnerAdapter', () => {
         output: 'installed warn: deprecated',
       });
       expect(spawnMock).toHaveBeenCalledWith('npm', ['i'], {
+        cwd: undefined,
         stdio: ['ignore', 'pipe', 'pipe'],
         env: undefined,
         signal: undefined,
       });
+    });
+
+    it('should run the process in the given working directory', async () => {
+      const adapter = new NodeProcessRunnerAdapter();
+      const promise = adapter.run('ls', [], { cwd: '/work' });
+
+      spawnedProcs[0].emit('close', 0);
+      await promise;
+
+      expect(spawnMock).toHaveBeenCalledWith('ls', [], expect.objectContaining({ cwd: '/work' }));
     });
 
     it('should forward the abort signal to the spawned process', async () => {

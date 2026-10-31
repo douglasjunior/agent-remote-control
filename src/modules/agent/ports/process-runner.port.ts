@@ -17,7 +17,7 @@ export interface IProcessRunnerPort {
   run(
     command: string,
     args: readonly string[],
-    options?: Pick<ProcessSpawnOptions, 'signal'>,
+    options?: Pick<ProcessSpawnOptions, 'signal' | 'cwd'>,
   ): Promise<ProcessRunResult>;
   runInteractive(command: string, args: readonly string[]): Promise<number>;
   spawn(

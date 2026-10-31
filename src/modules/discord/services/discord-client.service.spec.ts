@@ -1,6 +1,8 @@
 import type { Client } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+
 import { DiscordClientService } from './discord-client.service.js';
 
 
@@ -13,7 +15,18 @@ const COMMANDS = [
   { name: 'language', description: 'Changes the language agents use to talk to you' },
 ];
 
+const SHELL_COMMAND = {
+  name: 'shell',
+  description: 'Runs a shell command directly on the host',
+  dmPermission: false,
+  options: [{ name: 'command', description: 'The command to run', type: 3, required: true }],
+};
+
 describe('DiscordClientService', () => {
+  let shellEnabled: boolean;
+  const orchestratorStub = {
+    isShellCommandEnabled: () => shellEnabled,
+  } as unknown as OrchestratorService;
   let loginMock: ReturnType<typeof vi.fn>;
   let destroyMock: ReturnType<typeof vi.fn>;
   let onMock: ReturnType<typeof vi.fn>;
@@ -22,6 +35,7 @@ describe('DiscordClientService', () => {
   const originalToken = process.env.DISCORD_BOT_TOKEN;
 
   beforeEach(() => {
+    shellEnabled = false;
     loginMock = vi.fn().mockResolvedValue('token');
     destroyMock = vi.fn().mockResolvedValue(undefined);
     onMock = vi.fn().mockReturnThis();
@@ -32,7 +46,7 @@ describe('DiscordClientService', () => {
       on: onMock,
     } as unknown as Client;
 
-    service = new DiscordClientService(mockClient);
+    service = new DiscordClientService(orchestratorStub, mockClient);
     delete process.env.DISCORD_BOT_TOKEN;
   });
 
@@ -46,7 +60,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should instantiate with default discord.js Client if none provided', () => {
-    const defaultService = new DiscordClientService();
+    const defaultService = new DiscordClientService(orchestratorStub);
     expect(defaultService.getClient()).toBeDefined();
   });
 
@@ -91,6 +105,17 @@ describe('DiscordClientService', () => {
     expect(setAppCommands).toHaveBeenCalledWith([]);
 
     delete process.env.DISCORD_GUILD_ID;
+  });
+
+  it('should register the shell command only when shell commands are enabled', async () => {
+    shellEnabled = true;
+    const setAppCommands = vi.fn().mockResolvedValue([]);
+    (mockClient as any).application = { commands: { set: setAppCommands } };
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+
+    await service.onApplicationBootstrap();
+
+    expect(setAppCommands).toHaveBeenCalledWith([...COMMANDS, SHELL_COMMAND]);
   });
 
   it('should register the guild commands even without an application', async () => {

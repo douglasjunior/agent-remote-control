@@ -20,6 +20,7 @@ import { DelegationDetectorService } from './services/delegation-detector.servic
 import { LanguageChangeRequestService } from './services/language-change-request.service.js';
 import { OrchestratorService } from './services/orchestrator.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
+import { ShellCommandConfigService } from './services/shell-command-config.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
 import { CancelAgentConfigSelectionUseCase } from './use-cases/cancel-agent-config-selection.use-case.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
@@ -27,6 +28,7 @@ import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case
 import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { ProvisionWorkspaceGuidanceUseCase } from './use-cases/provision-workspace-guidance.use-case.js';
 import { ResolveConversationInputUseCase } from './use-cases/resolve-conversation-input.use-case.js';
+import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
 import { StartAgentConfigSelectionUseCase } from './use-cases/start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-config-selection.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
@@ -57,6 +59,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     DelegationDetectorService,
     LanguageChangeRequestService,
     QuestionParserService,
+    ShellCommandConfigService,
     UserQuestionQueueService,
     ExecuteAgentTurnUseCase,
     CancelAgentTurnUseCase,
@@ -65,6 +68,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     ResolveConversationInputUseCase,
     CancelAgentConfigSelectionUseCase,
     GetAgentQuotaUseCase,
+    RunShellCommandUseCase,
     ProvisionWorkspaceGuidanceUseCase,
     TranscribeAudioAttachmentsUseCase,
     OrchestratorService,
