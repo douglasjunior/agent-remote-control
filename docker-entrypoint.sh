@@ -33,7 +33,7 @@ if [ "${STT_PROVIDER:-whisper-cpp}" = "whisper-cpp" ] && [ -z "$STT_MODEL_PATH" 
   if [ ! -f "$model_file" ]; then
     echo "[entrypoint] Downloading the whisper.cpp model '$model'"
     mkdir -p "$(dirname "$model_file")"
-    if ! curl -fL -o "$model_file.part" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$model.bin" \
+    if ! curl -fsSL -o "$model_file.part" "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$model.bin" \
       || ! mv "$model_file.part" "$model_file"; then
       rm -f "$model_file.part"
       echo "[entrypoint] Failed to download the model, audio will be sent to the agent as an attachment" >&2
