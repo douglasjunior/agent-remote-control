@@ -6,6 +6,7 @@ import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-rep
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
@@ -158,6 +159,32 @@ export class DiscordActivityFormatter {
 
   formatInvalidLanguage(): string {
     return '⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".';
+  }
+
+  formatShellResult(result: ShellCommandResult): string {
+    const output = result.output.trimEnd().replaceAll('```', '`\u200b``');
+    const lines = ['```', `$ ${result.command}`.replaceAll('```', '`\u200b``')];
+    if (output) {
+      lines.push(output);
+    }
+    lines.push('```');
+    const status = this.describeShellStatus(result);
+    return `${lines.join('\n')}\n${status}`;
+  }
+
+  private describeShellStatus(result: ShellCommandResult): string {
+    const notes: string[] = [];
+    if (result.truncated) {
+      notes.push('output truncated to the last characters');
+    }
+    if (result.timedOut) {
+      return ['⏱️ **Timed out**', ...notes].join(' · ');
+    }
+    if (result.cancelled) {
+      return ['🛑 **Cancelled**', ...notes].join(' · ');
+    }
+    const marker = result.exitCode === 0 ? '✅' : '❌';
+    return [`${marker} **Exit code ${result.exitCode}**`, ...notes].join(' · ');
   }
 
   formatQuota(reports: readonly AgentQuotaReport[]): string {
