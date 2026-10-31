@@ -21,7 +21,9 @@ COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
 RUN yarn workspaces focus --production
 
-# Builds the whisper.cpp CLI (CPU speech-to-text) as a self-contained binary
+# Builds the whisper.cpp CLI (CPU speech-to-text) as a self-contained binary. GGML_NATIVE=OFF keeps
+# the build from targeting the CPU of the machine that builds the image, which would crash with
+# SIGILL on hosts lacking those instructions.
 FROM base AS whisper
 ARG WHISPER_CPP_VERSION=v1.7.6
 RUN apt-get update \
@@ -29,7 +31,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 --branch "$WHISPER_CPP_VERSION" https://github.com/ggml-org/whisper.cpp /whisper \
   && cd /whisper \
-  && cmake -B build -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON \
+  && cmake -B build -DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON \
   && cmake --build build --config Release -j --target whisper-cli
 
 # Final stage that runs the application. Codex comes with the application dependencies; Claude
