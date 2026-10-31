@@ -722,6 +722,15 @@ describe('DiscordActivityFormatter', () => {
     });
   });
 
+  describe('formatTranscripts', () => {
+    it('should quote each transcript under its file name', () => {
+      expect(formatter.formatTranscripts([
+        { name: 'a.ogg', text: 'line one\nline two' },
+        { name: 'b.ogg', text: 'second' },
+      ])).toBe('🎙️ **a.ogg**\n> line one\n> line two\n\n🎙️ **b.ogg**\n> second');
+    });
+  });
+
   describe('formatQuota', () => {
     const agent = { id: 'agy', name: 'Antigravity' };
 

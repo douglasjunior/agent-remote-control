@@ -185,6 +185,13 @@ cp .env.example .env
 | `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
 | `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
+| `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` |
+| `STT_MODEL` | whisper.cpp model name; the file `ggml-<name>.bin` is read from `DATA_DIR/models` (the Docker image downloads it on startup) | [whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp) | `small` |
+| `STT_MODEL_PATH` | Explicit path to a whisper.cpp model file; overrides `STT_MODEL` | Local machine configuration | *(Optional)* |
+| `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` |
+| `STT_THREADS` | CPU threads used by the transcription | Local machine configuration | Number of CPUs |
+| `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) |
+| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 
 ## 🐳 Docker

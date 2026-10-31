@@ -86,7 +86,7 @@ To keep channels clean and concurrent conversations strictly isolated:
 
 ## Input Resolution and Agent and Model Selection
 
-Before running the turn, the handler validates and downloads the attachments and calls
+Before running the turn, the handler validates and downloads the attachments, transcribes the audio and calls
 `OrchestratorService.resolveInput({ conversationId, prompt, attachments? })` with the message text
 (empty when it carries only attachments) inside `DiscordTypingIndicator.during(channel, ...)`, because
 answering a selection starts a disposable agent to list models or efforts and takes a few
@@ -168,6 +168,7 @@ The bot accepts files attached directly to Discord messages through `DiscordAtta
   - Accepts multiple formats readable by the agent's tools (images `.png`, `.jpg`, `.webp`, `.gif`, documents `.pdf`, text and code `.txt`, `.md`, `.json`, `.ts`, `.py`, etc., audio, video and configuration files such as `Dockerfile` and `.env`).
   - Maximum limit of 100 MB per attachment.
   - Blocks executable or non-analyzable binary files (`.exe`, `.bin`, `.dll`, `.so`, `.zip`, etc.). On identifying an incompatible file, it stops the flow immediately and sends a friendly warning in the channel before starting the turn.
+- **Audio transcription**: after the download and before `resolveInput`, the handler calls `OrchestratorService.transcribeAudio({ prompt, attachments })` inside `DiscordTypingIndicator.during(channel, ...)`. Voice messages (`.ogg`/Opus) and audio files are transcribed and replaced by their text in the prompt; the handler sends each warning as is and echoes the transcripts with `DiscordActivityFormatter.formatTranscripts` (`🎙️ **<file>**` followed by the quoted text) before resolving the input. Audio that could not be transcribed stays in `attachments`. The handler knows nothing about the speech-to-text provider.
 - **Secure temporary storage**:
   - Valid attachments are downloaded from the Discord CDN to an operating system temporary directory (`os.tmpdir()/agent-remote-control/attachments/<conversationKey>`).
   - Sanitization against *path traversal* via `path.basename` and a unique prefix with timestamp and random identifier.
