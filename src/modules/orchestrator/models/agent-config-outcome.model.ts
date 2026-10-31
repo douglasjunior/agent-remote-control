@@ -1,5 +1,7 @@
 import type { AgentConfigSelection, SelectedValue } from './agent-config-selection.model.js';
 import type { AgentProfileSettings, AgentSettings } from './agent-settings.model.js';
+import type { AudioTranscript } from './audio-transcription.model.js';
+import type { TurnAttachment } from './turn-attachment.model.js';
 import type { QuestionAsker, QuestionPrompt } from './user-question.model.js';
 
 
@@ -37,4 +39,17 @@ export type ConversationInputResolution =
     readonly kind: 'execute';
     readonly prompt: string;
     readonly configured?: AgentSettings;
+    /** Attachments of the message that remain after audio was transcribed; omitted when there are none. */
+    readonly attachments?: readonly TurnAttachment[];
   };
+
+/** Audio handled while resolving the input, for the channel to report to the user. */
+export type InputTranscription = {
+  readonly transcripts: readonly AudioTranscript[];
+  readonly warnings: readonly string[];
+};
+
+export type ResolvedConversationInput = ConversationInputResolution & {
+  /** Present only when the message carried audio that was transcribed or could not be. */
+  readonly transcription?: InputTranscription;
+};

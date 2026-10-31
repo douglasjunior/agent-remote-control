@@ -10,7 +10,6 @@ import type { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.us
 import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import type { ResolveConversationInputUseCase } from '../use-cases/resolve-conversation-input.use-case.js';
 import type { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
-import type { TranscribeAudioAttachmentsUseCase } from '../use-cases/transcribe-audio-attachments.use-case.js';
 
 import { LanguageChangeRequestService } from './language-change-request.service.js';
 import { OrchestratorService } from './orchestrator.service.js';
@@ -28,7 +27,6 @@ describe('OrchestratorService', () => {
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let mockGetQuotaUseCase: GetAgentQuotaUseCase;
   let preferencesStore: StubPreferencesStore;
-  let mockTranscribeUseCase: TranscribeAudioAttachmentsUseCase;
 
   beforeEach(() => {
     mockExecuteUseCase = {
@@ -45,7 +43,6 @@ describe('OrchestratorService', () => {
     selectionStore = new InMemoryAgentConfigSelectionStoreAdapter();
     questionQueue = new UserQuestionQueueService();
     mockGetQuotaUseCase = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
-    mockTranscribeUseCase = { execute: vi.fn() } as unknown as TranscribeAudioAttachmentsUseCase;
 
     service = new OrchestratorService(
       mockExecuteUseCase,
@@ -58,7 +55,6 @@ describe('OrchestratorService', () => {
       questionQueue,
       new LanguageChangeRequestService(),
       preferencesStore = new StubPreferencesStore(),
-      mockTranscribeUseCase,
     );
   });
 
@@ -74,14 +70,6 @@ describe('OrchestratorService', () => {
     preferencesStore.preferences = { language: 'Spanish' };
 
     await expect(service.requestLanguageChange('conv-1')).resolves.toBe('Spanish');
-  });
-
-  it('should delegate transcribeAudio to TranscribeAudioAttachmentsUseCase', async () => {
-    const result = { prompt: 'hi', attachments: [], transcripts: [], warnings: [] };
-    vi.mocked(mockTranscribeUseCase.execute).mockResolvedValue(result);
-
-    expect(await service.transcribeAudio({ prompt: 'hi' })).toBe(result);
-    expect(mockTranscribeUseCase.execute).toHaveBeenCalledWith({ prompt: 'hi' });
   });
 
   it('should delegate getQuota to GetAgentQuotaUseCase', async () => {
