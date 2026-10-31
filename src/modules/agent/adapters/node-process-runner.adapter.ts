@@ -48,7 +48,7 @@ export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
         });
       });
       child.on('close', (code) => {
-        resolve({ exitCode: code ?? 0, output });
+        resolve({ exitCode: code ?? 1, output });
       });
     });
   }

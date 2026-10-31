@@ -125,13 +125,13 @@ describe('NodeProcessRunnerAdapter', () => {
       });
     });
 
-    it('should default a null exit code to 0', async () => {
+    it('should report a process killed by a signal as a failure', async () => {
       const adapter = new NodeProcessRunnerAdapter();
       const promise = adapter.run('npm', []);
 
       spawnedProcs[0].emit('close', null);
 
-      await expect(promise).resolves.toEqual({ exitCode: 0, output: '' });
+      await expect(promise).resolves.toEqual({ exitCode: 1, output: '' });
     });
 
     it('should fall back to String(error) when the error has no message', async () => {
