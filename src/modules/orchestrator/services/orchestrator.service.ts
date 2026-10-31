@@ -5,6 +5,7 @@ import type {
   StartAgentConfigSelectionResult,
 } from '../models/agent-config-outcome.model.js';
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
+import type { ShellCommandResult } from '../models/shell-command-result.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
@@ -18,6 +19,7 @@ import {
   type ResolveConversationInputInput,
   ResolveConversationInputUseCase,
 } from '../use-cases/resolve-conversation-input.use-case.js';
+import { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
 import { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
 import { LanguageChangeRequestService } from './language-change-request.service.js';
@@ -39,6 +41,7 @@ export class OrchestratorService {
     private readonly languageChangeRequests: LanguageChangeRequestService,
     @Inject(IPreferencesStorePort)
     private readonly preferencesStore: IPreferencesStorePort,
+    private readonly runShellCommandUseCase: RunShellCommandUseCase,
   ) {}
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
@@ -47,6 +50,14 @@ export class OrchestratorService {
 
   async cancelTurn(conversationId: string): Promise<boolean> {
     return this.cancelAgentTurnUseCase.execute(conversationId);
+  }
+
+  isShellCommandEnabled(): boolean {
+    return this.runShellCommandUseCase.isEnabled();
+  }
+
+  runShellCommand(conversationId: string, command: string): Promise<ShellCommandResult> {
+    return this.runShellCommandUseCase.execute(conversationId, command);
   }
 
   getQuota(): Promise<readonly AgentQuotaReport[]> {

@@ -68,6 +68,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
       });
     } else if (interaction.commandName === 'usage') {
       await this.handleUsageCommand(interaction);
+    } else if (interaction.commandName === 'shell') {
+      await this.handleShellCommand(interaction);
     } else if (interaction.commandName === 'agent') {
       await this.handleSelectionCommand(interaction, {
         subject: 'agent',
@@ -135,6 +137,26 @@ export class DiscordInteractionHandler implements OnModuleInit {
       const errorMessage = this.describeError(error);
       this.logger.error(`Error executing /usage command: ${errorMessage}`);
       await this.respond(interaction, `❌ **Failed to fetch usage**: ${errorMessage}`, true);
+    }
+  }
+
+  private async handleShellCommand(
+    interaction: ChatInputCommandInteraction,
+  ): Promise<void> {
+    try {
+      const { channelId, threadId } = resolveConversationKey(interaction.channelId, interaction.channel);
+      this.logCommand(interaction, channelId, threadId);
+
+      await interaction.deferReply({ ephemeral: true });
+      const result = await this.orchestratorService.runShellCommand(
+        buildConversationId({ channelId, threadId }),
+        interaction.options.getString('command', true),
+      );
+      await this.respondInChunks(interaction, this.activityFormatter.formatShellResult(result));
+    } catch (error) {
+      const errorMessage = this.describeError(error);
+      this.logger.error(`Error executing /shell command: ${errorMessage}`);
+      await this.respond(interaction, `❌ **Failed to run command**: ${errorMessage}`, true);
     }
   }
 

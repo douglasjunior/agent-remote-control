@@ -9,6 +9,7 @@ import type { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-
 import type { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
 import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import type { ResolveConversationInputUseCase } from '../use-cases/resolve-conversation-input.use-case.js';
+import type { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
 import type { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
 import { LanguageChangeRequestService } from './language-change-request.service.js';
@@ -18,6 +19,7 @@ import { UserQuestionQueueService } from './user-question-queue.service.js';
 
 describe('OrchestratorService', () => {
   let service: OrchestratorService;
+  let mockRunShellUseCase: RunShellCommandUseCase;
   let mockExecuteUseCase: ExecuteAgentTurnUseCase;
   let mockCancelUseCase: CancelAgentTurnUseCase;
   let mockResolveUseCase: ResolveConversationInputUseCase;
@@ -44,6 +46,11 @@ describe('OrchestratorService', () => {
     questionQueue = new UserQuestionQueueService();
     mockGetQuotaUseCase = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
 
+    mockRunShellUseCase = {
+      isEnabled: vi.fn().mockReturnValue(true),
+      execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
+    } as unknown as RunShellCommandUseCase;
+
     service = new OrchestratorService(
       mockExecuteUseCase,
       mockCancelUseCase,
@@ -55,6 +62,7 @@ describe('OrchestratorService', () => {
       questionQueue,
       new LanguageChangeRequestService(),
       preferencesStore = new StubPreferencesStore(),
+      mockRunShellUseCase,
     );
   });
 
@@ -70,6 +78,14 @@ describe('OrchestratorService', () => {
     preferencesStore.preferences = { language: 'Spanish' };
 
     await expect(service.requestLanguageChange('conv-1')).resolves.toBe('Spanish');
+  });
+
+  it('should delegate the shell command checks and execution to RunShellCommandUseCase', async () => {
+    expect(service.isShellCommandEnabled()).toBe(true);
+
+    await service.runShellCommand('conv-1', 'ls');
+
+    expect(mockRunShellUseCase.execute).toHaveBeenCalledWith('conv-1', 'ls');
   });
 
   it('should delegate getQuota to GetAgentQuotaUseCase', async () => {

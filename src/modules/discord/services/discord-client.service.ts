@@ -6,11 +6,15 @@ import {
   Optional,
 } from '@nestjs/common';
 import {
+  type ApplicationCommandDataResolvable,
+  ApplicationCommandOptionType,
   Client,
   type ClientEvents,
   GatewayIntentBits,
   Partials,
 } from 'discord.js';
+
+import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 
 
 @Injectable()
@@ -18,7 +22,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
   private readonly logger = new Logger(DiscordClientService.name);
   private readonly client: Client;
 
-  constructor(@Optional() client?: Client) {
+  constructor(
+    private readonly orchestratorService: OrchestratorService,
+    @Optional() client?: Client,
+  ) {
     this.client =
       client
       ?? new Client({
@@ -64,7 +71,7 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
 
   private async registerSlashCommands(): Promise<void> {
     try {
-      const commands = [
+      const commands: ApplicationCommandDataResolvable[] = [
         {
           name: 'cancel',
           description: 'Cancels the AI agent\'s active turn',
@@ -89,6 +96,23 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           name: 'language',
           description: 'Changes the language agents use to talk to you',
         },
+        ...(this.orchestratorService.isShellCommandEnabled()
+          ? [
+            {
+              name: 'shell',
+              description: 'Runs a shell command directly on the host',
+              dmPermission: false,
+              options: [
+                {
+                  name: 'command',
+                  description: 'The command to run',
+                  type: ApplicationCommandOptionType.String as const,
+                  required: true,
+                },
+              ],
+            },
+          ]
+          : []),
       ];
 
       const guildId = process.env.DISCORD_GUILD_ID;

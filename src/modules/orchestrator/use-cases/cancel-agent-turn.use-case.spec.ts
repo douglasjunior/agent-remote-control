@@ -7,6 +7,7 @@ import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
 import { CancelAgentTurnUseCase } from './cancel-agent-turn.use-case.js';
+import type { RunShellCommandUseCase } from './run-shell-command.use-case.js';
 
 
 describe('CancelAgentTurnUseCase', () => {
@@ -14,13 +15,16 @@ describe('CancelAgentTurnUseCase', () => {
   let agentPort: StubAgentPort;
   let runtime: ConversationRuntimeService;
   let questionQueue: UserQuestionQueueService;
+  let shellRunning: boolean;
 
   beforeEach(() => {
     agentPort = new StubAgentPort();
     const factory = new StubAgentPortFactory(() => agentPort);
     runtime = new ConversationRuntimeService(factory, 60_000);
     questionQueue = new UserQuestionQueueService();
-    useCase = new CancelAgentTurnUseCase(runtime, questionQueue);
+    shellRunning = false;
+    const runShellCommand = { cancel: () => shellRunning } as unknown as RunShellCommandUseCase;
+    useCase = new CancelAgentTurnUseCase(runtime, questionQueue, runShellCommand);
   });
 
   const runBlockingTurn = (): { started: Promise<void>; finish: () => void; done: Promise<void> } => {
@@ -55,6 +59,12 @@ describe('CancelAgentTurnUseCase', () => {
 
     await expect(waiting).rejects.toBeInstanceOf(PromptCancelledError);
     expect(questionQueue.hasPending('conv-th-1')).toBe(false);
+  });
+
+  it('should report a shell command in progress as cancelled', async () => {
+    shellRunning = true;
+
+    await expect(useCase.execute('conv-th-1')).resolves.toBe(true);
   });
 
   it('should report false when the conversation has no turn in progress', async () => {
