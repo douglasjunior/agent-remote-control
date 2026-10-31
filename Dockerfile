@@ -45,7 +45,6 @@ ENV NODE_ENV=production \
   PORT=3000 \
   DATA_DIR=/app/data \
   WORKSPACE_DIR=/app/workspaces \
-  NPM_CONFIG_PREFIX=/home/node/.local \
   PATH=/home/node/.local/bin:/app/node_modules/.bin:$PATH
 
 COPY --chown=node:node --from=prod-deps /app/package.json /app/yarn.lock /app/.yarnrc.yml ./

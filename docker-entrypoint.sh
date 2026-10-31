@@ -19,7 +19,7 @@ install_agent() {
 for agent in $(echo "$ARC_AGENTS" | tr ',' ' '); do
   case "$agent" in
     claude) install_agent claude sh -c 'ln -sf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude "$HOME/.local/bin/claude"' ;;
-    copilot) install_agent copilot npm install --global @github/copilot ;;
+    copilot) install_agent copilot npm install --global --prefix "$HOME/.local" @github/copilot ;;
     cursor) install_agent cursor-agent sh -c 'curl -fsSL https://cursor.com/install | bash' ;;
     antigravity) install_agent agy sh -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash' ;;
     *) echo "[entrypoint] Unknown agent '$agent' in ARC_AGENTS" >&2 ;;
