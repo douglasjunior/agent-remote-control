@@ -119,26 +119,19 @@ export class DiscordMessageHandler implements OnModuleInit {
         `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
-      let transcribedPrompt = rawPrompt;
-      if (turnAttachments) {
-        const transcription = await DiscordTypingIndicator.during(targetChannel, () =>
-          this.orchestratorService.transcribeAudio({ prompt: rawPrompt, attachments: turnAttachments }));
-        transcribedPrompt = transcription.prompt;
-        turnAttachments = [...transcription.attachments];
-        for (const warning of transcription.warnings) {
-          await targetChannel.send(warning);
-        }
-        if (transcription.transcripts.length > 0) {
-          await this.sendChunks(targetChannel, this.activityFormatter.formatTranscripts(transcription.transcripts));
-        }
-      }
-
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
         this.orchestratorService.resolveInput({
           conversationId,
-          prompt: transcribedPrompt,
+          prompt: rawPrompt,
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
         }));
+
+      for (const warning of resolution.transcription?.warnings ?? []) {
+        await targetChannel.send(warning);
+      }
+      if (resolution.transcription?.transcripts.length) {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatTranscripts(resolution.transcription.transcripts));
+      }
 
       if (resolution.kind === 'selection') {
         await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));
@@ -196,7 +189,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       if (resolution.configured) {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
       }
-      const { prompt } = resolution;
+      const { prompt, attachments: remainingAttachments } = resolution;
 
       const progressMessage: ProgressMessage = await targetChannel.send(
         '⏳ *Starting...*',
@@ -351,7 +344,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           prompt,
           workspacePath: this.workspacePort.getBaseDirectory(),
           agentRole: 'CEO',
-          ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
+          ...(remainingAttachments ? { attachments: remainingAttachments } : {}),
           onActivity,
           onDelegation,
           onInterimMessage,

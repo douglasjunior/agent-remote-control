@@ -1,11 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import type {
-  ConversationInputResolution,
+  ResolvedConversationInput,
   StartAgentConfigSelectionResult,
 } from '../models/agent-config-outcome.model.js';
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
-import type { AudioTranscriptionResult } from '../models/audio-transcription.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
@@ -20,10 +19,6 @@ import {
   ResolveConversationInputUseCase,
 } from '../use-cases/resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
-import {
-  type TranscribeAudioAttachmentsInput,
-  TranscribeAudioAttachmentsUseCase,
-} from '../use-cases/transcribe-audio-attachments.use-case.js';
 
 import { LanguageChangeRequestService } from './language-change-request.service.js';
 import { UserQuestionQueueService } from './user-question-queue.service.js';
@@ -44,7 +39,6 @@ export class OrchestratorService {
     private readonly languageChangeRequests: LanguageChangeRequestService,
     @Inject(IPreferencesStorePort)
     private readonly preferencesStore: IPreferencesStorePort,
-    private readonly transcribeAudioAttachmentsUseCase: TranscribeAudioAttachmentsUseCase,
   ) {}
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
@@ -59,12 +53,8 @@ export class OrchestratorService {
     return this.getAgentQuotaUseCase.execute();
   }
 
-  resolveInput(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
+  resolveInput(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
     return this.resolveConversationInputUseCase.execute(input);
-  }
-
-  transcribeAudio(input: TranscribeAudioAttachmentsInput): Promise<AudioTranscriptionResult> {
-    return this.transcribeAudioAttachmentsUseCase.execute(input);
   }
 
   startConfigSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
