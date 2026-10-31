@@ -90,6 +90,17 @@ describe('NodeProcessRunnerAdapter', () => {
       });
     });
 
+    it('should forward the abort signal to the spawned process', async () => {
+      const adapter = new NodeProcessRunnerAdapter();
+      const signal = new AbortController().signal;
+      const promise = adapter.run('npm', ['i'], { signal });
+
+      spawnedProcs[0].emit('close', 0);
+      await promise;
+
+      expect(spawnMock).toHaveBeenCalledWith('npm', ['i'], expect.objectContaining({ signal }));
+    });
+
     it('should resolve with a non-zero exitCode when the process fails', async () => {
       const adapter = new NodeProcessRunnerAdapter();
       const promise = adapter.run('npm', ['i']);

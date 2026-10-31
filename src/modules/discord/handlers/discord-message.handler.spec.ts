@@ -3,7 +3,7 @@ import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
-import type { ConversationInputResolution } from '../../orchestrator/models/agent-config-outcome.model.js';
+import type { ResolvedConversationInput } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
@@ -65,8 +65,8 @@ class MockOrchestratorService {
 
   public queued = false;
   public activeSelection = false;
-  public resolution: ConversationInputResolution | null = null;
-  public resolvedInputs: { conversationId: string; prompt: string }[] = [];
+  public resolution: ResolvedConversationInput | null = null;
+  public resolvedInputs: { conversationId: string; prompt: string; attachments?: readonly TurnAttachment[] }[] = [];
 
   public selectionLookups: string[] = [];
 
@@ -90,9 +90,14 @@ class MockOrchestratorService {
   async resolveInput(input: {
     conversationId: string;
     prompt: string;
-  }): Promise<ConversationInputResolution> {
+    attachments?: readonly TurnAttachment[];
+  }): Promise<ResolvedConversationInput> {
     this.resolvedInputs.push(input);
-    return this.resolution ?? { kind: 'execute', prompt: input.prompt };
+    return this.resolution ?? {
+      kind: 'execute',
+      prompt: input.prompt,
+      ...(input.attachments ? { attachments: input.attachments } : {}),
+    };
   }
 
   async executeTurn(request: TurnRequest): Promise<TurnResult> {
@@ -2335,7 +2340,11 @@ describe('DiscordMessageHandler', () => {
 
     it('should resolve a message with only attachments and run the prompt the resolution returns', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('diagram.png')]);
-      orchestratorService.resolution = { kind: 'execute', prompt: 'The user sent attachments. Analyze the attached files.' };
+      orchestratorService.resolution = {
+        kind: 'execute',
+        prompt: 'The user sent attachments. Analyze the attached files.',
+        attachments: attachmentService.downloadedAttachments,
+      };
 
       await handler.handleMessage(message);
 
@@ -2380,6 +2389,25 @@ describe('DiscordMessageHandler', () => {
           }),
         ],
       });
+    });
+
+    it('should report the transcription of the resolved input and run the prompt with the remaining attachments', async () => {
+      const { message, mockThread } = createThreadMessageWithAttachments('Context:', [createAttachment('voice.ogg', 'audio/ogg')]);
+      orchestratorService.resolution = {
+        kind: 'execute',
+        prompt: 'Context:\n\nrun the tests',
+        transcription: {
+          transcripts: [{ name: 'voice.ogg', text: 'run the tests' }],
+          warnings: ['⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.'],
+        },
+      };
+
+      await handler.handleMessage(message);
+
+      expect(mockThread.send).toHaveBeenCalledWith('⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.');
+      expect(mockThread.send).toHaveBeenCalledWith('🎙️ **voice.ogg**\n> run the tests');
+      expect(orchestratorService.lastRequest?.prompt).toBe('Context:\n\nrun the tests');
+      expect(orchestratorService.lastRequest).not.toHaveProperty('attachments');
     });
 
     it('should reject message with invalid attachments and not invoke executeTurn', async () => {

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import type {
-  ConversationInputResolution,
+  ResolvedConversationInput,
   StartAgentConfigSelectionResult,
 } from '../models/agent-config-outcome.model.js';
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
@@ -53,7 +53,7 @@ export class OrchestratorService {
     return this.getAgentQuotaUseCase.execute();
   }
 
-  resolveInput(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
+  resolveInput(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
     return this.resolveConversationInputUseCase.execute(input);
   }
 

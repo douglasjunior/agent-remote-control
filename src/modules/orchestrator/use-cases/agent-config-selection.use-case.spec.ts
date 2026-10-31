@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AgentProviderInfo } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.port.js';
+import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
+import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
@@ -21,6 +23,7 @@ import { CancelAgentConfigSelectionUseCase } from './cancel-agent-config-selecti
 import { ResolveConversationInputUseCase } from './resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selection.use-case.js';
+import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const MODELS: AgentModelState = {
@@ -86,6 +89,8 @@ describe('agent configuration selection', () => {
   let questionQueue: UserQuestionQueueService;
   let languageChangeRequests: LanguageChangeRequestService;
   let preferencesStore: StubPreferencesStore;
+  let speechToText: StubSpeechToText;
+  let deletedAudio: string[];
 
   const build = (
     modelsByAgent: Record<string, AgentModelState | null>,
@@ -122,7 +127,13 @@ describe('agent configuration selection', () => {
       questionQueue,
       languageChangeRequests,
       preferencesStore,
+      new TranscribeAudioAttachmentsUseCase(speechToText = new StubSpeechToText(), {
+        deleteFile: async (path: string) => {
+          deletedAudio.push(path);
+        },
+      } as unknown as IFileSystemPort),
     );
+    deletedAudio = [];
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
 
@@ -772,6 +783,45 @@ describe('agent configuration selection', () => {
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
         kind: 'execute',
         prompt: 'The user sent attachments. Analyze the attached files.',
+        attachments: [file],
+      });
+    });
+
+    describe('audio attachments', () => {
+      const voice = { name: 'voice.ogg', path: '/tmp/voice.ogg', contentType: 'audio/ogg', size: 10 };
+
+      it('should run the transcript as the prompt and report it without the audio attachment', async () => {
+        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+        speechToText.transcripts[voice.path] = 'build the login page';
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
+          kind: 'execute',
+          prompt: 'build the login page',
+          transcription: { transcripts: [{ name: 'voice.ogg', text: 'build the login page' }], warnings: [] },
+        });
+        expect(deletedAudio).toEqual([voice.path]);
+      });
+
+      it('should keep the audio attachment and report a warning when it cannot be transcribed', async () => {
+        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+        speechToText.failures[voice.path] = 'model missing';
+
+        const resolution = await resolve.execute({ conversationId: 'conv-1', prompt: 'See this', attachments: [voice] });
+
+        expect(resolution).toMatchObject({ kind: 'execute', prompt: 'See this', attachments: [voice] });
+        expect(resolution.transcription?.warnings).toEqual([expect.stringContaining('model missing')]);
+      });
+
+      it('should take a spoken message as the answer to the waiting question', async () => {
+        const answers = questionQueue.ask('conv-1', asker, 'Before planning:', [questions[1]!]);
+        speechToText.transcripts[voice.path] = '200';
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
+          kind: 'answered',
+          asker,
+          transcription: { transcripts: [{ name: 'voice.ogg', text: '200' }], warnings: [] },
+        });
+        await expect(answers).resolves.toEqual([{ question: questions[1], answer: '200' }]);
       });
     });
 
