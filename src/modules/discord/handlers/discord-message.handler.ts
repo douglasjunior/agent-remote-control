@@ -119,10 +119,24 @@ export class DiscordMessageHandler implements OnModuleInit {
         `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
+      let transcribedPrompt = rawPrompt;
+      if (turnAttachments) {
+        const transcription = await DiscordTypingIndicator.during(targetChannel, () =>
+          this.orchestratorService.transcribeAudio({ prompt: rawPrompt, attachments: turnAttachments }));
+        transcribedPrompt = transcription.prompt;
+        turnAttachments = [...transcription.attachments];
+        for (const warning of transcription.warnings) {
+          await targetChannel.send(warning);
+        }
+        if (transcription.transcripts.length > 0) {
+          await this.sendChunks(targetChannel, this.activityFormatter.formatTranscripts(transcription.transcripts));
+        }
+      }
+
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
         this.orchestratorService.resolveInput({
           conversationId,
-          prompt: rawPrompt,
+          prompt: transcribedPrompt,
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
         }));
 

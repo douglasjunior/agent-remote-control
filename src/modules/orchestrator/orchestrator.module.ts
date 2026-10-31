@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
+import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { InMemoryAgentConfigSelectionStoreAdapter } from './adapters/in-memory-agent-config-selection-store.adapter.js';
@@ -28,10 +29,11 @@ import { ProvisionWorkspaceGuidanceUseCase } from './use-cases/provision-workspa
 import { ResolveConversationInputUseCase } from './use-cases/resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from './use-cases/start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-config-selection.use-case.js';
+import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
 
 
 @Module({
-  imports: [AgentModule, AgentDefinitionsModule, WorkspaceModule],
+  imports: [AgentModule, AgentDefinitionsModule, SpeechToTextModule, WorkspaceModule],
   providers: [
     {
       provide: ISessionStorePort,
@@ -64,6 +66,7 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
     CancelAgentConfigSelectionUseCase,
     GetAgentQuotaUseCase,
     ProvisionWorkspaceGuidanceUseCase,
+    TranscribeAudioAttachmentsUseCase,
     OrchestratorService,
   ],
   exports: [

@@ -4,6 +4,7 @@ import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js'
 import type { AgentConfigSelection, SelectedValue } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -122,6 +123,12 @@ export class DiscordActivityFormatter {
 
   formatInvalidAnswer(prompt: QuestionPrompt): string {
     return `⚠️ Invalid option. Reply with a number from 1 to ${prompt.question.options.length} or type another answer.\n\n${this.formatQuestion({ ...prompt, message: undefined })}`;
+  }
+
+  formatTranscripts(transcripts: readonly AudioTranscript[]): string {
+    return transcripts
+      .map(transcript => `🎙️ **${transcript.name}**\n${transcript.text.split('\n').map(line => `> ${line}`).join('\n')}`)
+      .join('\n\n');
   }
 
   formatAnswersSent(asker: QuestionAsker): string {

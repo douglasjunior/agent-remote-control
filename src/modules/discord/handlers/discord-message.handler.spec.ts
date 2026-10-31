@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { ConversationInputResolution } from '../../orchestrator/models/agent-config-outcome.model.js';
+import type { AudioTranscriptionResult } from '../../orchestrator/models/audio-transcription.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
@@ -85,6 +86,22 @@ class MockOrchestratorService {
   async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
     this.selectionLookups.push(conversationId);
     return this.activeSelection;
+  }
+
+  public transcription: AudioTranscriptionResult | null = null;
+  public transcriptionRequests: { prompt: string; attachments?: readonly TurnAttachment[] }[] = [];
+
+  async transcribeAudio(input: {
+    prompt: string;
+    attachments?: readonly TurnAttachment[];
+  }): Promise<AudioTranscriptionResult> {
+    this.transcriptionRequests.push(input);
+    return this.transcription ?? {
+      prompt: input.prompt,
+      attachments: input.attachments ?? [],
+      transcripts: [],
+      warnings: [],
+    };
   }
 
   async resolveInput(input: {
@@ -2380,6 +2397,23 @@ describe('DiscordMessageHandler', () => {
           }),
         ],
       });
+    });
+
+    it('should echo the transcript, replace the audio with it and warn about audio kept as attachment', async () => {
+      const { message, mockThread } = createThreadMessageWithAttachments('Context:', [createAttachment('voice.ogg', 'audio/ogg')]);
+      orchestratorService.transcription = {
+        prompt: 'Context:\n\nrun the tests',
+        attachments: [],
+        transcripts: [{ name: 'voice.ogg', text: 'run the tests' }],
+        warnings: ['⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.'],
+      };
+
+      await handler.handleMessage(message);
+
+      expect(orchestratorService.transcriptionRequests).toEqual([{ prompt: 'Context:', attachments: attachmentService.downloadedAttachments }]);
+      expect(mockThread.send).toHaveBeenCalledWith('⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.');
+      expect(mockThread.send).toHaveBeenCalledWith('🎙️ **voice.ogg**\n> run the tests');
+      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-att-1', prompt: 'Context:\n\nrun the tests' }]);
     });
 
     it('should reject message with invalid attachments and not invoke executeTurn', async () => {
