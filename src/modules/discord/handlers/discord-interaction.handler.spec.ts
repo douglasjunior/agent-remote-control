@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
+import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
 import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
@@ -91,6 +92,25 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     return this.pendingLanguageChange;
   }
 
+  shellResult: ShellCommandResult = {
+    command: 'df -h',
+    exitCode: 0,
+    output: 'Filesystem',
+    truncated: false,
+    timedOut: false,
+    cancelled: false,
+  };
+
+  shellCalls: { conversationId: string; command: string }[] = [];
+
+  async runShellCommand(conversationId: string, command: string): Promise<ShellCommandResult> {
+    if (this.throwError) {
+      throw new Error('shell down');
+    }
+    this.shellCalls.push({ conversationId, command });
+    return this.shellResult;
+  }
+
   async cancelTurn(conversationId: string): Promise<boolean> {
     if (this.throwError) {
       throw new Error('Cancel turn failed');
@@ -127,6 +147,7 @@ type InteractionOverrides = {
   inGuild?: boolean;
   user?: unknown;
   editReply?: ReturnType<typeof vi.fn>;
+  options?: unknown;
   deferred?: boolean;
   replied?: boolean;
   reply?: ReturnType<typeof vi.fn>;
@@ -178,7 +199,7 @@ describe('DiscordInteractionHandler', () => {
       on: vi.fn(),
     } as unknown as Client;
 
-    clientService = new DiscordClientService(mockClient);
+    clientService = new DiscordClientService({ isShellCommandEnabled: () => false } as unknown as OrchestratorService, mockClient);
     orchestratorService = new StubOrchestratorService();
     handler = new DiscordInteractionHandler(
       clientService,
@@ -358,6 +379,36 @@ describe('DiscordInteractionHandler', () => {
 
       await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
       expect(interaction.reply).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('/shell', () => {
+    const buildShellInteraction = () => buildInteraction({
+      commandName: 'shell',
+      options: { getString: vi.fn().mockReturnValue('df -h') },
+    });
+
+    it('should defer ephemerally, run the command and reply with the formatted result', async () => {
+      const interaction = buildShellInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
+      expect(orchestratorService.shellCalls).toEqual([{ conversationId: 'channel-123', command: 'df -h' }]);
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '```\n$ df -h\nFilesystem\n```\n✅ **Exit code 0**',
+      });
+    });
+
+    it('should report a failure to run the command', async () => {
+      orchestratorService.throwError = true;
+      const interaction = buildShellInteraction();
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Failed to run command**: shell down',
+      });
     });
   });
 

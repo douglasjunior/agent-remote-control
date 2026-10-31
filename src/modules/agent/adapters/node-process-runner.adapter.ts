@@ -26,10 +26,11 @@ export class NodeProcessRunnerAdapter implements IProcessRunnerPort {
   run(
     command: string,
     args: readonly string[],
-    options?: Pick<ProcessSpawnOptions, 'signal'>,
+    options?: Pick<ProcessSpawnOptions, 'signal' | 'cwd'>,
   ): Promise<ProcessRunResult> {
     return new Promise((resolve) => {
       const child = this.spawn(command, args, {
+        cwd: options?.cwd,
         stdio: ['ignore', 'pipe', 'pipe'],
         signal: options?.signal,
       });
