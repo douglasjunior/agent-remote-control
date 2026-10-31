@@ -14,7 +14,11 @@ export type ProcessSpawnOptions = {
 };
 
 export interface IProcessRunnerPort {
-  run(command: string, args: readonly string[]): Promise<ProcessRunResult>;
+  run(
+    command: string,
+    args: readonly string[],
+    options?: Pick<ProcessSpawnOptions, 'signal'>,
+  ): Promise<ProcessRunResult>;
   runInteractive(command: string, args: readonly string[]): Promise<number>;
   spawn(
     command: string,

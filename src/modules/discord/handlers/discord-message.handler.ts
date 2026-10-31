@@ -126,6 +126,13 @@ export class DiscordMessageHandler implements OnModuleInit {
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
         }));
 
+      for (const warning of resolution.transcription?.warnings ?? []) {
+        await targetChannel.send(warning);
+      }
+      if (resolution.transcription?.transcripts.length) {
+        await this.sendChunks(targetChannel, this.activityFormatter.formatTranscripts(resolution.transcription.transcripts));
+      }
+
       if (resolution.kind === 'selection') {
         await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));
         return;
@@ -182,7 +189,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       if (resolution.configured) {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
       }
-      const { prompt } = resolution;
+      const { prompt, attachments: remainingAttachments } = resolution;
 
       const progressMessage: ProgressMessage = await targetChannel.send(
         '⏳ *Starting...*',
@@ -337,7 +344,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           prompt,
           workspacePath: this.workspacePort.getBaseDirectory(),
           agentRole: 'CEO',
-          ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
+          ...(remainingAttachments ? { attachments: remainingAttachments } : {}),
           onActivity,
           onDelegation,
           onInterimMessage,

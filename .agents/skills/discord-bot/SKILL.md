@@ -168,6 +168,7 @@ The bot accepts files attached directly to Discord messages through `DiscordAtta
   - Accepts multiple formats readable by the agent's tools (images `.png`, `.jpg`, `.webp`, `.gif`, documents `.pdf`, text and code `.txt`, `.md`, `.json`, `.ts`, `.py`, etc., audio, video and configuration files such as `Dockerfile` and `.env`).
   - Maximum limit of 100 MB per attachment.
   - Blocks executable or non-analyzable binary files (`.exe`, `.bin`, `.dll`, `.so`, `.zip`, etc.). On identifying an incompatible file, it stops the flow immediately and sends a friendly warning in the channel before starting the turn.
+- **Audio**: the handler does not inspect or convert audio. Voice messages (`.ogg`/Opus) and audio files travel as ordinary `attachments` to `resolveInput`, which transcribes them. When the resolution carries `transcription`, the handler sends each warning as is and echoes the transcripts with `DiscordActivityFormatter.formatTranscripts` (`🎙️ **<file>**` followed by the quoted text) before handling the resolution; an `execute` resolution carries the remaining `attachments` that go into `executeTurn`.
 - **Secure temporary storage**:
   - Valid attachments are downloaded from the Discord CDN to an operating system temporary directory (`os.tmpdir()/agent-remote-control/attachments/<conversationKey>`).
   - Sanitization against *path traversal* via `path.basename` and a unique prefix with timestamp and random identifier.

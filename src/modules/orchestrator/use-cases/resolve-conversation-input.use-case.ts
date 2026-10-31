@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import type { ConversationInputResolution } from '../models/agent-config-outcome.model.js';
+import type { ConversationInputResolution, ResolvedConversationInput } from '../models/agent-config-outcome.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { QuestionSubmission } from '../models/user-question.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
@@ -12,6 +12,7 @@ import { normalizeUserLanguage } from '../utils/user-language.util.js';
 
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selection.use-case.js';
+import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const ATTACHMENTS_ONLY_PROMPT = 'The user sent attachments. Analyze the attached files.';
@@ -36,9 +37,22 @@ export class ResolveConversationInputUseCase {
     private readonly languageChangeRequests: LanguageChangeRequestService,
     @Inject(IPreferencesStorePort)
     private readonly preferencesStore: IPreferencesStorePort,
+    private readonly transcribeAudioAttachments: TranscribeAudioAttachmentsUseCase,
   ) {}
 
-  async execute(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
+  async execute(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
+    const { prompt, attachments, transcripts, warnings } = await this.transcribeAudioAttachments.execute(input);
+    const resolution = await this.resolve({
+      conversationId: input.conversationId,
+      prompt,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
+    const transcription = transcripts.length > 0 || warnings.length > 0 ? { transcription: { transcripts, warnings } } : {};
+    const remaining = resolution.kind === 'execute' && attachments.length > 0 ? { attachments } : {};
+    return { ...resolution, ...remaining, ...transcription };
+  }
+
+  private async resolve(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
     const { conversationId, attachments } = input;
 
     const submission = this.questionQueue.submit(conversationId, { text: input.prompt, attachments });
