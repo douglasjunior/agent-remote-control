@@ -24,8 +24,12 @@ describe('git-ops.prompt', () => {
     );
   });
 
-  it('should forbid force push', () => {
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain('Never force push');
+  it('should allow force push only on an explicit instruction, preferring the lease', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('requires an explicit instruction to force push');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('A rejected push (non-fast-forward) is never an instruction');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('git push --force-with-lease');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('Never force push with `--all`, `--mirror`, or a wildcard refspec');
+    expect(GIT_OPS_TURN_REMINDER).toContain('Force push only on an explicit instruction');
   });
 
   it('should describe both working directories it can be given', () => {

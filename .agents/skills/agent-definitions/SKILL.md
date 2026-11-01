@@ -204,7 +204,7 @@ from the narration.
 ### 5. Git Ops Agent (`git-ops.prompt.ts`)
 
 - Owner of every Git operation that reaches a remote: clone, init, fetch, pull, push, merge and rebase against remote branches, remote configuration, pull requests and SSH key setup;
-- Leaves the local side to the implementing agent: staging, commit, local branch and working tree inspection. Force push is forbidden under any circumstance;
+- Leaves the local side to the implementing agent: staging, commit, local branch and working tree inspection. Force push happens only on an explicit instruction from the caller or user, using `--force-with-lease` on the named branch by default; a rejected push is never such an instruction, and `--all`, `--mirror`, wildcard refspecs and remote branch deletion are off limits;
 - Operates in one of two directories, decided by the caller: the workspaces root, to clone or locate a repository, and a project folder, for operations on that repository. That is why its contract declares `project: 'optional'`;
 - Sole reader and writer of `workspace-manifest.json` at the workspaces root, a JSON array of `{ url, folder, defaultBranch }` that maps repository URL to project folder. A missing file means an empty workspace;
 - Derives the folder name from the last segment of the URL without the `.git` suffix, an exact rule because the caller routes subsequent work by that name and a different name would duplicate the clone;
