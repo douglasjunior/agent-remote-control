@@ -128,14 +128,14 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   registerDelegation(conversationKey: string, delegation: ActiveDelegation): void {
     const runtime = this.getOrCreate(conversationKey);
     this.clearIdleTimer(runtime);
-    runtime.activeDelegations.set(this.delegationKey(delegation.role, delegation.projectName), delegation);
+    runtime.activeDelegations.set(this.delegationKey(delegation.role), delegation);
   }
 
-  /** Ignores a delegation that was already replaced by a newer one for the same role and project. */
+  /** Ignores a delegation that was already replaced by a newer one for the same role. */
   unregisterDelegation(conversationKey: string, delegation: ActiveDelegation): void {
     const runtime = this.runtimes.get(conversationKey);
     if (!runtime) return;
-    const key = this.delegationKey(delegation.role, delegation.projectName);
+    const key = this.delegationKey(delegation.role);
     if (runtime.activeDelegations.get(key) !== delegation) {
       return;
     }
@@ -150,8 +150,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     return runtime ? Array.from(runtime.activeDelegations.values()) : [];
   }
 
-  findActiveDelegation(conversationKey: string, role: string, projectName: string | null): ActiveDelegation | undefined {
-    return this.runtimes.get(conversationKey)?.activeDelegations.get(this.delegationKey(role, projectName));
+  findActiveDelegation(conversationKey: string, role: string): ActiveDelegation | undefined {
+    return this.runtimes.get(conversationKey)?.activeDelegations.get(this.delegationKey(role));
   }
 
   async cancel(conversationKey: string): Promise<boolean> {
@@ -190,8 +190,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     }));
   }
 
-  private delegationKey(role: string, projectName: string | null): string {
-    return `${role.toUpperCase()}:${projectName ?? ''}`;
+  private delegationKey(role: string): string {
+    return role.toUpperCase();
   }
 
   private getOrCreate(conversationKey: string): ConversationRuntime {

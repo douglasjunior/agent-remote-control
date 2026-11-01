@@ -487,7 +487,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(developer.prompts[0]).toContain('Implement the login screen.');
     expect(developer.prompts[0]).not.toContain('On it.');
     expect(ceo.prompts[1]).toContain(
-      '<agent_result role="DEVELOPER" project="my-app">\nLogin screen implemented.\n</agent_result>',
+      '<agent_result role="DEVELOPER" project="my-app" agent="agy" model="Fast Model" effort="default">\nLogin screen implemented.\n</agent_result>',
     );
     expect(threadMessages.indexOf('On it.')).toBeLessThan(
       threadMessages.findIndex(content => content.startsWith('🔀 **Task delegated**')),
@@ -896,7 +896,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       expect(owner.prompts[1]).toContain('<answer question="Who approves a refund?" option="2">Finance</answer>');
       expect(owner.prompts[1]).toContain('<answer question="What is the maximum amount?" kind="other">R$ 500</answer>');
       expect(ceo.prompts).toHaveLength(2);
-      expect(ceo.prompts[1]).toContain('<agent_result role="PRODUCT_OWNER">\nDocument at /tmp/agent-remote-control/intents/refunds.md\n</agent_result>');
+      expect(ceo.prompts[1]).toContain('<agent_result role="PRODUCT_OWNER" agent="agy" model="Fast Model" effort="default">\nDocument at /tmp/agent-remote-control/intents/refunds.md\n</agent_result>');
       expect(threadMessages).toContain(`The intent document is ready.\n${FOOTER}`);
 
       await app.close();
