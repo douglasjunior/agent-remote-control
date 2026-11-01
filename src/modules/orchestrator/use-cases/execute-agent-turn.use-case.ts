@@ -387,23 +387,22 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /**
-   * Agents that modify files would overwrite each other's work in the same folder. A delegation to a role
-   * already working in the same project redirects that agent, so the running one does not count against it.
+   * A conversation runs one agent per role, so a role appears once per response and a delegation to a role
+   * already working replaces that agent. Agents of different roles that modify files would overwrite each
+   * other's work in the same folder.
    */
   private findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): string | undefined {
-    const targets = new Set<string>();
-    for (const { delegateToRole, projectName } of delegations) {
-      const target = `${delegateToRole}:${projectName ?? ''}`;
-      if (targets.has(target)) {
-        return `${delegateToRole} appears more than once for ${this.describeTarget(projectName)}. Merge those tasks into a single delegation.`;
+    const roles = new Set<string>();
+    for (const { delegateToRole } of delegations) {
+      if (roles.has(delegateToRole)) {
+        return `${delegateToRole} appears more than once. A conversation runs one agent per role: merge those tasks into a single delegation.`;
       }
-      targets.add(target);
+      roles.add(delegateToRole);
     }
 
     const writers = new Map<string, string>();
     for (const active of this.conversationRuntime.getActiveDelegations(conversationKey)) {
-      const redirected = delegations.some(delegation =>
-        delegation.delegateToRole === active.role.toUpperCase() && (delegation.projectName ?? null) === active.projectName);
+      const redirected = delegations.some(delegation => delegation.delegateToRole === active.role.toUpperCase());
       if (!redirected && !this.isReadOnly(active.role)) {
         writers.set(active.cwd, `${active.role}, which is already working there`);
       }
@@ -555,10 +554,11 @@ export class ExecuteAgentTurnUseCase {
     round: number,
     conversationKey: string,
   ): Promise<string> {
-    const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole, projectName ?? null);
+    const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
-      const awaitingAnswers = this.questionQueue.isWaiting(conversationKey, delegateToRole, projectName ?? null);
-      if (!awaitingAnswers && existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
+      const sameProject = existing.projectName === (projectName ?? null);
+      const awaitingAnswers = this.questionQueue.isWaiting(conversationKey, delegateToRole, existing.projectName);
+      if (sameProject && !awaitingAnswers && existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
@@ -566,9 +566,9 @@ export class ExecuteAgentTurnUseCase {
       }
 
       this.logger.log(
-        `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unavailable)`,
+        `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unavailable or project changed)`,
       );
-      this.questionQueue.discard(conversationKey, delegateToRole, projectName ?? null);
+      this.questionQueue.discard(conversationKey, delegateToRole, existing.projectName);
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);

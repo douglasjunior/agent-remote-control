@@ -68,6 +68,7 @@ describe('ceo-workspace-files.prompt', () => {
       const skill = contentOf('.agents/skills/agent-team/SKILL.md');
 
       expect(skill).toContain('discovery of what to build before technical planning');
+      expect(skill).toContain('Different items, and phases that do not depend on each other, overlap across roles');
       expect(skill).toContain('Do not interview the user about requirements yourself');
     });
 
@@ -89,6 +90,9 @@ describe('ceo-workspace-files.prompt', () => {
 
     it('should explain parallel delegations and their limits', () => {
       expect(skill).toContain('## Parallel Work');
+      expect(skill).toContain('Delegate in one response every task that does not need the output of another task, whatever the roles.');
+      expect(skill).toContain('A conversation runs one agent per role at a time, however many projects exist.');
+      expect(skill).toContain('A role appears once per response.');
       expect(skill).toContain('<delegate role="DEVELOPER" project="frontend">\nBuild the orders screen');
       expect(skill).toContain('Only one agent that modifies files may work in a project folder at a time, counting agents still running');
       expect(skill).toContain('with all results together, including the failures.');
@@ -96,9 +100,12 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('`status="failed"` means the agent stopped with an error');
     });
 
-    it('should explain that delegating to a running role in the same project redirects it', () => {
-      expect(skill).toContain('redirects that agent with the new specification instead of starting a second one');
-      expect(skill).toContain('Delegating the same role to a different project starts another agent in parallel.');
+    it('should pipeline several items through different roles', () => {
+      expect(skill).toContain('Each response moves every item one stage forward, with a different role per item');
+    });
+
+    it('should explain that delegating to a running role replaces its task in any project', () => {
+      expect(skill).toContain('Delegating to a role that is already working, in any project, replaces its task with the new specification.');
     });
 
     it('should choose a new session when the task or subject changes', () => {
