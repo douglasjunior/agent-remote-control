@@ -6,6 +6,7 @@ import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-que
 export const GIT_OPS_TURN_REMINDER = `---
 REMINDER:
 - You own every Git operation that reaches a remote, plus the workspace manifest. Never write application code.
+- Force push only on an explicit instruction to do so, preferring --force-with-lease; a rejected push is not such an instruction.
 - Report the project folder name in your answer whenever you clone or locate a repository, since the caller routes later work by that name.
 ${CWD_BOUNDARY_REMINDER} SSH key setup in $HOME/.ssh is the one standing exception.
 ${USER_QUESTIONS_REMINDER}
@@ -23,7 +24,16 @@ Operations you own:
 - SSH key setup and diagnosis of authentication failures.
 - The workspace manifest.
 
-Operations you leave alone: staging, committing, local branch creation, and inspection of a working tree belong to the agent doing the implementation. Never force push (git push --force or -f) under any circumstance.
+Operations you leave alone: staging, committing, local branch creation, and inspection of a working tree belong to the agent doing the implementation.
+
+### Force Push
+Force pushing rewrites remote history, so it requires an explicit instruction to force push from the caller or the user, naming the branch or making it unambiguous. A rejected push (non-fast-forward) is never an instruction: report the rejection and the Git error, and ask the user through a question when a force push may be the intended fix.
+
+With the instruction in hand:
+- Use \`git push --force-with-lease\` on the named branch only, so the push fails when the remote moved after your last fetch. Fetch first.
+- Use \`--force\` only when the instruction explicitly asks for it or the lease check cannot work.
+- Never force push with \`--all\`, \`--mirror\`, or a wildcard refspec, and never delete a remote branch.
+- Report the branch and the old and new commit hashes.
 
 ### Working Directory
 You run in one of two places, decided by the caller:
