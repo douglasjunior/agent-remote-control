@@ -1,0 +1,480 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="740" viewBox="0 0 1280 740" role="img" aria-labelledby="cover-title cover-desc">
+  <title id="cover-title">Agent Remote Control</title>
+  <desc id="cover-desc">Cosmic orchestration banner for Agent Remote Control: your AI dev team, one message away over ACP and Discord.</desc>
+  <defs>
+    <linearGradient id="cosmic-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#04050d"/>
+      <stop offset="50%" stop-color="#070918"/>
+      <stop offset="100%" stop-color="#0a0c1d"/>
+    </linearGradient>
+
+    <radialGradient id="nebula-violet" cx="22%" cy="28%" r="42%">
+      <stop offset="0%" stop-color="#8b7bff" stop-opacity="0.28"/>
+      <stop offset="50%" stop-color="#8b7bff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#8b7bff" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="nebula-cyan" cx="82%" cy="32%" r="45%">
+      <stop offset="0%" stop-color="#3fd0ff" stop-opacity="0.25"/>
+      <stop offset="55%" stop-color="#3fd0ff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#3fd0ff" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="nebula-pink" cx="48%" cy="75%" r="40%">
+      <stop offset="0%" stop-color="#ff6a8e" stop-opacity="0.20"/>
+      <stop offset="60%" stop-color="#ff6a8e" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#ff6a8e" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="glow-gold" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffd56a" stop-opacity="0.32"/>
+      <stop offset="60%" stop-color="#ff9f43" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffd56a" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="title-grad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e9ebfa"/>
+      <stop offset="45%" stop-color="#ffffff"/>
+      <stop offset="80%" stop-color="#8b7bff"/>
+      <stop offset="100%" stop-color="#3fd0ff"/>
+    </linearGradient>
+
+    <linearGradient id="ceo-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1e1842"/>
+      <stop offset="50%" stop-color="#12132e"/>
+      <stop offset="100%" stop-color="#0a0c1d"/>
+    </linearGradient>
+
+    <linearGradient id="card-border" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8b7bff" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#3fd0ff" stop-opacity="0.35"/>
+    </linearGradient>
+
+    <linearGradient id="wire-cyan-violet" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3fd0ff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#8b7bff" stop-opacity="0.85"/>
+    </linearGradient>
+
+    <clipPath id="canvas-clip">
+      <rect width="1280" height="740" rx="20"/>
+    </clipPath>
+
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+      .twinkle-1 { animation: twinkle-1 3.2s ease-in-out infinite; }
+      .twinkle-2 { animation: twinkle-2 4.4s ease-in-out infinite; }
+      .twinkle-3 { animation: twinkle-3 5.6s ease-in-out infinite; }
+
+      @keyframes twinkle-1 {
+        0%, 100% { opacity: 0.25; }
+        50% { opacity: 0.95; }
+      }
+      @keyframes twinkle-2 {
+        0%, 100% { opacity: 0.85; }
+        50% { opacity: 0.20; }
+      }
+      @keyframes twinkle-3 {
+        0%, 100% { opacity: 0.30; }
+        50% { opacity: 0.80; }
+      }
+
+      .pulse-ring {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: pulse-ring 3.6s ease-out infinite;
+      }
+      @keyframes pulse-ring {
+        0% { transform: scale(0.92); opacity: 0.8; }
+        70% { transform: scale(1.35); opacity: 0.05; }
+        100% { transform: scale(1.42); opacity: 0; }
+      }
+
+      .flow-line {
+        stroke-dasharray: 6 8;
+        animation: flow-dash 2s linear infinite;
+      }
+      @keyframes flow-dash {
+        to { stroke-dashoffset: -28; }
+      }
+
+      .orbit-cw {
+        transform-origin: 0 0;
+        animation: orbit-rotate-cw 16s linear infinite;
+      }
+      @keyframes orbit-rotate-cw {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+
+      .orbit-ccw {
+        transform-origin: 0 0;
+        animation: orbit-rotate-ccw 22s linear infinite;
+      }
+      @keyframes orbit-rotate-ccw {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(-360deg); }
+      }
+
+      .card-float {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: card-float 4.8s ease-in-out infinite;
+      }
+      @keyframes card-float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-4px); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+        .twinkle-1, .twinkle-2, .twinkle-3 {
+          opacity: 0.7 !important;
+        }
+        .pulse-ring {
+          opacity: 0.35 !important;
+          transform: scale(1.05) !important;
+        }
+      }
+    </style>
+  </defs>
+
+  <g clip-path="url(#canvas-clip)">
+    <!-- Deep Space Background -->
+    <rect width="1280" height="740" fill="url(#cosmic-bg)"/>
+
+    <!-- Nebula Glows -->
+    <rect width="1280" height="740" fill="url(#nebula-violet)"/>
+    <rect width="1280" height="740" fill="url(#nebula-cyan)"/>
+    <rect width="1280" height="740" fill="url(#nebula-pink)"/>
+
+    <!-- Background Constellation Lines -->
+    <g stroke="#8b7bff" stroke-opacity="0.16" stroke-width="1" stroke-dasharray="2 4">
+      <line x1="85" y1="120" x2="160" y2="70"/>
+      <line x1="160" y1="70" x2="280" y2="105"/>
+      <line x1="1020" y1="90" x2="1140" y2="60"/>
+      <line x1="1140" y1="60" x2="1210" y2="135"/>
+      <line x1="90" y1="630" x2="200" y2="670"/>
+      <line x1="1100" y1="660" x2="1200" y2="620"/>
+    </g>
+
+    <!-- Starfield (twinkle opacity only) -->
+    <!-- Twinkle group 1 -->
+    <g class="twinkle-1" fill="#ffffff">
+      <circle cx="95" cy="80" r="1.5"/>
+      <circle cx="210" cy="140" r="1.2"/>
+      <circle cx="340" cy="65" r="1.8"/>
+      <circle cx="480" cy="120" r="1"/>
+      <circle cx="820" cy="75" r="1.4"/>
+      <circle cx="960" cy="130" r="1.6"/>
+      <circle cx="1110" cy="70" r="1.2"/>
+      <circle cx="1225" cy="110" r="1.5"/>
+      <circle cx="80" cy="460" r="1.3"/>
+      <circle cx="410" cy="560" r="1.5"/>
+      <circle cx="780" cy="610" r="1.2"/>
+      <circle cx="1240" cy="490" r="1.6"/>
+    </g>
+
+    <!-- Twinkle group 2 -->
+    <g class="twinkle-2" fill="#3fd0ff">
+      <circle cx="150" cy="180" r="1.4"/>
+      <circle cx="290" cy="125" r="1.6"/>
+      <circle cx="420" cy="85" r="1.2"/>
+      <circle cx="730" cy="140" r="1.5"/>
+      <circle cx="890" cy="85" r="1.8"/>
+      <circle cx="1045" cy="155" r="1.3"/>
+      <circle cx="1180" cy="170" r="1.4"/>
+      <circle cx="70" cy="330" r="1.5"/>
+      <circle cx="430" cy="320" r="1.2"/>
+      <circle cx="835" cy="210" r="1.4"/>
+      <circle cx="1250" cy="360" r="1.7"/>
+    </g>
+
+    <!-- Twinkle group 3 -->
+    <g class="twinkle-3" fill="#ffd56a">
+      <circle cx="60" cy="115" r="1.4"/>
+      <circle cx="240" cy="95" r="1.5"/>
+      <circle cx="670" cy="60" r="1.8"/>
+      <circle cx="1010" cy="65" r="1.4"/>
+      <circle cx="1145" cy="120" r="1.6"/>
+      <circle cx="1230" cy="240" r="1.2"/>
+      <circle cx="390" cy="480" r="1.4"/>
+      <circle cx="740" cy="530" r="1.3"/>
+      <circle cx="1190" cy="580" r="1.5"/>
+    </g>
+
+    <!-- Header Section -->
+    <!-- Pill Badge: Orchestration Platform -->
+    <g transform="translate(450, 36)">
+      <rect width="380" height="28" rx="14" fill="#8b7bff" fill-opacity="0.12" stroke="#8b7bff" stroke-opacity="0.45" stroke-width="1"/>
+      <circle cx="22" cy="14" r="4" fill="#3fd0ff"/>
+      <text class="sans" x="190" y="18" fill="#e9ebfa" font-size="11" font-weight="700" letter-spacing="1.5" text-anchor="middle">REMOTE CONTROL &amp; ORCHESTRATION</text>
+    </g>
+
+    <!-- Main Title -->
+    <text class="sans" x="640" y="106" fill="url(#title-grad)" font-size="42" font-weight="800" text-anchor="middle" letter-spacing="-0.5">Agent Remote Control</text>
+
+    <!-- Subtitle -->
+    <text class="sans" x="640" y="136" fill="#9ba1c7" font-size="16" font-weight="400" text-anchor="middle">Your AI software development team, orchestrated from anywhere over ACP &amp; Discord</text>
+
+    <!-- Quick Attribute Badges (>=10px padding on all sides) -->
+    <g transform="translate(230, 158)">
+      <!-- Badge 1 -->
+      <g transform="translate(0, 0)">
+        <rect width="185" height="26" rx="13" fill="#0b1026" stroke="#3fd0ff" stroke-opacity="0.4" stroke-width="1"/>
+        <text class="sans" x="92" y="17" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">📱 Discord &amp; Mobile UI</text>
+      </g>
+      <!-- Badge 2 -->
+      <g transform="translate(197, 0)">
+        <rect width="195" height="26" rx="13" fill="#0b1026" stroke="#8b7bff" stroke-opacity="0.45" stroke-width="1"/>
+        <text class="sans" x="97" y="17" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">🧭 CEO &amp; 5 Specialists</text>
+      </g>
+      <!-- Badge 3 -->
+      <g transform="translate(404, 0)">
+        <rect width="215" height="26" rx="13" fill="#0b1026" stroke="#ff6a8e" stroke-opacity="0.4" stroke-width="1"/>
+        <text class="sans" x="107" y="17" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">⚡ Agent Client Protocol</text>
+      </g>
+      <!-- Badge 4 -->
+      <g transform="translate(631, 0)">
+        <rect width="185" height="26" rx="13" fill="#0b1026" stroke="#ffd56a" stroke-opacity="0.4" stroke-width="1"/>
+        <text class="sans" x="92" y="17" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">🔒 100% Self-Hosted</text>
+      </g>
+    </g>
+
+    <!-- Cosmos Orchestration Showcase -->
+
+    <!-- CONNECTOR WIRES -->
+    <!-- Discord to CEO Line -->
+    <path d="M 335 415 L 475 415" fill="none" stroke="url(#wire-cyan-violet)" stroke-width="2.5" class="flow-line"/>
+
+    <!-- CEO to Specialists Branching Wires -->
+    <path d="M 725 390 C 780 375, 805 264, 850 264" fill="none" stroke="#ff6a8e" stroke-opacity="0.7" stroke-width="1.8" class="flow-line"/>
+    <path d="M 740 405 C 790 395, 810 342, 850 342" fill="none" stroke="#8b7bff" stroke-opacity="0.75" stroke-width="1.8" class="flow-line"/>
+    <path d="M 745 415 L 850 415" fill="none" stroke="#3fd0ff" stroke-opacity="0.8" stroke-width="2" class="flow-line"/>
+    <path d="M 740 425 C 790 435, 810 493, 850 493" fill="none" stroke="#ffd56a" stroke-opacity="0.75" stroke-width="1.8" class="flow-line"/>
+    <path d="M 725 440 C 780 455, 805 571, 850 571" fill="none" stroke="#ff6a8e" stroke-opacity="0.7" stroke-width="1.8" class="flow-line"/>
+
+    <!-- LEFT COLUMN: Discord Primary Channel Card (Static wrapper around float) -->
+    <g transform="translate(45, 215)">
+      <g class="card-float">
+        <!-- Card Container (290 x 400) -->
+        <rect width="290" height="400" rx="16" fill="#06091a" fill-opacity="0.92" stroke="#3fd0ff" stroke-opacity="0.45" stroke-width="1.5"/>
+
+        <!-- Card Header -->
+        <g transform="translate(20, 20)">
+          <rect width="150" height="26" rx="13" fill="#3fd0ff" fill-opacity="0.12" stroke="#3fd0ff" stroke-opacity="0.4"/>
+          <circle cx="16" cy="13" r="4.5" fill="#3fd0ff"/>
+          <text class="sans" x="85" y="17" fill="#3fd0ff" font-size="11" font-weight="700" text-anchor="middle">DISCORD CHANNEL</text>
+        </g>
+        <text class="sans" x="20" y="74" fill="#e9ebfa" font-size="18" font-weight="700">Client Interface</text>
+
+        <!-- Simulated Discord Message Bubble 1 -->
+        <g transform="translate(18, 92)">
+          <rect width="254" height="66" rx="10" fill="#0d142e" stroke="#8b7bff" stroke-opacity="0.3" stroke-width="1"/>
+          <!-- User avatar -->
+          <circle cx="22" cy="22" r="11" fill="#ff9f43"/>
+          <text class="sans" x="22" y="26" fill="#04050d" font-size="10" font-weight="800" text-anchor="middle">YOU</text>
+          <text class="sans" x="42" y="22" fill="#9ba1c7" font-size="11">User in #general</text>
+          <text class="mono" x="22" y="48" fill="#e9ebfa" font-size="11">@ARC ship auth module</text>
+        </g>
+
+        <!-- Simulated Discord Bot Response Bubble 2 -->
+        <g transform="translate(18, 168)">
+          <rect width="254" height="88" rx="10" fill="#101736" stroke="#3fd0ff" stroke-opacity="0.3" stroke-width="1"/>
+          <circle cx="22" cy="22" r="11" fill="#8b7bff"/>
+          <text class="sans" x="22" y="26" fill="#ffffff" font-size="9" font-weight="800" text-anchor="middle">ARC</text>
+          <text class="sans" x="42" y="22" fill="#3fd0ff" font-size="11" font-weight="600">Agent Remote Control</text>
+          <text class="sans" x="22" y="48" fill="#e9ebfa" font-size="11">🧭 CEO analyzing task scope...</text>
+          <rect x="22" y="58" width="128" height="18" rx="9" fill="#8b7bff" fill-opacity="0.2"/>
+          <text class="sans" x="86" y="71" fill="#8b7bff" font-size="10" font-weight="700" text-anchor="middle">Delegating to team</text>
+        </g>
+
+        <!-- Channel Highlights -->
+        <g transform="translate(24, 276)">
+          <text class="sans" x="0" y="0" fill="#9ba1c7" font-size="12">✓ Thread-per-task isolation</text>
+          <text class="sans" x="0" y="20" fill="#9ba1c7" font-size="12">✓ Real-time thought streaming</text>
+          <text class="sans" x="0" y="40" fill="#9ba1c7" font-size="12">✓ Slash commands &amp; prompts</text>
+        </g>
+
+        <!-- Card description in two lines (>=10px padding) -->
+        <text class="sans" x="22" y="356" fill="#9ba1c7" font-size="12">
+          <tspan x="22" dy="0">Send prompts directly from Discord;</tspan>
+          <tspan x="22" dy="18">turns stream live with real-time updates.</tspan>
+        </text>
+      </g>
+    </g>
+
+    <!-- CENTER COLUMN: CEO Cosmic Hub & Nexus -->
+    <g transform="translate(605, 415)">
+      <!-- Outer Orbit Ring -->
+      <circle cx="0" cy="0" r="125" fill="none" stroke="#8b7bff" stroke-opacity="0.25" stroke-dasharray="4 6"/>
+      <!-- Inner Orbit Ring -->
+      <circle cx="0" cy="0" r="88" fill="none" stroke="#3fd0ff" stroke-opacity="0.30"/>
+
+      <!-- Static wrapper around CW Satellite Orbit -->
+      <g transform="translate(0, 0)">
+        <g class="orbit-cw">
+          <circle cx="125" cy="0" r="5.5" fill="#3fd0ff"/>
+          <circle cx="125" cy="0" r="10" fill="#3fd0ff" fill-opacity="0.25"/>
+        </g>
+      </g>
+
+      <!-- Static wrapper around CCW Satellite Orbit -->
+      <g transform="translate(0, 0)">
+        <g class="orbit-ccw">
+          <circle cx="-88" cy="0" r="4.5" fill="#ffd56a"/>
+          <circle cx="-88" cy="0" r="8" fill="#ffd56a" fill-opacity="0.25"/>
+        </g>
+      </g>
+
+      <!-- Static wrapper around Pulse Ring -->
+      <g transform="translate(0, 0)">
+        <circle class="pulse-ring" cx="0" cy="0" r="54" fill="none" stroke="#ffd56a" stroke-width="2"/>
+      </g>
+
+      <!-- CEO Core Sphere -->
+      <circle cx="0" cy="0" r="54" fill="url(#ceo-grad)" stroke="#ffd56a" stroke-width="2.5"/>
+      <circle cx="0" cy="0" r="62" fill="url(#glow-gold)"/>
+
+      <!-- CEO Badge Text & Emblem -->
+      <text class="sans" x="0" y="-8" fill="#ffd56a" font-size="22" text-anchor="middle">🧭</text>
+      <text class="sans" x="0" y="16" fill="#e9ebfa" font-size="13" font-weight="800" text-anchor="middle" letter-spacing="1">CEO AGENT</text>
+      <text class="sans" x="0" y="32" fill="#ffd56a" font-size="10" font-weight="700" text-anchor="middle">ORCHESTRATOR</text>
+    </g>
+
+    <!-- CEO Hub Subtitle / Description (Two lines) -->
+    <g transform="translate(480, 560)">
+      <rect width="250" height="52" rx="12" fill="#080c20" fill-opacity="0.85" stroke="#8b7bff" stroke-opacity="0.35" stroke-width="1"/>
+      <!-- Card description in two lines (>=10px padding) -->
+      <text class="sans" x="125" y="22" fill="#9ba1c7" font-size="11" text-anchor="middle">
+        <tspan x="125" dy="0">Decomposes goals, routes to roles,</tspan>
+        <tspan x="125" dy="16">and synthesizes final deliveries.</tspan>
+      </text>
+    </g>
+
+    <!-- RIGHT COLUMN: Specialist Agents Constellation (5 Cards, descriptions in two lines) -->
+
+    <!-- Card 1: Product Owner (y = 230) -->
+    <g transform="translate(850, 230)">
+      <rect width="385" height="66" rx="12" fill="#06091a" stroke="#ff6a8e" stroke-opacity="0.45" stroke-width="1.5"/>
+      <circle cx="24" cy="22" r="10" fill="#ff6a8e" fill-opacity="0.2"/>
+      <text class="sans" x="24" y="26" fill="#ff6a8e" font-size="12" text-anchor="middle">🧑‍💼</text>
+      <text class="sans" x="44" y="26" fill="#e9ebfa" font-size="14" font-weight="700">Product Owner</text>
+      <rect x="300" y="12" width="70" height="18" rx="9" fill="#ff6a8e" fill-opacity="0.15"/>
+      <text class="sans" x="335" y="24" fill="#ff6a8e" font-size="10" font-weight="700" text-anchor="middle">DISCOVERY</text>
+      <!-- Two lines description (>=10px padding) -->
+      <text class="sans" x="24" y="44" fill="#9ba1c7" font-size="11">
+        <tspan x="24" dy="0">Discovers business rules and user stories;</tspan>
+        <tspan x="24" dy="15">clarifies ambiguities via interactive questions.</tspan>
+      </text>
+    </g>
+
+    <!-- Card 2: Tech Lead (y = 308) -->
+    <g transform="translate(850, 308)">
+      <rect width="385" height="66" rx="12" fill="#06091a" stroke="#8b7bff" stroke-opacity="0.5" stroke-width="1.5"/>
+      <circle cx="24" cy="22" r="10" fill="#8b7bff" fill-opacity="0.2"/>
+      <text class="sans" x="24" y="26" fill="#8b7bff" font-size="12" text-anchor="middle">🧠</text>
+      <text class="sans" x="44" y="26" fill="#e9ebfa" font-size="14" font-weight="700">Tech Lead</text>
+      <rect x="300" y="12" width="70" height="18" rx="9" fill="#8b7bff" fill-opacity="0.15"/>
+      <text class="sans" x="335" y="24" fill="#8b7bff" font-size="10" font-weight="700" text-anchor="middle">ARCHITECT</text>
+      <!-- Two lines description (>=10px padding) -->
+      <text class="sans" x="24" y="44" fill="#9ba1c7" font-size="11">
+        <tspan x="24" dy="0">Analyzes architecture, dependencies &amp; trade-offs;</tspan>
+        <tspan x="24" dy="15">creates actionable step-by-step technical plans.</tspan>
+      </text>
+    </g>
+
+    <!-- Card 3: Developer (y = 386) -->
+    <g transform="translate(850, 386)">
+      <rect width="385" height="66" rx="12" fill="#06091a" stroke="#3fd0ff" stroke-opacity="0.55" stroke-width="1.5"/>
+      <circle cx="24" cy="22" r="10" fill="#3fd0ff" fill-opacity="0.2"/>
+      <text class="sans" x="24" y="26" fill="#3fd0ff" font-size="12" text-anchor="middle">🛠</text>
+      <text class="sans" x="44" y="26" fill="#e9ebfa" font-size="14" font-weight="700">Developer</text>
+      <rect x="300" y="12" width="70" height="18" rx="9" fill="#3fd0ff" fill-opacity="0.15"/>
+      <text class="sans" x="335" y="24" fill="#3fd0ff" font-size="10" font-weight="700" text-anchor="middle">CODE &amp; TEST</text>
+      <!-- Two lines description (>=10px padding) -->
+      <text class="sans" x="24" y="44" fill="#9ba1c7" font-size="11">
+        <tspan x="24" dy="0">Writes clean code, unit tests &amp; refactorings;</tspan>
+        <tspan x="24" dy="15">strictly respects repository conventions.</tspan>
+      </text>
+    </g>
+
+    <!-- Card 4: Code Reviewer (y = 464) -->
+    <g transform="translate(850, 464)">
+      <rect width="385" height="66" rx="12" fill="#06091a" stroke="#ffd56a" stroke-opacity="0.5" stroke-width="1.5"/>
+      <circle cx="24" cy="22" r="10" fill="#ffd56a" fill-opacity="0.2"/>
+      <text class="sans" x="24" y="26" fill="#ffd56a" font-size="12" text-anchor="middle">🔍</text>
+      <text class="sans" x="44" y="26" fill="#e9ebfa" font-size="14" font-weight="700">Code Reviewer</text>
+      <rect x="300" y="12" width="70" height="18" rx="9" fill="#ffd56a" fill-opacity="0.15"/>
+      <text class="sans" x="335" y="24" fill="#ffd56a" font-size="10" font-weight="700" text-anchor="middle">AUDIT</text>
+      <!-- Two lines description (>=10px padding) -->
+      <text class="sans" x="24" y="44" fill="#9ba1c7" font-size="11">
+        <tspan x="24" dy="0">Evaluates security, code quality &amp; edge cases;</tspan>
+        <tspan x="24" dy="15">operates in fresh, unbiased sessions.</tspan>
+      </text>
+    </g>
+
+    <!-- Card 5: Git Ops (y = 542) -->
+    <g transform="translate(850, 542)">
+      <rect width="385" height="66" rx="12" fill="#06091a" stroke="#ff6a8e" stroke-opacity="0.45" stroke-width="1.5"/>
+      <circle cx="24" cy="22" r="10" fill="#ff6a8e" fill-opacity="0.2"/>
+      <text class="sans" x="24" y="26" fill="#ff6a8e" font-size="12" text-anchor="middle">🔀</text>
+      <text class="sans" x="44" y="26" fill="#e9ebfa" font-size="14" font-weight="700">Git Ops</text>
+      <rect x="300" y="12" width="70" height="18" rx="9" fill="#ff6a8e" fill-opacity="0.15"/>
+      <text class="sans" x="335" y="24" fill="#ff6a8e" font-size="10" font-weight="700" text-anchor="middle">RELEASES</text>
+      <!-- Two lines description (>=10px padding) -->
+      <text class="sans" x="24" y="44" fill="#9ba1c7" font-size="11">
+        <tspan x="24" dy="0">Manages clones, branches &amp; atomic commits;</tspan>
+        <tspan x="24" dy="15">pushes changes and opens pull requests.</tspan>
+      </text>
+    </g>
+
+    <!-- BOTTOM DOCK: Supported Agent CLIs -->
+    <g transform="translate(140, 642)">
+      <rect width="1000" height="64" rx="16" fill="#060918" fill-opacity="0.95" stroke="url(#card-border)" stroke-width="1.5"/>
+      <text class="sans" x="30" y="37" fill="#9ba1c7" font-size="11" font-weight="700" letter-spacing="1">SUPPORTED AGENT ENGINES:</text>
+
+      <!-- Engine 1: Claude Code -->
+      <g transform="translate(230, 18)">
+        <rect width="135" height="28" rx="14" fill="#0d122b" stroke="#ff6a8e" stroke-opacity="0.4"/>
+        <circle cx="16" cy="14" r="4" fill="#ff6a8e"/>
+        <text class="sans" x="78" y="18" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">Claude Code</text>
+      </g>
+
+      <!-- Engine 2: OpenAI Codex -->
+      <g transform="translate(380, 18)">
+        <rect width="140" height="28" rx="14" fill="#0d122b" stroke="#3fd0ff" stroke-opacity="0.4"/>
+        <circle cx="16" cy="14" r="4" fill="#3fd0ff"/>
+        <text class="sans" x="80" y="18" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">OpenAI Codex</text>
+      </g>
+
+      <!-- Engine 3: GitHub Copilot -->
+      <g transform="translate(535, 18)">
+        <rect width="145" height="28" rx="14" fill="#0d122b" stroke="#8b7bff" stroke-opacity="0.4"/>
+        <circle cx="16" cy="14" r="4" fill="#8b7bff"/>
+        <text class="sans" x="82" y="18" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">GitHub Copilot</text>
+      </g>
+
+      <!-- Engine 4: Cursor -->
+      <g transform="translate(695, 18)">
+        <rect width="115" height="28" rx="14" fill="#0d122b" stroke="#ffd56a" stroke-opacity="0.4"/>
+        <circle cx="16" cy="14" r="4" fill="#ffd56a"/>
+        <text class="sans" x="68" y="18" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">Cursor</text>
+      </g>
+
+      <!-- Engine 5: Google Antigravity -->
+      <g transform="translate(825, 18)">
+        <rect width="150" height="28" rx="14" fill="#0d122b" stroke="#3fd0ff" stroke-opacity="0.4"/>
+        <circle cx="16" cy="14" r="4" fill="#3fd0ff"/>
+        <text class="sans" x="85" y="18" fill="#e9ebfa" font-size="11" font-weight="600" text-anchor="middle">Antigravity</text>
+      </g>
+    </g>
+
+    <!-- Outer Rounded Canvas Stroke -->
+    <rect width="1280" height="740" rx="20" fill="none" stroke="url(#card-border)" stroke-width="2"/>
+  </g>
+</svg>
