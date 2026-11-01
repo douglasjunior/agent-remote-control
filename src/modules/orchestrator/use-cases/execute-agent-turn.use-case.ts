@@ -48,6 +48,7 @@ import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
 
 
+const UNSET_LABEL = 'default';
 const LOG_PREVIEW_LENGTH = 100;
 
 type ValidatedDelegation = DelegationResult & { readonly cwd: string };
@@ -268,10 +269,10 @@ export class ExecuteAgentTurnUseCase {
     }
     const lines: string[] = [];
     const signature: string[] = [];
-    for (const { role, projectName, taskSpec, startedAt } of delegations) {
+    for (const { role, projectName, taskSpec, startedAt, agentInfo } of delegations) {
       const waiting = this.questionQueue.isWaiting(conversationKey, role, projectName) ? 'yes' : 'no';
       const project = projectName ?? 'none';
-      lines.push(`- Role: ${role}, Project: ${project}, Running: ${this.formatElapsed(Date.now() - startedAt)}, Waiting for user: ${waiting}, Task: "${taskSpec}"`);
+      lines.push(`- Role: ${role}, Project: ${project}, Agent: ${agentInfo.agentName}, Model: ${agentInfo.modelName ?? UNSET_LABEL}, Effort: ${agentInfo.effortName ?? UNSET_LABEL}, Running: ${this.formatElapsed(Date.now() - startedAt)}, Waiting for user: ${waiting}, Task: "${taskSpec}"`);
       signature.push(`${role}\u0000${project}\u0000${waiting}\u0000${taskSpec}`);
     }
     return { text: `[ACTIVE_DELEGATIONS]\n${lines.join('\n')}\n`, signature: signature.join('\u0001') };
@@ -501,9 +502,7 @@ export class ExecuteAgentTurnUseCase {
             return { kind: 'cancelled', reason: error };
           }
           const { delegateToRole, projectName } = delegation;
-          const message = error instanceof Error ? error.message : String(error);
-          this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
-          return { kind: 'result', block: this.formatAgentResult(delegateToRole, projectName, message, 'failed') };
+          return { kind: 'result', block: this.formatFailedResult(session, round, delegateToRole, projectName, error) };
         },
       ),
     }));
@@ -569,10 +568,32 @@ export class ExecuteAgentTurnUseCase {
     return ['<user_answers>', ...lines, '</user_answers>'].join('\n');
   }
 
-  private formatAgentResult(role: string, projectName: string | undefined, body: string, status?: 'failed'): string {
+  private formatAgentResult(
+    role: string,
+    projectName: string | undefined,
+    body: string,
+    options: { readonly status?: 'failed'; readonly agentInfo?: TurnAgentInfo } = {},
+  ): string {
     const project = projectName ? ` project="${projectName}"` : '';
-    const failed = status ? ` status="${status}"` : '';
-    return `<agent_result role="${role}"${project}${failed}>\n${body}\n</agent_result>`;
+    const { agentInfo } = options;
+    const config = agentInfo
+      ? ` agent="${escapeTagAttribute(agentInfo.agentName)}" model="${escapeTagAttribute(agentInfo.modelName ?? UNSET_LABEL)}" effort="${escapeTagAttribute(agentInfo.effortName ?? UNSET_LABEL)}"`
+      : '';
+    const failed = options.status ? ` status="${options.status}"` : '';
+    return `<agent_result role="${role}"${project}${config}${failed}>\n${body}\n</agent_result>`;
+  }
+
+  private formatFailedResult(
+    session: SessionContext,
+    round: number,
+    delegateToRole: string,
+    projectName: string | undefined,
+    error: unknown,
+    agentInfo?: TurnAgentInfo,
+  ): string {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
+    return this.formatAgentResult(delegateToRole, projectName, message, { status: 'failed', agentInfo });
   }
 
   private isCancellation(error: unknown): boolean {
@@ -595,7 +616,7 @@ export class ExecuteAgentTurnUseCase {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
-        return this.formatAgentResult(delegateToRole, projectName, 'Steering message sent to active agent.');
+        return this.formatAgentResult(delegateToRole, projectName, 'Steering message sent to active agent.', { agentInfo: existing.agentInfo });
       }
 
       this.logger.log(
@@ -611,6 +632,7 @@ export class ExecuteAgentTurnUseCase {
     const delegatePort = this.agentPortFactory.create(
       await this.resolveRoleAgentId(request.conversationId, delegateToRole),
     );
+    const agentInfo = await this.buildAgentInfo(delegatePort, delegateToRole, request.conversationId);
     const event = {
       round,
       role: delegateToRole,
@@ -631,6 +653,7 @@ export class ExecuteAgentTurnUseCase {
     const activeDelegation: ActiveDelegation = {
       role: delegateToRole,
       roleName: event.roleName,
+      agentInfo,
       projectName: projectName ?? null,
       get taskSpec() {
         return currentTaskSpec;
@@ -678,7 +701,12 @@ export class ExecuteAgentTurnUseCase {
         usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
         durationMs,
       });
-      return this.formatAgentResult(delegateToRole, projectName, response);
+      return this.formatAgentResult(delegateToRole, projectName, response, { agentInfo });
+    } catch (error) {
+      if (this.isCancellation(error)) {
+        throw error;
+      }
+      return this.formatFailedResult(session, round, delegateToRole, projectName, error, agentInfo);
     } finally {
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);

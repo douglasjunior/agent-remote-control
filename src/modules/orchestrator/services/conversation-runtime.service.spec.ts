@@ -383,6 +383,7 @@ describe('ConversationRuntimeService', () => {
       const delegation = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -410,6 +411,7 @@ describe('ConversationRuntimeService', () => {
       const backend = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'backend',
         taskSpec: 'Build the API',
         cwd: '/mock/backend',
@@ -436,6 +438,7 @@ describe('ConversationRuntimeService', () => {
       const delegation1 = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -467,6 +470,7 @@ describe('ConversationRuntimeService', () => {
       const delegation = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -498,6 +502,7 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', {
         role: 'DEVELOPER',
         roleName: 'Developer',
+        agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'app',
         taskSpec: 'task',
         cwd: '/mock',
@@ -509,6 +514,7 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', {
         role: 'CODE_REVIEWER',
         roleName: 'Reviewer',
+        agentInfo: { roleName: 'Reviewer', agentName: 'stub' },
         projectName: null,
         taskSpec: 'review',
         cwd: '/mock',
@@ -529,6 +535,7 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', {
         role: 'DEVELOPER',
         roleName: 'Developer',
+        agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'app',
         taskSpec: 'task',
         cwd: '/mock',
@@ -540,6 +547,7 @@ describe('ConversationRuntimeService', () => {
       runtime.registerDelegation('a', {
         role: 'CODE_REVIEWER',
         roleName: 'Reviewer',
+        agentInfo: { roleName: 'Reviewer', agentName: 'stub' },
         projectName: null,
         taskSpec: 'review',
         cwd: '/mock',
@@ -560,6 +568,7 @@ describe('ConversationRuntimeService', () => {
       const delegation = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -582,6 +591,7 @@ describe('ConversationRuntimeService', () => {
       const delegation = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -613,6 +623,7 @@ describe('ConversationRuntimeService', () => {
       const delegation = {
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
+        agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -646,6 +657,7 @@ describe('ConversationRuntimeService', () => {
     const registerDelegationOn = (port: StubAgentPort) => runtime.registerDelegation('a', {
       role: 'DEVELOPER',
       roleName: 'Developer',
+      agentInfo: { roleName: 'Developer', agentName: 'stub' },
       projectName: null,
       taskSpec: 'task',
       cwd: '/mock',
