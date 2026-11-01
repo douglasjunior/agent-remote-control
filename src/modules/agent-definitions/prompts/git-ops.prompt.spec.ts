@@ -24,8 +24,15 @@ describe('git-ops.prompt', () => {
     );
   });
 
-  it('should forbid force push', () => {
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain('Never force push');
+  it('should run destructive operations only on an explicit instruction naming the target', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('run only on an explicit instruction from the caller or user that names the operation and its target');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('A rejected push, a failed merge, or a faster path is never an instruction');
+    expect(GIT_OPS_TURN_REMINDER).toContain('Run destructive operations');
+  });
+
+  it('should use the narrowest form of a destructive operation', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('--force-with-lease');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('Never use `--all`, `--mirror`, or wildcard refspecs');
   });
 
   it('should describe both working directories it can be given', () => {
