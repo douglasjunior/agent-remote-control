@@ -63,6 +63,7 @@ Before creating or changing any code, consult the catalog in `.agents/skills/`, 
 ## Cross-Cutting Conventions
 
 - **Commit messages**: Conventional Commits (Angular) in **English**, imperative mood in the present tense (e.g. "add", "fix"), subject line of up to 50 characters with no trailing period. When there is detailed context, separate the body with a blank line.
+- **No agent attribution**: Nothing written for the repository says that an AI agent produced or helped with it. Commits carry no `Co-Authored-By` trailer naming an agent and no session link, and pull request descriptions, issue and review comments, code comments and documentation carry no "Generated with" line or similar signature.
 - **Language**: Everything in **English** — identifiers, file names, classes, interfaces, methods, variables, test descriptions (`describe`, `it`), comments, documentation, skills and commit messages.
 - **Testing with Vitest**:
   - Unit tests live side by side with the files under test, following the `*.spec.ts` pattern.
