@@ -79,7 +79,6 @@
       }
 
       .orbit-cw {
-        transform-origin: 0 0;
         animation: orbit-rotate 14s linear infinite;
       }
       @keyframes orbit-rotate {

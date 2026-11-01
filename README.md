@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/cover.svg" alt="Agent Remote Control: your AI dev team, one message away. The CEO agent delegates to the Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agents while a Discord thread shows each step finishing, up to an opened pull request." width="100%">
+  <img src=".github/assets/banner.svg" alt="Agent Remote Control: your AI dev team, one message away. The CEO agent delegates to the Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agents while a Discord thread shows each step finishing, up to an opened pull request." width="100%">
 </p>
 
 <p align="center">
@@ -7,8 +7,8 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/douglasjunior/agent-remote-control?style=flat-square&color=8B7BFF" alt="MIT License"></a>
-  <a href="https://agentclientprotocol.com"><img src="https://img.shields.io/badge/protocol-ACP-3FD0FF?style=flat-square" alt="Agent Client Protocol"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/douglasjunior/agent-remote-control?style=flat-square&color=7C3AED" alt="MIT License"></a>
+  <a href="https://agentclientprotocol.com"><img src="https://img.shields.io/badge/protocol-ACP-0EA5E9?style=flat-square" alt="Agent Client Protocol"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D24-339933?style=flat-square&logo=nodedotjs&logoColor=white" alt="Node.js >= 24">
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript strict">
   <img src="https://img.shields.io/badge/built_with-NestJS-E0234E?style=flat-square&logo=nestjs&logoColor=white" alt="Built with NestJS">
@@ -23,11 +23,25 @@
   <a href="#-meet-the-team">The Team</a> ·
   <a href="#-how-it-works">How It Works</a> ·
   <a href="#-discord-setup">Discord Setup</a> ·
-  <a href="#-architecture">Architecture</a> ·
   <a href="#-contributing">Contributing</a>
 </p>
 
 ---
+
+## 💡 Why Agent Remote Control?
+
+AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor and Antigravity into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
+
+- 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
+- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
+- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, and every agent keeps its own session.
+- 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
+- 👀 **Watch it work, live.** Reasoning and tool calls stream into the Discord thread as they happen, with a typing indicator and rate-limit-safe updates.
+- 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
+- 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
+- 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
+- 🌍 **Speaks your language.** Answers follow the language you write in; agents talk to each other in English.
+- 🧱 **Built to be extended.** Clean Architecture with Ports & Adapters: Discord is the first channel, ACP is the agent contract, and new channels or agents are adapters away.
 
 ## 🚀 Quick Start
 
@@ -45,21 +59,6 @@ Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-
 
 > [!WARNING]
 > **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container.
-
-## 💡 Why Agent Remote Control?
-
-AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor and Antigravity into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
-
-- 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
-- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
-- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, and every agent keeps its own session.
-- 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
-- 👀 **Watch it work, live.** Reasoning and tool calls stream into the Discord thread as they happen, with a typing indicator and rate-limit-safe updates.
-- 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
-- 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
-- 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
-- 🌍 **Speaks your language.** Answers follow the language you write in; agents talk to each other in English.
-- 🧱 **Built to be extended.** Clean Architecture with Ports & Adapters: Discord is the first channel, ACP is the agent contract, and new channels or agents are adapters away.
 
 ## 🤖 Supported Agents
 
@@ -82,7 +81,7 @@ Every conversation is handled by a **CEO** agent that never touches the code its
 | 🧭 **CEO** | Talks with you, scopes requests, delegates all hands-on work and reviews the results. |
 | 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left. |
 | 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and actionable implementation plans. |
-| 🛠 **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
+| 🛠️ **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
 | 🔍 **Code Reviewer** | Unbiased review in a fresh session against project conventions, security and correctness. Can publish comments on PRs. |
 | 🔀 **Git Ops** | Clones and locates repositories, pulls, pushes, rebases, opens pull requests and sets up SSH keys. |
 
@@ -171,7 +170,7 @@ sequenceDiagram
   - **Cursor CLI** (`cursor-agent` or `agent` on the `PATH`, authenticated with `cursor-agent login`). Sessions run without interactive approvals and without a sandbox;
   - **Google Antigravity CLI** (`agy` on the `PATH`).
 
-## ⚙ Environment Variables
+## ⚙️ Environment Variables
 
 Copy the example file to `.env` at the project root and configure your credentials:
 
@@ -442,7 +441,7 @@ Create the feature/password-reset branch in the my-backend project, commit the c
   - Each **Thread** opened in a server channel represents an **isolated, independent agent session**.
   - **How to open a new session**: Go to the server's main channel and mention the bot with a new request (`@BotName ...`). It automatically creates a new Thread with a clean session, with no interference from previous tasks.
 
-## 🏗 Architecture
+## 🏗️ Architecture
 
 A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `src/modules/`:
 
