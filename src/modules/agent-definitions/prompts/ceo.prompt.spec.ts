@@ -75,11 +75,12 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Set `session="new"` when the work is a new task or subject for that agent');
   });
 
-  it('should allow parallel delegations with one agent that modifies files per project', () => {
+  it('should run one agent per role per conversation, with different roles in parallel', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('write several `<delegate>` tags in one response');
     expect(CEO_SYSTEM_PROMPT).toContain('one `<agent_result role="ROLE" project="project-folder">` each, with `status="failed"` when the agent failed');
     expect(CEO_SYSTEM_PROMPT).toContain('Only one agent that modifies files may work in a project folder at a time');
-    expect(CEO_SYSTEM_PROMPT).toContain('redirects that agent instead of starting another one');
+    expect(CEO_SYSTEM_PROMPT).toContain('A conversation runs one agent per role');
+    expect(CEO_SYSTEM_PROMPT).toContain('delegating to a role already working replaces its task');
   });
 
   it('should grant access outside a project folder by resuming the agent with the exact path', () => {
