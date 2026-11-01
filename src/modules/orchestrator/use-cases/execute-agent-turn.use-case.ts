@@ -11,6 +11,7 @@ import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
+import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
@@ -160,45 +161,56 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let prompt = this.enrichPromptWithAttachments(request.prompt, request.attachments);
+    const running = new RunningDelegations();
+    let lastBlockSignature: string | undefined;
+    let delegationRounds = 0;
 
-    for (let round = 1; ; round++) {
-      const { response, decision } = await this.conversationRuntime.runOnCeo(
-        conversationKey,
-        agentId,
-        async (ceoPort, turn) => {
-          observers.onCeoPort(ceoPort);
-          if (!session) {
-            session = await this.resolveSession(request);
-            observers.onSessionResolved(session);
-            this.logger.log(
-              `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
-            );
-            const activeDelegations = this.conversationRuntime.getActiveDelegations(conversationKey);
-            if (activeDelegations.length > 0) {
-              prompt = `${this.formatActiveDelegations(activeDelegations)}\n${prompt}`;
+    try {
+      for (let round = 1; ; round++) {
+        const { response, decision } = await this.conversationRuntime.runOnCeo(
+          conversationKey,
+          agentId,
+          async (ceoPort, turn) => {
+            observers.onCeoPort(ceoPort);
+            const firstRound = !session;
+            if (!session) {
+              session = await this.resolveSession(request);
+              observers.onSessionResolved(session);
+              this.logger.log(
+                `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
+              );
             }
+            const block = this.buildActiveDelegationsBlock(conversationKey);
+            if (block && (firstRound || block.signature !== lastBlockSignature)) {
+              prompt = `${block.text}\n${prompt}`;
+            }
+            lastBlockSignature = block?.signature;
+            return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1);
+          },
+          round === 1 ? request.onQueued : undefined,
+        );
+
+        if (decision.kind === 'invalid') {
+          return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
+        }
+
+        if (decision.kind === 'reply' && running.isEmpty) {
+          return await finish('completed', decision.message, undefined, decision.attachments);
+        }
+
+        if (decision.kind === 'delegate') {
+          if (++delegationRounds >= this.MAX_DELEGATION_ROUNDS) {
+            return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
-          return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1);
-        },
-        round === 1 ? request.onQueued : undefined,
-      );
-
-      if (decision.kind === 'invalid') {
-        return finish('failed', response, `Invalid CEO response: ${decision.reason}`);
+          running.add(this.startDelegations(session!, decision.delegations, request, round, conversationKey));
+        }
+        if (decision.message) {
+          request.onInterimMessage?.(decision.message);
+        }
+        prompt = await running.nextResults();
       }
-
-      if (decision.kind === 'reply') {
-        return finish('completed', decision.message, undefined, decision.attachments);
-      }
-
-      if (round === this.MAX_DELEGATION_ROUNDS) {
-        return finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
-      }
-
-      if (decision.message) {
-        request.onInterimMessage?.(decision.message);
-      }
-      prompt = await this.delegateAll(session!, decision.delegations, request, round, conversationKey);
+    } finally {
+      await this.stopRunningDelegations(running, conversationKey);
     }
   }
 
@@ -210,10 +222,11 @@ export class ExecuteAgentTurnUseCase {
     const prompt = buildCeoSteeringPrompt(this.enrichPromptWithAttachments(request.prompt, request.attachments));
     const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
     const languagePrompt = await this.buildLanguagePrompt(request.agentRole, request.agentRole);
+    const block = this.buildActiveDelegationsBlock(conversationKey)?.text;
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
-      [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n'),
+      [block, prompt, reminder, languagePrompt].filter(Boolean).join('\n\n'),
     );
     if (steered) {
       this.logger.log(
@@ -247,11 +260,26 @@ export class ExecuteAgentTurnUseCase {
     return `[ATTACHMENTS]\n${lines.join('\n')}\nInspect these files using your available tools as needed.\n\n${prompt}`;
   }
 
-  private formatActiveDelegations(delegations: readonly ActiveDelegation[]): string {
-    const lines = delegations.map(
-      delegation => `- Role: ${delegation.role}, Project: ${delegation.projectName ?? 'none'}, Task: "${delegation.taskSpec}"`,
-    );
-    return `[ACTIVE_DELEGATIONS]\n${lines.join('\n')}\n`;
+  /** The signature ignores elapsed time, so only a change in who runs, what they were asked or their wait state resends the block. */
+  private buildActiveDelegationsBlock(conversationKey: string): { readonly text: string; readonly signature: string } | undefined {
+    const delegations = this.conversationRuntime.getActiveDelegations(conversationKey);
+    if (delegations.length === 0) {
+      return undefined;
+    }
+    const lines: string[] = [];
+    const signature: string[] = [];
+    for (const { role, projectName, taskSpec, startedAt } of delegations) {
+      const waiting = this.questionQueue.isWaiting(conversationKey, role, projectName) ? 'yes' : 'no';
+      const project = projectName ?? 'none';
+      lines.push(`- Role: ${role}, Project: ${project}, Running: ${this.formatElapsed(Date.now() - startedAt)}, Waiting for user: ${waiting}, Task: "${taskSpec}"`);
+      signature.push(`${role}\u0000${project}\u0000${waiting}\u0000${taskSpec}`);
+    }
+    return { text: `[ACTIVE_DELEGATIONS]\n${lines.join('\n')}\n`, signature: signature.join('\u0001') };
+  }
+
+  private formatElapsed(elapsedMs: number): string {
+    const seconds = Math.floor(elapsedMs / 1000);
+    return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m`;
   }
 
   private async resolveSession(request: TurnRequest): Promise<SessionContext> {
@@ -454,34 +482,39 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /**
-   * Waits for every delegation, so no agent keeps running unobserved after another one fails. A failed delegation
-   * becomes a result for the CEO, so the work of the others still reaches it; a cancellation ends the turn.
+   * A failed delegation becomes a result for the CEO, so the work of the others still reaches it; a cancellation
+   * ends the turn.
    */
-  private async delegateAll(
+  private startDelegations(
     session: SessionContext,
     delegations: readonly ValidatedDelegation[],
     request: TurnRequest,
     round: number,
     conversationKey: string,
-  ): Promise<string> {
-    const outcomes = await Promise.allSettled(
-      delegations.map(delegation => this.delegate(session, delegation, request, round, conversationKey)),
+  ): readonly StartedDelegation[] {
+    return delegations.map(delegation => ({
+      role: delegation.delegateToRole,
+      outcome: this.delegate(session, delegation, request, round, conversationKey).then(
+        (block): DelegationOutcome => ({ kind: 'result', block }),
+        (error): DelegationOutcome => {
+          if (this.isCancellation(error)) {
+            return { kind: 'cancelled', reason: error };
+          }
+          const { delegateToRole, projectName } = delegation;
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
+          return { kind: 'result', block: this.formatAgentResult(delegateToRole, projectName, message, 'failed') };
+        },
+      ),
+    }));
+  }
+
+  /** A turn that ends with delegations still running (CEO failure, invalid response, cancellation) stops them, so no agent runs unobserved. */
+  private async stopRunningDelegations(running: RunningDelegations, conversationKey: string): Promise<void> {
+    await Promise.allSettled(
+      running.pendingRoles.map(role => this.conversationRuntime.findActiveDelegation(conversationKey, role)?.turn.cancel()),
     );
-    const cancellation = outcomes.find(outcome => outcome.status === 'rejected' && this.isCancellation(outcome.reason));
-    if (cancellation) {
-      throw (cancellation as PromiseRejectedResult).reason;
-    }
-    return outcomes
-      .map((outcome, index) => {
-        if (outcome.status === 'fulfilled') {
-          return outcome.value;
-        }
-        const { delegateToRole, projectName } = delegations[index];
-        const message = outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason);
-        this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
-        return this.formatAgentResult(delegateToRole, projectName, message, 'failed');
-      })
-      .join('\n\n');
+    await running.settled();
   }
 
   private async answerQuestions(

@@ -95,9 +95,15 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('A role appears once per response.');
       expect(skill).toContain('<delegate role="DEVELOPER" project="frontend">\nBuild the orders screen');
       expect(skill).toContain('Only one agent that modifies files may work in a project folder at a time, counting agents still running');
-      expect(skill).toContain('with all results together, including the failures.');
+      expect(skill).toContain('You get back control as each agent finishes, with its result, including failures');
+      expect(skill).toContain('The turn ends with your answer once no agent is left running.');
       expect(skill).toContain('`<agent_result role="ROLE" project="project-folder">...</agent_result>`');
       expect(skill).toContain('`status="failed"` means the agent stopped with an error');
+    });
+
+    it('should describe the running agents list and when it is repeated', () => {
+      expect(skill).toContain('how long it has been running, whether it is waiting for the user\'s answer and the full task it was given');
+      expect(skill).toContain('a prompt without it means the list is the same as the last one you received');
     });
 
     it('should pipeline several items through different roles', () => {
