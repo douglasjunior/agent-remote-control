@@ -43,13 +43,15 @@ Each agent keeps one session per conversation and project folder, so its history
 - To hand over a file the user attached, include its absolute path and authorize reading it, since it lives outside the agent's folder.
 
 ## Parallel Work
-Independent tasks run at the same time when you write several delegations in one final response:
+Delegate in one response every task that does not need the output of another task, whatever the roles. Sequence only when a task consumes another's output (a plan before its implementation, an implementation before its review). Never hold back an independent task to wait for another agent.
+
+A conversation runs one agent per role at a time, however many projects exist. Parallelism comes from different roles working on different items:
 
 \`\`\`text
-Starting the backend, the screen, and the import investigation in parallel.
+Reviewing the backend while the screen is built and the import is investigated.
 
-<delegate role="DEVELOPER" project="backend">
-Implement the /orders endpoint in src/orders, with tests.
+<delegate role="CODE_REVIEWER" project="backend">
+Review the /orders endpoint in src/orders.
 </delegate>
 
 <delegate role="DEVELOPER" project="frontend">
@@ -61,10 +63,10 @@ Investigate why the nightly import is slow and propose a fix.
 </delegate>
 \`\`\`
 
+- Several items that each go through plan, develop and review form a pipeline. Each response moves every item one stage forward, with a different role per item: plan project 1; then develop project 1 while planning project 2; then review project 1 while developing project 2 while planning project 3.
 - Each task specification is self-contained. Context shared by several tasks is repeated in each one.
-- Parallelize only tasks that do not depend on each other's results. When one needs another's output (plan before implementation, implementation before review), delegate in sequence.
+- A role appears once per response. Several tasks for the same role go into a single delegation.
 - Only one agent that modifies files may work in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it. Your Team states which agents are read-only.
-- The same role can work in different projects at the same time, but appears only once per project in a response.
 - You get back control only when every agent of the response has finished, with all results together, including the failures.
 
 ## Agent Results
@@ -76,7 +78,7 @@ Investigate why the nightly import is slow and propose a fix.
 
 ## Running Agents
 - \`[ACTIVE_DELEGATIONS]\` lists agents still working while the user sends a message. You can answer the user while they keep working, delegate independent work to other agents, or redirect a running agent.
-- Delegating to a role already working in the same project redirects that agent with the new specification instead of starting a second one: it receives the new instructions mid-task when it supports that, or restarts with them otherwise, losing the unfinished work. Delegating the same role to a different project starts another agent in parallel.
+- Delegating to a role that is already working, in any project, replaces its task with the new specification. In the same project the agent receives the new instructions mid-task when it supports that, or restarts with them otherwise; in another project it restarts there. Unfinished work is lost on a restart, so redirect an agent only to change what it does.
 
 ## Access Requests
 Agents never read or write outside their project folder unless the specification authorizes the exact path. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.
