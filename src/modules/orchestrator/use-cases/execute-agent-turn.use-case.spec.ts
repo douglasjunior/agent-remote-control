@@ -41,7 +41,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
   listRoles = vi.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER']);
-  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER'].includes(role));
+  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD'].includes(role));
   getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
   getDelegationContract = vi.fn(
     (_role: string) => ({ project: 'optional', sessionMode: 'overridable' }) as DelegationContract,
@@ -1500,6 +1500,33 @@ describe('ExecuteAgentTurnUseCase', () => {
       await running;
     });
 
+    it('should list the running agents in the message injected into the running CEO round', async () => {
+      stubAgentPort.supportsSteering = true;
+      runtime.registerDelegation('conv-1', {
+        role: 'DEVELOPER',
+        roleName: 'Developer',
+        projectName: 'my-app',
+        taskSpec: 'Implement the endpoint',
+        cwd: '/mock/workspace/my-app',
+        startedAt: Date.now(),
+        agentPort: new StubAgentPort(),
+        turn: { cancel: vi.fn() } as any,
+        steer: vi.fn(),
+      });
+      const gate = await holdFirstPrompt();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = await useCase.execute(turnRequest({ prompt: 'two' }));
+
+      expect(second.status).toBe('steered');
+      expect(stubAgentPort.steeringPrompts[0]).toContain('- Role: DEVELOPER, Project: my-app, Running: 0s, Waiting for user: no, Task: "Implement the endpoint"');
+      expect(stubAgentPort.steeringPrompts[0]).toContain('two');
+
+      gate.release();
+      await first;
+    });
+
     it('should queue the message and run it normally when the agent does not accept the steering', async () => {
       stubAgentPort.supportsSteering = true;
       stubAgentPort.steeringResult = false;
@@ -1594,8 +1621,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.status).toBe('completed');
       expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Task: "Run build and tests"');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: CODE_REVIEWER, Project: none, Task: "Review code"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Running: 0s, Waiting for user: no, Task: "Run build and tests"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: CODE_REVIEWER, Project: none, Running: 0s, Waiting for user: no, Task: "Review code"');
       expect(stubAgentPort.promptCalls[0]).toContain('How is it going?');
     });
 
@@ -1863,12 +1890,15 @@ describe('ExecuteAgentTurnUseCase', () => {
       stubAgentPort.mockResponses = [
         '<delegate role="DEVELOPER" project="my-app">Implement.</delegate>\n<delegate role="CODE_REVIEWER" project="my-app">Review main.</delegate>',
         'Ok.',
+        'Ok.',
       ];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('completed');
-      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="CODE_REVIEWER" project="my-app">\nReviewed.\n</agent_result>');
+      const handedOver = stubAgentPort.promptCalls.slice(1).join('\n');
+      expect(handedOver).toContain('<agent_result role="DEVELOPER" project="my-app">\nImplemented.\n</agent_result>');
+      expect(handedOver).toContain('<agent_result role="CODE_REVIEWER" project="my-app">\nReviewed.\n</agent_result>');
     });
 
     it('should reject two agents that modify the same project in one response', async () => {
@@ -1973,20 +2003,188 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect((await sessionStore.findSession('conv-1'))?.agentSessions.at(-1)?.projectName).toBe('project-b');
     });
 
-    it('should wait for every delegation and hand the failure to the CEO along with the other results', async () => {
+    it('should hand the failure to the CEO and keep waiting for the other agents', async () => {
       const failing = delegatePort('');
       failing.promptErrorToThrow = new Error('agent crashed');
       const healthy = delegatePort('Done.');
       delegatePorts = [failing, healthy];
-      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">B.</delegate>', 'Retrying a.'];
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" project="project-a">A.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">B.</delegate>',
+        'Retrying a.',
+        'All handled.',
+      ];
 
       const result = await useCase.execute(turnRequest());
 
-      expect(result.status).toBe('completed');
-      expect(stubAgentPort.promptCalls[1]).toBe(toCeo(
-        '<agent_result role="DEVELOPER" project="project-a" status="failed">\nagent crashed\n</agent_result>\n\n<agent_result role="CODE_REVIEWER" project="project-b">\nDone.\n</agent_result>',
-      ));
+      expect(result).toMatchObject({ status: 'completed', response: 'All handled.' });
+      const handedOver = stubAgentPort.promptCalls.slice(1).join('\n');
+      expect(handedOver).toContain('<agent_result role="DEVELOPER" project="project-a" status="failed">\nagent crashed\n</agent_result>');
+      expect(handedOver).toContain('<agent_result role="CODE_REVIEWER" project="project-b">\nDone.\n</agent_result>');
       expect(healthy.closeSessionCalls).toBe(1);
+    });
+
+    const gatedPort = (response: string) => {
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const port = delegatePort(response);
+      const original = port.prompt.bind(port);
+      port.prompt = async function* (text: string) {
+        await released;
+        yield* original(text);
+      };
+      return { port, release };
+    };
+
+    it('should hand each result to the CEO as soon as its agent finishes and wait for the rest', async () => {
+      const planner = delegatePort('Plan ready.');
+      const reviewer = gatedPort('Review done.');
+      delegatePorts = [planner, reviewer.port];
+      stubAgentPort.mockResponses = [
+        '<delegate role="TECH_LEAD" project="project-a">Plan.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">Review.</delegate>',
+        'Plan received.',
+        'All done.',
+      ];
+      const interim: string[] = [];
+
+      const result = await useCase.execute(turnRequest({
+        onInterimMessage: (message) => {
+          interim.push(message);
+          reviewer.release();
+        },
+      }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'All done.' });
+      expect(interim).toEqual(['Plan received.']);
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="TECH_LEAD" project="project-a">\nPlan ready.\n</agent_result>');
+      expect(stubAgentPort.promptCalls[1]).not.toContain('Review done.');
+      expect(stubAgentPort.promptCalls[1]).toContain('- Role: CODE_REVIEWER, Project: project-b');
+      expect(stubAgentPort.promptCalls[2]).toContain('<agent_result role="CODE_REVIEWER" project="project-b">\nReview done.\n</agent_result>');
+      expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
+    });
+
+    it('should hand over together the results that finish while the CEO is busy', async () => {
+      const developer = gatedPort('Implemented.');
+      const reviewer = gatedPort('Reviewed.');
+      const planner = delegatePort('Planned.');
+      delegatePorts = [planner, developer.port, reviewer.port];
+      stubAgentPort.mockResponses = [
+        '<delegate role="TECH_LEAD" project="project-a">Plan.</delegate>\n<delegate role="DEVELOPER" project="project-b">Build.</delegate>\n<delegate role="CODE_REVIEWER" project="my-app">Review.</delegate>',
+        'Noted.',
+        'Everything handled.',
+      ];
+      const ceoPrompt = stubAgentPort.prompt.bind(stubAgentPort);
+      stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
+        if (this.promptCalls.length === 1) {
+          developer.release();
+          reviewer.release();
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        yield* ceoPrompt(text);
+      };
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.response).toBe('Everything handled.');
+      expect(stubAgentPort.promptCalls).toHaveLength(3);
+      expect(stubAgentPort.promptCalls[2]).toContain('Implemented.');
+      expect(stubAgentPort.promptCalls[2]).toContain('Reviewed.');
+    });
+
+    it('should not send the running agents again while they have not changed and send them when they do', async () => {
+      runtime.registerDelegation('conv-1', activeDelegation('TECH_LEAD', 'project-z'));
+      const developer = delegatePort('Built.');
+      const original = developer.prompt.bind(developer);
+      developer.prompt = async function* (text: string) {
+        runtime.registerDelegation('conv-1', activeDelegation('PRODUCT_OWNER', 'project-y'));
+        yield* original(text);
+      };
+      delegatePorts = [developer, delegatePort('Planned.')];
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" project="project-a">Build.</delegate>',
+        '<delegate role="CODE_REVIEWER" project="project-b">Review.</delegate>',
+        'Done.',
+      ];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: TECH_LEAD, Project: project-z');
+      expect(stubAgentPort.promptCalls[1]).toContain('- Role: PRODUCT_OWNER, Project: project-y');
+      expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
+    });
+
+    it('should show how long an agent has been running and whether it waits for the user', async () => {
+      runtime.registerDelegation('conv-1', { ...activeDelegation('DEVELOPER', 'project-a'), startedAt: Date.now() - 125_000 });
+      runtime.registerDelegation('conv-1', { ...activeDelegation('TECH_LEAD', 'project-b'), startedAt: Date.now() - 4_000 });
+      const asked = questionQueue.ask(
+        'conv-1',
+        { role: 'DEVELOPER', roleName: 'Developer', projectName: 'project-a' },
+        '',
+        [{ text: 'Which one?', options: [] }],
+      );
+      stubAgentPort.mockResponses = ['Understood.'];
+
+      await useCase.execute(turnRequest({ prompt: 'Status?' }));
+
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Running: 2m, Waiting for user: yes, Task: "Running task"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- Role: TECH_LEAD, Project: project-b, Running: 4s, Waiting for user: no, Task: "Running task"');
+      questionQueue.cancel('conv-1');
+      await expect(asked).rejects.toBeInstanceOf(PromptCancelledError);
+    });
+
+    it('should stop the agents still running when the CEO response is invalid', async () => {
+      const developer = delegatePort('Built.');
+      const reviewer = delegatePort('never');
+      let rejectReviewer!: (error: Error) => void;
+      const reviewerStuck = new Promise<void>((_, reject) => {
+        rejectReviewer = reject;
+      });
+      reviewer.prompt = async function* () {
+        await reviewerStuck;
+        yield textChunk('never');
+      };
+      reviewer.cancel = async () => {
+        rejectReviewer(new PromptCancelledError());
+      };
+      delegatePorts = [developer, reviewer];
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" project="project-a">Build.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">Review.</delegate>',
+        '<delegate role="NOBODY">Go.</delegate>',
+        '<delegate role="NOBODY">Go.</delegate>',
+      ];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('failed');
+      expect(result.errorMessage).toContain('Invalid CEO response');
+      expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+      expect(reviewer.closeSessionCalls).toBe(1);
+    });
+
+    it('should keep the unfinished agents of a cancelled turn from running on', async () => {
+      const reviewer = delegatePort('never');
+      let rejectReviewer!: (error: Error) => void;
+      const reviewerStuck = new Promise<void>((_, reject) => {
+        rejectReviewer = reject;
+      });
+      reviewer.prompt = async function* () {
+        await reviewerStuck;
+        yield textChunk('never');
+      };
+      reviewer.cancel = async () => {
+        rejectReviewer(new PromptCancelledError());
+      };
+      const developer = delegatePort('');
+      developer.promptErrorToThrow = new PromptCancelledError();
+      delegatePorts = [developer, reviewer];
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="project-a">Build.</delegate>\n<delegate role="CODE_REVIEWER" project="project-b">Review.</delegate>'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('cancelled');
+      expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+      expect(reviewer.closeSessionCalls).toBe(1);
     });
 
     it('should hand a failure that is not an Error to the CEO as text', async () => {
@@ -2258,10 +2456,9 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(result.response).toBe('Both done.');
       expect(shown).toEqual(['First? (0 waiting)']);
-      expect(stubAgentPort.promptCalls[1]).toBe(toCeo([
-        '<agent_result role="DEVELOPER" project="project-a">\nFirst done.\n</agent_result>',
-        '<agent_result role="CODE_REVIEWER" project="project-b">\nSecond done.\n</agent_result>',
-      ].join('\n\n')));
+      const handedOver = stubAgentPort.promptCalls.slice(1).join('\n');
+      expect(handedOver).toContain('<agent_result role="DEVELOPER" project="project-a">\nFirst done.\n</agent_result>');
+      expect(handedOver).toContain('<agent_result role="CODE_REVIEWER" project="project-b">\nSecond done.\n</agent_result>');
     });
 
     it('should repair a CEO response with malformed questions', async () => {
