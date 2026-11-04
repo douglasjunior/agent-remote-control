@@ -1,0 +1,13 @@
+import { z } from 'zod';
+
+
+export const conversationSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
+
+export const conversationStateSchema = z.enum(['idle', 'queued', 'running']);
+export type ConversationState = z.infer<typeof conversationStateSchema>;
