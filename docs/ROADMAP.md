@@ -19,7 +19,7 @@ Each stage ships something usable on its own and fits in a few focused work sess
 
 ## Stage 1: Monorepo and local web channel
 
-Removes the hardest onboarding step for non-developers, creating a Discord bot, by adding a browser interface that talks to the service on `localhost`.
+Removes the hardest onboarding step for non-developers, creating a Discord bot, by adding a browser interface that talks to the service on `localhost`. The [Stage 1 delivery plans](plans/stage-1/README.md) break it into pull requests.
 
 ### 1a. Monorepo
 
@@ -33,7 +33,7 @@ agent-remote-control/
 │   └── protocol/    # Message contract shared by server and web (types and runtime validation)
 ├── tsconfig.base.json
 ├── eslint.config.js
-├── vitest.workspace.ts
+├── vitest.config.ts   # Lists each package as a Vitest project
 └── package.json     # Workspaces and root scripts (ts, lint, test, build) that run across packages
 ```
 
@@ -47,7 +47,7 @@ Moving the server is a pure relocation: no behavior change, every test still gre
 
 **Transport port.** The `web` module depends on `IClientTransportPort`, which accepts client connections and exchanges `protocol` messages with them. The first adapter is a WebSocket server (`ws`) on the existing NestJS HTTP port (`PORT`, default `3000`). Plain `ws` with JSON frames is chosen over Socket.IO because a WebRTC DataChannel carries the same frames, so the Stage 3 adapter implements the same port without touching the module.
 
-**Serving the interface locally.** The server serves the web package's production build as static files on the same port, so the user opens `http://localhost:3000`. During development, the Vite dev server proxies the WebSocket to the server.
+**Serving the interface locally.** The server serves the web package's production build as static files on the same port, so the user opens the link with the access token that the server prints at startup (`http://localhost:3000/#token=...`). During development, the Vite dev server proxies the WebSocket to the server.
 
 ## Stage 2: Simple mode
 
