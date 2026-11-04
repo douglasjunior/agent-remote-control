@@ -1,7 +1,7 @@
 import type { Client } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 
 import { DiscordClientService } from './discord-client.service.js';
 
@@ -23,10 +23,7 @@ const SHELL_COMMAND = {
 };
 
 describe('DiscordClientService', () => {
-  let shellEnabled: boolean;
-  const orchestratorStub = {
-    isShellCommandEnabled: () => shellEnabled,
-  } as unknown as OrchestratorService;
+  const agentTurn = new StubAgentTurnPort();
   let loginMock: ReturnType<typeof vi.fn>;
   let destroyMock: ReturnType<typeof vi.fn>;
   let onMock: ReturnType<typeof vi.fn>;
@@ -35,7 +32,7 @@ describe('DiscordClientService', () => {
   const originalToken = process.env.DISCORD_BOT_TOKEN;
 
   beforeEach(() => {
-    shellEnabled = false;
+    agentTurn.shellEnabled = false;
     loginMock = vi.fn().mockResolvedValue('token');
     destroyMock = vi.fn().mockResolvedValue(undefined);
     onMock = vi.fn().mockReturnThis();
@@ -46,7 +43,7 @@ describe('DiscordClientService', () => {
       on: onMock,
     } as unknown as Client;
 
-    service = new DiscordClientService(orchestratorStub, mockClient);
+    service = new DiscordClientService(agentTurn, mockClient);
     delete process.env.DISCORD_BOT_TOKEN;
   });
 
@@ -60,7 +57,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should instantiate with default discord.js Client if none provided', () => {
-    const defaultService = new DiscordClientService(orchestratorStub);
+    const defaultService = new DiscordClientService(agentTurn);
     expect(defaultService.getClient()).toBeDefined();
   });
 
@@ -108,7 +105,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should register the shell command only when shell commands are enabled', async () => {
-    shellEnabled = true;
+    agentTurn.shellEnabled = true;
     const setAppCommands = vi.fn().mockResolvedValue([]);
     (mockClient as any).application = { commands: { set: setAppCommands } };
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';

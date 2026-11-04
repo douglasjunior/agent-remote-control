@@ -10,8 +10,14 @@ describe('parseClientCommand', () => {
     { type: 'conversation.history', conversationId: 'c' },
     { type: 'message.send', conversationId: 'c', text: 'hi' },
     { type: 'turn.cancel', conversationId: 'c' },
-    { type: 'config.open', conversationId: 'c', menu: 'profiles' },
-    { type: 'config.cancel', conversationId: 'c' },
+    { type: 'agents.list' },
+    { type: 'models.list', agentId: 'claude' },
+    { type: 'efforts.list', agentId: 'claude', modelId: 'opus' },
+    { type: 'profiles.get', conversationId: 'c' },
+    { type: 'profiles.set', conversationId: 'c', agentId: 'claude' },
+    { type: 'profiles.set', conversationId: 'c', roles: ['CEO', 'DEVELOPER'], agentId: 'claude', modelId: 'opus', effortId: 'high' },
+    { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 2 } },
+    { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: 'my answer' } },
   ])('accepts $type', (command) => {
     expect(parseClientCommand(command)).toEqual({ ok: true, value: command });
   });
@@ -29,7 +35,14 @@ describe('parseClientCommand', () => {
     ['missing fields', { type: 'auth' }],
     ['blank text', { type: 'message.send', conversationId: 'c', text: '   ' }],
     ['oversized text', { type: 'message.send', conversationId: 'c', text: 'a'.repeat(MAX_MESSAGE_LENGTH + 1) }],
-    ['invalid menu', { type: 'config.open', conversationId: 'c', menu: 'x' }],
+    ['removed menu command', { type: 'config.open', conversationId: 'c', menu: 'agent' }],
+    ['removed selection command', { type: 'selection.choose', conversationId: 'c', optionIndexes: [1] }],
+    ['empty role list', { type: 'profiles.set', conversationId: 'c', roles: [], agentId: 'claude' }],
+    ['profiles.set without an agent', { type: 'profiles.set', conversationId: 'c' }],
+    ['models.list without an agent', { type: 'models.list' }],
+    ['fractional option index', { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 1.5 } }],
+    ['blank text answer', { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: '  ' } }],
+    ['unknown answer kind', { type: 'question.answer', conversationId: 'c', answer: { kind: 'voice' } }],
     ['null', null],
     ['string', 'auth'],
   ])('rejects %s', (_label, data) => {

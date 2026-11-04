@@ -1,13 +1,28 @@
+import { Logger } from '@nestjs/common';
+
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
-import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
+import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
+import { createWebHarness } from '../testing/web-harness.js';
+import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
+import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
+import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
+import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-history.use-case.js';
+import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-profiles.use-case.js';
+import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
+import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
+import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
+import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
 import { AUTH_FAILED_CLOSE_CODE, AUTH_TIMEOUT_MS, WebConnectionHandler } from './web-connection.handler.js';
 
 
+const OBSERVER_ONLY = 1;
+const OBSERVER_AND_CLIENT = 2;
+
 describe('WebConnectionHandler', () => {
   let transport: FakeClientTransport;
-  let registry: WebConnectionRegistryService;
+  let harness: ReturnType<typeof createWebHarness>;
   let handler: WebConnectionHandler;
   let connection: FakeClientConnection;
 
@@ -15,8 +30,26 @@ describe('WebConnectionHandler', () => {
     vi.useFakeTimers();
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
-    registry = new WebConnectionRegistryService();
-    handler = new WebConnectionHandler(transport, new WebAccessTokenService(), registry);
+    harness = createWebHarness();
+    const { store, events, agentTurn, configuration, questions, workspace } = harness;
+    const getProfiles = new GetConversationProfilesUseCase(configuration);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace);
+    handler = new WebConnectionHandler(
+      transport,
+      store,
+      new WebAccessTokenService(),
+      harness.registry,
+      events,
+      new ListConversationsUseCase(store),
+      new CreateConversationUseCase(store),
+      new GetConversationHistoryUseCase(store, events),
+      sendMessage,
+      new CancelConversationTurnUseCase(agentTurn, events),
+      new ListAgentOptionsUseCase(configuration),
+      getProfiles,
+      new SetConversationProfilesUseCase(configuration, getProfiles, events),
+      new AnswerConversationQuestionUseCase(questions, events),
+    );
     handler.onModuleInit();
     connection = new FakeClientConnection();
     transport.connect(connection);
@@ -31,7 +64,7 @@ describe('WebConnectionHandler', () => {
     connection.receive({ type: 'auth', token: 'secret' });
 
     expect(connection.sent).toEqual([{ type: 'auth.ok' }]);
-    expect(registry.size).toBe(1);
+    expect(harness.registry.size).toBe(OBSERVER_AND_CLIENT);
   });
 
   it('does not close an authenticated connection when the timeout elapses', () => {
@@ -46,7 +79,7 @@ describe('WebConnectionHandler', () => {
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
     expect(connection.closedWith?.code).toBe(AUTH_FAILED_CLOSE_CODE);
-    expect(registry.size).toBe(0);
+    expect(harness.registry.size).toBe(OBSERVER_ONLY);
   });
 
   it('rejects when no auth command arrives in time', () => {
@@ -68,7 +101,7 @@ describe('WebConnectionHandler', () => {
     connection.receive({ type: 'auth', token: 'secret' });
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
-    expect(registry.size).toBe(0);
+    expect(harness.registry.size).toBe(OBSERVER_ONLY);
   });
 
   it('cancels the timeout when the connection closes', () => {
@@ -86,18 +119,179 @@ describe('WebConnectionHandler', () => {
     expect(connection.closedWith).toBeUndefined();
   });
 
-  it('answers conversation.list with an empty list', () => {
-    connection.receive({ type: 'auth', token: 'secret' });
-    connection.receive({ type: 'conversation.list' });
+  describe('routing after authentication', () => {
+    const settle = async () => {
+      for (let pass = 0; pass < 10; pass += 1) {
+        await vi.advanceTimersByTimeAsync(0);
+      }
+    };
+    const sent = () => connection.sent.slice(1);
 
-    expect(connection.sent[1]).toEqual({ type: 'conversation.list', conversations: [] });
-  });
+    beforeEach(() => {
+      connection.receive({ type: 'auth', token: 'secret' });
+    });
 
-  it('answers a valid command that has no route yet with an error', () => {
-    connection.receive({ type: 'auth', token: 'secret' });
-    connection.receive({ type: 'turn.cancel', conversationId: 'c' });
+    it('answers conversation.list to the requester', async () => {
+      harness.store.seed('web-1');
 
-    expect(connection.sent[1]).toEqual({ type: 'error', message: 'Unsupported command: turn.cancel' });
+      connection.receive({ type: 'conversation.list' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'conversation.list', conversations: [expect.objectContaining({ id: 'web-1' })] }]);
+    });
+
+    it('answers conversation.create to the requester and tells the others', async () => {
+      const other = new FakeClientConnection('other');
+      transport.connect(other);
+      other.receive({ type: 'auth', token: 'secret' });
+
+      connection.receive({ type: 'conversation.create', requestId: 'r1' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'conversation.created', requestId: 'r1', conversation: expect.objectContaining({ id: 'web-1' }) }]);
+      expect(other.sent).toContainEqual({ type: 'conversation.updated', conversation: expect.objectContaining({ id: 'web-1' }) });
+    });
+
+    it('answers conversation.history with the entries and the state', async () => {
+      harness.store.seed('web-1');
+      harness.events.publishState('web-1', 'running');
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'conversation.history', conversationId: 'web-1' });
+      await settle();
+
+      expect(connection.sent).toContainEqual({
+        type: 'conversation.history',
+        conversationId: 'web-1',
+        entries: [],
+        state: 'running',
+      });
+    });
+
+    it('starts a turn for message.send without waiting for it', async () => {
+      harness.store.seed('web-1');
+      harness.configuration.store.byConversation.set('web-1', configuredSettings());
+
+      connection.receive({ type: 'message.send', conversationId: 'web-1', text: 'hello' });
+      await settle();
+
+      expect(harness.agentTurn.turnRequests).toHaveLength(1);
+      expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.entry' }));
+    });
+
+    it('cancels a turn', async () => {
+      harness.store.seed('web-1');
+      harness.agentTurn.cancelResult = false;
+
+      connection.receive({ type: 'turn.cancel', conversationId: 'web-1' });
+      await settle();
+
+      expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.entry' }));
+    });
+
+    it('lists the agents, then the models and efforts of an agent', async () => {
+      connection.receive({ type: 'agents.list' });
+      connection.receive({ type: 'models.list', agentId: 'codex' });
+      connection.receive({ type: 'efforts.list', agentId: 'codex', modelId: 'gpt' });
+      await settle();
+
+      expect(sent()).toEqual([
+        { type: 'agents.list', agents: [{ id: 'codex', name: 'Codex' }] },
+        { type: 'models.list', agentId: 'codex', models: [{ id: 'gpt', name: 'GPT', description: 'Fast' }] },
+        { type: 'efforts.list', agentId: 'codex', modelId: 'gpt', efforts: [{ id: 'high', name: 'High' }] },
+      ]);
+    });
+
+    it('answers the models and efforts of an unknown agent with an error', async () => {
+      connection.receive({ type: 'models.list', agentId: 'ghost' });
+      connection.receive({ type: 'efforts.list', agentId: 'ghost', modelId: 'gpt' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'Unknown agent' }, { type: 'error', message: 'Unknown agent' }]);
+    });
+
+    it('answers profiles.get to the requester with the conversation profiles', async () => {
+      harness.store.seed('web-1');
+
+      connection.receive({ type: 'profiles.get', conversationId: 'web-1' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: false, profiles: expect.any(Array) }]);
+    });
+
+    it('saves profiles and lets every connection know', async () => {
+      harness.store.seed('web-1');
+
+      connection.receive({ type: 'profiles.set', conversationId: 'web-1', agentId: 'codex', modelId: 'gpt' });
+      await settle();
+
+      expect(harness.configuration.configureCalls).toHaveLength(1);
+      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array) }]);
+    });
+
+    it('answers an invalid profiles.set with an error', async () => {
+      harness.store.seed('web-1');
+      harness.configuration.configureResult = { ok: false, error: 'Unknown agent' };
+
+      connection.receive({ type: 'profiles.set', conversationId: 'web-1', agentId: 'ghost' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'Unknown agent', conversationId: 'web-1' }]);
+    });
+
+    it('answers a question by option or by text', async () => {
+      harness.store.seed('web-1');
+      harness.questions.submission = { kind: 'answered', asker: { role: 'CEO', roleName: 'CEO', projectName: null } };
+
+      connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'option', optionIndex: 2 } });
+      connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'text', text: 'my own' } });
+      await settle();
+
+      expect(harness.questions.answers.map(entry => entry.answer)).toEqual([{ kind: 'option', optionIndex: 2 }, { kind: 'text', text: 'my own' }]);
+    });
+
+    it('rejects an answer when no question is waiting', async () => {
+      harness.store.seed('web-1');
+
+      connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'option', optionIndex: 1 } });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'There is no open question', conversationId: 'web-1' }]);
+    });
+
+    it('answers a command for an unknown conversation with an error', async () => {
+      connection.receive({ type: 'message.send', conversationId: 'web-missing', text: 'hi' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'Unknown conversation', conversationId: 'web-missing' }]);
+      expect(harness.agentTurn.turnRequests).toHaveLength(0);
+    });
+
+    it('ignores a repeated auth command', async () => {
+      connection.receive({ type: 'auth', token: 'secret' });
+      await settle();
+
+      expect(sent()).toEqual([]);
+    });
+
+    it('reports a failing command without closing the connection', async () => {
+      vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      vi.spyOn(harness.store, 'list').mockRejectedValue(new Error('disk gone'));
+      connection.receive({ type: 'conversation.list' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'The command failed' }]);
+      expect(connection.closedWith).toBeUndefined();
+    });
+
+    it('describes a command that fails with a non-Error value', async () => {
+      const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      vi.spyOn(harness.store, 'list').mockRejectedValue('plain');
+      connection.receive({ type: 'conversation.list' });
+      await settle();
+
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('plain'));
+    });
   });
 
   it('stops listening for connections on module destroy', () => {

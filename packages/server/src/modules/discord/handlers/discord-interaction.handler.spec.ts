@@ -6,21 +6,23 @@ import type {
 import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
-import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
-import type { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
+import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import type { StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import type { DiscordConversationService } from '../services/discord-conversation.service.js';
 
 import { DiscordInteractionHandler } from './discord-interaction.handler.js';
 
 
-class StubOrchestratorService implements Partial<OrchestratorService> {
-  cancelledConversationId?: string;
+/** Stands in for both the orchestrator and the Discord conversation service the handler calls. */
+/** Stands in for the Discord dialog state the handler starts and cancels. */
+class StubDiscordConversationService implements Partial<DiscordConversationService> {
   throwError = false;
-  hasActiveTurn = true;
   hasActiveSelection = false;
+  pendingLanguageChange = false;
   selectionResult: StartAgentConfigSelectionResult = {
     kind: 'selection',
     selection: {
@@ -48,80 +50,10 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     },
   };
 
-  startedProfilesSelections: string[] = [];
-
-  async startProfilesSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
-    if (this.throwError) {
-      throw new Error('profiles down');
-    }
-    this.startedProfilesSelections.push(conversationId);
-    return this.profilesSelectionResult;
-  }
-
-  quotaReports: AgentQuotaReport[] = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
-
-  async getQuota(): Promise<readonly AgentQuotaReport[]> {
-    if (this.throwError) {
-      throw new Error('quota down');
-    }
-    return this.quotaReports;
-  }
-
   startedSelections: string[] = [];
-  pendingQuestions = false;
-  pendingQuestionLookups: string[] = [];
-
-  hasPendingQuestions(conversationId: string): boolean {
-    this.pendingQuestionLookups.push(conversationId);
-    return this.pendingQuestions;
-  }
-
   startedAgentSelections: string[] = [];
+  startedProfilesSelections: string[] = [];
   languageRequests: string[] = [];
-  pendingLanguageChange = false;
-
-  async requestLanguageChange(conversationId: string): Promise<string> {
-    if (this.throwError) {
-      throw new Error('preferences down');
-    }
-    this.languageRequests.push(conversationId);
-    return 'English';
-  }
-
-  cancelLanguageChange(_conversationId: string): boolean {
-    return this.pendingLanguageChange;
-  }
-
-  shellResult: ShellCommandResult = {
-    command: 'df -h',
-    exitCode: 0,
-    output: 'Filesystem',
-    truncated: false,
-    timedOut: false,
-    cancelled: false,
-  };
-
-  shellCalls: { conversationId: string; command: string }[] = [];
-
-  async runShellCommand(conversationId: string, command: string): Promise<ShellCommandResult> {
-    if (this.throwError) {
-      throw new Error('shell down');
-    }
-    this.shellCalls.push({ conversationId, command });
-    return this.shellResult;
-  }
-
-  async cancelTurn(conversationId: string): Promise<boolean> {
-    if (this.throwError) {
-      throw new Error('Cancel turn failed');
-    }
-    this.cancelledConversationId = conversationId;
-    return this.hasActiveTurn;
-  }
-
-  async cancelConfigSelection(_conversationId: string): Promise<boolean> {
-    return this.hasActiveSelection;
-  }
 
   async startConfigSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
     if (this.throwError) {
@@ -137,6 +69,30 @@ class StubOrchestratorService implements Partial<OrchestratorService> {
     }
     this.startedAgentSelections.push(conversationId);
     return this.agentSelectionResult;
+  }
+
+  async startProfilesSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    if (this.throwError) {
+      throw new Error('profiles down');
+    }
+    this.startedProfilesSelections.push(conversationId);
+    return this.profilesSelectionResult;
+  }
+
+  async cancelConfigSelection(_conversationId: string): Promise<boolean> {
+    return this.hasActiveSelection;
+  }
+
+  async requestLanguageChange(conversationId: string): Promise<string> {
+    if (this.throwError) {
+      throw new Error('preferences down');
+    }
+    this.languageRequests.push(conversationId);
+    return 'English';
+  }
+
+  cancelLanguageChange(_conversationId: string): boolean {
+    return this.pendingLanguageChange;
   }
 }
 
@@ -191,7 +147,9 @@ function buildLongQuotaReports(): AgentQuotaReport[] {
 describe('DiscordInteractionHandler', () => {
   let mockClient: Client;
   let clientService: DiscordClientService;
-  let orchestratorService: StubOrchestratorService;
+  let agentTurn: StubAgentTurnPort;
+  let questions: StubUserQuestionPort;
+  let dialogs: StubDiscordConversationService;
   let handler: DiscordInteractionHandler;
 
   beforeEach(() => {
@@ -199,11 +157,25 @@ describe('DiscordInteractionHandler', () => {
       on: vi.fn(),
     } as unknown as Client;
 
-    clientService = new DiscordClientService({ isShellCommandEnabled: () => false } as unknown as OrchestratorService, mockClient);
-    orchestratorService = new StubOrchestratorService();
+    agentTurn = new StubAgentTurnPort();
+    questions = new StubUserQuestionPort();
+    dialogs = new StubDiscordConversationService();
+    agentTurn.shellEnabled = false;
+    agentTurn.shellResult = {
+      command: 'df -h',
+      exitCode: 0,
+      output: 'Filesystem',
+      truncated: false,
+      timedOut: false,
+      cancelled: false,
+    };
+    agentTurn.quotaReports = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
+    clientService = new DiscordClientService(agentTurn, mockClient);
     handler = new DiscordInteractionHandler(
       clientService,
-      orchestratorService as unknown as OrchestratorService,
+      agentTurn,
+      questions,
+      dialogs as unknown as DiscordConversationService,
       new DiscordActivityFormatter(),
     );
   });
@@ -250,7 +222,7 @@ describe('DiscordInteractionHandler', () => {
 
     await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledConversationId).toBeUndefined();
+    expect(agentTurn.cancelledConversations.at(-1)).toBeUndefined();
   });
 
   it('should ignore unknown chat input commands', async () => {
@@ -258,9 +230,9 @@ describe('DiscordInteractionHandler', () => {
 
     await handler.handleInteraction(interaction);
 
-    expect(orchestratorService.cancelledConversationId).toBeUndefined();
-    expect(orchestratorService.startedSelections).toHaveLength(0);
-    expect(orchestratorService.startedAgentSelections).toHaveLength(0);
+    expect(agentTurn.cancelledConversations.at(-1)).toBeUndefined();
+    expect(dialogs.startedSelections).toHaveLength(0);
+    expect(dialogs.startedAgentSelections).toHaveLength(0);
   });
 
   describe('/cancel', () => {
@@ -269,7 +241,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledConversationId).toBe('channel-123');
+      expect(agentTurn.cancelledConversations.at(-1)).toBe('channel-123');
       expect(interaction.reply).toHaveBeenCalledWith({
         content: '🛑 **Cancellation requested.** The active turn will be stopped.',
         ephemeral: true,
@@ -284,7 +256,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledConversationId).toBe('parent-channel-456:thread-777');
+      expect(agentTurn.cancelledConversations.at(-1)).toBe('parent-channel-456:thread-777');
     });
 
     it('should fall back to the thread id when the thread has no parent', async () => {
@@ -295,12 +267,12 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.cancelledConversationId).toBe('thread-777:thread-777');
+      expect(agentTurn.cancelledConversations.at(-1)).toBe('thread-777:thread-777');
     });
 
     it('should confirm when only a selection was cancelled', async () => {
-      orchestratorService.hasActiveTurn = false;
-      orchestratorService.hasActiveSelection = true;
+      agentTurn.cancelResult = false;
+      dialogs.hasActiveSelection = true;
       const interaction = buildInteraction();
 
       await handler.handleInteraction(interaction);
@@ -312,8 +284,8 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should confirm when only a language change was cancelled', async () => {
-      orchestratorService.hasActiveTurn = false;
-      orchestratorService.pendingLanguageChange = true;
+      agentTurn.cancelResult = false;
+      dialogs.pendingLanguageChange = true;
       const interaction = buildInteraction();
 
       await handler.handleInteraction(interaction);
@@ -325,7 +297,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should tell the user when there is nothing to cancel', async () => {
-      orchestratorService.hasActiveTurn = false;
+      agentTurn.cancelResult = false;
       const interaction = buildInteraction({ user: undefined });
 
       await handler.handleInteraction(interaction);
@@ -348,7 +320,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should reply with the error message when cancelling fails', async () => {
-      orchestratorService.throwError = true;
+      agentTurn.throwOnCancel = true;
       const interaction = buildInteraction();
 
       await handler.handleInteraction(interaction);
@@ -360,7 +332,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should stringify non-Error failures', async () => {
-      orchestratorService.cancelTurn = vi.fn().mockRejectedValueOnce('raw cancel error');
+      agentTurn.cancelTurn = vi.fn().mockRejectedValueOnce('raw cancel error');
       const interaction = buildInteraction();
 
       await handler.handleInteraction(interaction);
@@ -372,7 +344,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should not reject when both the cancel and the error reply fail', async () => {
-      orchestratorService.throwError = true;
+      agentTurn.throwOnCancel = true;
       const interaction = buildInteraction({
         reply: vi.fn().mockRejectedValue(new Error('Unknown interaction')),
       });
@@ -394,14 +366,14 @@ describe('DiscordInteractionHandler', () => {
       await handler.handleInteraction(interaction);
 
       expect(interaction.deferReply).toHaveBeenCalledWith({ ephemeral: true });
-      expect(orchestratorService.shellCalls).toEqual([{ conversationId: 'channel-123', command: 'df -h' }]);
+      expect(agentTurn.shellCalls).toEqual([{ conversationId: 'channel-123', command: 'df -h' }]);
       expect(interaction.editReply).toHaveBeenCalledWith({
         content: '```\n$ df -h\nFilesystem\n```\n✅ **Exit code 0**',
       });
     });
 
     it('should report a failure to run the command', async () => {
-      orchestratorService.throwError = true;
+      agentTurn.throwOnShell = true;
       const interaction = buildShellInteraction();
 
       await handler.handleInteraction(interaction);
@@ -425,7 +397,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should split a report over 2000 characters into an editReply and ephemeral follow-ups', async () => {
-      orchestratorService.quotaReports = buildLongQuotaReports();
+      agentTurn.quotaReports = buildLongQuotaReports();
       const interaction = buildInteraction({ commandName: 'usage' });
 
       await handler.handleInteraction(interaction);
@@ -442,7 +414,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should log and stop sending chunks when a follow-up fails', async () => {
-      orchestratorService.quotaReports = buildLongQuotaReports();
+      agentTurn.quotaReports = buildLongQuotaReports();
       const interaction = buildInteraction({
         commandName: 'usage',
         followUp: vi.fn().mockRejectedValue(new Error('Unknown webhook')),
@@ -453,7 +425,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should report the failure when the quota lookup throws', async () => {
-      orchestratorService.throwError = true;
+      agentTurn.throwOnQuota = true;
       const interaction = buildInteraction({ commandName: 'usage' });
 
       await handler.handleInteraction(interaction);
@@ -482,7 +454,7 @@ describe('DiscordInteractionHandler', () => {
       expect(interaction.deferReply).toHaveBeenCalledWith();
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the model in the thread below.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Model selection', autoArchiveDuration: 60 });
-      expect(orchestratorService.startedSelections).toEqual(['channel-123:selection-thread']);
+      expect(dialogs.startedSelections).toEqual(['channel-123:selection-thread']);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
 
@@ -490,8 +462,8 @@ describe('DiscordInteractionHandler', () => {
       let typingCallsDuringLoad = 0;
       const sendTyping = vi.fn().mockResolvedValue(undefined);
       const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined), sendTyping };
-      const startConfigSelection = orchestratorService.startConfigSelection.bind(orchestratorService);
-      orchestratorService.startConfigSelection = async (conversationId: string) => {
+      const startConfigSelection = dialogs.startConfigSelection.bind(dialogs);
+      dialogs.startConfigSelection = async (conversationId: string) => {
         typingCallsDuringLoad = sendTyping.mock.calls.length;
         return startConfigSelection(conversationId);
       };
@@ -503,7 +475,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should explain inside the new thread when the agent exposes no models', async () => {
-      orchestratorService.selectionResult = { kind: 'unavailable' };
+      dialogs.selectionResult = { kind: 'unavailable' };
       const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
@@ -516,7 +488,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(dialogs.startedSelections).toEqual([]);
       expect(interaction.editReply).toHaveBeenLastCalledWith({
         content: '❌ **Failed to open model selection**: Missing Permissions',
       });
@@ -531,12 +503,12 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedSelections).toEqual(['channel-123:thread-1']);
+      expect(dialogs.startedSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
     it('should refuse to open the selection while the conversation has questions waiting', async () => {
-      orchestratorService.pendingQuestions = true;
+      questions.pending = true;
       const interaction = buildInteraction({
         commandName: 'model',
         channelId: 'thread-1',
@@ -545,8 +517,8 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.pendingQuestionLookups).toEqual(['channel-123:thread-1']);
-      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(questions.pendingLookups).toEqual(['channel-123:thread-1']);
+      expect(dialogs.startedSelections).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
         content: expect.stringContaining('There are questions waiting for your answer'),
         ephemeral: true,
@@ -554,12 +526,12 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should open the selection in a new thread from a channel even with questions waiting elsewhere', async () => {
-      orchestratorService.pendingQuestions = true;
+      questions.pending = true;
       const interaction = buildInteraction({ commandName: 'model' });
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.pendingQuestionLookups).toEqual([]);
+      expect(questions.pendingLookups).toEqual([]);
       expect(interaction.deferReply).toHaveBeenCalled();
     });
 
@@ -568,12 +540,12 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedSelections).toEqual(['dm-1']);
+      expect(dialogs.startedSelections).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
     it('should report failures starting the selection', async () => {
-      orchestratorService.throwError = true;
+      dialogs.throwError = true;
       const interaction = buildInteraction({ commandName: 'model', inGuild: false, channel: null });
 
       await handler.handleInteraction(interaction);
@@ -602,13 +574,13 @@ describe('DiscordInteractionHandler', () => {
       expect(interaction.deferReply).toHaveBeenCalledWith();
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the agent in the thread below.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Agent selection', autoArchiveDuration: 60 });
-      expect(orchestratorService.startedAgentSelections).toEqual(['channel-123:agent-thread']);
-      expect(orchestratorService.startedSelections).toEqual([]);
+      expect(dialogs.startedAgentSelections).toEqual(['channel-123:agent-thread']);
+      expect(dialogs.startedSelections).toEqual([]);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
     });
 
     it('should explain inside the new thread when no agent is available', async () => {
-      orchestratorService.agentSelectionResult = { kind: 'unavailable' };
+      dialogs.agentSelectionResult = { kind: 'unavailable' };
       const thread = { id: 'agent-thread', send: vi.fn().mockResolvedValue(undefined) };
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
@@ -625,7 +597,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedAgentSelections).toEqual(['channel-123:thread-1']);
+      expect(dialogs.startedAgentSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
@@ -634,12 +606,12 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedAgentSelections).toEqual(['dm-1']);
+      expect(dialogs.startedAgentSelections).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: optionsText });
     });
 
     it('should report failures starting the agent selection', async () => {
-      orchestratorService.throwError = true;
+      dialogs.throwError = true;
       const interaction = buildInteraction({ commandName: 'agent', inGuild: false, channel: null });
 
       await handler.handleInteraction(interaction);
@@ -667,12 +639,12 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Configure the profiles in the thread below.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Profile configuration', autoArchiveDuration: 60 });
-      expect(orchestratorService.startedProfilesSelections).toEqual(['channel-123:profiles-thread']);
+      expect(dialogs.startedProfilesSelections).toEqual(['channel-123:profiles-thread']);
       expect(thread.send).toHaveBeenCalledWith(menuText);
     });
 
     it('should explain inside the new thread when no profile is available', async () => {
-      orchestratorService.profilesSelectionResult = { kind: 'unavailable' };
+      dialogs.profilesSelectionResult = { kind: 'unavailable' };
       const thread = { id: 'profiles-thread', send: vi.fn().mockResolvedValue(undefined) };
 
       await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
@@ -689,7 +661,7 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedProfilesSelections).toEqual(['channel-123:thread-1']);
+      expect(dialogs.startedProfilesSelections).toEqual(['channel-123:thread-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: menuText });
     });
 
@@ -698,22 +670,22 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedProfilesSelections).toEqual(['dm-1']);
+      expect(dialogs.startedProfilesSelections).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: menuText });
     });
 
     it('should refuse while questions wait for an answer', async () => {
-      orchestratorService.pendingQuestions = true;
+      questions.pending = true;
       const interaction = buildInteraction({ commandName: 'profiles', inGuild: false, channelId: 'dm-1', channel: null });
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.startedProfilesSelections).toEqual([]);
+      expect(dialogs.startedProfilesSelections).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith(expect.objectContaining({ ephemeral: true }));
     });
 
     it('should report failures starting the profile configuration', async () => {
-      orchestratorService.throwError = true;
+      dialogs.throwError = true;
       const interaction = buildInteraction({ commandName: 'profiles', inGuild: false, channel: null });
 
       await handler.handleInteraction(interaction);
@@ -739,7 +711,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the language in the thread below.' });
       expect(startThread).toHaveBeenCalledWith({ name: 'Language selection', autoArchiveDuration: 60 });
-      expect(orchestratorService.languageRequests).toEqual(['channel-123:language-thread']);
+      expect(dialogs.languageRequests).toEqual(['channel-123:language-thread']);
       expect(thread.send).toHaveBeenCalledWith(requestText);
     });
 
@@ -748,17 +720,17 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.languageRequests).toEqual(['dm-1']);
+      expect(dialogs.languageRequests).toEqual(['dm-1']);
       expect(interaction.editReply).toHaveBeenCalledWith({ content: requestText });
     });
 
     it('should refuse while questions wait for an answer', async () => {
-      orchestratorService.pendingQuestions = true;
+      questions.pending = true;
       const interaction = buildInteraction({ commandName: 'language', inGuild: false, channelId: 'dm-1', channel: null });
 
       await handler.handleInteraction(interaction);
 
-      expect(orchestratorService.languageRequests).toEqual([]);
+      expect(dialogs.languageRequests).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
         content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.',
         ephemeral: true,
@@ -766,7 +738,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should report failures requesting the language', async () => {
-      orchestratorService.throwError = true;
+      dialogs.throwError = true;
       const interaction = buildInteraction({ commandName: 'language', inGuild: false, channel: null });
 
       await handler.handleInteraction(interaction);

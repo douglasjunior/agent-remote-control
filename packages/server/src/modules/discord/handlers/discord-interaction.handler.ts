@@ -1,14 +1,16 @@
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import {
   type ChatInputCommandInteraction,
   Events,
   type Interaction,
 } from 'discord.js';
 
-import type { StartAgentConfigSelectionResult } from '../../orchestrator/models/agent-config-outcome.model.js';
-import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import type { StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import { DiscordConversationService } from '../services/discord-conversation.service.js';
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordTypingIndicator, type TypingChannel } from '../utils/discord-typing-indicator.util.js';
 
@@ -35,7 +37,11 @@ export class DiscordInteractionHandler implements OnModuleInit {
 
   constructor(
     private readonly discordClientService: DiscordClientService,
-    private readonly orchestratorService: OrchestratorService,
+    @Inject(IAgentTurnPort)
+    private readonly agentTurn: IAgentTurnPort,
+    @Inject(IUserQuestionPort)
+    private readonly userQuestions: IUserQuestionPort,
+    private readonly discordConversation: DiscordConversationService,
     private readonly activityFormatter: DiscordActivityFormatter,
   ) {}
 
@@ -62,7 +68,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
         notice: '🧵 Choose the model in the thread below.',
         threadName: 'Model selection',
         start: async conversationId => this.describeSelection(
-          await this.orchestratorService.startConfigSelection(conversationId),
+          await this.discordConversation.startConfigSelection(conversationId),
           'ℹ️ The current agent does not expose any models to select.',
         ),
       });
@@ -76,7 +82,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
         notice: '🧵 Choose the agent in the thread below.',
         threadName: 'Agent selection',
         start: async conversationId => this.describeSelection(
-          await this.orchestratorService.startAgentSelection(conversationId),
+          await this.discordConversation.startAgentSelection(conversationId),
           'ℹ️ No agents available to select.',
         ),
       });
@@ -86,7 +92,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
         notice: '🧵 Configure the profiles in the thread below.',
         threadName: 'Profile configuration',
         start: async conversationId => this.describeSelection(
-          await this.orchestratorService.startProfilesSelection(conversationId),
+          await this.discordConversation.startProfilesSelection(conversationId),
           'ℹ️ No profiles available to configure.',
         ),
       });
@@ -96,7 +102,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
         notice: '🧵 Choose the language in the thread below.',
         threadName: 'Language selection',
         start: async conversationId => this.activityFormatter.formatLanguageRequest(
-          await this.orchestratorService.requestLanguageChange(conversationId),
+          await this.discordConversation.requestLanguageChange(conversationId),
         ),
       });
     }
@@ -110,9 +116,9 @@ export class DiscordInteractionHandler implements OnModuleInit {
       this.logCommand(interaction, channelId, threadId);
 
       const conversationId = buildConversationId({ channelId, threadId });
-      const configSelectionCancelled = await this.orchestratorService.cancelConfigSelection(conversationId);
-      const selectionCancelled = this.orchestratorService.cancelLanguageChange(conversationId) || configSelectionCancelled;
-      const turnCancelled = await this.orchestratorService.cancelTurn(conversationId);
+      const configSelectionCancelled = await this.discordConversation.cancelConfigSelection(conversationId);
+      const selectionCancelled = this.discordConversation.cancelLanguageChange(conversationId) || configSelectionCancelled;
+      const turnCancelled = await this.agentTurn.cancelTurn(conversationId);
 
       this.logger.log(
         `[Slash Command] /cancel handled for channel=${channelId} (turn=${turnCancelled}, selection=${selectionCancelled})`,
@@ -131,7 +137,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
   ): Promise<void> {
     try {
       await interaction.deferReply({ ephemeral: true });
-      const reports = await this.orchestratorService.getQuota();
+      const reports = await this.agentTurn.getQuota();
       await this.respondInChunks(interaction, this.activityFormatter.formatQuota(reports));
     } catch (error) {
       const errorMessage = this.describeError(error);
@@ -148,7 +154,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
       this.logCommand(interaction, channelId, threadId);
 
       await interaction.deferReply({ ephemeral: true });
-      const result = await this.orchestratorService.runShellCommand(
+      const result = await this.agentTurn.runShellCommand(
         buildConversationId({ channelId, threadId }),
         interaction.options.getString('command', true),
       );
@@ -194,7 +200,7 @@ export class DiscordInteractionHandler implements OnModuleInit {
       return false;
     }
     const conversationId = buildConversationId(resolveConversationKey(interaction.channelId, interaction.channel));
-    return this.orchestratorService.hasPendingQuestions(conversationId);
+    return this.userQuestions.hasPendingQuestions(conversationId);
   }
 
   /**

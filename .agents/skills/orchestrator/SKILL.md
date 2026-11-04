@@ -1,14 +1,11 @@
 ---
 name: orchestrator
 description: >
-  Channel-agnostic orchestration for AI agents: turns, CEO delegation with
-  the <delegate>/<attachment>/<agent_result> tags, parallel delegation, direct questions from any agent
-  to the user (<question>/<user_answers>, per-conversation question queue), persisted ACP session resumption by role and project (agentSessions,
-  and agent, DATA_DIR), per-conversation per-profile (role) agent/model/effort selection, switching the CEO agent,
-  footer with TurnResult.agentInfo, global user language preference (<user_language>,
-  IPreferencesStorePort, language change requests), cancellation, per-conversation queue and ISessionStorePort. Use when implementing turns,
-  delegation, cancellation, session and settings persistence, model selection
-  or new channel interfaces.
+  Channel-agnostic agent orchestration: turns, CEO delegation (<delegate>/<agent_result>),
+  questions agents ask the user, ACP session resumption by role and project, per-conversation
+  agent/model/effort settings, user language, cancellation and queueing. Agents only: menus and
+  typed input belong to each channel. Use when implementing turns, delegation, cancellation,
+  session or settings persistence, agent configuration or new channel interfaces.
 ---
 
 # Channel-Agnostic Agent Orchestrator
@@ -103,15 +100,9 @@ returns the role's profile, falling back to the `CEO` profile; `withProfiles(set
 returns settings with the profile applied to those roles and a renewed `updatedAt`;
 `profileForAllRoles(roles, profile)` builds the role → profile record.
 
-### `AgentConfigSelection` (`agent-config-selection.model.ts`)
+### `AgentOption` and `AgentRoleProfile`
 
-State of the selection in progress in a conversation: `conversationId`, `step`
-(`'profile' | 'agent' | 'model' | 'effort'`), numbered `options` (`SelectionOption`: `index`, `id`, `label`,
-`description?`), `selectedAgent?` (present in the `model` and `effort` steps), `selectedModel?`
-(present in the `effort` step), `pendingPrompt?` and `targetRoles?` (roles chosen at the `profile` step;
-`undefined` means every role). In the `profile` step each option is a role and its description is
-`<agent> - <model> - <effort>`. The outcomes of the selection use cases
-are in `agent-config-outcome.model.ts`.
+`AgentOption` (`agent-option.model.ts`) is a neutral choice with `id`, `name` and `description?`: an agent, a model or an effort. It has no index; numbering is a menu concern of the channel. `AgentRoleProfile` (`agent-role-profile.model.ts`) is one role of a conversation: `role`, `roleName` and, when the conversation has settings, its `profile` and `agentAvailable`.
 
 ## Orchestrator Ports
 
@@ -136,14 +127,9 @@ use the `InMemorySessionStoreFake` from `testing/`.
 
 `load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` and
 `save(conversationId: string, settings: AgentSettings): Promise<void>`. Each conversation
-has its own configuration: `/agent`, `/model` and `/profiles` change only the conversation (`conversationId`) in which they run.
+has its own configuration: a channel that changes the configuration changes only the conversation (`conversationId`) it runs in.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
 Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map whose writes are serialized, so the last `save` call determines the file content. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
-
-### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
-
-`find(conversationId: string)`, `save(selection: AgentConfigSelection)` and `remove(conversationId: string): Promise<boolean>`. Implemented in memory by
-`InMemoryAgentConfigSelectionStoreAdapter`: a selection interrupted by a restart is discarded.
 
 ### `IPreferencesStorePort` (`preferences-store.port.ts`)
 
@@ -157,7 +143,7 @@ language of the text agents write for the user. Implemented by `JsonPreferencesS
 passed to the constructor, `process.env.DATA_DIR` and `./data`. The JSON adapters load the file
 only once, keep the content in memory, treat a missing or invalid file as empty and
 serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
-Settings without any profile with an `agentId` are treated as absent, which reopens the selection on the next message, and
+Settings without any profile with an `agentId` are treated as absent, so the conversation counts as unconfigured, and
 `agentSessions` entries without `agentId` are discarded on read.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
@@ -192,7 +178,7 @@ inside the queue:
 - **CEO turn queue**: turns that arrive while the CEO is busy call `onQueued` and wait for the CEO port to be released, except when they enter the round through steering. New user messages are processed immediately by the CEO even with active delegations;
 - **CEO steering**: `steerCeo(conversationKey, agentId, text)` injects the text into the CEO round in progress with `sendSteeringPrompt` and returns whether it was delivered. It only tries when there is an active, non-cancelled turn, no other turn in the queue (`pendingTurns === 1`, so as not to jump ahead of an earlier message), the CEO port belongs to the requested `agentId` and advertises `supportsSteering` (read from the ACP `initialize`);
 - **Active delegations**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` and `findActiveDelegation(conversationKey, role)` keep the registry of specialists running in the background, indexed by role: a conversation runs one agent per role, in any project, and different roles run in parallel. `unregisterDelegation` ignores a delegation that has already been replaced by a newer one of the same role;
-- **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `OrchestratorService` exposes `isShellCommandEnabled()` and `runShellCommand()`;
+- **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `IAgentTurnPort` exposes `isShellCommandEnabled()` and `runShellCommand()`;
 - **Cancellation**: `cancel(conversationKey)` cancels the CEO's `ActiveTurn` and all active `activeDelegations` of the conversation. Returns `false` when there is no work in progress;
 - **Idle expiration**: with no turns and no delegations for `SESSION_IDLE_TIMEOUT_MS` (default 30 minutes), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
 - **Shutdown**: `onApplicationShutdown` disconnects all agents (CEO and delegates). Requires `app.enableShutdownHooks()` in the bootstrap.
@@ -352,10 +338,11 @@ My understanding is: ... (free text, shown before the first question)
   - `ask(conversationKey, asker, message, questions, notify?)`: queues and resolves with
     `AnsweredQuestion[]` when the user answers all of them; `notify` shows the first question when the
     request reaches the front of the queue on its own (empty queue or front request discarded);
-  - `submit(conversationKey, { text, attachments? })`: an integer between 1 and N chooses the option of
-    a question with options; a number outside the range or empty input without attachments returns `invalid` and
-    repeats the question; any other text is a free answer (`kind="other"`); attachments accompany the
-    answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
+  - `submit(conversationKey, answer)`: `answer` is structured, `{ kind: 'option', optionIndex }` (1-based, for a
+    question with options) or `{ kind: 'text', text }`, plus optional `attachments`; the queue never reads a number
+    from text, so the channel decides what a typed message means. An option outside the range, or empty text
+    without attachments, returns `invalid` and repeats the question; text is a free answer (`kind="other"`); attachments
+    accompany the answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
     (resolves the agent's wait and carries the question of the next request, if any) and `invalid`; with no
     pending question, `undefined`;
   - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
@@ -377,8 +364,8 @@ My understanding is: ... (free text, shown before the first question)
   </user_answers>
   ```
 
-- **Locked state**: while the conversation has pending questions, every user message is an
-  answer (`ResolveConversationInputUseCase` checks the queue before anything else) and nothing reaches the CEO, not even
+- **Locked state**: while the conversation has pending questions the agent is waiting, and a channel that offers a
+  free-form input treats the next message as the answer (`hasPendingQuestions`, `currentQuestion`, `answerQuestion`). `/cancel` unlocks the conversation (see below).
   through steering. `/cancel` unlocks the conversation (see below).
 
 ### User Language
@@ -397,8 +384,7 @@ language, or English without a valid tag. A stored language changes only through
 `normalizeUserLanguage()` collapses whitespace and rejects empty names, names over 64 characters and names with
 `<`, `>`, `[`, `]` or backticks, since the language goes into every prompt.
 
-`LanguageChangeRequestService` keeps in memory the conversations whose next message is the new language; the channel
-opens the request through `OrchestratorService.requestLanguageChange()`.
+`UserLanguageService` reads (`get()`, `English` when none is stored) and changes (`set(input)`, normalized; `undefined` for an invalid name) the stored language. Asking the user for the language is a channel dialog.
 
 ### Turn Cancellation (`CancelAgentTurnUseCase`)
 
@@ -410,33 +396,35 @@ progress or a pending question, including in a turn that has not yet saved the s
 `PromptCancelledError`, coming from the agent or from the rejected wait, interrupts the delegation
 loop, and the conversation returns to the default state.
 
-## Agent, Model and Effort Selection
+## Agent, Model and Effort Configuration
 
-The choice is per conversation and persisted. `AgentCapabilitiesService` builds the numbered options:
+The choice is per conversation and persisted; the orchestrator offers the lists and stores the result, and each channel decides how the user picks. `AgentCapabilitiesService` builds the lists as `AgentOption`s:
 `listAgentOptions()` from `IAgentPortFactory.listAvailableAgents()` (only agents whose CLI is in the `PATH`), `isAgentAvailable(agentId)` from the factory, and `listModelOptions(agentId)` /
 `listEffortOptions(agentId, modelId)` on a disposable port of the agent (`create(agentId)` →
 `connect()` → read → `disconnect()` in `finally`), isolated from the conversation's port. Without options,
-they return an empty list. `resolveAgent(settings)` returns the CEO profile's agent or the factory default. `AgentProfileListService.open(conversationId)` saves and returns a `profile` step with one option per role from `IAgentRegistryPort.listRoles()`, described by the profile of the conversation's settings (or of `loadMostRecent()`). A row whose saved profile agent is not available gets `(not installed)` after the agent name; the saved settings are untouched and execution keeps using the saved agent, so its turns fail at `connect()` with the agent's CLI-not-found error.
+they return an empty list. `resolveAgent(settings)` returns the CEO profile's agent or the factory default.
 
-- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: with `step: 'agent'`, lists the agents and saves the `agent` step; with a single agent, skips straight to its `model` step; without agents, `{ kind: 'unavailable' }`. With `step: 'profile'`, returns `{ kind: 'profiles_menu', selection }` from `AgentProfileListService.open` (`unavailable` without agents). With `step: 'model'`, lists the models of the current agent (`resolveAgent`) and saves the `model` step with `selectedAgent`; without models, `unavailable`.
-- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: accepts only `^\d+$` between 1 and N; other input returns `invalid` without changing the state. In the `profile` step, accepts one or more numbers separated by commas or spaces (duplicates ignored), stores them as `targetRoles` and moves to the `agent` step (or straight to `model` with a single agent); `0` removes the selection and returns `{ kind: 'profiles_closed' }`. In a step with `targetRoles`, `0` goes back to the profile list (`profiles_menu`). In the `agent` step, advances to `model` with the chosen agent's models, or saves only the agent if it has no models. In the `model` step, advances to `effort` if the model has efforts, otherwise saves with `effortId: null`. In the `effort` step, saves. A `model`/`effort` step without `selectedAgent` throws an error. On saving, `withProfiles` applies the profile to `targetRoles` (every role from `listRoles()` when undefined, as in `/agent` and `/model`) over the conversation's current or most recent settings. Without `targetRoles` it removes the selection and returns `{ kind: 'configured', settings, pendingPrompt? }`; with them it keeps the loop open and returns `{ kind: 'profiles_updated', selection, updatedRoles, profile }` carrying a refreshed profile list.
-- **`TranscribeAudioAttachmentsUseCase`** `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`, called by `ResolveConversationInputUseCase` before anything else: with the port disabled or without audio it returns the input untouched. Each audio attachment (`isAudioAttachment`: `audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned.
-- **`ResolveConversationInputUseCase`** `({ conversationId, prompt, attachments? })` → `ResolvedConversationInput`: first transcribes the audio, so answers to questions, language changes and selections also work by voice; the rest of this paragraph applies to the transcribed prompt and the remaining attachments. The result adds `transcription: { transcripts, warnings }` only when audio was handled, and an `execute` result carries the remaining `attachments` (omitted when none) for the channel to pass to `executeTurn`. Resolution: with a pending question in the queue, the message is the answer (`submit` with the text and the attachments) and the outcome becomes `{ kind: 'question', prompt }` (next question), `{ kind: 'invalid_answer', prompt }` or `{ kind: 'answered', asker, next? }`. Next, with a pending language change request, the message is the language: a valid name is stored, ends the request and returns `{ kind: 'language_set', language }`; anything else returns `{ kind: 'invalid_language' }` and keeps the request. Otherwise, an empty `prompt` means an attachment-only message and receives a prompt asking for their analysis. With an active selection, delegates to `Submit`; without settings for the conversation, tries to inherit from `loadMostRecent()` (saving immediately for the conversation with a renewed `updatedAt`); if there is no history, delegates to `Start` with `step: 'agent'` and `pendingPrompt` (`unavailable` becomes `execute`); with settings, `execute`. A `configured` with `pendingPrompt` becomes `{ kind: 'execute', prompt: pendingPrompt, configured }`.
-- **`CancelAgentConfigSelectionUseCase`**: removes the selection and returns whether there was one.
+`AgentProfilesService` keeps the profiles of a conversation:
+
+- `current(conversationId)`: the conversation's settings, else `loadMostRecent()`, else `null`;
+- `ensure(conversationId)`: `'configured'` when the conversation has settings, `'inherited'` after copying the most recent settings into it (renewed `updatedAt`), `'missing'` when nothing was ever saved;
+- `list(conversationId)`: one `AgentRoleProfile` per role from `IAgentRegistryPort.listRoles()`, with the profile of `current` and `agentAvailable`. A profile whose agent is not installed stays untouched and execution keeps using it, so its turns fail at `connect()` with the agent's CLI-not-found error;
+- `listRoles()` and `save(conversationId, roles | undefined, profile)`: `withProfiles` applies the profile to the roles (every role when `undefined`) over `current`, saves and returns the settings.
+
+`TranscribeAudioAttachmentsUseCase` `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`: with the port disabled or without audio it returns the input untouched. Each audio attachment (`isAudioAttachment`: `audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned. Channels that accept audio call it before interpreting a message.
+
 
 Switching agents does not interrupt turns in progress: the conversation's next turn switches the
 CEO port and the following delegates are born on the new agent.
 
-## Service Facade (`OrchestratorService`)
+## Public Ports
 
-The orchestrator's interface for the channels:
+`OrchestratorModule` exports only three ports (interface plus Symbol in `ports/`), each implemented by a small service. Channels depend on them and never on the services and use cases behind them; their specs use the stubs in `testing/` (`StubAgentTurnPort`, `StubAgentConfigurationPort`, `StubUserQuestionPort`), which implement the interfaces.
 
-- `executeTurn(request)` and `cancelTurn(conversationId: string)`;
-- `getQuota(): Promise<readonly AgentQuotaReport[]>`: `GetAgentQuotaUseCase` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: SelectedValue; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty;
-- `resolveInput({ conversationId, prompt, attachments? })`: transcribes audio first, then decides between answering the pending question, driving the selection or running the prompt;
-- `startConfigSelection(conversationId: string)` (`model` step of the current agent), `startAgentSelection(conversationId: string)` (`agent` step), `startProfilesSelection(conversationId: string)` (`profile` step) and `cancelConfigSelection(conversationId: string)`;
-- `hasActiveConfigSelection(conversationId: string)` and `hasPendingQuestions(conversationId: string)`;
-- `requestLanguageChange(conversationId: string)` (resolves to the current language, `English` when none is stored), `hasPendingLanguageChange(conversationId: string)` and `cancelLanguageChange(conversationId: string)`.
+- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `cancelTurn(conversationId)`, `transcribeAudio({ prompt, attachments? })`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
+- **`IAgentConfigurationPort`** (`AgentConfigurationService`): `listAgents()`, `getDefaultAgent()`, `currentAgent(conversationId)`, `listModels(agentId)`, `listEfforts(agentId, modelId)`, `listRoles()`, `listProfiles(conversationId)`, `hasSettings(conversationId)` (a pure query: own or inheritable settings exist), `ensureSettings(conversationId)`, `saveProfiles(conversationId, roles | undefined, profile)` (a profile the caller already resolved), `configureProfiles(input)` (`ConfigureAgentProfilesUseCase`: checks agent, roles, model and effort against the lists, takes the names from them, saves, and returns `{ ok: true }` or `{ ok: false, error }` with `Unknown agent`, `Unknown role`, `Unknown model`, `An effort needs a model` or `Unknown effort`), `getLanguage()` and `setLanguage(input)`.
+- **`IUserQuestionPort`** (`UserQuestionService`): `hasPendingQuestions(conversationId)`, `currentQuestion(conversationId)` and `answerQuestion(conversationId, answer)` (structured, see the question queue).
+
 
 ## Mandatory Prescriptive Rules
 

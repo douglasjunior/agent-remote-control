@@ -21,10 +21,11 @@ export type AnsweredQuestion = {
   readonly attachments?: readonly TurnAttachment[];
 };
 
-export type QuestionAnswerInput = {
-  readonly text: string;
-  readonly attachments?: readonly TurnAttachment[];
-};
+/** `option` picks the 1-based option of a question that has options; `text` is the user's own answer. */
+export type QuestionAnswerInput = (
+  | { readonly kind: 'option'; readonly optionIndex: number }
+  | { readonly kind: 'text'; readonly text: string }
+) & { readonly attachments?: readonly TurnAttachment[] };
 
 export type QuestionPrompt = {
   readonly asker: QuestionAsker;

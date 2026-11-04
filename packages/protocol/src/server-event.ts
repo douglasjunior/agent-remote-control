@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { agentOptionSchema } from './agent-option.js';
+import { roleProfileSchema } from './agent-profile.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
 
@@ -32,6 +34,20 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     type: z.literal('conversation.state'),
     conversationId: z.string(),
     state: conversationStateSchema,
+  }),
+  z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
+  z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
+  z.object({
+    type: z.literal('efforts.list'),
+    agentId: z.string(),
+    modelId: z.string(),
+    efforts: z.array(agentOptionSchema),
+  }),
+  z.object({
+    type: z.literal('profiles'),
+    conversationId: z.string(),
+    configured: z.boolean(),
+    profiles: z.array(roleProfileSchema),
   }),
   z.object({
     type: z.literal('error'),

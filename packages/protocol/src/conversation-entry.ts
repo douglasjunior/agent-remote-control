@@ -10,12 +10,6 @@ const agentInfoSchema = z.object({
   effortName: z.string().optional(),
 });
 
-const selectionOptionSchema = z.object({
-  index: z.number().int(),
-  label: z.string(),
-  description: z.string().optional(),
-});
-
 export const conversationEntrySchema = z.discriminatedUnion('type', [
   z.object({ ...entryBase, type: z.literal('user_message'), text: z.string() }),
   z.object({
@@ -56,15 +50,6 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     number: z.number().int(),
     total: z.number().int(),
     message: z.string().optional(),
-  }),
-  z.object({
-    ...entryBase,
-    type: z.literal('selection'),
-    mode: z.enum(['selection', 'invalid', 'profiles_menu']),
-    step: z.enum(['profile', 'agent', 'model', 'effort']),
-    options: z.array(selectionOptionSchema),
-    selectedAgent: z.string().optional(),
-    selectedModel: z.string().optional(),
   }),
   z.object({
     ...entryBase,

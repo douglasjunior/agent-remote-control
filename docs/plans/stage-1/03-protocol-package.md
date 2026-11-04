@@ -8,7 +8,7 @@ Create `packages/protocol`: the message contract between the web interface and t
 
 ## Read first
 
-`AGENTS.md`, `.agents/skills/code-organization/SKILL.md`, `.agents/skills/tests-best-practices/SKILL.md`, and these files for the shapes the protocol mirrors: `packages/server/src/modules/orchestrator/models/{turn-result,turn-agent-info,user-question,delegation-event,agent-config-selection}.model.ts` and `AgentActivity` in `packages/server/src/modules/agent/ports/agent.port.ts`.
+`AGENTS.md`, `.agents/skills/code-organization/SKILL.md`, `.agents/skills/tests-best-practices/SKILL.md`, and these files for the shapes the protocol mirrors: `packages/server/src/modules/orchestrator/models/{turn-result,turn-agent-info,user-question,delegation-event,agent-option,agent-role-profile}.model.ts` and `AgentActivity` in `packages/server/src/modules/agent/ports/agent.port.ts`.
 
 ## Package setup
 
@@ -37,6 +37,8 @@ One concept per file, no `index.ts`:
 src/
 ├── conversation.ts       # ConversationSummary, ConversationState
 ├── conversation-entry.ts # ConversationEntry union
+├── agent-option.ts       # AgentOption (agents, models and efforts)
+├── agent-profile.ts      # RoleProfile
 ├── client-command.ts     # ClientCommand union + parseClientCommand()
 ├── server-event.ts       # ServerEvent union + parseServerEvent()
 └── limits.ts             # MAX_MESSAGE_LENGTH = 20_000
@@ -50,6 +52,8 @@ All unions discriminate on `type`. Timestamps are ISO strings.
 
 **`ConversationSummary`:** `{ id, title, createdAt, updatedAt }`.
 **`ConversationState`:** `'idle' | 'queued' | 'running'`.
+**`AgentOption`:** `{ id, name, description? }`.
+**`RoleProfile`:** `{ role, roleName, agent?: { id, name, available }, model?: { id, name }, effort?: { id, name } }`; the optional values are absent when the role has no profile.
 
 **`ConversationEntry`:** every entry has `id` (stable; the client and the history store upsert by it) and `at`.
 
@@ -61,7 +65,6 @@ All unions discriminate on `type`. Timestamps are ISO strings.
 | `delegation` | `phase` (`started`, `finished`), `round`, `role`, `roleName`, `projectName?`, `response?`, `agentInfo?`, `durationMs?` | `delegation:<round>:<role>:<phase>` |
 | `interim` | `text` | random |
 | `question` | `askerRoleName`, `projectName?`, `text`, `rationale?`, `options[]`, `number`, `total`, `message?` | random |
-| `selection` | `mode` (`selection`, `invalid`, `profiles_menu`), `step` (`profile`, `agent`, `model`, `effort`), `options[]` (`index`, `label`, `description?`), `selectedAgent?`, `selectedModel?` | random |
 | `notice` | `level` (`info`, `warning`, `error`), `text` | random |
 | `agent_response` | `status` (`completed`, `cancelled`, `failed`, `steered`), `response`, `errorMessage?`, `agentInfo?` (`roleName`, `agentName`, `modelName?`, `effortName?`) | random |
 
@@ -77,8 +80,12 @@ Check the `tool` status values against `AgentToolStatus` in `agent.port.ts` and 
 | `conversation.history` | `conversationId` |
 | `message.send` | `conversationId`, `text` (1 to `MAX_MESSAGE_LENGTH` characters after trimming) |
 | `turn.cancel` | `conversationId` |
-| `config.open` | `conversationId`, `menu` (`agent`, `model`, `profiles`) |
-| `config.cancel` | `conversationId` |
+| `agents.list` | — |
+| `models.list` | `agentId` |
+| `efforts.list` | `agentId`, `modelId` |
+| `profiles.get` | `conversationId` |
+| `profiles.set` | `conversationId`, `roles?` (at least one when present; every role when omitted), `agentId`, `modelId?`, `effortId?` |
+| `question.answer` | `conversationId`, `answer`: `{ kind: 'option', optionIndex }` (from 1) or `{ kind: 'text', text }` (1 to `MAX_MESSAGE_LENGTH` characters after trimming) |
 
 **`ServerEvent`:**
 
@@ -92,6 +99,10 @@ Check the `tool` status values against `AgentToolStatus` in `agent.port.ts` and 
 | `conversation.history` | `conversationId`, `entries`, `state` |
 | `conversation.entry` | `conversationId`, `entry` |
 | `conversation.state` | `conversationId`, `state` |
+| `agents.list` | `agents: AgentOption[]` |
+| `models.list` | `agentId`, `models: AgentOption[]` |
+| `efforts.list` | `agentId`, `modelId`, `efforts: AgentOption[]` |
+| `profiles` | `conversationId`, `configured`, `profiles: RoleProfile[]` |
 | `error` | `message`, `conversationId?` |
 
 ## Tests

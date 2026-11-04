@@ -71,17 +71,17 @@ describe('AgentCapabilitiesService', () => {
   });
 
   describe('listAgentOptions', () => {
-    it('should number the available agents starting at one', () => {
+    it('should list the available agents', () => {
       expect(service.listAgentOptions()).toEqual([
-        { index: 1, id: 'stub', label: 'Stub Agent' },
-        { index: 2, id: 'other', label: 'Other Agent' },
+        { id: 'stub', name: 'Stub Agent' },
+        { id: 'other', name: 'Other Agent' },
       ]);
     });
 
     it('should offer only the agents whose CLI is available', () => {
       factory.unavailableAgentIds.add('stub');
 
-      expect(service.listAgentOptions()).toEqual([{ index: 1, id: 'other', label: 'Other Agent' }]);
+      expect(service.listAgentOptions()).toEqual([{ id: 'other', name: 'Other Agent' }]);
     });
 
     it('should return an empty list when no agent is available', () => {
@@ -101,12 +101,12 @@ describe('AgentCapabilitiesService', () => {
   });
 
   describe('listModelOptions', () => {
-    it('should list numbered models on a disposable port created for the agent', async () => {
+    it('should list the models on a disposable port created for the agent', async () => {
       const options = await service.listModelOptions('other');
 
       expect(options).toEqual([
-        { index: 1, id: 'm1', label: 'Model 1', description: 'First model' },
-        { index: 2, id: 'm2', label: 'Model 2', description: undefined },
+        { id: 'm1', name: 'Model 1', description: 'First model' },
+        { id: 'm2', name: 'Model 2', description: undefined },
       ]);
       expect(factory.createdAgentIds).toEqual(['other']);
       expect(ports[0]!.connectCalls).toBe(1);
@@ -142,11 +142,11 @@ describe('AgentCapabilitiesService', () => {
   });
 
   describe('listEffortOptions', () => {
-    it('should list numbered efforts of a model on a new port for the agent', async () => {
+    it('should list the efforts of a model on a new port for the agent', async () => {
       await service.listModelOptions('other');
       const options = await service.listEffortOptions('other', 'm1');
 
-      expect(options).toEqual([{ index: 1, id: 'low', label: 'Low', description: 'Fast' }]);
+      expect(options).toEqual([{ id: 'low', name: 'Low', description: 'Fast' }]);
       expect(factory.createdAgentIds).toEqual(['other', 'other']);
       expect(ports[1]!.connected).toBe(false);
     });

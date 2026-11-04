@@ -6,11 +6,13 @@ import type { DelegationEvent } from '../../orchestrator/models/delegation-event
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
-import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import { DiscordAttachmentService } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import { DiscordConversationService } from '../services/discord-conversation.service.js';
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 import { DiscordThrottler } from '../utils/discord-throttler.util.js';
 import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.js';
@@ -49,7 +51,11 @@ export class DiscordMessageHandler implements OnModuleInit {
 
   constructor(
     private readonly discordClientService: DiscordClientService,
-    private readonly orchestratorService: OrchestratorService,
+    @Inject(IAgentTurnPort)
+    private readonly agentTurn: IAgentTurnPort,
+    @Inject(IUserQuestionPort)
+    private readonly userQuestions: IUserQuestionPort,
+    private readonly discordConversation: DiscordConversationService,
     private readonly activityFormatter: DiscordActivityFormatter,
     private readonly attachmentService: DiscordAttachmentService,
     @Inject(IWorkspacePort)
@@ -120,7 +126,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       );
 
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
-        this.orchestratorService.resolveInput({
+        this.discordConversation.resolveInput({
           conversationId,
           prompt: rawPrompt,
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
@@ -338,7 +344,7 @@ export class DiscordMessageHandler implements OnModuleInit {
 
       let result: TurnResult;
       try {
-        result = await this.orchestratorService.executeTurn({
+        result = await this.agentTurn.executeTurn({
           conversationId,
           userId: message.author.id,
           prompt,
@@ -450,9 +456,9 @@ export class DiscordMessageHandler implements OnModuleInit {
       return true;
     }
     const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
-    return this.orchestratorService.hasPendingQuestions(conversationId)
-      || this.orchestratorService.hasPendingLanguageChange(conversationId)
-      || await this.orchestratorService.hasActiveConfigSelection(conversationId);
+    return this.userQuestions.hasPendingQuestions(conversationId)
+      || this.discordConversation.hasPendingLanguageChange(conversationId)
+      || await this.discordConversation.hasActiveConfigSelection(conversationId);
   }
 
   private async openConversation(message: Message): Promise<Conversation | null> {

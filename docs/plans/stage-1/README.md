@@ -11,11 +11,12 @@ Stage 1 of the [roadmap](../../ROADMAP.md): a Yarn workspaces monorepo plus a lo
 | 03 | [Protocol package](03-protocol-package.md) | 01 | Sonnet 5.5 | low |
 | 04 | [Server: transport and auth](04-server-transport.md) | 03 | Sonnet 5.5 | high |
 | 05 | [Server: web conversations](05-server-conversations.md) | 04 | Sonnet 5.5 | high |
+| 05b | [Orchestrator for agents only](05b-channel-owned-dialogs.md) | 05 | Sonnet 5.5 | high |
 | 06 | [Web: scaffold and connection](06-web-scaffold.md) | 03 | Sonnet 5.5 | medium |
 | 07 | [Web: chat interface](07-web-chat.md) | 05, 06 | Sonnet 5.5 | medium |
 | 08 | [Integration and release](08-integration.md) | 07 | Sonnet 5.5 | low |
 
-02 and 03 can run in parallel after 01; 06 can run in parallel with 04 and 05.
+02 and 03 can run in parallel after 01; 06 can run in parallel with 04 and 05. 05b changes the protocol of 03 and the web contract that 06 and 07 consume, so run it before 07.
 
 **Why these choices.** The plans fix the design decisions up front, so execution needs care more than invention. Sonnet 5.5 covers every plan. Effort goes up where a mistake is expensive: 04 exposes command execution over the network and 05 mirrors the most intricate flow in the codebase (`discord-message.handler.ts`). Low effort fits work that is mostly relocation or configuration fully specified in the plan.
 

@@ -1,11 +1,10 @@
 ---
 name: web-channel
 description: >
-  Web interface channel of the server: the IClientTransportPort transport port and its WebSocket
-  adapter, the authentication gate with the access token, the origin check against cross-site
-  WebSocket hijacking, connection registry, the /health route and the WEB_* environment
-  variables. Use when working with the web module, WebSocket connections, the access token or
-  allowed origins.
+  Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
+  check, authenticated connections, web conversations (store, history, entry mapping, turn state),
+  stateless agent configuration, structured question answers, /health and the WEB_* variables.
+  Use when working with the web module, WebSocket connections, the access token or web conversations.
 ---
 
 # Web channel
@@ -50,6 +49,47 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - A correct token sends `auth.ok` and registers the connection in `WebConnectionRegistryService`, which
   removes it on close and offers `broadcast(event)`.
 - Invalid commands from an authenticated connection answer an `error` event.
+
+## Conversations
+
+- Ids are `web-<randomUUID()>` so they never collide with Discord ids in the shared session store. The web
+  channel owns its history through `IConversationStorePort`; Discord keeps its own.
+- `WebConnectionHandler` routes authenticated commands. `conversation.list` and `conversation.history`
+  answer the requester only; `conversation.create` answers the requester with `conversation.created` and
+  broadcasts `conversation.updated` to the other connections. Every command carrying a `conversationId`
+  for an unknown conversation answers an `error` event before reaching a use case.
+- `SendConversationMessageUseCase` never rejects: it checks the configuration, records the
+  `user_message` (the first one renames the conversation to its first line, cut at 60 characters) and runs
+  `orchestrator.executeTurn` as `userId: 'web-local'` with role `CEO` in the workspace base directory.
+  `message.send` returns immediately while the turn streams.
+- Turn callbacks become entries: `onActivity` → `thought` or `tool`, `onDelegation` → `delegation`,
+  `onInterimMessage` → `interim`, `onQuestion` → `question`; the `TurnResult` becomes `agent_response`.
+  Steering and cancellation markers have no entry.
+- Entry ids are stable (`thought:<id>`, `tool:<toolCallId>`, `delegation:<round>:<role>:<phase>`) so the
+  store and the client upsert by id; other entries get a random id.
+- Conversation state is `running` from the start of the turn, `queued` after `onQueued` until output
+  arrives, and `idle` when the turn ends or throws. A `steered` result leaves the state to the turn that
+  absorbed the prompt. Errors become `notice` entries with level `error`.
+- The web channel has no dialog state. Agent configuration is a stateless API over the orchestrator's lists:
+  `agents.list`, `models.list { agentId }` and `efforts.list { agentId, modelId }` answer the requester with
+  `agents.list`, `models.list` and `efforts.list` events (an unavailable agent answers `error`, so no CLI is
+  probed for an unknown id); `profiles.get { conversationId }` answers a `profiles` event with `configured` and one
+  entry per role; `profiles.set { conversationId, roles?, agentId, modelId?, effortId? }` goes to `IAgentConfigurationPort.configureProfiles`, which validates the ids against those lists and takes the names
+  from them (the web layer holds no rule), then broadcasts `profiles`.
+  `GetConversationProfilesUseCase` reads `hasSettings`, a pure query, so reading never changes a conversation.
+- `message.send` runs a turn only when the conversation is configured, meaning `ensureSettings` (which copies the most recent settings into a new conversation) is not `missing`
+  or no agent is installed (the default agent runs). Otherwise the server publishes a warning `notice` and
+  neither records the message nor runs a turn.
+- Questions are answered with `question.answer` (`answer` is `{ kind: 'option', optionIndex }` or
+  `{ kind: 'text', text }`), passed to `IUserQuestionPort.answerQuestion` unchanged. Without an open question the command answers an
+  `error` event. A text answer is echoed as a `user_message`; an option answer is not. The confirmation, the next
+  question or a retry follow as entries.
+- `WebConversationEventsService` upserts an entry and broadcasts `conversation.entry` (broadcast first, so
+  persistence never reorders the stream), and keeps the state in memory.
+- `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
+  `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
+  and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
+  found among the known conversations. Files that do not match the protocol schemas are ignored.
 
 ## Health
 

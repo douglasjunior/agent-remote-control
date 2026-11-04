@@ -3,20 +3,23 @@ import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
-import type { ResolvedConversationInput } from '../../orchestrator/models/agent-config-outcome.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
-import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
-import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
+import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
+import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import type { ResolvedConversationInput } from '../models/agent-config-outcome.model.js';
 import {
   type AttachmentValidationResult,
   type DiscordAttachment,
   DiscordAttachmentService,
 } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
+import { DiscordConversationService } from '../services/discord-conversation.service.js';
 
 import { DiscordMessageHandler } from './discord-message.handler.js';
 
@@ -54,27 +57,31 @@ class MockDiscordClientService {
   }
 }
 
-class MockOrchestratorService {
-  public lastRequest?: TurnRequest;
-  public mockResult: TurnResult = {
-    response: 'Hello from agent!',
-    status: 'completed',
-  };
-
+/** Emits scripted activity and queue callbacks while the turn runs. */
+class ScriptedAgentTurnPort extends StubAgentTurnPort {
   public activitiesToEmit: AgentActivity[] = [];
-
   public queued = false;
+
+  constructor() {
+    super();
+    this.turnResult = { response: 'Hello from agent!', status: 'completed' };
+    this.turnBehavior = (request) => {
+      if (this.queued) {
+        request.onQueued?.();
+      }
+      for (const activity of this.activitiesToEmit) {
+        request.onActivity?.(activity);
+      }
+    };
+  }
+}
+
+class MockDiscordConversationService {
   public activeSelection = false;
   public resolution: ResolvedConversationInput | null = null;
   public resolvedInputs: { conversationId: string; prompt: string; attachments?: readonly TurnAttachment[] }[] = [];
 
   public selectionLookups: string[] = [];
-
-  public pendingQuestions = false;
-
-  hasPendingQuestions(_conversationId: string): boolean {
-    return this.pendingQuestions;
-  }
 
   public pendingLanguageChange = false;
 
@@ -99,17 +106,6 @@ class MockOrchestratorService {
       ...(input.attachments ? { attachments: input.attachments } : {}),
     };
   }
-
-  async executeTurn(request: TurnRequest): Promise<TurnResult> {
-    this.lastRequest = request;
-    if (this.queued) {
-      request.onQueued?.();
-    }
-    for (const activity of this.activitiesToEmit) {
-      request.onActivity?.(activity);
-    }
-    return this.mockResult;
-  }
 }
 
 class MockWorkspacePort implements IWorkspacePort {
@@ -124,7 +120,9 @@ class MockWorkspacePort implements IWorkspacePort {
 describe('DiscordMessageHandler', () => {
   let handler: DiscordMessageHandler;
   let discordClientService: MockDiscordClientService;
-  let orchestratorService: MockOrchestratorService;
+  let agentTurn: ScriptedAgentTurnPort;
+  let questions: StubUserQuestionPort;
+  let conversationService: MockDiscordConversationService;
   let attachmentService: MockDiscordAttachmentService;
   let workspacePort: MockWorkspacePort;
 
@@ -139,9 +137,11 @@ describe('DiscordMessageHandler', () => {
           provide: DiscordClientService,
           useClass: MockDiscordClientService,
         },
+        { provide: IAgentTurnPort, useClass: ScriptedAgentTurnPort },
+        { provide: IUserQuestionPort, useClass: StubUserQuestionPort },
         {
-          provide: OrchestratorService,
-          useClass: MockOrchestratorService,
+          provide: DiscordConversationService,
+          useClass: MockDiscordConversationService,
         },
         {
           provide: DiscordAttachmentService,
@@ -156,7 +156,9 @@ describe('DiscordMessageHandler', () => {
 
     handler = module.get<DiscordMessageHandler>(DiscordMessageHandler);
     discordClientService = module.get(DiscordClientService);
-    orchestratorService = module.get(OrchestratorService);
+    agentTurn = module.get(IAgentTurnPort);
+    questions = module.get(IUserQuestionPort);
+    conversationService = module.get(DiscordConversationService);
     attachmentService = module.get(DiscordAttachmentService);
     workspacePort = module.get(IWorkspacePort);
   });
@@ -185,7 +187,7 @@ describe('DiscordMessageHandler', () => {
       author: { bot: true },
     } as Message;
     await handler.handleMessage(message);
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should ignore messages when client user is not ready', async () => {
@@ -194,7 +196,7 @@ describe('DiscordMessageHandler', () => {
       author: { bot: false },
     } as Message;
     await handler.handleMessage(message);
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should ignore messages that are neither DM, thread, nor mention', async () => {
@@ -207,7 +209,7 @@ describe('DiscordMessageHandler', () => {
       },
     } as unknown as Message;
     await handler.handleMessage(message);
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should handle message in existing managed thread', async () => {
@@ -232,7 +234,7 @@ describe('DiscordMessageHandler', () => {
 
     await handler.handleMessage(message);
 
-    expect(orchestratorService.lastRequest).toMatchObject({
+    expect(agentTurn.lastRequest).toMatchObject({
       conversationId: 'channel-1:thread-1',
       userId: 'user-42',
       prompt: 'Do something',
@@ -269,7 +271,7 @@ describe('DiscordMessageHandler', () => {
       name: 'Fix the bug',
       autoArchiveDuration: 60,
     });
-    expect(orchestratorService.lastRequest).toMatchObject({
+    expect(agentTurn.lastRequest).toMatchObject({
       conversationId: 'channel-1:thread-new',
       userId: 'user-42',
       prompt: 'Fix the bug',
@@ -303,11 +305,11 @@ describe('DiscordMessageHandler', () => {
     expect(mockThread.send).toHaveBeenCalledWith(
       'Hi! How can I help you today? Please send an instruction or task.',
     );
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should send messages when activities are emitted', async () => {
-    orchestratorService.activitiesToEmit = [
+    agentTurn.activitiesToEmit = [
       { kind: 'thought', id: '1', text: 'Thinking about the request' },
       {
         kind: 'tool',
@@ -359,11 +361,11 @@ describe('DiscordMessageHandler', () => {
       discordClientService.mockClient.user,
       { ignoreEveryone: true, ignoreRoles: true },
     );
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should tell the user when the message is waiting for the previous turn', async () => {
-    orchestratorService.queued = true;
+    agentTurn.queued = true;
     const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
@@ -389,8 +391,8 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should ignore failures when showing the queued notice', async () => {
-    orchestratorService.queued = true;
-    orchestratorService.activitiesToEmit = [];
+    agentTurn.queued = true;
+    agentTurn.activitiesToEmit = [];
     const progressMessage = { edit: vi.fn().mockRejectedValue(new Error('gone')) };
     const mockThread = {
       id: 'thread-1',
@@ -414,7 +416,7 @@ describe('DiscordMessageHandler', () => {
 
   describe('progress feed', () => {
     it('should replace a growing thought in place instead of appending each update', async () => {
-      orchestratorService.activitiesToEmit = [
+      agentTurn.activitiesToEmit = [
         { kind: 'thought', id: 't1', text: 'Hello' },
         { kind: 'thought', id: 't1', text: 'Hello there' },
         { kind: 'thought', id: 't1', text: 'Hello there, friend', final: true },
@@ -480,7 +482,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      vi.spyOn(orchestratorService, 'executeTurn').mockImplementation(async (req) => {
+      vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
         req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft' });
         await vi.advanceTimersByTimeAsync(1500);
         req.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
@@ -493,7 +495,7 @@ describe('DiscordMessageHandler', () => {
         });
         req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft', removed: true });
         req.onActivity?.({ kind: 'cancelled', id: 'x' });
-        return orchestratorService.mockResult;
+        return agentTurn.turnResult;
       });
 
       await handler.handleMessage(message);
@@ -535,7 +537,7 @@ describe('DiscordMessageHandler', () => {
         roleName: 'Developer',
         projectName: 'my-app',
       };
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' });
         request.onDelegation?.({ ...delegation, phase: 'started' });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
@@ -588,7 +590,7 @@ describe('DiscordMessageHandler', () => {
         mentions: { has: vi.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         send.mockImplementation(async (content: string) => {
           if (typeof content === 'string' && content.includes('delegated')) {
             throw new Error('rate limited');
@@ -631,7 +633,7 @@ describe('DiscordMessageHandler', () => {
           send,
         },
       } as unknown as Message;
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
         request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Developer', phase: 'started' });
         return { response: 'Done.', status: 'completed' };
@@ -666,7 +668,7 @@ describe('DiscordMessageHandler', () => {
           send,
         },
       } as unknown as Message;
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
         return { response: 'Done.', status: 'completed' };
       };
@@ -704,7 +706,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'Thinking' });
         request.onDelegation?.({
           round: 1,
@@ -723,7 +725,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should skip activities without formatted content', async () => {
-      orchestratorService.activitiesToEmit = [
+      agentTurn.activitiesToEmit = [
         { kind: 'thought', id: 't1', text: '   ' },
         { kind: 'tool', toolCallId: 't2', title: 'ls', status: 'unknown' as any },
       ];
@@ -756,7 +758,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should split thoughts exceeding 2000 characters into multiple messages', async () => {
       const longLines = Array.from({ length: 60 }, (_, i) => `Thought line ${i + 1} with lots of details to extend length`);
-      orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
+      agentTurn.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
       const sentMessages: { content: string }[] = [];
       const mockThread = {
         id: 'thread-1',
@@ -790,7 +792,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should send completed tool call directly when not preceded by in_progress', async () => {
-      orchestratorService.activitiesToEmit = [{ kind: 'tool', toolCallId: 'direct-1', title: 'pwd', status: 'completed' }];
+      agentTurn.activitiesToEmit = [{ kind: 'tool', toolCallId: 'direct-1', title: 'pwd', status: 'completed' }];
       const sentMessages: { content: string }[] = [];
       const mockThread = {
         id: 'thread-1',
@@ -820,7 +822,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should format failed tool call with details', async () => {
-      orchestratorService.activitiesToEmit = [
+      agentTurn.activitiesToEmit = [
         { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'in_progress' },
         { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'failed', details: 'exit code 1' },
       ];
@@ -856,7 +858,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should swallow error when tool call message update fails', async () => {
-    orchestratorService.activitiesToEmit = [
+    agentTurn.activitiesToEmit = [
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
     ];
@@ -884,7 +886,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should log warning when tool message edit throws a non-Error string', async () => {
-    orchestratorService.activitiesToEmit = [
+    agentTurn.activitiesToEmit = [
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
     ];
@@ -912,7 +914,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should log warning when tool message initial send fails', async () => {
-    orchestratorService.activitiesToEmit = [{ kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' }];
+    agentTurn.activitiesToEmit = [{ kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' }];
     let sendCount = 0;
     const mockThread = {
       id: 'thread-1',
@@ -943,7 +945,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should log warning when thought message send fails', async () => {
-    orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: 'Hello' }];
+    agentTurn.activitiesToEmit = [{ kind: 'thought', id: 't1', text: 'Hello' }];
     let sendCount = 0;
     const mockThread = {
       id: 'thread-1',
@@ -974,7 +976,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should log warning when thought message edit fails', async () => {
-    orchestratorService.activitiesToEmit = [
+    agentTurn.activitiesToEmit = [
       { kind: 'thought', id: 't1', text: 'Hello' },
       { kind: 'thought', id: 't1', text: 'Hello world' },
     ];
@@ -1010,7 +1012,7 @@ describe('DiscordMessageHandler', () => {
 
   it('should abort subsequent chunks when an intermediate thought chunk send fails', async () => {
     const longLines = Array.from({ length: 90 }, (_, i) => `Thought line ${i + 1} with lots of details to extend length`);
-    orchestratorService.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
+    agentTurn.activitiesToEmit = [{ kind: 'thought', id: 't1', text: longLines.join('\n') }];
     const sentChunks: string[] = [];
     let thoughtSendCalls = 0;
 
@@ -1090,13 +1092,13 @@ describe('DiscordMessageHandler', () => {
       channel: mockThread,
     } as unknown as Message;
 
-    vi.spyOn(orchestratorService, 'executeTurn').mockImplementation(async (req) => {
+    vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
       req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' });
       await vi.advanceTimersByTimeAsync(1500);
       req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true });
       resolveSend(mockDeletedMsg);
       await sendDeferred;
-      return orchestratorService.mockResult;
+      return agentTurn.turnResult;
     });
 
     await handler.handleMessage(message);
@@ -1156,7 +1158,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'A'.repeat(3000),
       status: 'completed',
     };
@@ -1184,7 +1186,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'Em [`src/Header.js`](file:///home/u/repo/src/Header.js#L51-L54):',
       status: 'completed',
     };
@@ -1211,7 +1213,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: '',
       status: 'completed',
     };
@@ -1240,7 +1242,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: '',
       status: 'cancelled',
     };
@@ -1269,7 +1271,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: '',
       status: 'failed',
       errorMessage: 'Workspace not found',
@@ -1299,7 +1301,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'Here is the report.',
       status: 'completed',
       attachments: ['/path/to/report.pdf'],
@@ -1330,7 +1332,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'A'.repeat(3000),
       status: 'completed',
       attachments: ['/path/to/screenshot.png'],
@@ -1362,7 +1364,7 @@ describe('DiscordMessageHandler', () => {
       send: vi.fn().mockResolvedValue(progressMessage),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'Task done.',
       status: 'completed',
       attachments: [],
@@ -1394,7 +1396,7 @@ describe('DiscordMessageHandler', () => {
         .mockResolvedValueOnce(undefined),
     };
 
-    orchestratorService.mockResult = {
+    agentTurn.turnResult = {
       response: 'Here is the report.',
       status: 'completed',
       attachments: ['/path/to/invalid-folder'],
@@ -1504,7 +1506,7 @@ describe('DiscordMessageHandler', () => {
 
     await handler.handleMessage(message);
 
-    expect(orchestratorService.lastRequest).toMatchObject({
+    expect(agentTurn.lastRequest).toMatchObject({
       conversationId: 'dm-channel-1',
       userId: 'user-dm-1',
       prompt: 'Create a new feature',
@@ -1533,7 +1535,7 @@ describe('DiscordMessageHandler', () => {
     expect(dmChannel.send).toHaveBeenCalledWith(
       'Hi! How can I help you today? Please send an instruction or task.',
     );
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   it('should send error to DM channel when processing direct message fails', async () => {
@@ -1597,7 +1599,7 @@ describe('DiscordMessageHandler', () => {
 
     await handler.handleMessage(message);
 
-    expect(orchestratorService.lastRequest).toBeUndefined();
+    expect(agentTurn.lastRequest).toBeUndefined();
   });
 
   describe('agent footer', () => {
@@ -1621,7 +1623,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should append the footer only to the last chunk of a long response', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = {
+      agentTurn.turnResult = {
         response: 'A'.repeat(3000),
         status: 'completed',
         agentInfo,
@@ -1638,7 +1640,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should show the token usage in the footer', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = {
+      agentTurn.turnResult = {
         response: 'Done.',
         status: 'completed',
         agentInfo,
@@ -1652,7 +1654,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should split a long failure message and keep the footer on the last chunk', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = {
+      agentTurn.turnResult = {
         response: '',
         status: 'failed',
         errorMessage: 'stderr line\n'.repeat(400),
@@ -1671,7 +1673,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should split a long error thrown while processing the message', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.executeTurn = async () => {
+      agentTurn.executeTurn = async () => {
         throw new Error('trace line\n'.repeat(400));
       };
 
@@ -1689,7 +1691,7 @@ describe('DiscordMessageHandler', () => {
       ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Execution error**: boom'],
     ] as const)('should append the footer when the turn is %s', async (_label, partial, text) => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = { ...partial, agentInfo };
+      agentTurn.turnResult = { ...partial, agentInfo };
 
       await handler.handleMessage(threadMessage(send));
 
@@ -1698,7 +1700,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should send only the steering notice without footer when the message joined a running turn', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.mockResult = {
+      agentTurn.turnResult = {
         response: '',
         status: 'steered',
         agentInfo,
@@ -1751,43 +1753,43 @@ describe('DiscordMessageHandler', () => {
 
     it('should show the options instead of running the turn', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'selection', selection };
+      conversationService.resolution = { kind: 'selection', selection };
 
       await handler.handleMessage(threadMessage(send, 'Build it'));
 
-      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: 'Build it' }]);
+      expect(conversationService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: 'Build it' }]);
       expect(send).toHaveBeenCalledWith(expect.stringContaining('**1.** Model 1'));
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should repeat the options on an invalid answer', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'invalid', selection };
+      conversationService.resolution = { kind: 'invalid', selection };
 
       await handler.handleMessage(threadMessage(send, 'abc'));
 
       expect(send).toHaveBeenCalledWith(expect.stringMatching(/^⚠️ Invalid option/));
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should confirm a configuration without pending prompt', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'configured', settings };
+      conversationService.resolution = { kind: 'configured', settings };
 
       await handler.handleMessage(threadMessage(send));
 
       expect(send).toHaveBeenCalledWith('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should confirm the configuration and run the pending prompt', async () => {
       const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
-      orchestratorService.resolution = { kind: 'execute', prompt: 'Build it', configured: settings };
+      conversationService.resolution = { kind: 'execute', prompt: 'Build it', configured: settings };
 
       await handler.handleMessage(threadMessage(send));
 
       expect(send.mock.calls[0]![0]).toBe('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
-      expect(orchestratorService.lastRequest?.prompt).toBe('Build it');
+      expect(agentTurn.lastRequest?.prompt).toBe('Build it');
     });
 
     const profilesSelection = {
@@ -1798,17 +1800,17 @@ describe('DiscordMessageHandler', () => {
 
     it('should post the profile list on profiles_menu', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'profiles_menu', selection: profilesSelection };
+      conversationService.resolution = { kind: 'profiles_menu', selection: profilesSelection };
 
       await handler.handleMessage(threadMessage(send, '0'));
 
       expect(send).toHaveBeenCalledWith(expect.stringContaining('**1.** CEO — Claude Code - default - default'));
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should confirm the update and show the refreshed list on profiles_updated', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = {
+      conversationService.resolution = {
         kind: 'profiles_updated',
         selection: profilesSelection,
         updatedRoles: [{ id: 'CEO', name: 'CEO' }],
@@ -1827,7 +1829,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should split a long profiles_updated message into several messages', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = {
+      conversationService.resolution = {
         kind: 'profiles_updated',
         selection: {
           ...profilesSelection,
@@ -1852,7 +1854,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should announce that the profile configuration closed on profiles_closed', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'profiles_closed' };
+      conversationService.resolution = { kind: 'profiles_closed' };
 
       await handler.handleMessage(threadMessage(send, '0'));
 
@@ -1876,31 +1878,31 @@ describe('DiscordMessageHandler', () => {
 
     it('should accept an answer without mention in an unmanaged thread with an active selection', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.activeSelection = true;
-      orchestratorService.resolution = { kind: 'configured', settings };
+      conversationService.activeSelection = true;
+      conversationService.resolution = { kind: 'configured', settings };
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
-      expect(orchestratorService.selectionLookups).toEqual(['channel-1:thread-9']);
-      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-9', prompt: '1' }]);
+      expect(conversationService.selectionLookups).toEqual(['channel-1:thread-9']);
+      expect(conversationService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-9', prompt: '1' }]);
       expect(send).toHaveBeenCalledWith('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model 1 · ⚡ default');
     });
 
     it('should take a message without mention as the language while a language change is pending', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.pendingLanguageChange = true;
-      orchestratorService.resolution = { kind: 'language_set', language: 'Spanish' };
+      conversationService.pendingLanguageChange = true;
+      conversationService.resolution = { kind: 'language_set', language: 'Spanish' };
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
       expect(send).toHaveBeenCalledWith('✅ **Language saved**: Spanish');
     });
 
     it('should ask again when the language is invalid', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.pendingLanguageChange = true;
-      orchestratorService.resolution = { kind: 'invalid_language' };
+      conversationService.pendingLanguageChange = true;
+      conversationService.resolution = { kind: 'invalid_language' };
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
@@ -1912,14 +1914,14 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
-      expect(orchestratorService.resolvedInputs).toEqual([]);
+      expect(conversationService.resolvedInputs).toEqual([]);
       expect(send).not.toHaveBeenCalled();
     });
 
     it('should ignore messages without mention in a plain channel even with a selection open', async () => {
       const send = vi.fn();
       const startThread = vi.fn();
-      orchestratorService.activeSelection = true;
+      conversationService.activeSelection = true;
       const message = {
         author: { bot: false, id: 'user-7' },
         channelId: 'channel-1',
@@ -1931,7 +1933,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(message);
 
-      expect(orchestratorService.selectionLookups).toEqual([]);
+      expect(conversationService.selectionLookups).toEqual([]);
       expect(startThread).not.toHaveBeenCalled();
       expect(send).not.toHaveBeenCalled();
     });
@@ -1964,17 +1966,17 @@ describe('DiscordMessageHandler', () => {
 
     it('should show the next question instead of running a turn', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'question', prompt };
+      conversationService.resolution = { kind: 'question', prompt };
 
       await handler.handleMessage(threadMessage(send, '2'));
 
       expect(send).toHaveBeenCalledWith(expect.stringContaining('❓ **Question 1/2** · Product Owner Agent'));
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should repeat the question on an invalid option', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'invalid_answer', prompt };
+      conversationService.resolution = { kind: 'invalid_answer', prompt };
 
       await handler.handleMessage(threadMessage(send, '9'));
 
@@ -1984,7 +1986,7 @@ describe('DiscordMessageHandler', () => {
     it('should confirm the answers and show the question of the next waiting agent', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
       const next = { ...prompt, asker: { role: 'TECH_LEAD', roleName: 'Tech Lead Agent', projectName: 'my-app' } };
-      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker, next };
+      conversationService.resolution = { kind: 'answered', asker: prompt.asker, next };
 
       await handler.handleMessage(threadMessage(send, 'Finance'));
 
@@ -1996,7 +1998,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should only confirm the answers when no other agent is waiting', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker };
+      conversationService.resolution = { kind: 'answered', asker: prompt.asker };
 
       await handler.handleMessage(threadMessage(send, 'Finance'));
 
@@ -2006,13 +2008,13 @@ describe('DiscordMessageHandler', () => {
 
     it('should hand the downloaded attachments to the input resolution', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.resolution = { kind: 'answered', asker: prompt.asker };
+      conversationService.resolution = { kind: 'answered', asker: prompt.asker };
       const message = threadMessage(send, 'see file');
       (message as unknown as { attachments: Map<string, unknown> }).attachments = new Map([['a', { name: 'a.png' }]]);
 
       await handler.handleMessage(message);
 
-      expect(orchestratorService.resolvedInputs).toEqual([
+      expect(conversationService.resolvedInputs).toEqual([
         {
           conversationId: 'channel-1:thread-1',
           prompt: 'see file',
@@ -2023,13 +2025,13 @@ describe('DiscordMessageHandler', () => {
 
     it('should accept an answer without mention in an unmanaged thread with questions waiting', async () => {
       const send = vi.fn().mockResolvedValue(undefined);
-      orchestratorService.pendingQuestions = true;
-      orchestratorService.resolution = { kind: 'question', prompt };
+      questions.pending = true;
+      conversationService.resolution = { kind: 'question', prompt };
 
       await handler.handleMessage(threadMessage(send, '1', 'someone-else'));
 
-      expect(orchestratorService.selectionLookups).toEqual([]);
-      expect(orchestratorService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: '1' }]);
+      expect(conversationService.selectionLookups).toEqual([]);
+      expect(conversationService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: '1' }]);
     });
 
     it('should show the question an agent asks during the turn, in order with the delegation notices', async () => {
@@ -2038,7 +2040,7 @@ describe('DiscordMessageHandler', () => {
         contents.push(content);
         return { content, edit: vi.fn().mockResolvedValue(undefined) };
       });
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onDelegation?.({ round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', phase: 'started' });
         request.onQuestion?.(prompt);
         return { response: 'Done.', status: 'completed' };
@@ -2060,7 +2062,7 @@ describe('DiscordMessageHandler', () => {
         }
         return { content, edit: vi.fn().mockResolvedValue(undefined) };
       });
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onQuestion?.(prompt);
         return { response: 'Done.', status: 'completed' };
       };
@@ -2097,7 +2099,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async () => {
+      agentTurn.executeTurn = async () => {
         typingCallsDuringTurn = sendTyping.mock.calls.length;
         return {
           response: 'Done',
@@ -2134,7 +2136,7 @@ describe('DiscordMessageHandler', () => {
         mentions: { has: vi.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
-      orchestratorService.resolveInput = async () => {
+      conversationService.resolveInput = async () => {
         typingCallsDuringResolution = sendTyping.mock.calls.length;
         return {
           kind: 'selection',
@@ -2172,7 +2174,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         vi.advanceTimersByTime(4 * 60 * 1000);
         request.onActivity?.({ kind: 'thought', id: '1', text: 'thinking' });
         vi.advanceTimersByTime(2 * 60 * 1000);
@@ -2209,7 +2211,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async (request: TurnRequest) => {
+      agentTurn.executeTurn = async (request: TurnRequest) => {
         vi.advanceTimersByTime(4 * 60 * 1000);
         request.onDelegation?.({
           round: 1,
@@ -2251,7 +2253,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async () => {
+      agentTurn.executeTurn = async () => {
         throw new Error('Fatal error');
       };
 
@@ -2285,7 +2287,7 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
 
-      orchestratorService.executeTurn = async () => ({
+      agentTurn.executeTurn = async () => ({
         response: '',
         status: 'cancelled',
       });
@@ -2340,7 +2342,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should resolve a message with only attachments and run the prompt the resolution returns', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('diagram.png')]);
-      orchestratorService.resolution = {
+      conversationService.resolution = {
         kind: 'execute',
         prompt: 'The user sent attachments. Analyze the attached files.',
         attachments: attachmentService.downloadedAttachments,
@@ -2348,7 +2350,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(message);
 
-      expect(orchestratorService.resolvedInputs).toEqual([
+      expect(conversationService.resolvedInputs).toEqual([
         {
           conversationId: 'channel-1:thread-att-1',
           prompt: '',
@@ -2361,7 +2363,7 @@ describe('DiscordMessageHandler', () => {
         'channel-1:thread-att-1',
         [expect.objectContaining({ name: 'diagram.png' })],
       );
-      expect(orchestratorService.lastRequest).toMatchObject({
+      expect(agentTurn.lastRequest).toMatchObject({
         conversationId: 'channel-1:thread-att-1',
         prompt: 'The user sent attachments. Analyze the attached files.',
         attachments: [
@@ -2379,7 +2381,7 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(message);
 
-      expect(orchestratorService.lastRequest).toMatchObject({
+      expect(agentTurn.lastRequest).toMatchObject({
         conversationId: 'channel-1:thread-att-1',
         prompt: 'Analise a imagem',
         attachments: [
@@ -2393,7 +2395,7 @@ describe('DiscordMessageHandler', () => {
 
     it('should report the transcription of the resolved input and run the prompt with the remaining attachments', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('Context:', [createAttachment('voice.ogg', 'audio/ogg')]);
-      orchestratorService.resolution = {
+      conversationService.resolution = {
         kind: 'execute',
         prompt: 'Context:\n\nrun the tests',
         transcription: {
@@ -2406,8 +2408,8 @@ describe('DiscordMessageHandler', () => {
 
       expect(mockThread.send).toHaveBeenCalledWith('⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.');
       expect(mockThread.send).toHaveBeenCalledWith('🎙️ **voice.ogg**\n> run the tests');
-      expect(orchestratorService.lastRequest?.prompt).toBe('Context:\n\nrun the tests');
-      expect(orchestratorService.lastRequest).not.toHaveProperty('attachments');
+      expect(agentTurn.lastRequest?.prompt).toBe('Context:\n\nrun the tests');
+      expect(agentTurn.lastRequest).not.toHaveProperty('attachments');
     });
 
     it('should reject message with invalid attachments and not invoke executeTurn', async () => {
@@ -2423,7 +2425,7 @@ describe('DiscordMessageHandler', () => {
       expect(mockThread.send).toHaveBeenCalledWith(
         '⚠️ The file "virus.exe" has an unsupported format or is incompatible with the agent\'s tools.',
       );
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should report error to channel when attachment download fails', async () => {
@@ -2436,7 +2438,7 @@ describe('DiscordMessageHandler', () => {
       expect(mockThread.send).toHaveBeenCalledWith(
         '❌ **An error occurred while processing your request:** Discord CDN download failed',
       );
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
 
     it('should send greeting when prompt is empty and attachments map is empty', async () => {
@@ -2447,7 +2449,7 @@ describe('DiscordMessageHandler', () => {
       expect(mockThread.send).toHaveBeenCalledWith(
         'Hi! How can I help you today? Please send an instruction or task.',
       );
-      expect(orchestratorService.lastRequest).toBeUndefined();
+      expect(agentTurn.lastRequest).toBeUndefined();
     });
   });
 });

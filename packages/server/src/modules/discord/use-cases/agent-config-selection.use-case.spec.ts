@@ -2,28 +2,24 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AgentProviderInfo } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.port.js';
-import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
-import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
+import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
+import { buildStubProfile, StubAgentSettingsStore } from '../../orchestrator/testing/stub-agent-settings-store.js';
+import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
+import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
+import { profileForAllRoles } from '../../orchestrator/utils/agent-profile.util.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
-import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
-import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
 import { AgentProfileListService } from '../services/agent-profile-list.service.js';
 import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
-import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
-import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
-import { buildStubProfile, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
-import { StubAgentPort } from '../testing/stub-agent.port.js';
-import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
-import { profileForAllRoles } from '../utils/agent-profile.util.js';
 
 import { CancelAgentConfigSelectionUseCase } from './cancel-agent-config-selection.use-case.js';
 import { ResolveConversationInputUseCase } from './resolve-conversation-input.use-case.js';
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selection.use-case.js';
-import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const MODELS: AgentModelState = {
@@ -81,59 +77,51 @@ const settingsOf = (overrides: Partial<AgentProfileSettings> = {}): AgentSetting
 describe('agent configuration selection', () => {
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let settingsStore: StubAgentSettingsStore;
-  let factory: StubAgentPortFactory;
+  let config: StubAgentConfigurationPort;
+  let turn: StubAgentTurnPort;
+  let userQuestions: StubUserQuestionPort;
   let start: StartAgentConfigSelectionUseCase;
   let submit: SubmitAgentConfigSelectionUseCase;
   let resolve: ResolveConversationInputUseCase;
   let cancel: CancelAgentConfigSelectionUseCase;
-  let questionQueue: UserQuestionQueueService;
   let languageChangeRequests: LanguageChangeRequestService;
-  let preferencesStore: StubPreferencesStore;
-  let speechToText: StubSpeechToText;
-  let deletedAudio: string[];
 
   const build = (
     modelsByAgent: Record<string, AgentModelState | null>,
     efforts: Record<string, AgentEffortState | null> = {},
     agents: AgentProviderInfo[] = SINGLE_AGENT,
   ) => {
-    factory = new StubAgentPortFactory((agentId) => {
-      const port = new StubAgentPort();
-      port.agentName = agentId;
-      port.modelsToReturn = modelsByAgent[agentId] ?? null;
-      port.effortsByModel = efforts;
-      return port;
-    });
-    factory.agents = agents;
-    const capabilities = new AgentCapabilitiesService(factory);
-    const registry = new AgentRegistryService();
-    const profileList = new AgentProfileListService(capabilities, selectionStore, settingsStore, registry);
-    start = new StartAgentConfigSelectionUseCase(capabilities, selectionStore, settingsStore, profileList);
-    submit = new SubmitAgentConfigSelectionUseCase(
-      capabilities,
-      selectionStore,
-      settingsStore,
-      registry,
-      profileList,
+    config = new StubAgentConfigurationPort();
+    config.store = settingsStore;
+    config.defaultAgent = { id: 'stub', name: 'Stub Agent' };
+    config.agents = agents.map(agent => ({ id: agent.agentId, name: agent.displayName }));
+    config.modelsByAgent = Object.fromEntries(
+      Object.entries(modelsByAgent).map(([agentId, state]) => [
+        agentId,
+        (state?.availableModels ?? []).map(model => ({ id: model.modelId, name: model.displayName, description: model.description })),
+      ]),
     );
-    questionQueue = new UserQuestionQueueService();
+    config.effortsByModel = Object.fromEntries(
+      Object.entries(efforts).map(([modelId, state]) => [
+        modelId,
+        (state?.availableEfforts ?? []).map(effort => ({ id: effort.effortId, name: effort.name, description: effort.description })),
+      ]),
+    );
+    turn = new StubAgentTurnPort();
+    userQuestions = new StubUserQuestionPort();
+    const profileList = new AgentProfileListService(config, selectionStore);
+    start = new StartAgentConfigSelectionUseCase(config, selectionStore, profileList);
+    submit = new SubmitAgentConfigSelectionUseCase(config, selectionStore, profileList);
     languageChangeRequests = new LanguageChangeRequestService();
-    preferencesStore = new StubPreferencesStore();
     resolve = new ResolveConversationInputUseCase(
       selectionStore,
-      settingsStore,
+      config,
       start,
       submit,
-      questionQueue,
+      userQuestions,
       languageChangeRequests,
-      preferencesStore,
-      new TranscribeAudioAttachmentsUseCase(speechToText = new StubSpeechToText(), {
-        deleteFile: async (path: string) => {
-          deletedAudio.push(path);
-        },
-      } as unknown as IFileSystemPort),
+      turn,
     );
-    deletedAudio = [];
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
 
@@ -162,7 +150,7 @@ describe('agent configuration selection', () => {
           },
         });
         await expect(selectionStore.find('conv-th-1')).resolves.not.toBeNull();
-        expect(factory.createdAgentIds).toEqual(['stub']);
+        expect(config.probedAgents).toEqual(['stub']);
       });
 
       it('should list the models of the agent persisted in the settings', async () => {
@@ -178,7 +166,7 @@ describe('agent configuration selection', () => {
             options: [{ index: 1, id: 'opus', label: 'Opus' }],
           },
         });
-        expect(factory.createdAgentIds).toEqual(['other']);
+        expect(config.probedAgents).toEqual(['other']);
       });
 
       it('should fall back to the most recent settings when current conversation has none in model step', async () => {
@@ -194,7 +182,7 @@ describe('agent configuration selection', () => {
             options: [{ index: 1, id: 'opus', label: 'Opus' }],
           },
         });
-        expect(factory.createdAgentIds).toEqual(['other']);
+        expect(config.probedAgents).toEqual(['other']);
       });
 
       it.each([
@@ -233,7 +221,7 @@ describe('agent configuration selection', () => {
           },
         });
         await expect(selectionStore.find('conv-th-1')).resolves.toMatchObject({ step: 'agent' });
-        expect(factory.createdAgentIds).toEqual([]);
+        expect(config.probedAgents).toEqual([]);
       });
 
       it('should be unavailable when no agent is listed', async () => {
@@ -423,11 +411,11 @@ describe('agent configuration selection', () => {
       it('should probe efforts on the agent that owns the selection', async () => {
         settingsStore.settings = settingsOf({ agentId: 'other', agentName: 'Other Agent' });
         await start.execute({ conversationId: 'conv-2', step: 'model' });
-        factory.createdAgentIds.length = 0;
+        config.probedAgents.length = 0;
 
         await submit.execute({ conversationId: 'conv-2', input: '1' });
 
-        expect(factory.createdAgentIds).toEqual(['other']);
+        expect(config.probedAgents).toEqual(['other']);
         expect(settingsStore.saved.at(-1)).toMatchObject({
           profiles: everyRole(expect.objectContaining({ agentId: 'other', modelId: 'opus' })),
         });
@@ -475,7 +463,7 @@ describe('agent configuration selection', () => {
           },
         });
         await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ step: 'model' });
-        expect(factory.createdAgentIds).toEqual(['other']);
+        expect(config.probedAgents).toEqual(['other']);
       });
 
       it('should complete the whole agent, model and effort flow', async () => {
@@ -714,38 +702,71 @@ describe('agent configuration selection', () => {
       { text: 'Who approves the refund?', rationale: 'Defines the flow.', options: ['Manager', 'Finance'] },
       { text: 'What is the limit?', options: [] },
     ];
-
-    it('should take the message as the answer to the waiting question before anything else', async () => {
-      await resolve.execute({ conversationId: 'conv-1', prompt: 'Build it' });
-      const answers = questionQueue.ask('conv-1', asker, 'Before planning:', questions);
-
-      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '7' })).resolves.toMatchObject({
-        kind: 'invalid_answer',
-        prompt: { number: 1, question: { text: 'Who approves the refund?' } },
-      });
-      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '2' })).resolves.toMatchObject({
-        kind: 'question',
-        prompt: { number: 2, total: 2, question: { text: 'What is the limit?' } },
-      });
-      await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'R$ 500' })).resolves.toEqual({
-        kind: 'answered',
-        asker,
-      });
-
-      await expect(answers).resolves.toEqual([
-        { question: questions[0], answer: 'Finance', optionNumber: 2 },
-        { question: questions[1], answer: 'R$ 500' },
-      ]);
-      await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingPrompt: 'Build it' });
+    const promptFor = (index: number): QuestionPrompt => ({
+      asker,
+      question: questions[index]!,
+      number: index + 1,
+      total: questions.length,
+      waitingAskers: 0,
     });
+    const answerOf = (position = 0) => userQuestions.answers[position]?.answer;
 
-    it('should take attached files as the answer to the waiting question', async () => {
-      const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
-      const answers = questionQueue.ask('conv-1', asker, '', [questions[1]!]);
+    describe('with a question waiting', () => {
+      it('should read a whole number as an option when the question has options', async () => {
+        userQuestions.prompt = promptFor(0);
+        userQuestions.submission = { kind: 'next', prompt: promptFor(1) };
 
-      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({ kind: 'answered', asker });
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: ' 2 ' })).resolves.toMatchObject({
+          kind: 'question',
+          prompt: { number: 2, total: 2, question: { text: 'What is the limit?' } },
+        });
 
-      await expect(answers).resolves.toEqual([{ question: questions[1], answer: '', attachments: [file] }]);
+        expect(answerOf()).toEqual({ kind: 'option', optionIndex: 2 });
+      });
+
+      it('should read any other text as the free answer, even a number when the question has no options', async () => {
+        userQuestions.prompt = promptFor(1);
+        userQuestions.submission = { kind: 'answered', asker };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
+        userQuestions.prompt = promptFor(0);
+        await resolve.execute({ conversationId: 'conv-1', prompt: 'Neither' });
+
+        expect(answerOf(0)).toEqual({ kind: 'text', text: '200' });
+        expect(answerOf(1)).toEqual({ kind: 'text', text: 'Neither' });
+      });
+
+      it('should repeat the question when the answer is invalid', async () => {
+        userQuestions.prompt = promptFor(0);
+        userQuestions.submission = { kind: 'invalid', prompt: promptFor(0) };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '7' })).resolves.toMatchObject({
+          kind: 'invalid_answer',
+          prompt: { number: 1, question: { text: 'Who approves the refund?' } },
+        });
+      });
+
+      it('should send attached files with the answer, and take them as the answer on their own', async () => {
+        const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
+        userQuestions.prompt = promptFor(1);
+        userQuestions.submission = { kind: 'answered', asker };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({ kind: 'answered', asker });
+
+        expect(answerOf()).toEqual({ kind: 'text', text: '', attachments: [file] });
+      });
+
+      it('should take the message as the answer before a selection or a language change', async () => {
+        await resolve.execute({ conversationId: 'conv-1', prompt: 'Build it' });
+        languageChangeRequests.request('conv-1');
+        userQuestions.prompt = promptFor(1);
+        userQuestions.submission = { kind: 'answered', asker };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
+
+        expect(languageChangeRequests.isPending('conv-1')).toBe(true);
+        await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingPrompt: 'Build it' });
+      });
     });
 
     it('should store the next message as the language while a language change is pending', async () => {
@@ -753,7 +774,7 @@ describe('agent configuration selection', () => {
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '  Spanish ' })).resolves.toEqual({ kind: 'language_set', language: 'Spanish' });
 
-      expect(preferencesStore.preferences.language).toBe('Spanish');
+      expect(config.language).toBe('Spanish');
       expect(languageChangeRequests.isPending('conv-1')).toBe(false);
     });
 
@@ -762,17 +783,7 @@ describe('agent configuration selection', () => {
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '<b>Spanish</b>' })).resolves.toEqual({ kind: 'invalid_language' });
 
-      expect(preferencesStore.updates).toEqual([]);
-      expect(languageChangeRequests.isPending('conv-1')).toBe(true);
-    });
-
-    it('should take a message as an answer before a pending language change', async () => {
-      languageChangeRequests.request('conv-1');
-      const answers = questionQueue.ask('conv-1', asker, '', [questions[1]!]);
-
-      await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
-
-      await expect(answers).resolves.toEqual([{ question: questions[1], answer: '200' }]);
+      expect(config.languageUpdates).toEqual([]);
       expect(languageChangeRequests.isPending('conv-1')).toBe(true);
     });
 
@@ -792,36 +803,47 @@ describe('agent configuration selection', () => {
 
       it('should run the transcript as the prompt and report it without the audio attachment', async () => {
         await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
-        speechToText.transcripts[voice.path] = 'build the login page';
+        turn.transcription = {
+          prompt: 'build the login page',
+          attachments: [],
+          transcripts: [{ name: 'voice.ogg', text: 'build the login page' }],
+          warnings: [],
+        };
 
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
           kind: 'execute',
           prompt: 'build the login page',
           transcription: { transcripts: [{ name: 'voice.ogg', text: 'build the login page' }], warnings: [] },
         });
-        expect(deletedAudio).toEqual([voice.path]);
+        expect(turn.transcribed).toEqual([{ prompt: '', attachments: [voice] }]);
       });
 
-      it('should keep the audio attachment and report a warning when it cannot be transcribed', async () => {
+      it('should keep the audio attachment and report the warning when it cannot be transcribed', async () => {
         await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
-        speechToText.failures[voice.path] = 'model missing';
+        turn.transcription = { prompt: 'See this', attachments: [voice], transcripts: [], warnings: ['⚠️ model missing'] };
 
         const resolution = await resolve.execute({ conversationId: 'conv-1', prompt: 'See this', attachments: [voice] });
 
         expect(resolution).toMatchObject({ kind: 'execute', prompt: 'See this', attachments: [voice] });
-        expect(resolution.transcription?.warnings).toEqual([expect.stringContaining('model missing')]);
+        expect(resolution.transcription?.warnings).toEqual(['⚠️ model missing']);
       });
 
       it('should take a spoken message as the answer to the waiting question', async () => {
-        const answers = questionQueue.ask('conv-1', asker, 'Before planning:', [questions[1]!]);
-        speechToText.transcripts[voice.path] = '200';
+        userQuestions.prompt = promptFor(1);
+        userQuestions.submission = { kind: 'answered', asker };
+        turn.transcription = {
+          prompt: '200',
+          attachments: [],
+          transcripts: [{ name: 'voice.ogg', text: '200' }],
+          warnings: [],
+        };
 
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
           kind: 'answered',
           asker,
           transcription: { transcripts: [{ name: 'voice.ogg', text: '200' }], warnings: [] },
         });
-        await expect(answers).resolves.toEqual([{ question: questions[1], answer: '200' }]);
+        expect(answerOf()).toEqual({ kind: 'text', text: '200' });
       });
     });
 

@@ -37,16 +37,6 @@ describe('conversationEntrySchema', () => {
       total: 2,
       message: 'm',
     },
-    {
-      id: '4',
-      at,
-      type: 'selection',
-      mode: 'profiles_menu',
-      step: 'agent',
-      options: [{ index: 1, label: 'A', description: 'd' }],
-      selectedAgent: 'a',
-      selectedModel: 'm',
-    },
     { id: '5', at, type: 'notice', level: 'warning', text: 'careful' },
     { id: '6', at, type: 'agent_response', status: 'failed', response: 'r', errorMessage: 'e', agentInfo },
   ])('accepts $type', (entry) => {
@@ -55,6 +45,7 @@ describe('conversationEntrySchema', () => {
 
   it.each([
     ['unknown type', { id: '1', at, type: 'nope' }],
+    ['the removed selection entry', { id: '1', at, type: 'selection', mode: 'selection', step: 'agent', options: [] }],
     ['missing id', { at, type: 'interim', text: 'x' }],
     ['invalid tool status', { id: '1', at, type: 'tool', title: 't', status: 'done' }],
     ['non-object', 42],

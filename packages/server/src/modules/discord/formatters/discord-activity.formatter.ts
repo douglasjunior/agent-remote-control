@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
-import type { AgentConfigSelection, SelectedValue } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
@@ -10,6 +9,7 @@ import type { ShellCommandResult } from '../../orchestrator/models/shell-command
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
+import type { AgentConfigSelection, SelectedValue } from '../models/agent-config-selection.model.js';
 
 
 const FENCE_PATTERN = /^```\w*/;

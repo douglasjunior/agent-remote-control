@@ -1,68 +1,34 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import type {
   ResolvedConversationInput,
   StartAgentConfigSelectionResult,
 } from '../models/agent-config-outcome.model.js';
-import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
-import type { ShellCommandResult } from '../models/shell-command-result.model.js';
-import type { TurnRequest } from '../models/turn-request.model.js';
-import type { TurnResult } from '../models/turn-result.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
-import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
-import { DEFAULT_USER_LANGUAGE } from '../prompts/user-language.prompt.js';
 import { CancelAgentConfigSelectionUseCase } from '../use-cases/cancel-agent-config-selection.use-case.js';
-import { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-case.js';
-import { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
-import { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import {
   type ResolveConversationInputInput,
   ResolveConversationInputUseCase,
 } from '../use-cases/resolve-conversation-input.use-case.js';
-import { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
 import { StartAgentConfigSelectionUseCase } from '../use-cases/start-agent-config-selection.use-case.js';
 
 import { LanguageChangeRequestService } from './language-change-request.service.js';
-import { UserQuestionQueueService } from './user-question-queue.service.js';
 
 
+/** The conversation state Discord keeps for its numbered dialogs: open menus and pending language requests. */
 @Injectable()
-export class OrchestratorService {
+export class DiscordConversationService {
   constructor(
-    private readonly executeAgentTurnUseCase: ExecuteAgentTurnUseCase,
-    private readonly cancelAgentTurnUseCase: CancelAgentTurnUseCase,
     private readonly resolveConversationInputUseCase: ResolveConversationInputUseCase,
     private readonly startAgentConfigSelectionUseCase: StartAgentConfigSelectionUseCase,
     private readonly cancelAgentConfigSelectionUseCase: CancelAgentConfigSelectionUseCase,
     @Inject(IAgentConfigSelectionStorePort)
     private readonly selectionStore: IAgentConfigSelectionStorePort,
-    private readonly getAgentQuotaUseCase: GetAgentQuotaUseCase,
-    private readonly questionQueue: UserQuestionQueueService,
     private readonly languageChangeRequests: LanguageChangeRequestService,
-    @Inject(IPreferencesStorePort)
-    private readonly preferencesStore: IPreferencesStorePort,
-    private readonly runShellCommandUseCase: RunShellCommandUseCase,
+    @Inject(IAgentConfigurationPort)
+    private readonly configuration: IAgentConfigurationPort,
   ) {}
-
-  async executeTurn(request: TurnRequest): Promise<TurnResult> {
-    return this.executeAgentTurnUseCase.execute(request);
-  }
-
-  async cancelTurn(conversationId: string): Promise<boolean> {
-    return this.cancelAgentTurnUseCase.execute(conversationId);
-  }
-
-  isShellCommandEnabled(): boolean {
-    return this.runShellCommandUseCase.isEnabled();
-  }
-
-  runShellCommand(conversationId: string, command: string): Promise<ShellCommandResult> {
-    return this.runShellCommandUseCase.execute(conversationId, command);
-  }
-
-  getQuota(): Promise<readonly AgentQuotaReport[]> {
-    return this.getAgentQuotaUseCase.execute();
-  }
 
   resolveInput(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
     return this.resolveConversationInputUseCase.execute(input);
@@ -88,14 +54,10 @@ export class OrchestratorService {
     return (await this.selectionStore.find(conversationId)) !== null;
   }
 
-  hasPendingQuestions(conversationId: string): boolean {
-    return this.questionQueue.hasPending(conversationId);
-  }
-
   /** The next message in the conversation sets the language; resolves to the current one. */
   async requestLanguageChange(conversationId: string): Promise<string> {
     this.languageChangeRequests.request(conversationId);
-    return (await this.preferencesStore.load()).language ?? DEFAULT_USER_LANGUAGE;
+    return this.configuration.getLanguage();
   }
 
   hasPendingLanguageChange(conversationId: string): boolean {

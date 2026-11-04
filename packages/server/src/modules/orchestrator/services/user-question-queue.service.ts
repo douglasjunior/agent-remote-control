@@ -21,8 +21,6 @@ type QuestionRequest = {
   readonly reject: (error: Error) => void;
 };
 
-const OPTION_NUMBER = /^\d+$/;
-
 /**
  * Questions agents ask the user, one at a time and in the order the agents asked them. While a conversation has
  * questions waiting, every message the user sends there is an answer.
@@ -71,8 +69,8 @@ export class UserQuestionQueueService {
   }
 
   /**
-   * A whole number picks an option of a question that has them; any other text is the user's own answer. Attached
-   * files go with the answer either way, and are an answer on their own.
+   * An option index picks an option of a question that has them; text is the user's own answer. Attached files go
+   * with the answer either way, and are an answer on their own.
    */
   submit(conversationKey: string, input: QuestionAnswerInput): QuestionSubmission | undefined {
     const queue = this.queues.get(conversationKey);
@@ -139,17 +137,13 @@ export class UserQuestionQueueService {
   }
 
   private readAnswer(question: UserQuestion, input: QuestionAnswerInput): AnsweredQuestion | undefined {
-    const text = input.text.trim();
     const attachments = input.attachments?.length ? { attachments: input.attachments } : {};
-    if (!text && !input.attachments?.length) {
-      return undefined;
+    if (input.kind === 'option') {
+      const option = question.options[input.optionIndex - 1];
+      return option ? { question, answer: option, optionNumber: input.optionIndex, ...attachments } : undefined;
     }
-    if (question.options.length === 0 || !OPTION_NUMBER.test(text)) {
-      return { question, answer: text, ...attachments };
-    }
-    const optionNumber = Number(text);
-    const option = question.options[optionNumber - 1];
-    return option ? { question, answer: option, optionNumber, ...attachments } : undefined;
+    const text = input.text.trim();
+    return text || input.attachments?.length ? { question, answer: text, ...attachments } : undefined;
   }
 
   private buildPrompt(request: QuestionRequest, waitingAskers: number): QuestionPrompt {

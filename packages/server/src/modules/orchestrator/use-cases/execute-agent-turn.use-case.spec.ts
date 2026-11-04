@@ -5,7 +5,7 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
-import type { QuestionPrompt } from '../models/user-question.model.js';
+import type { QuestionAnswerInput, QuestionPrompt } from '../models/user-question.model.js';
 import {
   type DelegationContract,
   IAgentRegistryPort,
@@ -2410,10 +2410,17 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   describe('questions to the user', () => {
+    const readAnswer = (text: string): QuestionAnswerInput => {
+      const hasOptions = (questionQueue.current('conv-1')?.question.options.length ?? 0) > 0;
+      return hasOptions && /^\d+$/.test(text.trim())
+        ? { kind: 'option', optionIndex: Number(text.trim()) }
+        : { kind: 'text', text };
+    };
+
     const answerWith = (...inputs: string[]) => (): void => {
       queueMicrotask(() => {
         while (inputs.length > 0 && questionQueue.hasPending('conv-1')) {
-          questionQueue.submit('conv-1', { text: inputs.shift()! });
+          questionQueue.submit('conv-1', readAnswer(inputs.shift()!));
         }
       });
     };
@@ -2460,7 +2467,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const file = { name: 'screen.png', path: '/tmp/attachments/screen.png', contentType: 'image/png', size: 10 };
 
       await useCase.execute(turnRequest({
-        onQuestion: () => queueMicrotask(() => questionQueue.submit('conv-1', { text: 'Here', attachments: [file] })),
+        onQuestion: () => queueMicrotask(() => questionQueue.submit('conv-1', { kind: 'text', text: 'Here', attachments: [file] })),
       }));
 
       expect(stubAgentPort.promptCalls[1]).toBe(toCeo([

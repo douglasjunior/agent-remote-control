@@ -1,21 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
+import type { QuestionAnswerInput, QuestionSubmission, UserQuestion } from '../../orchestrator/models/user-question.model.js';
+import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
+import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import type { ConversationInputResolution, ResolvedConversationInput } from '../models/agent-config-outcome.model.js';
-import type { TurnAttachment } from '../models/turn-attachment.model.js';
-import type { QuestionSubmission } from '../models/user-question.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
-import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
-import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
-import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
-import { normalizeUserLanguage } from '../utils/user-language.util.js';
 
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
 import { SubmitAgentConfigSelectionUseCase } from './submit-agent-config-selection.use-case.js';
-import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const ATTACHMENTS_ONLY_PROMPT = 'The user sent attachments. Analyze the attached files.';
+const OPTION_NUMBER = /^\d+$/;
 
 export type ResolveConversationInputInput = {
   readonly conversationId: string;
@@ -24,24 +23,28 @@ export type ResolveConversationInputInput = {
   readonly attachments?: readonly TurnAttachment[];
 };
 
+/** Decides what a typed message means in a Discord conversation: an answer, a menu choice, a language or a prompt. */
 @Injectable()
 export class ResolveConversationInputUseCase {
   constructor(
     @Inject(IAgentConfigSelectionStorePort)
     private readonly selectionStore: IAgentConfigSelectionStorePort,
-    @Inject(IAgentSettingsStorePort)
-    private readonly settingsStore: IAgentSettingsStorePort,
+    @Inject(IAgentConfigurationPort)
+    private readonly configuration: IAgentConfigurationPort,
     private readonly startSelection: StartAgentConfigSelectionUseCase,
     private readonly submitSelection: SubmitAgentConfigSelectionUseCase,
-    private readonly questionQueue: UserQuestionQueueService,
+    @Inject(IUserQuestionPort)
+    private readonly userQuestions: IUserQuestionPort,
     private readonly languageChangeRequests: LanguageChangeRequestService,
-    @Inject(IPreferencesStorePort)
-    private readonly preferencesStore: IPreferencesStorePort,
-    private readonly transcribeAudioAttachments: TranscribeAudioAttachmentsUseCase,
+    @Inject(IAgentTurnPort)
+    private readonly agentTurn: IAgentTurnPort,
   ) {}
 
   async execute(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
-    const { prompt, attachments, transcripts, warnings } = await this.transcribeAudioAttachments.execute(input);
+    const { prompt, attachments, transcripts, warnings } = await this.agentTurn.transcribeAudio({
+      prompt: input.prompt,
+      attachments: input.attachments,
+    });
     const resolution = await this.resolve({
       conversationId: input.conversationId,
       prompt,
@@ -55,9 +58,10 @@ export class ResolveConversationInputUseCase {
   private async resolve(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
     const { conversationId, attachments } = input;
 
-    const submission = this.questionQueue.submit(conversationId, { text: input.prompt, attachments });
-    if (submission) {
-      return this.describeSubmission(submission);
+    const question = this.userQuestions.currentQuestion(conversationId)?.question;
+    if (question) {
+      const submission = this.userQuestions.answerQuestion(conversationId, this.readAnswer(question, input.prompt, attachments));
+      return this.describeSubmission(submission!);
     }
 
     if (this.languageChangeRequests.isPending(conversationId)) {
@@ -77,16 +81,7 @@ export class ResolveConversationInputUseCase {
       return { kind: 'configured', settings: outcome.settings };
     }
 
-    if (await this.settingsStore.load(conversationId)) {
-      return { kind: 'execute', prompt };
-    }
-
-    const mostRecent = await this.settingsStore.loadMostRecent();
-    if (mostRecent) {
-      await this.settingsStore.save(conversationId, {
-        ...mostRecent,
-        updatedAt: new Date().toISOString(),
-      });
+    if (await this.configuration.ensureSettings(conversationId) !== 'missing') {
       return { kind: 'execute', prompt };
     }
 
@@ -97,13 +92,22 @@ export class ResolveConversationInputUseCase {
     return started;
   }
 
+  /** A whole number picks an option of a question that has them; any other text is the user's own answer. */
+  private readAnswer(question: UserQuestion, text: string, attachments?: readonly TurnAttachment[]): QuestionAnswerInput {
+    const files = attachments?.length ? { attachments } : {};
+    const trimmed = text.trim();
+    if (question.options.length > 0 && OPTION_NUMBER.test(trimmed)) {
+      return { kind: 'option', optionIndex: Number(trimmed), ...files };
+    }
+    return { kind: 'text', text, ...files };
+  }
+
   private async changeLanguage(conversationId: string, input: string): Promise<ConversationInputResolution> {
-    const language = normalizeUserLanguage(input);
+    const language = await this.configuration.setLanguage(input);
     if (!language) {
       return { kind: 'invalid_language' };
     }
     this.languageChangeRequests.cancel(conversationId);
-    await this.preferencesStore.update({ language });
     return { kind: 'language_set', language };
   }
 

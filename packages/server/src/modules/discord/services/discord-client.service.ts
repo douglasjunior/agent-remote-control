@@ -1,4 +1,5 @@
 import {
+  Inject,
   Injectable,
   Logger,
   type OnApplicationBootstrap,
@@ -14,7 +15,7 @@ import {
   Partials,
 } from 'discord.js';
 
-import { OrchestratorService } from '../../orchestrator/services/orchestrator.service.js';
+import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 
 
 @Injectable()
@@ -23,7 +24,7 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
   private readonly client: Client;
 
   constructor(
-    private readonly orchestratorService: OrchestratorService,
+    @Inject(IAgentTurnPort) private readonly agentTurn: IAgentTurnPort,
     @Optional() client?: Client,
   ) {
     this.client =
@@ -96,7 +97,7 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           name: 'language',
           description: 'Changes the language agents use to talk to you',
         },
-        ...(this.orchestratorService.isShellCommandEnabled()
+        ...(this.agentTurn.isShellCommandEnabled()
           ? [
             {
               name: 'shell',

@@ -13,9 +13,11 @@ export class WebConnectionRegistryService {
     connection.onClose(() => this.connections.delete(connection.id));
   }
 
-  broadcast(event: ServerEvent): void {
+  broadcast(event: ServerEvent, exceptConnectionId?: string): void {
     for (const connection of this.connections.values()) {
-      connection.send(event);
+      if (connection.id !== exceptConnectionId) {
+        connection.send(event);
+      }
     }
   }
 

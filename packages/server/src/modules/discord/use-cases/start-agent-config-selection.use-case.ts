@@ -1,14 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import type { StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import type {
   AgentConfigSelection,
   SelectedValue,
 } from '../models/agent-config-selection.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
-import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
-import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
 import { AgentProfileListService } from '../services/agent-profile-list.service.js';
+import { toSelectionOptions } from '../utils/selection-options.util.js';
 
 
 export type StartAgentConfigSelectionInput = {
@@ -20,29 +20,26 @@ export type StartAgentConfigSelectionInput = {
 @Injectable()
 export class StartAgentConfigSelectionUseCase {
   constructor(
-    private readonly capabilities: AgentCapabilitiesService,
+    @Inject(IAgentConfigurationPort)
+    private readonly configuration: IAgentConfigurationPort,
     @Inject(IAgentConfigSelectionStorePort)
     private readonly selectionStore: IAgentConfigSelectionStorePort,
-    @Inject(IAgentSettingsStorePort)
-    private readonly settingsStore: IAgentSettingsStorePort,
     private readonly profileList: AgentProfileListService,
   ) {}
 
   async execute(input: StartAgentConfigSelectionInput): Promise<StartAgentConfigSelectionResult> {
     if (input.step === 'profile') {
-      if (this.capabilities.listAgentOptions().length === 0) {
+      if (this.configuration.listAgents().length === 0) {
         return { kind: 'unavailable' };
       }
       return { kind: 'profiles_menu', selection: await this.profileList.open(input.conversationId) };
     }
 
     if (input.step === 'model') {
-      const currentOrRecent = (await this.settingsStore.load(input.conversationId))
-        ?? (await this.settingsStore.loadMostRecent());
-      return this.startModelStep(input, this.capabilities.resolveAgent(currentOrRecent));
+      return this.startModelStep(input, await this.configuration.currentAgent(input.conversationId));
     }
 
-    const agents = this.capabilities.listAgentOptions();
+    const agents = toSelectionOptions(this.configuration.listAgents());
     if (agents.length === 0) {
       return { kind: 'unavailable' };
     }
@@ -62,7 +59,7 @@ export class StartAgentConfigSelectionUseCase {
     input: StartAgentConfigSelectionInput,
     agent: SelectedValue,
   ): Promise<StartAgentConfigSelectionResult> {
-    const models = await this.capabilities.listModelOptions(agent.id);
+    const models = toSelectionOptions(await this.configuration.listModels(agent.id));
     if (models.length === 0) {
       return { kind: 'unavailable' };
     }

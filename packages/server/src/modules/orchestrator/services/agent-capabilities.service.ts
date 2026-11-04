@@ -5,7 +5,7 @@ import {
   IAgentPortFactory,
 } from '../../agent/ports/agent-port-factory.port.js';
 import type { IAgentPort } from '../../agent/ports/agent.port.js';
-import type { SelectedValue, SelectionOption } from '../models/agent-config-selection.model.js';
+import type { AgentOption } from '../models/agent-option.model.js';
 import type { AgentSettings } from '../models/agent-settings.model.js';
 import { resolveProfile } from '../utils/agent-profile.util.js';
 
@@ -17,7 +17,7 @@ export class AgentCapabilitiesService {
     private readonly agentPortFactory: IAgentPortFactory,
   ) {}
 
-  resolveAgent(settings: AgentSettings | null): SelectedValue {
+  resolveAgent(settings: AgentSettings | null): AgentOption {
     const profile = settings ? resolveProfile(settings, 'CEO') : undefined;
     if (profile) {
       return { id: profile.agentId, name: profile.agentName };
@@ -31,33 +31,30 @@ export class AgentCapabilitiesService {
     return this.agentPortFactory.isAgentAvailable(agentId);
   }
 
-  listAgentOptions(): readonly SelectionOption[] {
-    return this.agentPortFactory.listAvailableAgents().map((agent: AgentProviderInfo, position) => ({
-      index: position + 1,
+  listAgentOptions(): readonly AgentOption[] {
+    return this.agentPortFactory.listAvailableAgents().map((agent: AgentProviderInfo) => ({
       id: agent.agentId,
-      label: agent.displayName,
+      name: agent.displayName,
     }));
   }
 
-  listModelOptions(agentId: string): Promise<readonly SelectionOption[]> {
+  listModelOptions(agentId: string): Promise<readonly AgentOption[]> {
     return this.withProbe(agentId, async (port) => {
       const models = port.getAvailableModels();
-      return (models?.availableModels ?? []).map((model, position) => ({
-        index: position + 1,
+      return (models?.availableModels ?? []).map(model => ({
         id: model.modelId,
-        label: model.displayName,
+        name: model.displayName,
         description: model.description,
       }));
     });
   }
 
-  listEffortOptions(agentId: string, modelId: string): Promise<readonly SelectionOption[]> {
+  listEffortOptions(agentId: string, modelId: string): Promise<readonly AgentOption[]> {
     return this.withProbe(agentId, async (port) => {
       const efforts = await port.getAvailableEffortsForModel(modelId);
-      return (efforts?.availableEfforts ?? []).map((effort, position) => ({
-        index: position + 1,
+      return (efforts?.availableEfforts ?? []).map(effort => ({
         id: effort.effortId,
-        label: effort.name,
+        name: effort.name,
         description: effort.description,
       }));
     });

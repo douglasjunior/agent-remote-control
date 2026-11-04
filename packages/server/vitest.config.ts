@@ -9,6 +9,11 @@ export default defineConfig({
   resolve: {
     conditions: ['source'],
   },
+  ssr: {
+    resolve: {
+      conditions: ['source'],
+    },
+  },
   test: {
     name: 'server',
     globals: true,

@@ -1,24 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import type { AgentConfigSelectionOutcome } from '../models/agent-config-outcome.model.js';
 import type {
   AgentConfigSelection,
   SelectedValue,
   SelectionOption,
 } from '../models/agent-config-selection.model.js';
-import type { AgentSettings } from '../models/agent-settings.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
-import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
-import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
-import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
 import { AgentProfileListService } from '../services/agent-profile-list.service.js';
-import { withProfiles } from '../utils/agent-profile.util.js';
+import { toSelectionOptions } from '../utils/selection-options.util.js';
 
 
 const OPTION_NUMBER_PATTERN = /^\d+$/;
 const OPTION_SEPARATOR_PATTERN = /[\s,]+/;
 const EXIT_INPUT = '0';
-const EMPTY_SETTINGS: AgentSettings = { profiles: {}, updatedAt: '' };
 
 export type SubmitAgentConfigSelectionInput = {
   readonly conversationId: string;
@@ -28,13 +24,10 @@ export type SubmitAgentConfigSelectionInput = {
 @Injectable()
 export class SubmitAgentConfigSelectionUseCase {
   constructor(
-    private readonly capabilities: AgentCapabilitiesService,
+    @Inject(IAgentConfigurationPort)
+    private readonly configuration: IAgentConfigurationPort,
     @Inject(IAgentConfigSelectionStorePort)
     private readonly selectionStore: IAgentConfigSelectionStorePort,
-    @Inject(IAgentSettingsStorePort)
-    private readonly settingsStore: IAgentSettingsStorePort,
-    @Inject(IAgentRegistryPort)
-    private readonly agentRegistry: IAgentRegistryPort,
     private readonly profileList: AgentProfileListService,
   ) {}
 
@@ -88,7 +81,7 @@ export class SubmitAgentConfigSelectionUseCase {
     }
 
     const targeted = { ...selection, targetRoles: chosen.map(option => option.id) };
-    const agents = this.capabilities.listAgentOptions();
+    const agents = toSelectionOptions(this.configuration.listAgents());
     if (agents.length === 1) {
       return this.submitAgent(targeted, { id: agents[0]!.id, name: agents[0]!.label });
     }
@@ -100,7 +93,7 @@ export class SubmitAgentConfigSelectionUseCase {
     selection: AgentConfigSelection,
     agent: SelectedValue,
   ): Promise<AgentConfigSelectionOutcome> {
-    const models = await this.capabilities.listModelOptions(agent.id);
+    const models = toSelectionOptions(await this.configuration.listModels(agent.id));
     if (models.length === 0) {
       return this.configure(selection, agent, null, null);
     }
@@ -113,7 +106,7 @@ export class SubmitAgentConfigSelectionUseCase {
     agent: SelectedValue,
     model: SelectedValue,
   ): Promise<AgentConfigSelectionOutcome> {
-    const efforts = await this.capabilities.listEffortOptions(agent.id, model.id);
+    const efforts = toSelectionOptions(await this.configuration.listEfforts(agent.id, model.id));
     if (efforts.length === 0) {
       return this.configure(selection, agent, model, null);
     }
@@ -150,10 +143,6 @@ export class SubmitAgentConfigSelectionUseCase {
     model: SelectedValue | null,
     effort: SelectionOption | null,
   ): Promise<AgentConfigSelectionOutcome> {
-    const roles = selection.targetRoles ?? this.agentRegistry.listRoles();
-    const current = (await this.settingsStore.load(selection.conversationId))
-      ?? (await this.settingsStore.loadMostRecent())
-      ?? EMPTY_SETTINGS;
     const profile = {
       agentId: agent.id,
       agentName: agent.name,
@@ -162,17 +151,14 @@ export class SubmitAgentConfigSelectionUseCase {
       effortId: effort?.id ?? null,
       effortName: effort?.label ?? null,
     };
-    const settings = withProfiles(current, roles, profile);
-    await this.settingsStore.save(selection.conversationId, settings);
+    const settings = await this.configuration.saveProfiles(selection.conversationId, selection.targetRoles, profile);
 
     if (selection.targetRoles) {
+      const roleNames = new Map(this.configuration.listRoles().map(({ role, roleName }) => [role, roleName]));
       return {
         kind: 'profiles_updated',
         selection: await this.profileList.open(selection.conversationId),
-        updatedRoles: selection.targetRoles.map(role => ({
-          id: role,
-          name: this.agentRegistry.getDisplayName(role),
-        })),
+        updatedRoles: selection.targetRoles.map(role => ({ id: role, name: roleNames.get(role) ?? role })),
         profile,
       };
     }

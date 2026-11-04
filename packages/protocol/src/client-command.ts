@@ -14,12 +14,26 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
+  z.object({ type: z.literal('agents.list') }),
+  z.object({ type: z.literal('models.list'), agentId: z.string() }),
+  z.object({ type: z.literal('efforts.list'), agentId: z.string(), modelId: z.string() }),
+  z.object({ type: z.literal('profiles.get'), conversationId: z.string() }),
   z.object({
-    type: z.literal('config.open'),
+    type: z.literal('profiles.set'),
     conversationId: z.string(),
-    menu: z.enum(['agent', 'model', 'profiles']),
+    roles: z.array(z.string()).min(1).optional(),
+    agentId: z.string(),
+    modelId: z.string().optional(),
+    effortId: z.string().optional(),
   }),
-  z.object({ type: z.literal('config.cancel'), conversationId: z.string() }),
+  z.object({
+    type: z.literal('question.answer'),
+    conversationId: z.string(),
+    answer: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('option'), optionIndex: z.number().int().min(1) }),
+      z.object({ kind: z.literal('text'), text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH) }),
+    ]),
+  }),
 ]);
 export type ClientCommand = z.infer<typeof clientCommandSchema>;
 

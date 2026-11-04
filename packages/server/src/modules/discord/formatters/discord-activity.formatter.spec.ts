@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
-import type { AgentConfigSelection } from '../../orchestrator/models/agent-config-selection.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
 
 import { DiscordActivityFormatter } from './discord-activity.formatter.js';
 
