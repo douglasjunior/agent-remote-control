@@ -2,7 +2,7 @@ import { Monitor, Moon, Sun } from 'lucide-react';
 
 import { THEMES, useTheme, type Theme } from '../theme/theme-context.js';
 
-import { Button } from './ui/button.js';
+import { IconButton } from './icon-button.js';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger,
 } from './ui/dropdown-menu.js';
@@ -17,7 +17,7 @@ export function ThemeToggle() {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<Button variant="outline" size="icon" aria-label="Theme" />}>
+      <DropdownMenuTrigger render={<IconButton variant="outline" label="Theme" />}>
         <Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

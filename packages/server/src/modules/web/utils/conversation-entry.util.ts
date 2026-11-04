@@ -1,9 +1,10 @@
+import type { Attachment } from '@agent-remote-control/protocol/attachment';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { randomUUID } from 'node:crypto';
 
 
-import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import type { QuestionAsker, QuestionPrompt, QuestionSubmission } from '../../orchestrator/models/user-question.model.js';
 
@@ -14,8 +15,14 @@ function stamp(): { at: string } {
   return { at: new Date().toISOString() };
 }
 
-export function userMessageEntry(text: string): ConversationEntry {
-  return { id: randomUUID(), ...stamp(), type: 'user_message', text };
+export function userMessageEntry(text: string, attachments: readonly Attachment[] = []): ConversationEntry {
+  return {
+    id: randomUUID(),
+    ...stamp(),
+    type: 'user_message',
+    text,
+    ...(attachments.length > 0 && { attachments: [...attachments] }),
+  };
 }
 
 export function noticeEntry(level: NoticeLevel, text: string): ConversationEntry {
@@ -27,7 +34,7 @@ export function interimEntry(text: string): ConversationEntry {
 }
 
 /** Steering and cancellation markers have no entry; empty thoughts are skipped. */
-export function activityEntry(activity: AgentActivity): ConversationEntry | null {
+export function activityEntry(activity: TurnActivity): ConversationEntry | null {
   if (activity.kind === 'thought') {
     if (!activity.removed && !activity.text.trim()) {
       return null;

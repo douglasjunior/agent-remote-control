@@ -93,7 +93,11 @@ packages/web/src/
 
 The composer is disabled while the connection is not `open` or the conversation is not `configured`
 (the settings sheet then opens by itself). It stays enabled while a turn runs, next to a Stop button that
-sends `turn.cancel`. The view follows new entries unless the user scrolled up.
+sends `turn.cancel`. The view follows new entries, and the growth of the draft, unless the user scrolled up.
+
+The response being written arrives as `conversation.draft` events (`ConversationView.draft`, set by the reducer
+and by `conversation.history`) and shows as Markdown after the last entry, where the delivered response replaces
+it. While a draft shows, the grouped steps no longer read "Working…".
 
 `usePromptHistory` (`components/prompt-input/`) gives the composer shell-like history: the first `ArrowUp` on
 the first line sends `prompts.history` and the navigation runs over the `prompts.list` answer (matched by
@@ -109,6 +113,26 @@ the searched query changes, not when more results stream in. While the list is o
 `Enter` belong to it, before the history and the send. A file is inserted as `@path ` (quoted when it has
 whitespace); a directory as `@dir/` with no space so the list goes into it. The popup highlights the
 characters listed in each item's `matches`, dims the folder part and shows a spinner while `walking`.
+Attachments (`usePromptAttachments`): a file picked with the paperclip, dropped on the composer frame or pasted
+into the field uploads at once through `uploadFile`, which depends only on `IServerConnection` (chunks of
+`UPLOAD_CHUNK_BYTES`, one `upload.ack` awaited per chunk, `upload.abort` on cancel, rejection when the status
+leaves `open`). Each file is a chip (`AttachmentChip`) that is `uploading`, `ready` or `error`; Send stays
+disabled while any is uploading, and the message carries the `ready` ones (text may be empty). A file above
+`MAX_UPLOAD_BYTES` fails without being sent, at most `MAX_ATTACHMENTS` are kept, and removing a chip cancels its
+upload. `ConversationView` keys the `Composer` by conversation id, so attachments and the draft never cross
+conversations. A `user_message` renders its attachments as read-only chips in the bubble.
+
+Voice recording (`useVoiceRecorder`): the microphone button next to the paperclip asks for the microphone and
+records with `MediaRecorder` (webm/opus, ogg or mp4, whichever the browser supports). While recording, the
+field gives way to a timer with a discard button and an attach button, and Send and the paperclip are disabled.
+Attaching stops the recording and hands the audio `File` (`recording-<timestamp>.<ext>`) to
+`usePromptAttachments.addFiles`: it uploads like any file and waits as a chip until the message is sent. A
+denied microphone or a failed start shows an inline alert. A chevron attached to the microphone button opens a
+menu (`useMicrophones`) with "System default" and the audio inputs, the chosen one checked; opening it asks for
+microphone access once when the browser still hides device names. The choice is kept in `localStorage`
+(`arc.microphone`) and recording asks for that device exactly; a device that is gone falls back to the default. The microphone is released when the recording ends
+or the composer unmounts.
+
 `FileMentionPopup` is composed from tokens, not a shadcn `command`, because the field must keep the focus.
 
 ## Theme
@@ -117,3 +141,5 @@ characters listed in each item's `matches`, dims the folder part and shows a spi
 (`arc.theme`) and toggles the `dark` class on `<html>`; `system` follows `prefers-color-scheme` live. An inline
 script in `index.html` applies the class before the first paint. `ThemeToggle` (a shadcn dropdown menu) sits in
 the header. Style through the theme tokens so both modes work.
+
+- `QuestionCard` shows the asker with its project, the question's `message`, text and rationale ("Why it matters"), as every channel does. Only the last entry of a conversation can be answered; any entry after a question closes it, leaving the asker and the question text.

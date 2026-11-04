@@ -94,7 +94,7 @@ Any agent asks the user directly when it needs a decision from them to proceed, 
 in the `orchestrator` skill). The instructions live in `prompts/user-questions.prompt.ts`:
 
 - `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
-  in the batch, options without "Other", `rationale` with the impact, and the `<user_answers>` format, including
+  in the batch, options without "Other", the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
   `<attachment path="…"/>` for files the user attaches to the answer;
 - `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, included in the system prompt
   of the executor agents that depend on user decisions (DEVELOPER, GIT_OPS, TECH_LEAD and
@@ -141,8 +141,8 @@ The specialized prompts live in `packages/server/src/modules/agent-definitions/p
 
 Every agent prompt ends with `FINAL_RESPONSE_INSTRUCTIONS` (`final-response.prompt.ts`): the
 turn's final response comes exactly once inside `<final_response>…</final_response>`
-(`agent/constants/final-response.constant.ts`), and text outside it is only progress narration.
-A new agent must include this block, because the demux uses the envelope to separate the response
+(`orchestrator/constants/final-response.constant.ts`), and text outside it is only progress narration.
+A new agent must include this block, because the orchestrator uses the envelope to separate the response
 from the narration.
 
 ### 1. Developer Agent (`developer.prompt.ts`)

@@ -8,6 +8,8 @@ import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
 export type ConversationView = {
   readonly entryIds: readonly string[];
   readonly entries: Readonly<Record<string, ConversationEntry>>;
+  /** The response being written, shown after the entries until the entry that delivers it arrives. */
+  readonly draft: string;
   readonly state: ConversationState;
   readonly loaded: boolean;
   readonly configured: boolean;
@@ -30,6 +32,7 @@ export const initialConversationsState: ConversationsState = {
 export const emptyConversationView: ConversationView = {
   entryIds: [],
   entries: {},
+  draft: '',
   state: 'idle',
   loaded: false,
   configured: false,
@@ -70,6 +73,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         ...view,
         entryIds: event.entries.map(entry => entry.id),
         entries: Object.fromEntries(event.entries.map(entry => [entry.id, entry])),
+        draft: event.draft ?? '',
         state: event.state,
         loaded: true,
       }));
@@ -79,6 +83,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         entryIds: view.entries[event.entry.id] ? view.entryIds : [...view.entryIds, event.entry.id],
         entries: { ...view.entries, [event.entry.id]: event.entry },
       }));
+    case 'conversation.draft':
+      return updateView(state, event.conversationId, view => ({ ...view, draft: event.text }));
     case 'conversation.state':
       return updateView(state, event.conversationId, view => ({ ...view, state: event.state }));
     case 'agents.list':
@@ -94,6 +100,10 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'auth.failed':
     case 'prompts.list':
     case 'files.results':
+    case 'upload.ready':
+    case 'upload.ack':
+    case 'upload.done':
+    case 'upload.failed':
     case 'models.list':
     case 'efforts.list':
     case 'error':

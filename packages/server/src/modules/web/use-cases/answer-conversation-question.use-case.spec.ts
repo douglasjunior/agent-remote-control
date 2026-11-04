@@ -24,13 +24,34 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(types()).toEqual([]);
   });
 
-  it('passes an option answer to the orchestrator and confirms it without an echo', async () => {
-    const { useCase, questions, types } = setup();
+  it('echoes the chosen option as a user message before the confirmation', async () => {
+    const { useCase, questions, types, store } = setup();
+    questions.prompt = prompt;
     questions.submission = { kind: 'answered', asker };
 
     await expect(useCase.execute('web-1', { kind: 'option', optionIndex: 2 })).resolves.toBe(true);
 
     expect(questions.answers[0]?.answer).toEqual({ kind: 'option', optionIndex: 2 });
+    expect(types()).toEqual(['user_message', 'notice']);
+    expect(store.histories.get('web-1')?.[0]).toMatchObject({ text: 'b' });
+  });
+
+  it('echoes nothing for an invalid option', async () => {
+    const { useCase, questions, types } = setup();
+    questions.prompt = prompt;
+    questions.submission = { kind: 'invalid', prompt };
+
+    await useCase.execute('web-1', { kind: 'option', optionIndex: 9 });
+
+    expect(types()).toEqual(['notice', 'question']);
+  });
+
+  it('confirms an option without an echo when the question is unknown', async () => {
+    const { useCase, questions, types } = setup();
+    questions.submission = { kind: 'answered', asker };
+
+    await useCase.execute('web-1', { kind: 'option', optionIndex: 1 });
+
     expect(types()).toEqual(['notice']);
   });
 

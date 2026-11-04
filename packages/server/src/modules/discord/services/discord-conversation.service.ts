@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import type {
-  ResolvedConversationInput,
+  ConversationInputResolution,
   StartAgentConfigSelectionResult,
 } from '../models/agent-config-outcome.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
@@ -30,7 +30,7 @@ export class DiscordConversationService {
     private readonly configuration: IAgentConfigurationPort,
   ) {}
 
-  resolveInput(input: ResolveConversationInputInput): Promise<ResolvedConversationInput> {
+  resolveInput(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
     return this.resolveConversationInputUseCase.execute(input);
   }
 

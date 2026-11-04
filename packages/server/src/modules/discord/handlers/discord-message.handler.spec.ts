@@ -3,6 +3,7 @@ import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -12,7 +13,7 @@ import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.po
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
-import type { ResolvedConversationInput } from '../models/agent-config-outcome.model.js';
+import type { ConversationInputResolution } from '../models/agent-config-outcome.model.js';
 import {
   type AttachmentValidationResult,
   type DiscordAttachment,
@@ -61,11 +62,16 @@ class MockDiscordClientService {
 class ScriptedAgentTurnPort extends StubAgentTurnPort {
   public activitiesToEmit: AgentActivity[] = [];
   public queued = false;
+  /** Reported through `onTranscription` before the activity, as the orchestrator does. */
+  public transcription?: TurnTranscription;
 
   constructor() {
     super();
     this.turnResult = { response: 'Hello from agent!', status: 'completed' };
     this.turnBehavior = (request) => {
+      if (this.transcription) {
+        request.onTranscription?.(this.transcription);
+      }
       if (this.queued) {
         request.onQueued?.();
       }
@@ -78,7 +84,7 @@ class ScriptedAgentTurnPort extends StubAgentTurnPort {
 
 class MockDiscordConversationService {
   public activeSelection = false;
-  public resolution: ResolvedConversationInput | null = null;
+  public resolution: ConversationInputResolution | null = null;
   public resolvedInputs: { conversationId: string; prompt: string; attachments?: readonly TurnAttachment[] }[] = [];
 
   public selectionLookups: string[] = [];
@@ -98,7 +104,7 @@ class MockDiscordConversationService {
     conversationId: string;
     prompt: string;
     attachments?: readonly TurnAttachment[];
-  }): Promise<ResolvedConversationInput> {
+  }): Promise<ConversationInputResolution> {
     this.resolvedInputs.push(input);
     return this.resolution ?? {
       kind: 'execute',
@@ -2393,23 +2399,42 @@ describe('DiscordMessageHandler', () => {
       });
     });
 
-    it('should report the transcription of the resolved input and run the prompt with the remaining attachments', async () => {
+    it('should hand the downloaded audio to the orchestrator without transcribing it itself', async () => {
+      const { message } = createThreadMessageWithAttachments('', [createAttachment('voice.ogg', 'audio/ogg')]);
+
+      await handler.handleMessage(message);
+
+      expect(conversationService.resolvedInputs.at(-1)?.attachments).toEqual(attachmentService.downloadedAttachments);
+      expect(agentTurn.lastRequest?.attachments).toEqual(attachmentService.downloadedAttachments);
+    });
+
+    it('should show the transcriptions and warnings the orchestrator reports during the turn', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('Context:', [createAttachment('voice.ogg', 'audio/ogg')]);
-      conversationService.resolution = {
-        kind: 'execute',
-        prompt: 'Context:\n\nrun the tests',
-        transcription: {
-          transcripts: [{ name: 'voice.ogg', text: 'run the tests' }],
-          warnings: ['⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.'],
-        },
+      agentTurn.transcription = {
+        transcripts: [{ name: 'voice.ogg', text: 'run the tests' }],
+        warnings: ['⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.'],
       };
 
       await handler.handleMessage(message);
 
       expect(mockThread.send).toHaveBeenCalledWith('⚠️ No speech was detected in "other.ogg"; it was sent to the agent as an attachment.');
       expect(mockThread.send).toHaveBeenCalledWith('🎙️ **voice.ogg**\n> run the tests');
-      expect(agentTurn.lastRequest?.prompt).toBe('Context:\n\nrun the tests');
-      expect(agentTurn.lastRequest).not.toHaveProperty('attachments');
+    });
+
+    it('should keep running the turn when the transcription cannot be shown', async () => {
+      const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('voice.ogg', 'audio/ogg')]);
+      agentTurn.transcription = { transcripts: [], warnings: ['⚠️ model missing'] };
+      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined), delete: vi.fn().mockResolvedValue(undefined) };
+      vi.mocked(mockThread.send).mockImplementation(async (content) => {
+        if (typeof content === 'string' && content.includes('model missing')) {
+          throw new Error('discord down');
+        }
+        return progressMessage as never;
+      });
+
+      await handler.handleMessage(message);
+
+      expect(agentTurn.lastRequest).toBeDefined();
     });
 
     it('should reject message with invalid attachments and not invoke executeTurn', async () => {

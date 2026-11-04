@@ -4,11 +4,14 @@ export type AgentToolStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
 
 export type AgentActivity =
   | {
+    /** A block of what the agent wrote, whole at every change and as it wrote it, protocol tags included. */
     readonly kind: 'thought';
     readonly id: string;
     readonly text: string;
-    readonly removed?: boolean;
+    /** The block is closed: the agent went on to something else. */
     readonly final?: boolean;
+    /** The agent's reasoning, which is not part of its answer. */
+    readonly reasoning?: boolean;
   }
   | { readonly kind: 'steering'; readonly id: string; readonly text: string }
   | { readonly kind: 'cancelled'; readonly id: string }

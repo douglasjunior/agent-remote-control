@@ -8,7 +8,6 @@ import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/mod
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
 import { buildStubProfile, StubAgentSettingsStore } from '../../orchestrator/testing/stub-agent-settings-store.js';
-import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { profileForAllRoles } from '../../orchestrator/utils/agent-profile.util.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
@@ -78,7 +77,6 @@ describe('agent configuration selection', () => {
   let selectionStore: InMemoryAgentConfigSelectionStoreAdapter;
   let settingsStore: StubAgentSettingsStore;
   let config: StubAgentConfigurationPort;
-  let turn: StubAgentTurnPort;
   let userQuestions: StubUserQuestionPort;
   let start: StartAgentConfigSelectionUseCase;
   let submit: SubmitAgentConfigSelectionUseCase;
@@ -107,7 +105,6 @@ describe('agent configuration selection', () => {
         (state?.availableEfforts ?? []).map(effort => ({ id: effort.effortId, name: effort.name, description: effort.description })),
       ]),
     );
-    turn = new StubAgentTurnPort();
     userQuestions = new StubUserQuestionPort();
     const profileList = new AgentProfileListService(config, selectionStore);
     start = new StartAgentConfigSelectionUseCase(config, selectionStore, profileList);
@@ -120,7 +117,6 @@ describe('agent configuration selection', () => {
       submit,
       userQuestions,
       languageChangeRequests,
-      turn,
     );
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
@@ -146,7 +142,7 @@ describe('agent configuration selection', () => {
               { index: 2, id: 'deep', label: 'Deep Model', description: undefined },
             ],
             selectedAgent: { id: 'stub', name: 'Stub Agent' },
-            pendingPrompt: undefined,
+            pendingMessage: undefined,
           },
         });
         await expect(selectionStore.find('conv-th-1')).resolves.not.toBeNull();
@@ -205,7 +201,7 @@ describe('agent configuration selection', () => {
         const result = await start.execute({
           conversationId: 'conv-th-1',
           step: 'agent',
-          pendingPrompt: 'Build it',
+          pendingMessage: { prompt: 'Build it', attachments: [] },
         });
 
         expect(result).toEqual({
@@ -217,7 +213,7 @@ describe('agent configuration selection', () => {
               { index: 1, id: 'stub', label: 'Stub Agent' },
               { index: 2, id: 'other', label: 'Other Agent' },
             ],
-            pendingPrompt: 'Build it',
+            pendingMessage: { prompt: 'Build it', attachments: [] },
           },
         });
         await expect(selectionStore.find('conv-th-1')).resolves.toMatchObject({ step: 'agent' });
@@ -234,14 +230,14 @@ describe('agent configuration selection', () => {
       });
 
       it('should go straight to the model step when there is exactly one agent', async () => {
-        const result = await start.execute({ conversationId: 'conv-1', step: 'agent', pendingPrompt: 'Hi' });
+        const result = await start.execute({ conversationId: 'conv-1', step: 'agent', pendingMessage: { prompt: 'Hi', attachments: [] } });
 
         expect(result).toMatchObject({
           kind: 'selection',
           selection: {
             step: 'model',
             selectedAgent: { id: 'stub', name: 'Stub Agent' },
-            pendingPrompt: 'Hi',
+            pendingMessage: { prompt: 'Hi', attachments: [] },
             options: [{ id: 'fast' }, { id: 'deep' }],
           },
         });
@@ -383,7 +379,7 @@ describe('agent configuration selection', () => {
             }),
             updatedAt: expect.any(String),
           },
-          pendingPrompt: undefined,
+          pendingMessage: undefined,
         });
         expect(settingsStore.settings?.profiles.CEO?.modelId).toBe('deep');
         await expect(selectionStore.find('conv-1')).resolves.toBeNull();
@@ -438,7 +434,7 @@ describe('agent configuration selection', () => {
     describe('agent step', () => {
       beforeEach(async () => {
         build({ stub: MODELS, other: OTHER_MODELS }, { deep: DEEP_EFFORTS }, TWO_AGENTS);
-        await start.execute({ conversationId: 'conv-1', step: 'agent', pendingPrompt: 'Build it' });
+        await start.execute({ conversationId: 'conv-1', step: 'agent', pendingMessage: { prompt: 'Build it', attachments: [] } });
       });
 
       it('should reject an unknown agent number', async () => {
@@ -459,7 +455,7 @@ describe('agent configuration selection', () => {
             step: 'model',
             selectedAgent: { id: 'other', name: 'Other Agent' },
             options: [{ index: 1, id: 'opus', label: 'Opus', description: undefined }],
-            pendingPrompt: 'Build it',
+            pendingMessage: { prompt: 'Build it', attachments: [] },
           },
         });
         await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ step: 'model' });
@@ -482,13 +478,13 @@ describe('agent configuration selection', () => {
               effortId: 'low',
             })),
           },
-          pendingPrompt: 'Build it',
+          pendingMessage: { prompt: 'Build it', attachments: [] },
         });
       });
 
       it('should save only the agent when it exposes no models', async () => {
         build({ stub: MODELS, other: null }, {}, TWO_AGENTS);
-        await start.execute({ conversationId: 'conv-2', step: 'agent', pendingPrompt: 'Go' });
+        await start.execute({ conversationId: 'conv-2', step: 'agent', pendingMessage: { prompt: 'Go', attachments: [] } });
 
         const outcome = await submit.execute({ conversationId: 'conv-2', input: '2' });
 
@@ -505,7 +501,7 @@ describe('agent configuration selection', () => {
             }),
             updatedAt: expect.any(String),
           },
-          pendingPrompt: 'Go',
+          pendingMessage: { prompt: 'Go', attachments: [] },
         });
         await expect(selectionStore.find('ch-2')).resolves.toBeNull();
         expect(settingsStore.settings?.profiles.CEO?.agentId).toBe('other');
@@ -765,7 +761,7 @@ describe('agent configuration selection', () => {
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
 
         expect(languageChangeRequests.isPending('conv-1')).toBe(true);
-        await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingPrompt: 'Build it' });
+        await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingMessage: { prompt: 'Build it', attachments: [] } });
       });
     });
 
@@ -787,13 +783,13 @@ describe('agent configuration selection', () => {
       expect(languageChangeRequests.isPending('conv-1')).toBe(true);
     });
 
-    it('should give a message with only attachments a prompt that asks to analyze them', async () => {
+    it('should pass the attachments of a message on untouched, leaving what to do with them to the orchestrator', async () => {
       await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
       const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
         kind: 'execute',
-        prompt: 'The user sent attachments. Analyze the attached files.',
+        prompt: '',
         attachments: [file],
       });
     });
@@ -801,49 +797,36 @@ describe('agent configuration selection', () => {
     describe('audio attachments', () => {
       const voice = { name: 'voice.ogg', path: '/tmp/voice.ogg', contentType: 'audio/ogg', size: 10 };
 
-      it('should run the transcript as the prompt and report it without the audio attachment', async () => {
+      it('should leave the audio to the orchestrator when the message runs a turn', async () => {
         await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
-        turn.transcription = {
-          prompt: 'build the login page',
-          attachments: [],
-          transcripts: [{ name: 'voice.ogg', text: 'build the login page' }],
-          warnings: [],
-        };
 
-        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'See this', attachments: [voice] })).resolves.toEqual({
           kind: 'execute',
-          prompt: 'build the login page',
-          transcription: { transcripts: [{ name: 'voice.ogg', text: 'build the login page' }], warnings: [] },
+          prompt: 'See this',
+          attachments: [voice],
         });
-        expect(turn.transcribed).toEqual([{ prompt: '', attachments: [voice] }]);
       });
 
-      it('should keep the audio attachment and report the warning when it cannot be transcribed', async () => {
-        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
-        turn.transcription = { prompt: 'See this', attachments: [voice], transcripts: [], warnings: ['⚠️ model missing'] };
-
-        const resolution = await resolve.execute({ conversationId: 'conv-1', prompt: 'See this', attachments: [voice] });
-
-        expect(resolution).toMatchObject({ kind: 'execute', prompt: 'See this', attachments: [voice] });
-        expect(resolution.transcription?.warnings).toEqual(['⚠️ model missing']);
-      });
-
-      it('should take a spoken message as the answer to the waiting question', async () => {
+      it('should answer the waiting question with the audio attached and no text', async () => {
         userQuestions.prompt = promptFor(1);
         userQuestions.submission = { kind: 'answered', asker };
-        turn.transcription = {
-          prompt: '200',
-          attachments: [],
-          transcripts: [{ name: 'voice.ogg', text: '200' }],
-          warnings: [],
-        };
 
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] })).resolves.toEqual({
           kind: 'answered',
           asker,
-          transcription: { transcripts: [{ name: 'voice.ogg', text: '200' }], warnings: [] },
         });
-        expect(answerOf()).toEqual({ kind: 'text', text: '200' });
+        expect(answerOf()).toEqual({ kind: 'text', text: '', attachments: [voice] });
+      });
+
+      it('should keep the audio of the first message while the user picks an agent, then run it with the attachments', async () => {
+        build({ stub: MODELS, other: OTHER_MODELS }, {}, TWO_AGENTS);
+
+        await resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [voice] });
+        await resolve.execute({ conversationId: 'conv-1', prompt: '1' });
+        const resolution = await resolve.execute({ conversationId: 'conv-1', prompt: '1' });
+        const final = resolution.kind === 'selection' ? await resolve.execute({ conversationId: 'conv-1', prompt: '1' }) : resolution;
+
+        expect(final).toMatchObject({ kind: 'execute', prompt: '', attachments: [voice] });
       });
     });
 
@@ -852,7 +835,7 @@ describe('agent configuration selection', () => {
 
       expect(resolution).toMatchObject({
         kind: 'selection',
-        selection: { step: 'model', selectedAgent: { id: 'stub' }, pendingPrompt: 'Build it' },
+        selection: { step: 'model', selectedAgent: { id: 'stub' }, pendingMessage: { prompt: 'Build it', attachments: [] } },
       });
     });
 
@@ -863,7 +846,7 @@ describe('agent configuration selection', () => {
 
       expect(resolution).toMatchObject({
         kind: 'selection',
-        selection: { step: 'agent', pendingPrompt: 'Build it' },
+        selection: { step: 'agent', pendingMessage: { prompt: 'Build it', attachments: [] } },
       });
     });
 

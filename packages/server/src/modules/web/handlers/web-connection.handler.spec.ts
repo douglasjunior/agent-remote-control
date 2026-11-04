@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
 import { createWebHarness } from '../testing/web-harness.js';
@@ -33,9 +34,9 @@ describe('WebConnectionHandler', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
     harness = createWebHarness();
-    const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch } = harness;
+    const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, uploads);
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -53,6 +54,7 @@ describe('WebConnectionHandler', () => {
       new AnswerConversationQuestionUseCase(questions, events),
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
+      new WebUploadSessionsService(uploads),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -195,6 +197,59 @@ describe('WebConnectionHandler', () => {
       expect(harness.fileSearch.sessions.map(session => session.stopped)).toEqual([true, true]);
     });
 
+    it('uploads a file in chunks through upload.start, upload.chunk and upload.finish', async () => {
+      harness.store.seed('web-1');
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'upload.start', uploadId: 'u1', conversationId: 'web-1', name: 'a.txt', size: 2 });
+      await settle();
+      connection.receive({ type: 'upload.chunk', uploadId: 'u1', index: 0, dataBase64: Buffer.from('hi').toString('base64') });
+      await settle();
+      connection.receive({ type: 'upload.finish', uploadId: 'u1' });
+      await settle();
+
+      expect(connection.sent).toEqual([
+        { type: 'upload.ready', uploadId: 'u1' },
+        { type: 'upload.ack', uploadId: 'u1', index: 0 },
+        { type: 'upload.done', uploadId: 'u1', attachment: { path: '.arc-uploads/web-1/a.txt', name: 'a.txt' } },
+      ]);
+    });
+
+    it('refuses upload.start for an unknown conversation', async () => {
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'upload.start', uploadId: 'u1', conversationId: 'ghost', name: 'a.txt', size: 2 });
+      await settle();
+
+      expect(connection.sent).toEqual([{ type: 'error', message: 'Unknown conversation', conversationId: 'ghost' }]);
+      expect(harness.uploads.writers).toHaveLength(0);
+    });
+
+    it('discards the upload on upload.abort and when the connection closes', async () => {
+      harness.store.seed('web-1');
+      connection.receive({ type: 'upload.start', uploadId: 'u1', conversationId: 'web-1', name: 'a.txt', size: 2 });
+      connection.receive({ type: 'upload.start', uploadId: 'u2', conversationId: 'web-1', name: 'b.txt', size: 2 });
+      await settle();
+
+      connection.receive({ type: 'upload.abort', uploadId: 'u1' });
+      await settle();
+      connection.simulateClose();
+      await settle();
+
+      expect(harness.uploads.writers.map(writer => writer.aborted)).toEqual([true, true]);
+    });
+
+    it('sends message.send attachments to the use case', async () => {
+      harness.store.seed('web-1');
+      harness.configuration.store.byConversation.set('web-1', configuredSettings());
+      harness.uploads.files.set('.arc-uploads/web-1/a.png', 5);
+
+      connection.receive({ type: 'message.send', conversationId: 'web-1', text: '', attachments: [{ path: '.arc-uploads/web-1/a.png', name: 'a.png' }] });
+      await settle();
+
+      expect(harness.agentTurn.turnRequests[0].attachments).toEqual([expect.objectContaining({ name: 'a.png', path: '/workspaces/.arc-uploads/web-1/a.png', contentType: 'image/png', size: 5 })]);
+    });
+
     it('answers conversation.history with the entries and the state', async () => {
       harness.store.seed('web-1');
       harness.events.publishState('web-1', 'running');
@@ -209,6 +264,17 @@ describe('WebConnectionHandler', () => {
         entries: [],
         state: 'running',
       });
+    });
+
+    it('includes the response being written in conversation.history', async () => {
+      harness.store.seed('web-1');
+      harness.events.publishDraft('web-1', 'Working on');
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'conversation.history', conversationId: 'web-1' });
+      await settle();
+
+      expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.history', draft: 'Working on' }));
     });
 
     it('starts a turn for message.send without waiting for it', async () => {

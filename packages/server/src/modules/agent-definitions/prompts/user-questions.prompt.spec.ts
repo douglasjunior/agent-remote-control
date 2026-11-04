@@ -11,6 +11,11 @@ describe('user-questions.prompt', () => {
     expect(USER_QUESTIONS_INSTRUCTIONS).toContain('The answers arrive as `<user_answers>`');
   });
 
+  it('should ask for the context and the rationale that let a question stand on its own', () => {
+    expect(USER_QUESTIONS_INSTRUCTIONS).toContain('every question must make sense on its own');
+    expect(USER_QUESTIONS_INSTRUCTIONS).toContain('Always fill `rationale`');
+  });
+
   it('should explain that files the user attaches arrive with the answer', () => {
     expect(USER_QUESTIONS_INSTRUCTIONS).toContain('<attachment path="..."/>');
   });

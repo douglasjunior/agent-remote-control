@@ -47,8 +47,8 @@ Encapsulates the parameters for running an interaction round:
 - `workspacePath`: local working directory associated with the turn;
 - `agentRole`: root role that receives the prompt (e.g. `'CEO'`);
 - `attachments`: optional list of `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) with files received and downloaded locally;
-- `onActivity`: optional callback `(activity: AgentActivity) => void` for reactive consumption of thoughts and tools;
-- `onTextChunk`: optional callback `(chunk: string) => void` for progressive response streaming;
+- `onActivity`: optional callback `(activity: TurnActivity) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts and tools, with the response protocol already read (a `thought` may carry `removed`);
+- `onDraft`: optional callback `(text: string) => void` with the part of the CEO's response that the user reads, as far as it is written: whole at every call (replaced by the next one, so a channel keeps only the last), empty when discarded. The protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and a tag still being typed are left out (`visibleReply`, `visible-reply.util.ts`). The finished response reaches the channel through the result, `onInterimMessage` or `onQuestion`; the orchestrator discards the draft (`''`) before asking the CEO to repair a response. Answers written by delegated agents never reach it;
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
 - `onQuestion`: optional callback `(prompt: QuestionPrompt) => void`, called when an agent of this turn asks and the question reaches the front of the conversation queue on its own (see "Questions to the User").
@@ -183,6 +183,13 @@ inside the queue:
 - **Idle expiration**: with no turns and no delegations for `SESSION_IDLE_TIMEOUT_MS` (default 30 minutes), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
 - **Shutdown**: `onApplicationShutdown` disconnects all agents (CEO and delegates). Requires `app.enableShutdownHooks()` in the bootstrap.
 
+### 3b. `AgentProtocolService` (`services/agent-protocol.service.ts`)
+
+Reads the response protocol agents follow, the `<final_response>` envelope (`constants/final-response.constant.ts`),
+over the raw text the agent port hands over: `stream(handlers)` for the activities of a prompt as they arrive and
+`finalResponse(written)` for the finished text. Everything about the envelope lives here, so the agent module
+stays unaware of it.
+
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
 
 Interprets the protocol tags of the CEO's response and returns a `CeoDecision`. It recognizes
@@ -250,8 +257,8 @@ parent directories and it would leak to them.
 | Without `<delegate>` or `<question>` | Ends the loop and returns the `message` as `response`, with the resolved attachments |
 | *(invalid)* | Sends the repair prompt with the reason to the CEO |
 
-The classified response is the content of the `<final_response>` envelope, extracted by the demux, and
-that is why the tags go inside it. The repair prompt reinforces this rule.
+The classified response is the content of the `<final_response>` envelope, read by `AgentProtocolService`
+(`services/agent-protocol.service.ts`), and that is why the tags go inside it. The repair prompt reinforces this rule.
 
 The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder">\n<response>\n</agent_result>` (without `project` when there is no folder). In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
 
@@ -295,15 +302,15 @@ Each agent turn (CEO or delegate) internally runs:
    2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
    3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
 4. Configuration: with the role's profile for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. A profile for another agent is ignored because model IDs are not valid across agents. Applies to the CEO and to delegates. Since sessions are keyed by role, agent and project, changing a role's agent starts a new session for it, while changing only its model or effort keeps the session.
-5. Registration of `request.onActivity` via `onActivity(...)`, undone in `finally`. Activities from all agents flow to the same callback.
-6. `turn.throwIfCancelled()` and draining of `prompt(text)`, dispatching `agent_message_chunk` blocks to `request.onTextChunk`.
-7. Response from `lastAgentMessage` or from the accumulated blocks, logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
+5. Registration of a listener via `onActivity(...)`, undone in `finally`, feeding an `AgentProtocolStream` (`AgentProtocolService.stream`) per prompt. The stream relays the activities of every agent to `request.onActivity`: a message with a `<final_response>` envelope settles its `thought` entry to the prose before the envelope (`final: true`) or takes it back (`removed: true`) when there is none. It also reports the answer as it stands, whole at every change (the content of the envelopes or, while no message has one, everything the agent said, reasoning excluded, a tag being typed held back): the CEO's becomes `request.onDraft` calls and those of delegated agents are not asked for.
+6. `turn.throwIfCancelled()` and draining of `prompt(text)`, accumulating the text blocks as the fallback response.
+7. Response: `AgentProtocolService.finalResponse` of `lastAgentMessage` or of the accumulated blocks (the content of the envelopes, accepting an unclosed one, or the whole text when there is none), logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
 
 **Cancellation and failure handling**: `PromptCancelledError` (or an error with the same
 name) thrown by any agent or by `ActiveTurn` returns `status: 'cancelled'`. Other
 errors return `status: 'failed'` with `errorMessage` and disconnect the CEO agent, so that the
 next turn starts a new transport and resumes the session. In both cases, `response` receives
-the `lastAgentMessage` of the CEO port used in the turn (empty when the turn fails before there is a port).
+the `lastAgentMessage` of the CEO port used in the turn, read by `AgentProtocolService.finalResponse` (empty when the turn fails before there is a port).
 
 **Turn metadata**: `agentInfo.roleName` comes from `getDisplayName(role)` and `agentName` from the
 CEO's `IAgentPort` (the turn's `agentId` when there is no port yet). `modelName` and `effortName`
@@ -325,6 +332,10 @@ My understanding is: ... (free text, shown before the first question)
 <question>Open question, without options</question>
 ```
 
+- Every channel shows the asker with its project, the free text (`message`) before the first question, the
+  question and its `rationale` as "Why it matters". The prompts require that text to carry the context (task,
+  findings, why the agent is blocked) and the rationale to state the impact of the answer, because the user may be
+  following several agents at once.
 - **`QuestionParserService`** (`services/question-parser.service.ts`) returns `none`, `questions`
   (`message` and `UserQuestion[]` with `text`, `rationale?` and `options`) or `invalid`: `<option>` outside
   `<question>`, a tag without closing or without opening, an unknown attribute (`<question>` accepts only
@@ -411,7 +422,7 @@ they return an empty list. `resolveAgent(settings)` returns the CEO profile's ag
 - `list(conversationId)`: one `AgentRoleProfile` per role from `IAgentRegistryPort.listRoles()`, with the profile of `current` and `agentAvailable`. A profile whose agent is not installed stays untouched and execution keeps using it, so its turns fail at `connect()` with the agent's CLI-not-found error;
 - `listRoles()` and `save(conversationId, roles | undefined, profile)`: `withProfiles` applies the profile to the roles (every role when `undefined`) over `current`, saves and returns the settings.
 
-`TranscribeAudioAttachmentsUseCase` `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`: with the port disabled or without audio it returns the input untouched. Each audio attachment (`isAudioAttachment`: `audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned. Channels that accept audio call it before interpreting a message.
+`TranscribeAudioAttachmentsUseCase` `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`: with the port disabled or without audio it returns the input untouched. Each audio attachment (`isAudioAttachment`: `audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned. It is internal to the orchestrator and no channel calls it: `ExecuteAgentTurnUseCase` runs it on every turn before any agent sees the message, so a message reaches the CEO (or steers it) with the transcript in the prompt and without the audio file, whichever channel sent it. The same happens to the attachments of each answer to an agent's question, when the answer is consumed. `TurnRequest.onTranscription({ transcripts, warnings })` tells the channel what was transcribed and what could not be, before the agents run. A message that is left with attachments and no text gets `ATTACHMENTS_ONLY_PROMPT` as its prompt.
 
 
 Switching agents does not interrupt turns in progress: the conversation's next turn switches the
@@ -421,7 +432,8 @@ CEO port and the following delegates are born on the new agent.
 
 `OrchestratorModule` exports only three ports (interface plus Symbol in `ports/`), each implemented by a small service. Channels depend on them and never on the services and use cases behind them; their specs use the stubs in `testing/` (`StubAgentTurnPort`, `StubAgentConfigurationPort`, `StubUserQuestionPort`), which implement the interfaces.
 
-- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `cancelTurn(conversationId)`, `transcribeAudio({ prompt, attachments? })`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
+- **Attachments are the channel's to fetch and the orchestrator's to interpret.** A channel obtains the files in its own way (Discord downloads them from its CDN, the web channel reads its uploads) and hands them over only as `TurnRequest.attachments` (`TurnAttachment`: `name`, absolute `path`, `contentType`, `size`) plus the text as typed; it never rewrites the prompt for them. Audio becomes text in the turn (see `TranscribeAudioAttachmentsUseCase`); other files are listed in an `[ATTACHMENTS]` block for the agent to inspect.
+- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `cancelTurn(conversationId)`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
 - **`IAgentConfigurationPort`** (`AgentConfigurationService`): `listAgents()`, `getDefaultAgent()`, `currentAgent(conversationId)`, `listModels(agentId)`, `listEfforts(agentId, modelId)`, `listRoles()`, `listProfiles(conversationId)`, `hasSettings(conversationId)` (a pure query: own or inheritable settings exist), `ensureSettings(conversationId)`, `saveProfiles(conversationId, roles | undefined, profile)` (a profile the caller already resolved), `configureProfiles(input)` (`ConfigureAgentProfilesUseCase`: checks agent, roles, model and effort against the lists, takes the names from them, saves, and returns `{ ok: true }` or `{ ok: false, error }` with `Unknown agent`, `Unknown role`, `Unknown model`, `An effort needs a model` or `Unknown effort`), `getLanguage()` and `setLanguage(input)`.
 - **`IUserQuestionPort`** (`UserQuestionService`): `hasPendingQuestions(conversationId)`, `currentQuestion(conversationId)` and `answerQuestion(conversationId, answer)` (structured, see the question queue).
 

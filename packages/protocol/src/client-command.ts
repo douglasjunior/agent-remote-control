@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH } from './limits.js';
+import { attachmentSchema } from './attachment.js';
+import { MAX_ATTACHMENT_NAME_LENGTH, MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
 
 
 export const clientCommandSchema = z.discriminatedUnion('type', [
@@ -11,8 +12,26 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('message.send'),
     conversationId: z.string(),
-    text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
+    text: z.string().trim().max(MAX_MESSAGE_LENGTH),
+    attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
+  }).refine(command => command.text.length > 0 || (command.attachments?.length ?? 0) > 0, {
+    message: 'A message needs text or an attachment',
   }),
+  z.object({
+    type: z.literal('upload.start'),
+    uploadId: z.string(),
+    conversationId: z.string(),
+    name: z.string().min(1).max(MAX_ATTACHMENT_NAME_LENGTH),
+    size: z.number().int().min(0).max(MAX_UPLOAD_BYTES),
+  }),
+  z.object({
+    type: z.literal('upload.chunk'),
+    uploadId: z.string(),
+    index: z.number().int().min(0),
+    dataBase64: z.string().max(Math.ceil(UPLOAD_CHUNK_BYTES / 3) * 4),
+  }),
+  z.object({ type: z.literal('upload.finish'), uploadId: z.string() }),
+  z.object({ type: z.literal('upload.abort'), uploadId: z.string() }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
   z.object({ type: z.literal('prompts.history'), requestId: z.string() }),
   z.object({ type: z.literal('files.search'), requestId: z.string(), query: z.string().max(MAX_MENTION_QUERY_LENGTH) }),

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
-import type { AudioTranscriptionResult } from '../models/audio-transcription.model.js';
 import type { ShellCommandResult } from '../models/shell-command-result.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
@@ -10,10 +9,6 @@ import { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-case.
 import { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
 import { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
-import {
-  type TranscribeAudioAttachmentsInput,
-  TranscribeAudioAttachmentsUseCase,
-} from '../use-cases/transcribe-audio-attachments.use-case.js';
 
 
 @Injectable()
@@ -21,7 +16,6 @@ export class AgentTurnService implements IAgentTurnPort {
   constructor(
     private readonly executeAgentTurnUseCase: ExecuteAgentTurnUseCase,
     private readonly cancelAgentTurnUseCase: CancelAgentTurnUseCase,
-    private readonly transcribeAudioAttachmentsUseCase: TranscribeAudioAttachmentsUseCase,
     private readonly runShellCommandUseCase: RunShellCommandUseCase,
     private readonly getAgentQuotaUseCase: GetAgentQuotaUseCase,
   ) {}
@@ -32,10 +26,6 @@ export class AgentTurnService implements IAgentTurnPort {
 
   cancelTurn(conversationId: string): Promise<boolean> {
     return this.cancelAgentTurnUseCase.execute(conversationId);
-  }
-
-  transcribeAudio(input: TranscribeAudioAttachmentsInput): Promise<AudioTranscriptionResult> {
-    return this.transcribeAudioAttachmentsUseCase.execute(input);
   }
 
   isShellCommandEnabled(): boolean {

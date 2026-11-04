@@ -16,7 +16,12 @@ export class GetConversationHistoryUseCase {
   async execute(conversationId: string): Promise<{
     readonly entries: readonly ConversationEntry[];
     readonly state: ConversationState;
+    readonly draft: string;
   }> {
-    return { entries: await this.store.history(conversationId), state: this.events.stateOf(conversationId) };
+    return {
+      entries: await this.store.history(conversationId),
+      state: this.events.stateOf(conversationId),
+      draft: this.events.draftOf(conversationId),
+    };
   }
 }

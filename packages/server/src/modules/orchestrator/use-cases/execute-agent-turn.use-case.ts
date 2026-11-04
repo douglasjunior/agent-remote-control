@@ -2,15 +2,16 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import {
-  type AgentUpdate,
   PromptCancelledError,
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
+import type { AudioTranscript } from '../models/audio-transcription.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
@@ -34,6 +35,7 @@ import {
   buildLanguageDetectionPrompt,
   DEFAULT_USER_LANGUAGE,
 } from '../prompts/user-language.prompt.js';
+import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
   type CeoDecision,
@@ -46,6 +48,9 @@ import { resolveProfile } from '../utils/agent-profile.util.js';
 import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
+import { visibleReply } from '../utils/visible-reply.util.js';
+
+import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const UNSET_LABEL = 'default';
@@ -82,18 +87,40 @@ export class ExecuteAgentTurnUseCase {
     private readonly preferencesStore: IPreferencesStorePort,
     private readonly delegationDetector: DelegationDetectorService,
     private readonly conversationRuntime: ConversationRuntimeService,
+    private readonly agentProtocol: AgentProtocolService,
     private readonly questionParser: QuestionParserService,
     private readonly questionQueue: UserQuestionQueueService,
+    private readonly audioTranscription: TranscribeAudioAttachmentsUseCase,
   ) {}
 
   async execute(request: TurnRequest): Promise<TurnResult> {
     const conversationKey = request.conversationId;
     const endTurn = this.conversationRuntime.beginTurn(conversationKey);
     try {
-      return await this.runTurn(conversationKey, request);
+      return await this.runTurn(conversationKey, await this.transcribeAudio(request));
     } finally {
       endTurn();
     }
+  }
+
+  /**
+   * Audio attachments become text before any agent sees the message, whichever channel sent it: the
+   * transcripts join the prompt and the audio files leave the attachments. The channel is told what was
+   * transcribed, and what could not be, through `onTranscription`.
+   */
+  private async transcribeAudio(request: TurnRequest): Promise<TurnRequest> {
+    const { prompt, attachments, transcripts, warnings } = await this.audioTranscription.execute({
+      prompt: request.prompt,
+      attachments: request.attachments,
+    });
+    if (transcripts.length > 0 || warnings.length > 0) {
+      request.onTranscription?.({ transcripts, warnings });
+    }
+    return {
+      ...request,
+      prompt: prompt.trim() === '' && attachments.length > 0 ? ATTACHMENTS_ONLY_PROMPT : prompt,
+      attachments,
+    };
   }
 
   private async runTurn(
@@ -140,13 +167,13 @@ export class ExecuteAgentTurnUseCase {
       const conversationLabel = session?.conversationId ?? 'none';
       if (this.isCancellation(error)) {
         this.logger.warn(`[Turn Cancelled] Active turn was cancelled for conversation=${conversationLabel}`);
-        return finish('cancelled', currentCeoPort()?.lastAgentMessage ?? '');
+        return finish('cancelled', this.agentProtocol.finalResponse(currentCeoPort()?.lastAgentMessage ?? ''));
       }
 
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`[Turn Failed] Conversation=${conversationLabel}: ${errorMessage}`);
 
-      return finish('failed', currentCeoPort()?.lastAgentMessage ?? '', errorMessage);
+      return finish('failed', this.agentProtocol.finalResponse(currentCeoPort()?.lastAgentMessage ?? ''), errorMessage);
     }
   }
 
@@ -321,6 +348,7 @@ export class ExecuteAgentTurnUseCase {
         this.logger.warn(
           `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
         );
+        request.onDraft?.('');
         response = await runCeo(buildDelegationRepairPrompt(decision.reason));
         decision = await this.decide(response, request);
       }
@@ -544,14 +572,39 @@ export class ExecuteAgentTurnUseCase {
     }
   }
 
-  private askUser(
+  private async askUser(
     request: TurnRequest,
     asker: QuestionAsker,
     message: string,
     questions: readonly UserQuestion[],
   ): Promise<readonly AnsweredQuestion[]> {
     this.logger.log(`[Questions Asked] Conversation=${request.conversationId}, Role=${asker.role}, Questions=${questions.length}`);
-    return this.questionQueue.ask(request.conversationId, asker, message, questions, request.onQuestion);
+    const answers = await this.questionQueue.ask(request.conversationId, asker, message, questions, request.onQuestion);
+    return this.transcribeAnswers(request, answers);
+  }
+
+  /** An answer spoken as audio reaches the asking agent as text, like a spoken message does. */
+  private async transcribeAnswers(
+    request: TurnRequest,
+    answers: readonly AnsweredQuestion[],
+  ): Promise<readonly AnsweredQuestion[]> {
+    const transcripts: AudioTranscript[] = [];
+    const warnings: string[] = [];
+    const transcribed: AnsweredQuestion[] = [];
+    for (const { attachments, ...answered } of answers) {
+      const result = await this.audioTranscription.execute({ prompt: answered.answer, attachments });
+      transcripts.push(...result.transcripts);
+      warnings.push(...result.warnings);
+      transcribed.push({
+        ...answered,
+        answer: result.prompt,
+        ...(result.attachments.length > 0 && { attachments: result.attachments }),
+      });
+    }
+    if (transcripts.length > 0 || warnings.length > 0) {
+      request.onTranscription?.({ transcripts, warnings });
+    }
+    return transcribed;
   }
 
   private buildAsker(role: string, projectName: string | undefined): QuestionAsker {
@@ -769,20 +822,19 @@ export class ExecuteAgentTurnUseCase {
 
       await this.applyAgentConfig(agentPort, role, request.conversationId);
 
-      if (request.onActivity) {
-        unsubscribeActivity = agentPort.onActivity(request.onActivity);
-      }
+      const stream = this.agentProtocol.stream({
+        onActivity: activity => request.onActivity?.(activity),
+        // Only the CEO talks to the user, so the answers other agents write stay out of the draft.
+        ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(visibleReply(answer)) }),
+      });
+      unsubscribeActivity = agentPort.onActivity(activity => stream.read(activity));
 
       turn.throwIfCancelled();
       for await (const update of agentPort.prompt(fullPrompt)) {
-        const chunk = this.extractTextChunk(update);
-        if (chunk) {
-          accumulatedChunks += chunk;
-          request.onTextChunk?.(chunk);
-        }
+        accumulatedChunks += update.text;
       }
 
-      const response = agentPort.lastAgentMessage || accumulatedChunks;
+      const response = this.agentProtocol.finalResponse(agentPort.lastAgentMessage || accumulatedChunks);
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${this.preview(response)}"`);
       return response;
     } finally {
@@ -910,9 +962,5 @@ export class ExecuteAgentTurnUseCase {
   private currentModelName(agentPort: IAgentPort): string | undefined {
     const state = agentPort.getAvailableModels();
     return state?.availableModels.find(model => model.modelId === state.currentModelId)?.displayName;
-  }
-
-  private extractTextChunk(update: AgentUpdate): string | undefined {
-    return update.kind === 'text' ? update.text : undefined;
   }
 }

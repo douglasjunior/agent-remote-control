@@ -1,7 +1,8 @@
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AT, openConversation, userEntry } from '../test/render-app.js';
+import { audioInput, FakeMediaDevices } from '../test/fake-media-devices.js';
+import { AT, openConversation, renderApp, userEntry } from '../test/render-app.js';
 
 
 describe('ConversationView', () => {
@@ -118,19 +119,45 @@ describe('ConversationView', () => {
     });
     expect(document.body).toHaveTextContent('Question 2 of 3');
     expect(screen.getByText('because')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'A' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'A' })).not.toBeInTheDocument();
+    expect(screen.getByText('Old question')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'No' }));
     expect(connection.sent).toContainEqual({
       type: 'question.answer', conversationId: 'c1', answer: { kind: 'option', optionIndex: 2 },
     });
 
-    const [, activeInput] = screen.getAllByLabelText('Your answer');
+    const activeInput = screen.getByLabelText('Your answer');
     await user.type(activeInput, ' free text {Enter}');
     expect(connection.sent).toContainEqual({
       type: 'question.answer', conversationId: 'c1', answer: { kind: 'text', text: 'free text' },
     });
     expect(activeInput).toHaveValue('');
+  });
+
+  it('closes the question once the user has answered it', () => {
+    openConversation({
+      entries: [
+        { id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Open?', options: ['A'], number: 1, total: 1 },
+        { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'Answers sent to CEO.' },
+      ],
+    });
+    expect(screen.getByText('Open?')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Your answer')).not.toBeInTheDocument();
+  });
+
+  it('shows the context the agent wrote, its project and why the answer matters', () => {
+    openConversation({
+      entries: [
+        {
+          id: 'q1', at: AT, type: 'question', askerRoleName: 'Developer', projectName: 'api', message: 'Found two auth flows',
+          text: 'Which one?', rationale: 'It changes the login route', options: ['A'], number: 1, total: 1,
+        },
+      ],
+    });
+    expect(screen.getByText('Found two auth flows')).toBeInTheDocument();
+    expect(document.body).toHaveTextContent('Developer · api asks');
+    expect(document.body).toHaveTextContent('Why it matters: It changes the login route');
   });
 
   it('renders a question without options', () => {
@@ -194,6 +221,60 @@ describe('ConversationView', () => {
       expect(screen.getByLabelText('Message')).toBeEnabled();
       await user.click(screen.getByRole('button', { name: 'Stop' }));
       expect(connection.sent).toContainEqual({ type: 'turn.cancel', conversationId: 'c1' });
+    });
+  });
+
+  describe('draft', () => {
+    const emitDraft = (connection: ReturnType<typeof openConversation>['connection'], text: string) =>
+      act(() => connection.emitEvent({ type: 'conversation.draft', conversationId: 'c1', text }));
+
+    it('shows the response as it is written, then gives way to the one that is delivered', () => {
+      const { connection } = openConversation({ entries: [userEntry('u1', 'question')] });
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+      emitDraft(connection, 'The answer is');
+      emitDraft(connection, 'The answer is **42**');
+      expect(screen.getByText('42')).toBeInTheDocument();
+      expect(screen.getAllByText(/The answer is/)).toHaveLength(1);
+
+      emitDraft(connection, '');
+      act(() => connection.emitEvent({
+        type: 'conversation.entry',
+        conversationId: 'c1',
+        entry: { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'The answer is 42.' },
+      }));
+      expect(screen.getAllByText(/The answer is/)).toHaveLength(1);
+      expect(screen.getByText('The answer is 42.')).toBeInTheDocument();
+    });
+
+    it('shows the draft a reopened conversation was in the middle of', () => {
+      const { connection } = renderApp('/c/c1');
+      act(() => connection.emitEvent({
+        type: 'conversation.history', conversationId: 'c1', entries: [], state: 'running', draft: 'Half way',
+      }));
+
+      expect(screen.getByText('Half way')).toBeInTheDocument();
+    });
+
+    it('stops calling the steps "Working…" once the response is being written', () => {
+      const { connection } = openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', title: 'Read', status: 'completed' }] });
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+      expect(screen.getByRole('button', { name: 'Working… (1 step)' })).toBeInTheDocument();
+
+      emitDraft(connection, 'Writing');
+
+      expect(screen.getByRole('button', { name: 'Show details (1 step)' })).toBeInTheDocument();
+    });
+
+    it('keeps following the bottom while the response grows', () => {
+      const { connection } = openConversation();
+      const element = screen.getByTestId('message-viewport');
+      Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 1000 });
+      Object.defineProperty(element, 'clientHeight', { configurable: true, value: 400 });
+
+      emitDraft(connection, 'a long answer');
+
+      expect(element.scrollTop).toBe(1000);
     });
   });
 
@@ -275,6 +356,205 @@ describe('ConversationView', () => {
       expect(field).toHaveValue('read @app/main.ts ');
       expect(connection.sent.some(command => command.type === 'message.send')).toBe(false);
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('attachments', () => {
+    const stored = { path: '.arc-uploads/c1/shot.png', name: 'shot.png' };
+
+    /** Plays the server's side of one upload of a small file. */
+    async function completeUpload(connection: ReturnType<typeof openConversation>['connection']) {
+      const start = await vi.waitFor(() => {
+        const command = connection.sent.find(sent => sent.type === 'upload.start');
+        expect(command).toBeDefined();
+        return command as Extract<typeof connection.sent[number], { type: 'upload.start' }>;
+      });
+      act(() => connection.emitEvent({ type: 'upload.ready', uploadId: start.uploadId }));
+      await waitFor(() => expect(connection.sent.some(sent => sent.type === 'upload.chunk')).toBe(true));
+      act(() => connection.emitEvent({ type: 'upload.ack', uploadId: start.uploadId, index: 0 }));
+      await waitFor(() => expect(connection.sent.some(sent => sent.type === 'upload.finish')).toBe(true));
+      act(() => connection.emitEvent({ type: 'upload.done', uploadId: start.uploadId, attachment: stored }));
+    }
+
+    const attach = (file: File) => fireEvent.change(screen.getByLabelText('Attach files'), { target: { files: [file] } });
+
+    it('uploads a picked file and sends it with the message, with or without text', async () => {
+      const user = userEvent.setup();
+      const { connection } = openConversation();
+
+      attach(new File(['png'], 'shot.png'));
+      expect(await screen.findByLabelText('Uploading')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+
+      await completeUpload(connection);
+      expect(await screen.findByRole('button', { name: 'Remove shot.png' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Send' }));
+
+      expect(connection.sent).toContainEqual({ type: 'message.send', conversationId: 'c1', text: '', attachments: [stored] });
+      expect(screen.queryByRole('list', { name: 'Attachments' })).not.toBeInTheDocument();
+    });
+
+    describe('voice recording', () => {
+      class RecorderStub {
+        static isTypeSupported = () => true;
+        state = 'inactive';
+        mimeType = 'audio/webm';
+        ondataavailable: ((event: { data: Blob }) => void) | null = null;
+        onstop: (() => void) | null = null;
+        start() {
+          this.state = 'recording';
+        }
+
+        stop() {
+          this.state = 'inactive';
+          this.ondataavailable?.({ data: new Blob(['voice']) });
+          this.onstop?.();
+        }
+      }
+
+      let media: FakeMediaDevices;
+
+      beforeEach(() => {
+        vi.stubGlobal('MediaRecorder', RecorderStub);
+        media = new FakeMediaDevices();
+        media.devices = [audioInput('a', 'Headset'), audioInput('b', 'Desk mic')];
+        media.install();
+        localStorage.clear();
+      });
+
+      afterEach(() => {
+        Reflect.deleteProperty(globalThis, 'MediaRecorder');
+        FakeMediaDevices.uninstall();
+      });
+
+      it('attaches the recording to the message without sending it', async () => {
+        const user = userEvent.setup();
+        const { connection } = openConversation();
+
+        await user.click(screen.getByRole('button', { name: 'Record audio' }));
+        expect(await screen.findByRole('status', { name: 'Recording' })).toHaveTextContent('0:00');
+        expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Attach' })).toBeDisabled();
+
+        await user.click(screen.getByRole('button', { name: 'Attach recording' }));
+        await completeUpload(connection);
+
+        expect(await screen.findByRole('button', { name: /^Remove recording-.*\.webm$/ })).toBeInTheDocument();
+        expect(screen.getByRole('textbox', { name: 'Message' })).toBeInTheDocument();
+        expect(connection.sent.some(sent => sent.type === 'message.send')).toBe(false);
+      });
+
+      it('discards the recording', async () => {
+        const user = userEvent.setup();
+        const { connection } = openConversation();
+
+        await user.click(screen.getByRole('button', { name: 'Record audio' }));
+        await user.click(await screen.findByRole('button', { name: 'Discard recording' }));
+
+        expect(screen.getByRole('textbox', { name: 'Message' })).toBeInTheDocument();
+        expect(screen.queryByRole('list', { name: 'Attachments' })).not.toBeInTheDocument();
+        expect(connection.sent.some(sent => sent.type === 'upload.start')).toBe(false);
+      });
+
+      it('lists the microphones with the selected one marked and records with the chosen one', async () => {
+        const user = userEvent.setup();
+        openConversation();
+
+        await user.click(screen.getByRole('button', { name: 'Choose microphone' }));
+        expect(await screen.findByRole('menuitemradio', { name: 'System default' })).toBeChecked();
+        await user.click(await screen.findByRole('menuitemradio', { name: 'Desk mic' }));
+        await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+
+        await user.click(screen.getByRole('button', { name: 'Choose microphone' }));
+        expect(await screen.findByRole('menuitemradio', { name: 'Desk mic' })).toBeChecked();
+        await user.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument());
+
+        await user.click(screen.getByRole('button', { name: 'Record audio' }));
+        await screen.findByRole('status', { name: 'Recording' });
+        expect(media.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'b' } } });
+      });
+
+      it('shows why the recording could not start', async () => {
+        const user = userEvent.setup();
+        media.getUserMedia.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
+        openConversation();
+
+        await user.click(screen.getByRole('button', { name: 'Record audio' }));
+
+        expect(await screen.findByRole('alert')).toHaveTextContent('Microphone access was denied');
+      });
+    });
+
+    it('opens the file picker from the attach button', async () => {
+      const user = userEvent.setup();
+      openConversation();
+      const click = vi.spyOn(screen.getByLabelText('Attach files'), 'click');
+
+      await user.click(screen.getByRole('button', { name: 'Attach' }));
+
+      expect(click).toHaveBeenCalledOnce();
+    });
+
+    it('attaches dropped files and shows the drop hint while dragging', () => {
+      const { connection } = openConversation();
+      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-3xl"]') as HTMLElement;
+
+      fireEvent.dragEnter(zone, { dataTransfer: { types: ['Files'], files: [] } });
+      expect(screen.getByText('Drop files to attach them')).toBeInTheDocument();
+      fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [new File(['x'], 'dropped.txt')] } });
+
+      expect(screen.queryByText('Drop files to attach them')).not.toBeInTheDocument();
+      expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'upload.start', name: 'dropped.txt' }));
+    });
+
+    it('does not accept drops while the composer is disabled', () => {
+      const { connection } = openConversation({ configured: false });
+      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-3xl"]') as HTMLElement;
+
+      fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [new File(['x'], 'dropped.txt')] } });
+
+      expect(connection.sent.some(sent => sent.type === 'upload.start')).toBe(false);
+    });
+
+    it('attaches an image pasted into the field', () => {
+      const { connection } = openConversation();
+
+      fireEvent.paste(screen.getByLabelText('Message'), { clipboardData: { files: [new File(['x'], 'image.png')] } });
+
+      expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'upload.start', name: 'image.png' }));
+    });
+
+    it('lets a failed file be removed and keeps sending blocked only while uploading', async () => {
+      const user = userEvent.setup();
+      const { connection } = openConversation();
+      attach(new File(['x'], 'broken.bin'));
+      const start = await vi.waitFor(() => connection.sent.find(sent => sent.type === 'upload.start') as { uploadId: string });
+
+      act(() => connection.emitEvent({ type: 'upload.failed', uploadId: start.uploadId, reason: 'File is too large' }));
+      await user.click(await screen.findByRole('button', { name: 'Remove broken.bin' }));
+
+      expect(screen.queryByRole('list', { name: 'Attachments' })).not.toBeInTheDocument();
+    });
+
+    it('shows the attachments of a user message as read-only chips', () => {
+      openConversation({
+        entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'look', attachments: [stored] }],
+      });
+
+      const chips = screen.getByRole('list', { name: 'Attachments' });
+      expect(within(chips).getByText('shot.png')).toBeInTheDocument();
+      expect(within(chips).queryByRole('button')).not.toBeInTheDocument();
+      expect(screen.getByText('look')).toBeInTheDocument();
+    });
+
+    it('shows a user message that has only attachments without an empty text block', () => {
+      openConversation({
+        entries: [{ id: 'u1', at: AT, type: 'user_message', text: '', attachments: [stored] }],
+      });
+
+      expect(screen.getByText('shot.png')).toBeInTheDocument();
+      expect(document.querySelector('p.whitespace-pre-wrap')).toBeNull();
     });
   });
 });

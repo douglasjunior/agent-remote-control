@@ -15,3 +15,6 @@ export type AudioTranscriptionResult = {
   /** User-facing notices about audio that stayed an attachment. */
   readonly warnings: readonly string[];
 };
+
+/** What the transcription of a turn's audio attachments produced, for the channel to show the user. */
+export type TurnTranscription = Pick<AudioTranscriptionResult, 'transcripts' | 'warnings'>;

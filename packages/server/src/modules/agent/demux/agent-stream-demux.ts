@@ -3,7 +3,6 @@ import type {
   ToolCallContent,
 } from '@agentclientprotocol/sdk';
 
-import { FINAL_RESPONSE_CLOSE, FINAL_RESPONSE_OPEN } from '../constants/final-response.constant.js';
 import type { AgentActivity, AgentToolStatus } from '../ports/agent.port.js';
 
 
@@ -22,7 +21,6 @@ type MessageState = {
   closedBlocks: number;
   lastChunkAt: number;
   isThought: boolean;
-  isFinal: boolean;
 };
 
 export type ParsedToolCallFields = {
@@ -79,47 +77,6 @@ export function extractAgentTextChunk(
     messageId: payload.messageId ?? undefined,
     isThought: payload.sessionUpdate === 'agent_thought_chunk',
   };
-}
-
-type EnvelopeParts = {
-  readonly prose: string;
-  readonly answers: readonly string[];
-};
-
-/**
- * Splits a message into the prose around `<final_response>` envelopes and the envelope contents.
- * An envelope still missing its closing tag runs to the end of the text, since it is still streaming.
- */
-export function splitFinalResponse(text: string): EnvelopeParts {
-  let prose = '';
-  const answers: string[] = [];
-  let rest = text;
-
-  while (rest.length > 0) {
-    const open = rest.indexOf(FINAL_RESPONSE_OPEN);
-    if (open < 0) {
-      prose += rest;
-      break;
-    }
-
-    prose += rest.slice(0, open);
-    const contentStart = open + FINAL_RESPONSE_OPEN.length;
-    const close = rest.indexOf(FINAL_RESPONSE_CLOSE, contentStart);
-    if (close < 0) {
-      answers.push(rest.slice(contentStart));
-      break;
-    }
-
-    answers.push(rest.slice(contentStart, close));
-    rest = rest.slice(close + FINAL_RESPONSE_CLOSE.length);
-  }
-
-  return { prose, answers };
-}
-
-/** Drops envelope tags left without a counterpart so they never reach the user. */
-function stripEnvelopeTags(text: string): string {
-  return text.split(FINAL_RESPONSE_OPEN).join('').split(FINAL_RESPONSE_CLOSE).join('');
 }
 
 function meaningfulLines(text: string): string[] {
@@ -227,32 +184,18 @@ export class AgentStreamDemux {
     this.dispatchTool(toolFields);
   }
 
+  /** The text of the turn's messages as the agent wrote them, reasoning excluded, one message per paragraph. */
   takeFinalText(): string {
-    const finalText = this.finalResponse() ?? this.joinMessages();
+    const finalText = this.joinMessages();
     this.resetTurn();
     return finalText;
-  }
-
-  private finalResponse(): string | null {
-    const finalStates = [...this.messages.values()].filter(state => state.isFinal);
-    if (finalStates.length === 0) {
-      return null;
-    }
-    return finalStates
-      .flatMap(state => splitFinalResponse(state.buffer).answers)
-      .map(answer => answer.trim())
-      .filter(answer => answer.length > 0)
-      .join('\n\n');
   }
 
   private joinMessages(): string {
     const texts: string[] = [];
     for (const state of this.messages.values()) {
-      if (state.isThought) {
-        continue;
-      }
-      const text = stripEnvelopeTags(state.buffer).trim();
-      if (text.length > 0) {
+      const text = state.buffer.trim();
+      if (!state.isThought && text.length > 0) {
         texts.push(text);
       }
     }
@@ -277,50 +220,19 @@ export class AgentStreamDemux {
       closedBlocks: 0,
       lastChunkAt: 0,
       isThought: Boolean(chunk.isThought),
-      isFinal: false,
     };
     state.buffer += chunk.text;
     state.lastChunkAt = Date.now();
     this.messages.set(id, state);
 
-    if (state.isFinal || (!state.isThought && state.buffer.includes(FINAL_RESPONSE_OPEN))) {
-      this.handleFinalResponse(id, state);
-      return;
-    }
-
-    const trimmed = chunk.text.trim();
-    if (trimmed.length > 0) {
-      this.lastText = trimmed;
+    if (!state.isThought) {
+      this.lastText = state.buffer.trim();
     }
 
     const text = this.blockText(state);
     if (text.length > 0) {
-      this.emit({ kind: 'thought', id: this.blockId(id, state), text });
+      this.emit({ kind: 'thought', id: this.blockId(id, state), text, ...(state.isThought ? { reasoning: true } : {}) });
     }
-  }
-
-  /**
-   * The envelope carries the turn answer, which reaches the caller as the final block. Its first
-   * sighting settles the feed entry to the prose before it, or removes the entry when there is none.
-   */
-  private handleFinalResponse(id: string, state: MessageState): void {
-    const answer = splitFinalResponse(state.buffer).answers.join('\n\n').trim();
-    if (answer.length > 0) {
-      this.lastText = answer;
-    }
-
-    if (state.isFinal) {
-      return;
-    }
-    state.isFinal = true;
-
-    const blockId = this.blockId(id, state);
-    const prose = this.blockText(state);
-    this.emit(
-      prose.length > 0
-        ? { kind: 'thought', id: blockId, text: prose, final: true }
-        : { kind: 'thought', id: blockId, text: '', removed: true },
-    );
   }
 
   private closeIdleBlocks(exceptId?: string): void {
@@ -337,7 +249,7 @@ export class AgentStreamDemux {
     const state = this.messages.get(id);
 
     /* v8 ignore next */
-    if (!state || state.isFinal) {
+    if (!state) {
       return;
     }
 
@@ -351,6 +263,7 @@ export class AgentStreamDemux {
       id: this.blockId(id, state),
       text,
       final: true,
+      ...(state.isThought ? { reasoning: true } : {}),
     });
     state.blockStart = state.buffer.length;
     state.closedBlocks += 1;
@@ -363,7 +276,7 @@ export class AgentStreamDemux {
   }
 
   private blockText(state: MessageState): string {
-    return splitFinalResponse(state.buffer.slice(state.blockStart)).prose.trim();
+    return state.buffer.slice(state.blockStart).trim();
   }
 
   private resolveMessageId(chunk: ParsedAgentMessageChunk): string {

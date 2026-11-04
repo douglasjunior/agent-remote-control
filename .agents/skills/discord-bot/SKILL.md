@@ -92,7 +92,7 @@ Before running the turn, the handler validates and downloads the attachments and
 `DiscordConversationService.resolveInput({ conversationId, prompt, attachments? })` with the message text
 (empty when it carries only attachments) inside `DiscordTypingIndicator.during(channel, ...)`, because
 answering a selection starts a disposable agent to list models or efforts and takes a few
-seconds. The use case transcribes audio first, then decides what the message is, in this order: the answer to the open question (a whole number becomes `{ kind: 'option' }` when the question has options, any other text becomes `{ kind: 'text' }`, and the orchestrator's queue receives the structured answer), the language when a request is pending, the answer to an open selection (digits `1..N`, comma-separated at the profile step, `0` to exit or go back), or a prompt to run. Without settings for the conversation it inherits the most recent ones (`IAgentConfigurationPort.ensureSettings`); with none ever saved it opens the `agent` selection with the message as `pendingPrompt` (`unavailable` becomes `execute`). The outcomes:
+seconds. The use case takes the text as typed and the attachments as downloaded, and decides what the message is, in this order: the answer to the open question (a whole number becomes `{ kind: 'option' }` when the question has options, any other text becomes `{ kind: 'text' }`, and the orchestrator's queue receives the structured answer), the language when a request is pending, the answer to an open selection (digits `1..N`, comma-separated at the profile step, `0` to exit or go back), or a prompt to run. Without settings for the conversation it inherits the most recent ones (`IAgentConfigurationPort.ensureSettings`); with none ever saved it opens the `agent` selection with the message (`PendingMessage`: the text as typed and its attachments) kept in the selection, and runs it with those attachments once the selection is configured (`unavailable` becomes `execute`). The outcomes:
 
 - `question`: sends `formatQuestion` with the next question and stops;
 - `invalid_answer`: sends `formatInvalidAnswer` (valid range followed by the question) and stops;
@@ -134,7 +134,7 @@ attachments, and nothing reaches the CEO.
 - **Following questions**: arrive as the `resolveInput` outcome on the message that answered the previous one.
 - **`formatQuestion(prompt)`**: the agent's free text (only on the first question), followed by
   `❓ **Question <n>/<total>** · <roleName> (\`<project>\`)`, the question text in bold, the
-  `rationale` in italics, the numbered options (`**1.** ...`) and a `-#` line explaining that one
+  `rationale` in italics after "Why it matters:", the numbered options (`**1.** ...`) and a `-#` line explaining that one
   answers with the number or with other text and that `/cancel` interrupts everything. With other agents in the
   queue, it appends `-# ⏳ <n> more agent(s) waiting for answers after this one.`
 - **`formatInvalidAnswer(prompt)`**: `⚠️ Invalid option. Reply with a number from 1 to <N> or type
@@ -170,7 +170,7 @@ The bot accepts files attached directly to Discord messages through `DiscordAtta
   - Accepts multiple formats readable by the agent's tools (images `.png`, `.jpg`, `.webp`, `.gif`, documents `.pdf`, text and code `.txt`, `.md`, `.json`, `.ts`, `.py`, etc., audio, video and configuration files such as `Dockerfile` and `.env`).
   - Maximum limit of 100 MB per attachment.
   - Blocks executable or non-analyzable binary files (`.exe`, `.bin`, `.dll`, `.so`, `.zip`, etc.). On identifying an incompatible file, it stops the flow immediately and sends a friendly warning in the channel before starting the turn.
-- **Audio**: the handler does not inspect or convert audio. Voice messages (`.ogg`/Opus) and audio files travel as ordinary `attachments` to `resolveInput`, which transcribes them. When the resolution carries `transcription`, the handler sends each warning as is and echoes the transcripts with `DiscordActivityFormatter.formatTranscripts` (`🎙️ **<file>**` followed by the quoted text) before handling the resolution; an `execute` resolution carries the remaining `attachments` that go into `executeTurn`.
+- **Audio**: the handler does not inspect or convert audio. Voice messages (`.ogg`/Opus) and audio files travel like any other attachment: the handler downloads them, `resolveInput` carries them, and `executeTurn` receives them; the orchestrator transcribes them. The handler shows the result through `TurnRequest.onTranscription`, sending each warning as is and echoing the transcripts with `DiscordActivityFormatter.formatTranscripts` (`🎙️ **<file>**` followed by the quoted text), which also covers audio sent as the answer to an agent's question.
 - **Secure temporary storage**:
   - Valid attachments are downloaded from the Discord CDN to an operating system temporary directory (`os.tmpdir()/agent-remote-control/attachments/<conversationKey>`).
   - Sanitization against *path traversal* via `path.basename` and a unique prefix with timestamp and random identifier.

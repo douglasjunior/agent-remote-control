@@ -2,6 +2,7 @@ import type { ConversationEntry } from '@agent-remote-control/protocol/conversat
 
 import { groupEntries } from '../../conversations/group-entries.js';
 import { cn } from '../../lib/utils.js';
+import { AttachmentChip } from '../prompt-input/attachment-chip.js';
 
 import { ActivityGroup } from './activity-group.js';
 import { AgentResponse } from './agent-response.js';
@@ -16,26 +17,35 @@ const NOTICE_STYLES = {
   error: 'text-destructive',
 } as const;
 
-export function EntryList({ entries, running, onAnswer }: {
+export function EntryList({ entries, draft, running, onAnswer }: {
   readonly entries: readonly ConversationEntry[];
+  readonly draft: string;
   readonly running: boolean;
   readonly onAnswer: (answer: QuestionAnswer) => void;
 }) {
   const items = groupEntries(entries);
-  const lastQuestionId = entries.findLast(entry => entry.type === 'question')?.id;
+  const last = entries.at(-1);
+  const lastQuestionId = last?.type === 'question' ? last.id : undefined;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
       {items.map((item, index) => {
         if (item.kind === 'activity') {
-          return <ActivityGroup key={item.id} steps={item.steps} running={running && index === items.length - 1} />;
+          return <ActivityGroup key={item.id} steps={item.steps} running={running && draft === '' && index === items.length - 1} />;
         }
         const { entry } = item;
         switch (entry.type) {
           case 'user_message':
             return (
-              <div key={entry.id} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground">
-                {entry.text}
+              <div key={entry.id} className="flex max-w-[85%] flex-col gap-1 self-end rounded-2xl bg-primary px-4 py-2 text-sm text-primary-foreground">
+                {entry.text !== '' && <p className="whitespace-pre-wrap">{entry.text}</p>}
+                {entry.attachments && (
+                  <ul aria-label="Attachments" className="flex flex-wrap gap-1">
+                    {entry.attachments.map(attachment => (
+                      <AttachmentChip key={attachment.path} name={attachment.name} className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
+                    ))}
+                  </ul>
+                )}
               </div>
             );
           case 'agent_response':
@@ -50,6 +60,7 @@ export function EntryList({ entries, running, onAnswer }: {
             return <p key={entry.id} className={cn('text-xs', NOTICE_STYLES[entry.level])}>{entry.text}</p>;
         }
       })}
+      {draft !== '' && <Markdown text={draft} />}
     </div>
   );
 }

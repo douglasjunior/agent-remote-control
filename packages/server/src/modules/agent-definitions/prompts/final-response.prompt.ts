@@ -1,4 +1,4 @@
-import { FINAL_RESPONSE_CLOSE, FINAL_RESPONSE_OPEN } from '../../agent/constants/final-response.constant.js';
+import { FINAL_RESPONSE_CLOSE, FINAL_RESPONSE_OPEN } from '../../orchestrator/constants/final-response.constant.js';
 
 
 export const FINAL_RESPONSE_INSTRUCTIONS = `### Final Response

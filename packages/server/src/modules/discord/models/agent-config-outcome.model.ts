@@ -1,9 +1,9 @@
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
-import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 
 import type { AgentConfigSelection, SelectedValue } from './agent-config-selection.model.js';
+import type { PendingMessage } from './pending-message.model.js';
 
 
 export type AgentConfigSelectionOutcome =
@@ -20,7 +20,7 @@ export type AgentConfigSelectionOutcome =
   | {
     readonly kind: 'configured';
     readonly settings: AgentSettings;
-    readonly pendingPrompt?: string;
+    readonly pendingMessage?: PendingMessage;
   };
 
 export type StartAgentConfigSelectionResult =
@@ -40,17 +40,6 @@ export type ConversationInputResolution =
     readonly kind: 'execute';
     readonly prompt: string;
     readonly configured?: AgentSettings;
-    /** Attachments of the message that remain after audio was transcribed; omitted when there are none. */
+    /** The files of the message, as the channel fetched them; omitted when there are none. */
     readonly attachments?: readonly TurnAttachment[];
   };
-
-/** Audio handled while resolving the input, for the channel to report to the user. */
-export type InputTranscription = {
-  readonly transcripts: readonly AudioTranscript[];
-  readonly warnings: readonly string[];
-};
-
-export type ResolvedConversationInput = ConversationInputResolution & {
-  /** Present only when the message carried audio that was transcribed or could not be. */
-  readonly transcription?: InputTranscription;
-};

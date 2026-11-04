@@ -9,6 +9,10 @@ import { router } from './router.js';
 import { ThemeProvider } from './theme/theme-provider.js';
 
 
+if (import.meta.env.DEV) {
+  void import('react-grab');
+}
+
 const connection = new WebSocketServerConnection();
 
 createRoot(document.getElementById('root')!).render(

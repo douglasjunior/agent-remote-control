@@ -8,8 +8,8 @@ import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
+import { IconButton } from './icon-button.js';
 import { ThemeToggle } from './theme-toggle.js';
-import { Button } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
 
 
@@ -30,9 +30,9 @@ export function AppLayout() {
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between gap-2 border-b px-4 py-2">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open conversations" onClick={() => setMenuOpen(true)}>
+              <IconButton variant="ghost" className="md:hidden" label="Open conversations" onClick={() => setMenuOpen(true)}>
                 <Menu />
-              </Button>
+              </IconButton>
               <h1 className="text-sm font-semibold">Agent Remote Control</h1>
             </div>
             <div className="flex items-center gap-2">

@@ -6,6 +6,7 @@ import type {
   AgentConfigSelection,
   SelectedValue,
 } from '../models/agent-config-selection.model.js';
+import type { PendingMessage } from '../models/pending-message.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
 import { AgentProfileListService } from '../services/agent-profile-list.service.js';
 import { toSelectionOptions } from '../utils/selection-options.util.js';
@@ -13,7 +14,7 @@ import { toSelectionOptions } from '../utils/selection-options.util.js';
 
 export type StartAgentConfigSelectionInput = {
   readonly conversationId: string;
-  readonly pendingPrompt?: string;
+  readonly pendingMessage?: PendingMessage;
   readonly step: 'profile' | 'agent' | 'model';
 };
 
@@ -51,7 +52,7 @@ export class StartAgentConfigSelectionUseCase {
       conversationId: input.conversationId,
       step: 'agent',
       options: agents,
-      pendingPrompt: input.pendingPrompt,
+      pendingMessage: input.pendingMessage,
     });
   }
 
@@ -69,7 +70,7 @@ export class StartAgentConfigSelectionUseCase {
       step: 'model',
       options: models,
       selectedAgent: agent,
-      pendingPrompt: input.pendingPrompt,
+      pendingMessage: input.pendingMessage,
     });
   }
 

@@ -22,6 +22,7 @@ function setup() {
     harness.store,
     harness.workspace,
     harness.promptHistory,
+    harness.uploads,
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];
   const types = () => entries().map(entry => entry.type);
@@ -56,6 +57,82 @@ describe('SendConversationMessageUseCase', () => {
       await useCase.execute('web-1', 'second');
 
       expect(store.conversations.get('web-1')?.title).toBe('first');
+    });
+  });
+
+  describe('attachments', () => {
+    const attachment = { path: '.arc-uploads/web-1/shot.png', name: 'shot.png' };
+
+    it('records the attachments on the user message and hands the orchestrator the files, as a channel does', async () => {
+      const { useCase, uploads, agentTurn, entries } = setup();
+      uploads.files.set(attachment.path, 2048);
+
+      await useCase.execute('web-1', 'look at this', [attachment]);
+
+      expect(entries()[0]).toMatchObject({ type: 'user_message', text: 'look at this', attachments: [attachment] });
+      expect(agentTurn.turnRequests[0]).toMatchObject({
+        prompt: 'look at this',
+        attachments: [{ name: 'shot.png', path: '/workspaces/.arc-uploads/web-1/shot.png', contentType: 'image/png', size: 2048 }],
+      });
+    });
+
+    it('leaves the text untouched for the orchestrator when the message has only attachments', async () => {
+      const { useCase, uploads, agentTurn } = setup();
+      uploads.files.set(attachment.path, 1);
+
+      await useCase.execute('web-1', '', [attachment]);
+
+      expect(agentTurn.turnRequests[0].prompt).toBe('');
+    });
+
+    it('sends a message without attachments with an empty attachment list', async () => {
+      const { useCase, agentTurn } = setup();
+
+      await useCase.execute('web-1', 'plain');
+
+      expect(agentTurn.turnRequests[0].attachments).toEqual([]);
+    });
+
+    it('shows what the orchestrator transcribed, and could not transcribe, as notices', async () => {
+      const { useCase, uploads, agentTurn, entries } = setup();
+      uploads.files.set('.arc-uploads/web-1/voice.ogg', 10);
+      agentTurn.turnBehavior = request => request.onTranscription?.({
+        transcripts: [{ name: 'voice.ogg', text: 'build a page' }],
+        warnings: ['⚠️ No speech was detected in "other.ogg"'],
+      });
+
+      await useCase.execute('web-1', '', [{ path: '.arc-uploads/web-1/voice.ogg', name: 'voice.ogg' }]);
+
+      expect(entries()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'notice', level: 'warning', text: '⚠️ No speech was detected in "other.ogg"' }),
+        expect.objectContaining({ type: 'notice', level: 'info', text: '🎙️ voice.ogg: build a page' }),
+      ]));
+    });
+
+    it('accepts a message with attachments and no text, titling the conversation after the first file', async () => {
+      const { useCase, uploads, store, promptHistory } = setup();
+      uploads.files.set(attachment.path, 1);
+
+      await useCase.execute('web-1', '', [attachment]);
+
+      expect(store.conversations.get('web-1')?.title).toBe('shot.png');
+      expect(promptHistory.prompts).toEqual([]);
+    });
+
+    it.each([
+      ['a file that is gone', '.arc-uploads/web-1/shot.png', false],
+      ['a file of another conversation', '.arc-uploads/web-2/shot.png', true],
+      ['a path that climbs out of the upload directory', '.arc-uploads/web-1/../../secret', true],
+    ])('refuses %s, running no turn', async (_label, path, exists) => {
+      const { useCase, uploads, agentTurn, entries } = setup();
+      if (exists) {
+        uploads.files.set(path, 1);
+      }
+
+      await useCase.execute('web-1', 'hello', [{ path, name: 'x' }]);
+
+      expect(agentTurn.turnRequests).toHaveLength(0);
+      expect(entries()).toEqual([expect.objectContaining({ type: 'notice', level: 'error', text: expect.stringContaining('attached file is missing') })]);
     });
   });
 
@@ -146,6 +223,43 @@ describe('SendConversationMessageUseCase', () => {
       await useCase.execute('web-1', 'go');
 
       expect(types()).toEqual(['user_message', 'thought', 'tool', 'delegation', 'interim', 'question', 'agent_response']);
+    });
+
+    it('publishes the response being written as a draft, replaced by the final response', async () => {
+      const { useCase, agentTurn, events, observer } = setup();
+      const seen: string[] = [];
+      agentTurn.turnBehavior = async (request) => {
+        request.onDraft?.('Working');
+        request.onDraft?.('Working on it');
+        seen.push(events.draftOf('web-1'));
+      };
+
+      await useCase.execute('web-1', 'go');
+
+      expect(seen).toEqual(['Working on it']);
+      expect(events.draftOf('web-1')).toBe('');
+      expect(observer.sent.map(event => (event.type === 'conversation.draft' ? `draft:${event.text}` : event.type))).toEqual([
+        'conversation.entry',
+        'conversation.updated',
+        'conversation.state',
+        'draft:Working',
+        'draft:Working on it',
+        'draft:',
+        'conversation.entry',
+        'conversation.state',
+      ]);
+    });
+
+    it('returns to running when a draft is the first output after queueing', async () => {
+      const { useCase, agentTurn, states } = setup();
+      agentTurn.turnBehavior = async (request) => {
+        request.onQueued?.();
+        request.onDraft?.('Hi');
+      };
+
+      await useCase.execute('web-1', 'go');
+
+      expect(states()).toEqual(['running', 'queued', 'running', 'idle']);
     });
 
     it('updates a streamed thought and a tool in place by id', async () => {

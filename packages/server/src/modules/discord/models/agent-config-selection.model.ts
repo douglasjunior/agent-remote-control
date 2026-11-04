@@ -1,3 +1,6 @@
+import type { PendingMessage } from './pending-message.model.js';
+
+
 export type SelectionOption = {
   readonly index: number;
   readonly id: string;
@@ -13,7 +16,7 @@ export type AgentConfigSelection = {
   readonly options: readonly SelectionOption[];
   readonly selectedAgent?: SelectedValue;
   readonly selectedModel?: SelectedValue;
-  readonly pendingPrompt?: string;
+  readonly pendingMessage?: PendingMessage;
   /** Roles chosen at the profile step; undefined means every role. */
   readonly targetRoles?: readonly string[];
 };

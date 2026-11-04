@@ -1,8 +1,9 @@
 import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
 import { type ClientUser, Events, type Message } from 'discord.js';
 
-import type { AgentActivity } from '../../agent/ports/agent.port.js';
+import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -132,13 +133,6 @@ export class DiscordMessageHandler implements OnModuleInit {
           ...(turnAttachments && turnAttachments.length > 0 ? { attachments: turnAttachments } : {}),
         }));
 
-      for (const warning of resolution.transcription?.warnings ?? []) {
-        await targetChannel.send(warning);
-      }
-      if (resolution.transcription?.transcripts.length) {
-        await this.sendChunks(targetChannel, this.activityFormatter.formatTranscripts(resolution.transcription.transcripts));
-      }
-
       if (resolution.kind === 'selection') {
         await this.sendChunks(targetChannel, this.activityFormatter.formatSelection(resolution.selection));
         return;
@@ -214,7 +208,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       const typing = new DiscordTypingIndicator(targetChannel);
       typing.start();
 
-      const onActivity = (activity: AgentActivity): void => {
+      const onActivity = (activity: TurnActivity): void => {
         typing.keepAlive();
         void cleanInitialProgress();
 
@@ -328,6 +322,25 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       };
 
+      const onTranscription = ({ transcripts, warnings }: TurnTranscription): void => {
+        typing.keepAlive();
+        void cleanInitialProgress();
+
+        delegationChain = delegationChain.then(async () => {
+          await throttler.flush();
+          try {
+            for (const warning of warnings) {
+              await targetChannel!.send(warning);
+            }
+            if (transcripts.length > 0) {
+              await this.sendChunks(targetChannel!, this.activityFormatter.formatTranscripts(transcripts));
+            }
+          } catch (error) {
+            this.logger.warn(`Failed to send the transcription: ${this.describeError(error)}`);
+          }
+        });
+      };
+
       const onQuestion = (prompt: QuestionPrompt): void => {
         typing.keepAlive();
         void cleanInitialProgress();
@@ -355,6 +368,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           onDelegation,
           onInterimMessage,
           onQuestion,
+          onTranscription,
           onQueued: () => {
             void progressMessage
               .edit('⏳ *Waiting for the previous task in this conversation to finish...*')

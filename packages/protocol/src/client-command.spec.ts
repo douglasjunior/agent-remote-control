@@ -1,5 +1,5 @@
 import { parseClientCommand } from './client-command.js';
-import { MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH } from './limits.js';
+import { MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
 
 
 describe('parseClientCommand', () => {
@@ -9,6 +9,12 @@ describe('parseClientCommand', () => {
     { type: 'conversation.create', requestId: 'r' },
     { type: 'conversation.history', conversationId: 'c' },
     { type: 'message.send', conversationId: 'c', text: 'hi' },
+    { type: 'message.send', conversationId: 'c', text: 'see', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
+    { type: 'message.send', conversationId: 'c', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
+    { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a.png', size: 10 },
+    { type: 'upload.chunk', uploadId: 'u', index: 0, dataBase64: 'AAEC' },
+    { type: 'upload.finish', uploadId: 'u' },
+    { type: 'upload.abort', uploadId: 'u' },
     { type: 'turn.cancel', conversationId: 'c' },
     { type: 'prompts.history', requestId: 'r' },
     { type: 'files.search', requestId: 'r', query: 'src/ap' },
@@ -38,6 +44,13 @@ describe('parseClientCommand', () => {
     ['unknown type', { type: 'nope' }],
     ['missing fields', { type: 'auth' }],
     ['blank text', { type: 'message.send', conversationId: 'c', text: '   ' }],
+    ['blank text with an empty attachment list', { type: 'message.send', conversationId: 'c', text: ' ', attachments: [] }],
+    ['too many attachments', { type: 'message.send', conversationId: 'c', text: 'x', attachments: Array.from({ length: MAX_ATTACHMENTS + 1 }, () => ({ path: 'a', name: 'a' })) }],
+    ['attachment without a name', { type: 'message.send', conversationId: 'c', text: 'x', attachments: [{ path: 'a' }] }],
+    ['oversized upload', { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a', size: MAX_UPLOAD_BYTES + 1 }],
+    ['negative upload size', { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a', size: -1 }],
+    ['oversized upload chunk', { type: 'upload.chunk', uploadId: 'u', index: 0, dataBase64: 'A'.repeat(Math.ceil(UPLOAD_CHUNK_BYTES / 3) * 4 + 1) }],
+    ['negative chunk index', { type: 'upload.chunk', uploadId: 'u', index: -1, dataBase64: '' }],
     ['oversized text', { type: 'message.send', conversationId: 'c', text: 'a'.repeat(MAX_MESSAGE_LENGTH + 1) }],
     ['removed menu command', { type: 'config.open', conversationId: 'c', menu: 'agent' }],
     ['removed selection command', { type: 'selection.choose', conversationId: 'c', optionIndexes: [1] }],

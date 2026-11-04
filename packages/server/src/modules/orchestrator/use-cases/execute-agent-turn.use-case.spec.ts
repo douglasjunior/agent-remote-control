@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
+import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
+import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
@@ -15,6 +17,7 @@ import {
   buildCeoLanguagePrompt,
   buildLanguageDetectionPrompt,
 } from '../prompts/user-language.prompt.js';
+import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
@@ -27,6 +30,7 @@ import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
+import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 vi.mock('node:fs', () => ({
@@ -81,6 +85,8 @@ describe('ExecuteAgentTurnUseCase', () => {
   let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
   let questionQueue: UserQuestionQueueService;
+  let speechToText: StubSpeechToText;
+  let deletedFiles: string[];
 
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
@@ -105,6 +111,9 @@ describe('ExecuteAgentTurnUseCase', () => {
   const wire = (factory: StubAgentPortFactory) => {
     runtime = new ConversationRuntimeService(factory, 60_000);
     questionQueue = new UserQuestionQueueService();
+    speechToText = new StubSpeechToText();
+    deletedFiles = [];
+    const fileSystem = { deleteFile: async (path: string) => void deletedFiles.push(path) } as unknown as IFileSystemPort;
     useCase = new ExecuteAgentTurnUseCase(
       factory,
       sessionStore,
@@ -114,8 +123,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       preferencesStore,
       delegationDetector,
       runtime,
+      new AgentProtocolService(),
       new QuestionParserService(),
       questionQueue,
+      new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem),
     );
   };
 
@@ -627,7 +638,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(phases).toEqual(['started']);
   });
 
-  it('should stream text chunks and forward activities from every agent', async () => {
+  it('should forward the activities of every agent and join the text a delegate yields', async () => {
     stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.prompt = async function* (this: StubAgentPort) {
       this.emitActivity({ kind: 'thought', id: 't', text: 'thinking' });
@@ -636,16 +647,75 @@ describe('ExecuteAgentTurnUseCase', () => {
       yield textChunk('second');
     };
     const onActivity = vi.fn();
-    const onTextChunk = vi.fn();
 
-    await useCase.execute(turnRequest({ onActivity, onTextChunk }));
+    await useCase.execute(turnRequest({ onActivity }));
 
     expect(onActivity).toHaveBeenCalledWith({ kind: 'thought', id: 't', text: 'thinking' });
-    expect(onTextChunk).toHaveBeenCalledWith('first ');
-    expect(onTextChunk).toHaveBeenCalledWith('second');
-    expect(onTextChunk).toHaveBeenCalledTimes(4);
     expect(stubAgentPort.promptCalls[1]).toBe(toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nfirst second\n</agent_result>'));
     expect(delegateStubPort.activityListeners).toHaveLength(0);
+  });
+
+  describe('draft', () => {
+    const writeAnswer = (port: StubAgentPort, writes: readonly string[], final: string) => {
+      port.prompt = async function* (this: StubAgentPort) {
+        writes.forEach(text => this.emitActivity({ kind: 'thought', id: 'm1', text }));
+        yield textChunk(final);
+      };
+    };
+
+    it('should hand the channel what the CEO has written for the user, without the protocol tags', async () => {
+      writeAnswer(stubAgentPort, [
+        '<user_language>English</user_language>',
+        '<user_language>English</user_language>\n\nAll',
+        '<user_language>English</user_language>\n\nAll done. <attach',
+        '<user_language>English</user_language>\n\nAll done.',
+      ], 'All done.');
+      const onDraft = vi.fn();
+
+      await useCase.execute(turnRequest({ onDraft }));
+
+      expect(onDraft.mock.calls.map(([text]) => text)).toEqual(['', 'All', 'All done.', 'All done.']);
+    });
+
+    it('should hand the channel the answer without the envelope', async () => {
+      writeAnswer(stubAgentPort, ['<final_response>Done.'], '<final_response>Done.</final_response>');
+      const onDraft = vi.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(onDraft).toHaveBeenCalledWith('Done.');
+      expect(result.response).toBe('Done.');
+    });
+
+    it('should leave out the answers other agents write', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" project="my-app">Go.</delegate>', 'Ok.'];
+      writeAnswer(delegateStubPort, ['The delegate answer'], 'Done.');
+      const onDraft = vi.fn();
+
+      await useCase.execute(turnRequest({ onDraft }));
+
+      expect(onDraft).not.toHaveBeenCalled();
+    });
+
+    it('should discard the draft before the CEO repairs its response', async () => {
+      stubAgentPort.mockResponses = ['<delegate>no role</delegate>', 'Fixed.'];
+      const drafts: string[] = [];
+      const prompt = stubAgentPort.prompt.bind(stubAgentPort);
+      stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
+        this.emitActivity({ kind: 'thought', id: 'm1', text: `Attempt ${this.promptCalls.length + 1}` });
+        yield* prompt(text);
+      };
+
+      await useCase.execute(turnRequest({ onDraft: text => drafts.push(text) }));
+
+      expect(drafts).toEqual(['Attempt 1', '', 'Attempt 2']);
+    });
+
+    it('should run a turn whose request does not ask for drafts', async () => {
+      writeAnswer(stubAgentPort, ['Hi.'], 'Hi.');
+
+      await expect(useCase.execute(turnRequest())).resolves.toMatchObject({ status: 'completed', response: 'Hi.' });
+    });
   });
 
   it('should skip model configuration when the role has no default model', async () => {
@@ -1460,6 +1530,112 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
   });
 
+  describe('audio attachments', () => {
+    const voice = { name: 'voice.ogg', path: '/tmp/attachments/voice.ogg', contentType: 'audio/ogg', size: 2048 };
+    const photo = { name: 'photo.png', path: '/tmp/attachments/photo.png', contentType: 'image/png', size: 1024 };
+
+    it('should give the CEO the transcript of an audio message in place of the audio file', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+      speechToText.transcripts[voice.path] = 'Build me a landing page';
+
+      await useCase.execute(turnRequest({ prompt: '', attachments: [voice] }));
+
+      expect(stubAgentPort.promptCalls[0]).toContain('Build me a landing page');
+      expect(stubAgentPort.promptCalls[0]).not.toContain('[ATTACHMENTS]');
+      expect(stubAgentPort.promptCalls[0]).not.toContain('voice.ogg');
+      expect(deletedFiles).toEqual([voice.path]);
+    });
+
+    it('should put the transcript after the typed text and keep the other attachments listed', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+      speechToText.transcripts[voice.path] = 'make it blue';
+
+      await useCase.execute(turnRequest({ prompt: 'Restyle this', attachments: [voice, photo] }));
+
+      const prompt = stubAgentPort.promptCalls[0];
+      expect(prompt).toContain('Restyle this\n\nmake it blue');
+      expect(prompt).toContain('Path: /tmp/attachments/photo.png');
+      expect(prompt).not.toContain('voice.ogg');
+    });
+
+    it('should tell the channel what was transcribed before the agents run', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+      speechToText.transcripts[voice.path] = 'hello there';
+      const onTranscription = vi.fn();
+
+      await useCase.execute(turnRequest({ attachments: [voice], onTranscription }));
+
+      expect(onTranscription).toHaveBeenCalledExactlyOnceWith({
+        transcripts: [{ name: 'voice.ogg', text: 'hello there' }],
+        warnings: [],
+      });
+    });
+
+    it('should keep the audio as an attachment, and warn, when nothing could be transcribed', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+      speechToText.failures[voice.path] = 'whisper crashed';
+      const onTranscription = vi.fn();
+
+      await useCase.execute(turnRequest({ prompt: '', attachments: [voice], onTranscription }));
+
+      expect(onTranscription).toHaveBeenCalledWith({
+        transcripts: [],
+        warnings: [expect.stringContaining('whisper crashed')],
+      });
+      expect(stubAgentPort.promptCalls[0]).toContain('Path: /tmp/attachments/voice.ogg');
+      expect(stubAgentPort.promptCalls[0]).toContain('The user sent attachments. Analyze the attached files.');
+      expect(deletedFiles).toEqual([]);
+    });
+
+    it('should ask the agents to look at attachments when a message has no text and no audio', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+
+      await useCase.execute(turnRequest({ prompt: '', attachments: [photo] }));
+
+      expect(stubAgentPort.promptCalls[0]).toContain('The user sent attachments. Analyze the attached files.');
+    });
+
+    it('should not report anything when the message has no audio', async () => {
+      stubAgentPort.mockResponses = ['Done.'];
+      const onTranscription = vi.fn();
+
+      await useCase.execute(turnRequest({ attachments: [photo], onTranscription }));
+
+      expect(onTranscription).not.toHaveBeenCalled();
+    });
+
+    it('should hand the asking agent the transcript of an answer spoken as audio', async () => {
+      stubAgentPort.mockResponses = ['<question>Which colour?</question>', 'Thanks.'];
+      speechToText.transcripts[voice.path] = 'Blue please';
+      const onTranscription = vi.fn();
+
+      await useCase.execute(turnRequest({
+        onTranscription,
+        onQuestion: () => queueMicrotask(() => questionQueue.submit('conv-1', { kind: 'text', text: '', attachments: [voice] })),
+      }));
+
+      expect(stubAgentPort.promptCalls[1]).toBe(toCeo([
+        '<user_answers>',
+        '<answer question="Which colour?" kind="other">Blue please</answer>',
+        '</user_answers>',
+      ].join('\n')));
+      expect(onTranscription).toHaveBeenCalledWith({ transcripts: [{ name: 'voice.ogg', text: 'Blue please' }], warnings: [] });
+    });
+
+    it('should leave answers without audio untouched', async () => {
+      stubAgentPort.mockResponses = ['<question>Which colour?</question>', 'Thanks.'];
+      const onTranscription = vi.fn();
+
+      await useCase.execute(turnRequest({
+        onTranscription,
+        onQuestion: () => queueMicrotask(() => questionQueue.submit('conv-1', { kind: 'text', text: 'Red' })),
+      }));
+
+      expect(stubAgentPort.promptCalls[1]).toContain('kind="other">Red</answer>');
+      expect(onTranscription).not.toHaveBeenCalled();
+    });
+  });
+
   describe('CEO steering', () => {
     const holdFirstPrompt = async () => {
       let release: () => void = () => undefined;
@@ -1479,6 +1655,23 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
       return { firstStarted, release: () => release() };
     };
+
+    it('should hand a steering message the transcript of its audio', async () => {
+      stubAgentPort.supportsSteering = true;
+      const gate = await holdFirstPrompt();
+      const voice = { name: 'voice.ogg', path: '/tmp/attachments/voice.ogg', contentType: 'audio/ogg', size: 2048 };
+      speechToText.transcripts[voice.path] = 'actually use blue';
+      const first = useCase.execute(turnRequest({ prompt: 'Build a page' }));
+      await gate.firstStarted;
+
+      const steered = await useCase.execute(turnRequest({ prompt: '', attachments: [voice] }));
+      gate.release();
+      await first;
+
+      expect(steered.status).toBe('steered');
+      expect(stubAgentPort.steeringPrompts[0]).toContain('actually use blue');
+      expect(stubAgentPort.steeringPrompts[0]).not.toContain('voice.ogg');
+    });
 
     it('should inject a message that arrives while the CEO is running into the running round', async () => {
       stubAgentPort.supportsSteering = true;

@@ -44,7 +44,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
     if (viewport && stickToBottom.current) {
       viewport.scrollTop = viewport.scrollHeight;
     }
-  }, [view.entries, conversationId]);
+  }, [view.entries, view.draft, conversationId]);
 
   const handleScroll = () => {
     const viewport = viewportRef.current;
@@ -79,12 +79,19 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
         </Button>
       </div>
       <div ref={viewportRef} onScroll={handleScroll} data-testid="message-viewport" className="min-h-0 flex-1 overflow-y-auto">
-        <EntryList entries={entries} running={running} onAnswer={handleAnswer} />
+        <EntryList entries={entries} draft={view.draft} running={running} onAnswer={handleAnswer} />
       </div>
       <Composer
+        key={conversationId}
+        conversationId={conversationId}
         disabled={status !== 'open' || !view.configured}
         running={running}
-        onSend={text => connection.send({ type: 'message.send', conversationId, text })}
+        onSend={(text, attachments) => connection.send({
+          type: 'message.send',
+          conversationId,
+          text,
+          ...(attachments.length > 0 && { attachments: [...attachments] }),
+        })}
         onStop={() => connection.send({ type: 'turn.cancel', conversationId })}
       />
       <SettingsSheet conversationId={conversationId} open={settingsRequested || needsSettings} onOpenChange={handleSettingsOpenChange} />

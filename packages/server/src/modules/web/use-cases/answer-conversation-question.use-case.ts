@@ -17,12 +17,14 @@ export class AnswerConversationQuestionUseCase {
 
   /** Returns false, without side effects, when no question is waiting for an answer. */
   async execute(conversationId: string, answer: QuestionAnswer): Promise<boolean> {
+    const question = this.userQuestions.currentQuestion(conversationId)?.question;
     const submission = this.userQuestions.answerQuestion(conversationId, answer);
     if (!submission) {
       return false;
     }
-    if (answer.kind === 'text') {
-      await this.events.publishEntry(conversationId, userMessageEntry(answer.text));
+    const answerText = answer.kind === 'text' ? answer.text : question?.options[answer.optionIndex - 1];
+    if (answerText !== undefined && submission.kind !== 'invalid') {
+      await this.events.publishEntry(conversationId, userMessageEntry(answerText));
     }
     for (const entry of submissionEntries(submission)) {
       await this.events.publishEntry(conversationId, entry);

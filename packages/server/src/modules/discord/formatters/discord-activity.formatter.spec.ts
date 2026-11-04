@@ -681,7 +681,7 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatQuestion(prompt)).toBe([
         '❓ **Question 2/5** · Product Owner Agent (`my-app`)',
         '**Who approves?**',
-        '_It defines the flow._',
+        '_Why it matters: It defines the flow._',
         '**1.** Manager',
         '**2.** Finance',
         '-# Reply with the option number or type another answer. /cancel stops everything.',

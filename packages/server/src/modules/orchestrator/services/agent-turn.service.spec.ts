@@ -6,7 +6,6 @@ import type { CancelAgentTurnUseCase } from '../use-cases/cancel-agent-turn.use-
 import type { ExecuteAgentTurnUseCase } from '../use-cases/execute-agent-turn.use-case.js';
 import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case.js';
 import type { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
-import type { TranscribeAudioAttachmentsUseCase } from '../use-cases/transcribe-audio-attachments.use-case.js';
 
 import { AgentTurnService } from './agent-turn.service.js';
 
@@ -15,20 +14,18 @@ describe('AgentTurnService', () => {
   let service: AgentTurnService;
   let execute: ExecuteAgentTurnUseCase;
   let cancel: CancelAgentTurnUseCase;
-  let transcribe: TranscribeAudioAttachmentsUseCase;
   let runShell: RunShellCommandUseCase;
   let getQuota: GetAgentQuotaUseCase;
 
   beforeEach(() => {
     execute = { execute: vi.fn() } as unknown as ExecuteAgentTurnUseCase;
     cancel = { execute: vi.fn() } as unknown as CancelAgentTurnUseCase;
-    transcribe = { execute: vi.fn() } as unknown as TranscribeAudioAttachmentsUseCase;
     runShell = {
       isEnabled: vi.fn().mockReturnValue(true),
       execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
     } as unknown as RunShellCommandUseCase;
     getQuota = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
-    service = new AgentTurnService(execute, cancel, transcribe, runShell, getQuota);
+    service = new AgentTurnService(execute, cancel, runShell, getQuota);
   });
 
   it('should delegate executeTurn to ExecuteAgentTurnUseCase', async () => {
@@ -51,14 +48,6 @@ describe('AgentTurnService', () => {
 
     await expect(service.cancelTurn('conv-th-1')).resolves.toBe(true);
     expect(cancel.execute).toHaveBeenCalledWith('conv-th-1');
-  });
-
-  it('should delegate transcribeAudio to TranscribeAudioAttachmentsUseCase', async () => {
-    const result = { prompt: 'hi', attachments: [], transcripts: [], warnings: [] };
-    vi.mocked(transcribe.execute).mockResolvedValue(result);
-
-    await expect(service.transcribeAudio({ prompt: 'hi' })).resolves.toBe(result);
-    expect(transcribe.execute).toHaveBeenCalledWith({ prompt: 'hi' });
   });
 
   it('should delegate the shell command checks and execution to RunShellCommandUseCase', async () => {

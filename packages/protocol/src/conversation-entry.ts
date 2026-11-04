@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { attachmentSchema } from './attachment.js';
+
 
 const entryBase = { id: z.string(), at: z.iso.datetime() };
 
@@ -11,7 +13,12 @@ const agentInfoSchema = z.object({
 });
 
 export const conversationEntrySchema = z.discriminatedUnion('type', [
-  z.object({ ...entryBase, type: z.literal('user_message'), text: z.string() }),
+  z.object({
+    ...entryBase,
+    type: z.literal('user_message'),
+    text: z.string(),
+    attachments: z.array(attachmentSchema).optional(),
+  }),
   z.object({
     ...entryBase,
     type: z.literal('thought'),

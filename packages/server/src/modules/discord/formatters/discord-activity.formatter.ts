@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
-import type { AgentActivity, AgentUsage } from '../../agent/ports/agent.port.js';
+import type { AgentUsage } from '../../agent/ports/agent.port.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
+import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
@@ -28,7 +29,7 @@ const QUOTA_WINDOW_LABELS: Readonly<Record<string, string>> = {
 
 @Injectable()
 export class DiscordActivityFormatter {
-  formatActivity(activity: AgentActivity): string | null {
+  formatActivity(activity: TurnActivity): string | null {
     if (activity.kind === 'thought') {
       const text = activity.text.trim();
       if (!text) {
@@ -109,7 +110,7 @@ export class DiscordActivityFormatter {
       `**${question.text}**`,
     ];
     if (question.rationale) {
-      lines.push(`_${question.rationale}_`);
+      lines.push(`_Why it matters: ${question.rationale}_`);
     }
     lines.push(...question.options.map((option, index) => `**${index + 1}.** ${option}`));
     lines.push(question.options.length > 0

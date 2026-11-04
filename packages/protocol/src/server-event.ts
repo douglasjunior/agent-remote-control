@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { agentOptionSchema } from './agent-option.js';
 import { roleProfileSchema } from './agent-profile.js';
+import { attachmentSchema } from './attachment.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
 
@@ -24,11 +25,19 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     conversationId: z.string(),
     entries: z.array(conversationEntrySchema),
     state: conversationStateSchema,
+    /** The response being written when the history was read; absent when there is none. */
+    draft: z.string().optional(),
   }),
   z.object({
     type: z.literal('conversation.entry'),
     conversationId: z.string(),
     entry: conversationEntrySchema,
+  }),
+  z.object({
+    type: z.literal('conversation.draft'),
+    conversationId: z.string(),
+    /** The user-facing text of the response being written, whole at every event; empty when it is discarded. */
+    text: z.string(),
   }),
   z.object({
     type: z.literal('conversation.state'),
@@ -46,6 +55,10 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     })),
     walking: z.boolean(),
   }),
+  z.object({ type: z.literal('upload.ready'), uploadId: z.string() }),
+  z.object({ type: z.literal('upload.ack'), uploadId: z.string(), index: z.number().int().min(0) }),
+  z.object({ type: z.literal('upload.done'), uploadId: z.string(), attachment: attachmentSchema }),
+  z.object({ type: z.literal('upload.failed'), uploadId: z.string(), reason: z.string() }),
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
   z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
   z.object({

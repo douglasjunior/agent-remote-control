@@ -8,6 +8,7 @@ import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
@@ -45,6 +46,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly answerQuestion: AnswerConversationQuestionUseCase,
     private readonly promptHistory: ListPromptHistoryUseCase,
     private readonly fileSearch: WebFileSearchSessionsService,
+    private readonly uploads: WebUploadSessionsService,
   ) {}
 
   onModuleInit(): void {
@@ -69,6 +71,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     connection.onClose(() => {
       clearTimeout(timer);
       this.fileSearch.close(connection.id);
+      void this.uploads.releaseConnection(connection.id);
     });
 
     connection.onMessage((data) => {
@@ -115,6 +118,12 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'files.close':
         this.fileSearch.close(connection.id, command.requestId);
         return;
+      case 'upload.chunk':
+        return this.uploads.chunk(connection, command);
+      case 'upload.finish':
+        return this.uploads.finish(connection, command.uploadId);
+      case 'upload.abort':
+        return this.uploads.abort(connection.id, command.uploadId);
       case 'agents.list':
         connection.send({ type: 'agents.list', agents: [...this.agentOptions.agents()] });
         return;
@@ -145,12 +154,20 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     }
     switch (command.type) {
       case 'conversation.history': {
-        const { entries, state } = await this.getHistory.execute(command.conversationId);
-        connection.send({ type: 'conversation.history', conversationId: command.conversationId, entries: [...entries], state });
+        const { entries, state, draft } = await this.getHistory.execute(command.conversationId);
+        connection.send({
+          type: 'conversation.history',
+          conversationId: command.conversationId,
+          entries: [...entries],
+          state,
+          ...(draft !== '' && { draft }),
+        });
         return;
       }
+      case 'upload.start':
+        return this.uploads.start(connection, command);
       case 'message.send':
-        void this.sendMessage.execute(command.conversationId, command.text);
+        void this.sendMessage.execute(command.conversationId, command.text, command.attachments);
         return;
       case 'turn.cancel':
         await this.cancelTurn.execute(command.conversationId);

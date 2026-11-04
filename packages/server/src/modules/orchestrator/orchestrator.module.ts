@@ -17,6 +17,7 @@ import { IUserQuestionPort } from './ports/user-question.port.js';
 import { AgentCapabilitiesService } from './services/agent-capabilities.service.js';
 import { AgentConfigurationService } from './services/agent-configuration.service.js';
 import { AgentProfilesService } from './services/agent-profiles.service.js';
+import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
@@ -53,6 +54,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     AgentProfilesService,
     ConversationRuntimeService,
     DelegationDetectorService,
+    AgentProtocolService,
     QuestionParserService,
     ShellCommandConfigService,
     UserLanguageService,

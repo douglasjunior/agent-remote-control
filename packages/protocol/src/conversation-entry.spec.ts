@@ -7,6 +7,7 @@ const agentInfo = { roleName: 'CEO', agentName: 'Claude', modelName: 'm', effort
 describe('conversationEntrySchema', () => {
   it.each([
     { id: '1', at, type: 'user_message', text: 'hi' },
+    { id: '1b', at, type: 'user_message', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
     { id: 'thought:1', at, type: 'thought', text: 'hmm', removed: true },
     { id: 'tool:1', at, type: 'tool', title: 'Read', status: 'in_progress', result: 'r', details: 'd' },
     { id: 'd:1:CEO:started', at, type: 'delegation', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev' },

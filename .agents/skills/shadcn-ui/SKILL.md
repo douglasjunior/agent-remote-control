@@ -28,6 +28,16 @@ npx shadcn@latest search @shadcn -q button   # search the registry (the @shadcn 
 npx shadcn@latest view card             # show a component's source and dependencies before installing
 ```
 
+## Rule: icon-only buttons have a tooltip
+
+A button that shows only an icon names itself with a tooltip, never with `aria-label` alone. Use
+`IconButton` (`src/components/icon-button.tsx`), which takes a required `label` and renders it as the
+`aria-label` and as the shadcn `Tooltip` shown on hover and keyboard focus; it composes `Button`, so
+`variant`, `size` (default `icon`), `className` and `disabled` pass through. As the `render` target of a
+trigger (`<DropdownMenuTrigger render={<IconButton label="Theme" variant="outline" />}>`) it keeps both
+the menu and the tooltip. A disabled button does not receive pointer events, so its tooltip only shows
+while it is enabled. Buttons with visible text do not need one.
+
 ## Setup
 
 - `components.json` records the project setup. It was created with

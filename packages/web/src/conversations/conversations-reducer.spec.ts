@@ -55,6 +55,21 @@ describe('conversationsReducer', () => {
     expect(view.loaded).toBe(true);
   });
 
+  it('keeps the response being written and replaces it at every event', () => {
+    const state = reduce([
+      { type: 'conversation.draft', conversationId: 'c', text: 'Working' },
+      { type: 'conversation.draft', conversationId: 'c', text: 'Working on it' },
+    ]);
+    expect(state.byId.c.draft).toBe('Working on it');
+    expect(reduce([{ type: 'conversation.draft', conversationId: 'c', text: '' }], state).byId.c.draft).toBe('');
+  });
+
+  it('takes the draft a history carries and none when it carries none', () => {
+    const withDraft = reduce([{ type: 'conversation.history', conversationId: 'c', entries: [], state: 'running', draft: 'Working' }]);
+    expect(withDraft.byId.c.draft).toBe('Working');
+    expect(reduce([{ type: 'conversation.history', conversationId: 'c', entries: [], state: 'idle' }], withDraft).byId.c.draft).toBe('');
+  });
+
   it('appends a new entry and replaces an existing id in place', () => {
     const state = reduce([
       { type: 'conversation.entry', conversationId: 'c', entry: userEntry('a', 'first') },

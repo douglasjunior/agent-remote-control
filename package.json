@@ -30,6 +30,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "dev": "node scripts/dev.mjs",
+    "setup:stt": "node scripts/setup-stt.mjs",
     "dev:server": "pnpm --filter @agent-remote-control/server dev",
     "dev:web": "pnpm --filter @agent-remote-control/web dev",
     "preview:web": "pnpm --filter @agent-remote-control/web preview",

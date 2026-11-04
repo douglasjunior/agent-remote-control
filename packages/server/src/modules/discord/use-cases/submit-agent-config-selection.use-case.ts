@@ -164,6 +164,6 @@ export class SubmitAgentConfigSelectionUseCase {
     }
 
     await this.selectionStore.remove(selection.conversationId);
-    return { kind: 'configured', settings, pendingPrompt: selection.pendingPrompt };
+    return { kind: 'configured', settings, pendingMessage: selection.pendingMessage };
   }
 }

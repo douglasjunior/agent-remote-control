@@ -93,6 +93,18 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(expect.arrayContaining(['first.ts', 'second.ts']));
   });
 
+  it('scores a large index in several slices and still finds a match in the last one', async () => {
+    const { index, latest } = setup();
+    index.addEntries(Array.from({ length: 5_100 }, (_, number) => file(`filler-${number}.txt`)));
+    index.addEntries([file('needle.ts')]);
+
+    index.setQuery('needle');
+    await settle();
+    await settle();
+
+    expect(latest()).toEqual(['needle.ts']);
+  });
+
   it('drops the results of a query that was replaced', async () => {
     const { index, latest } = setup();
     index.addEntries([file('alpha.ts'), file('beta.ts')]);

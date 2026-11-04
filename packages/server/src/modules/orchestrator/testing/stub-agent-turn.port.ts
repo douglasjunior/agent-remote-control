@@ -1,7 +1,5 @@
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
-import type { AudioTranscriptionResult } from '../models/audio-transcription.model.js';
 import type { ShellCommandResult } from '../models/shell-command-result.model.js';
-import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
 import type { IAgentTurnPort } from '../ports/agent-turn.port.js';
@@ -13,8 +11,6 @@ export class StubAgentTurnPort implements IAgentTurnPort {
   turnBehavior?: (request: TurnRequest) => void | Promise<void>;
   turnError?: Error;
   cancelResult = true;
-  /** Overrides the default pass-through transcription. */
-  transcription?: AudioTranscriptionResult;
   shellEnabled = true;
   shellResult: ShellCommandResult = { command: '', output: '', exitCode: 0, truncated: false, timedOut: false, cancelled: false };
   throwOnShell = false;
@@ -24,7 +20,6 @@ export class StubAgentTurnPort implements IAgentTurnPort {
 
   readonly turnRequests: TurnRequest[] = [];
   readonly cancelledConversations: string[] = [];
-  readonly transcribed: { prompt: string; attachments?: readonly TurnAttachment[] }[] = [];
   readonly shellCalls: { conversationId: string; command: string }[] = [];
 
   get lastRequest(): TurnRequest | undefined {
@@ -46,11 +41,6 @@ export class StubAgentTurnPort implements IAgentTurnPort {
     }
     this.cancelledConversations.push(conversationId);
     return this.cancelResult;
-  }
-
-  async transcribeAudio(input: { prompt: string; attachments?: readonly TurnAttachment[] }): Promise<AudioTranscriptionResult> {
-    this.transcribed.push(input);
-    return this.transcription ?? { prompt: input.prompt, attachments: input.attachments ?? [], transcripts: [], warnings: [] };
   }
 
   isShellCommandEnabled(): boolean {

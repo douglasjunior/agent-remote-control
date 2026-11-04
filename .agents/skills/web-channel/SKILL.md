@@ -81,15 +81,31 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   entry per role; `profiles.set { conversationId, roles?, agentId, modelId?, effortId? }` goes to `IAgentConfigurationPort.configureProfiles`, which validates the ids against those lists and takes the names
   from them (the web layer holds no rule), then broadcasts `profiles`.
   `GetConversationProfilesUseCase` reads `hasSettings`, a pure query, so reading never changes a conversation.
+- `message.send` may carry `attachments` (`{ path, name }`, at most `MAX_ATTACHMENTS`) and then `text` may be empty.
+  Every path must be a file of `.arc-uploads/<conversationId>/` that exists (`isUploadPathOf` rejects any other
+  or climbing path); otherwise an `error` notice is recorded and no turn runs. The `user_message` entry keeps the
+  attachments. The use case reads each file's size and derives its `contentType` from the extension
+  (`contentTypeOf`), and hands the files to `executeTurn` as `TurnRequest.attachments` (absolute path under the
+  workspace base directory) next to the text exactly as typed: like every channel, it does not rewrite the prompt
+  for them, and the orchestrator transcribes audio and lists the other files for the agent. What it transcribed, and
+  what it could not, arrives through `onTranscription` and is recorded as `notice` entries (`🎙️ <name>: <text>` at
+  `info`, the warnings at `warning`). An attachment-only message titles a new conversation after the first file
+  name and is not added to the prompt history.
 - `message.send` runs a turn only when the conversation is configured, meaning `ensureSettings` (which copies the most recent settings into a new conversation) is not `missing`
   or no agent is installed (the default agent runs). Otherwise the server publishes a warning `notice` and
   neither records the message nor runs a turn.
 - Questions are answered with `question.answer` (`answer` is `{ kind: 'option', optionIndex }` or
   `{ kind: 'text', text }`), passed to `IUserQuestionPort.answerQuestion` unchanged. Without an open question the command answers an
-  `error` event. A text answer is echoed as a `user_message`; an option answer is not. The confirmation, the next
+  `error` event. A valid answer is echoed as a `user_message` (the text typed, or the text of the chosen option). The confirmation, the next
   question or a retry follow as entries.
 - `WebConversationEventsService` upserts an entry and broadcasts `conversation.entry` (broadcast first, so
-  persistence never reorders the stream), and keeps the state in memory.
+  persistence never reorders the stream), and keeps the state in memory. It also keeps the draft of each
+  conversation in memory: the user-facing text of the CEO's response being written (`TurnRequest.onDraft`),
+  broadcast as `conversation.draft { conversationId, text }` (whole text at every event, only when it
+  changed) and never stored in the history. The draft is discarded (`text: ''`, sent before the entry) by the
+  entry that delivers the response (`interim`, `question` or an `agent_response` that is not `steered`) and
+  when the conversation goes `idle`. `conversation.history` carries the current draft in `draft` when there
+  is one, so a conversation opened mid-response resumes it.
 - `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
   `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
   and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
@@ -108,6 +124,17 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   (case-insensitive subsequence match over the whole path, so `site/comp` finds `site/app/components`) in
   slices of 5 000 entries under a generation token, and without a query lists the base directory, folders
   first.
+- Uploads travel as frames, not HTTP, so any `IClientTransportPort` (WebSocket, later a DataChannel) carries them.
+  `upload.start { uploadId, conversationId, name, size }` opens a writer (`IWorkspaceUploadPort`) in
+  `<workspace>/.arc-uploads/<conversationId>/` and answers `upload.ready`; the client then sends
+  `upload.chunk { uploadId, index, dataBase64 }` one at a time (at most `UPLOAD_CHUNK_BYTES` raw bytes), each
+  answered by `upload.ack { index }`; `upload.finish` answers `upload.done { attachment }` once the received
+  bytes equal `size`. `WebUploadSessionsService` keeps the uploads per connection and answers `upload.failed
+  { reason }`, discarding the partial file, for a size above `MAX_UPLOAD_BYTES`, an id in use, more than
+  `MAX_CONCURRENT_UPLOADS` per connection, an out-of-order or oversized chunk, an incomplete file, an unknown
+  id, or `UPLOAD_IDLE_TIMEOUT_MS` of silence. `upload.abort` and the connection closing discard it too.
+  `LocalWorkspaceUploadAdapter` writes a hidden `.part` file and publishes it with a hard link, numbering a
+  taken name (`a (1).png`); `sanitizeUploadFileName` keeps only the last path segment.
 - `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`, written atomically
   after every append. A file that is not a list of strings is ignored.
 
