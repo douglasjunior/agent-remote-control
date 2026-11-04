@@ -11,6 +11,7 @@ import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-his
 import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-profiles.use-case.js';
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
+import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
@@ -31,9 +32,9 @@ describe('WebConnectionHandler', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
     harness = createWebHarness();
-    const { store, events, agentTurn, configuration, questions, workspace } = harness;
+    const { store, events, agentTurn, configuration, questions, workspace, promptHistory } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory);
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -49,6 +50,7 @@ describe('WebConnectionHandler', () => {
       getProfiles,
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
       new AnswerConversationQuestionUseCase(questions, events),
+      new ListPromptHistoryUseCase(promptHistory),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -150,6 +152,17 @@ describe('WebConnectionHandler', () => {
 
       expect(sent()).toEqual([{ type: 'conversation.created', requestId: 'r1', conversation: expect.objectContaining({ id: 'web-1' }) }]);
       expect(other.sent).toContainEqual({ type: 'conversation.updated', conversation: expect.objectContaining({ id: 'web-1' }) });
+    });
+
+    it('answers prompts.history with the stored prompts, most recent first', async () => {
+      await harness.promptHistory.append('older');
+      await harness.promptHistory.append('latest');
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'prompts.history', requestId: 'r1' });
+      await settle();
+
+      expect(connection.sent).toEqual([{ type: 'prompts.list', requestId: 'r1', prompts: ['latest', 'older'] }]);
     });
 
     it('answers conversation.history with the entries and the state', async () => {

@@ -21,6 +21,7 @@ function setup() {
     harness.events,
     harness.store,
     harness.workspace,
+    harness.promptHistory,
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];
   const types = () => entries().map(entry => entry.type);
@@ -55,6 +56,26 @@ describe('SendConversationMessageUseCase', () => {
       await useCase.execute('web-1', 'second');
 
       expect(store.conversations.get('web-1')?.title).toBe('first');
+    });
+  });
+
+  describe('prompt history', () => {
+    it('records each accepted prompt, most recent first', async () => {
+      const { useCase, promptHistory } = setup();
+
+      await useCase.execute('web-1', 'first');
+      await useCase.execute('web-1', 'second');
+
+      expect(promptHistory.prompts).toEqual(['second', 'first']);
+    });
+
+    it('records nothing while the conversation is not configured', async () => {
+      const { useCase, configuration, promptHistory } = setup();
+      configuration.store.byConversation.clear();
+
+      await useCase.execute('web-1', 'hello');
+
+      expect(promptHistory.prompts).toEqual([]);
     });
   });
 

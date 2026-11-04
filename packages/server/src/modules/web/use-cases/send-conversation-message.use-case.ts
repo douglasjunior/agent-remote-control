@@ -10,6 +10,7 @@ import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configur
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
+import { IPromptHistoryPort } from '../ports/prompt-history.port.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import {
   activityEntry,
@@ -36,6 +37,7 @@ export class SendConversationMessageUseCase {
     private readonly events: WebConversationEventsService,
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
     @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
+    @Inject(IPromptHistoryPort) private readonly promptHistory: IPromptHistoryPort,
   ) {}
 
   /** Never rejects: failures are reported as `notice` entries. */
@@ -67,6 +69,7 @@ export class SendConversationMessageUseCase {
   private async recordUserMessage(conversationId: string, text: string): Promise<void> {
     const isFirstMessage = !(await this.store.history(conversationId)).some(entry => entry.type === 'user_message');
     await this.events.publishEntry(conversationId, userMessageEntry(text));
+    await this.promptHistory.append(text);
     const conversation = isFirstMessage
       ? await this.store.rename(conversationId, this.titleFrom(text))
       : await this.store.touch(conversationId);

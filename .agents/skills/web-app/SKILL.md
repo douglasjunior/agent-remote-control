@@ -95,6 +95,11 @@ The composer is disabled while the connection is not `open` or the conversation 
 (the settings sheet then opens by itself). It stays enabled while a turn runs, next to a Stop button that
 sends `turn.cancel`. The view follows new entries unless the user scrolled up.
 
+`usePromptHistory` (`components/prompt-input/`) gives the composer shell-like history: the first `ArrowUp` on
+the first line sends `prompts.history` and the navigation runs over the `prompts.list` answer (matched by
+`requestId`, 5 s timeout) until the message is sent. `ArrowDown` on the last line walks back to the text being
+typed. The server records prompts; the client never appends.
+
 ## Theme
 
 `ThemeProvider` keeps the choice (`'light' | 'dark' | 'system'`, default `'system'`) in `localStorage`

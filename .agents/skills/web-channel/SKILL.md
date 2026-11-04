@@ -61,7 +61,11 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `SendConversationMessageUseCase` never rejects: it checks the configuration, records the
   `user_message` (the first one renames the conversation to its first line, cut at 60 characters) and runs
   `orchestrator.executeTurn` as `userId: 'web-local'` with role `CEO` in the workspace base directory.
-  `message.send` returns immediately while the turn streams.
+  `message.send` returns immediately while the turn streams. Each accepted prompt is also appended to the
+  prompt history through `IPromptHistoryPort`.
+- `prompts.history` (with a `requestId`) answers the requester with `prompts.list`: the stored prompts, most
+  recent first. The history is global to the machine, capped at `MAX_PROMPT_HISTORY`, never repeats the
+  latest prompt, and is recorded by the server only; the client never appends.
 - Turn callbacks become entries: `onActivity` → `thought` or `tool`, `onDelegation` → `delegation`,
   `onInterimMessage` → `interim`, `onQuestion` → `question`; the `TurnResult` becomes `agent_response`.
   Steering and cancellation markers have no entry.
@@ -90,6 +94,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
   and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
   found among the known conversations. Files that do not match the protocol schemas are ignored.
+- `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`, written atomically
+  after every append. A file that is not a list of strings is ignored.
 
 ## Health
 

@@ -35,6 +35,7 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     conversationId: z.string(),
     state: conversationStateSchema,
   }),
+  z.object({ type: z.literal('prompts.list'), requestId: z.string(), prompts: z.array(z.string()) }),
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
   z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
   z.object({

@@ -14,6 +14,7 @@ import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-his
 import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-profiles.use-case.js';
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
+import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
@@ -41,6 +42,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly getProfiles: GetConversationProfilesUseCase,
     private readonly setProfiles: SetConversationProfilesUseCase,
     private readonly answerQuestion: AnswerConversationQuestionUseCase,
+    private readonly promptHistory: ListPromptHistoryUseCase,
   ) {}
 
   onModuleInit(): void {
@@ -98,6 +100,9 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'conversation.list':
         connection.send({ type: 'conversation.list', conversations: [...await this.listConversations.execute()] });
+        return;
+      case 'prompts.history':
+        connection.send({ type: 'prompts.list', requestId: command.requestId, prompts: [...await this.promptHistory.execute()] });
         return;
       case 'agents.list':
         connection.send({ type: 'agents.list', agents: [...this.agentOptions.agents()] });

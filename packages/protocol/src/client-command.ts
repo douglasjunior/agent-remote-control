@@ -14,6 +14,7 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
   }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
+  z.object({ type: z.literal('prompts.history'), requestId: z.string() }),
   z.object({ type: z.literal('agents.list') }),
   z.object({ type: z.literal('models.list'), agentId: z.string() }),
   z.object({ type: z.literal('efforts.list'), agentId: z.string(), modelId: z.string() }),

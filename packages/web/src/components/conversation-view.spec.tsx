@@ -230,5 +230,26 @@ describe('ConversationView', () => {
       expect(element.scrollTop).toBe(2000);
     });
   });
-});
 
+  describe('prompt history', () => {
+    it('recalls a previous prompt with ArrowUp and clears the navigation after sending', async () => {
+      const user = userEvent.setup();
+      const { connection } = openConversation();
+      const field = screen.getByLabelText('Message');
+
+      await user.click(field);
+      await user.keyboard('{ArrowUp}');
+      const request = connection.sent.find(command => command.type === 'prompts.history');
+      await act(async () => connection.emitEvent({ type: 'prompts.list', requestId: request?.type === 'prompts.history' ? request.requestId : '', prompts: ['again please'] }));
+
+      expect(field).toHaveValue('again please');
+      expect(screen.getByText('History 1/1')).toBeInTheDocument();
+
+      await user.keyboard('{Enter}');
+
+      expect(connection.sent).toContainEqual({ type: 'message.send', conversationId: 'c1', text: 'again please' });
+      expect(field).toHaveValue('');
+      expect(screen.queryByText('History 1/1')).not.toBeInTheDocument();
+    });
+  });
+});
