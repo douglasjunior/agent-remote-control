@@ -35,7 +35,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - The upgrade is accepted when the `Origin` host equals the request `Host`, or when the origin is listed
   in `WEB_ALLOWED_ORIGINS` (comma-separated, compared without a trailing slash).
 - A missing or malformed `Origin` is rejected. Rejection answers `403` and destroys the socket.
-- During development the Vite origin (`http://localhost:5173`) goes in `WEB_ALLOWED_ORIGINS`.
+- During development the Vite origins (`http://localhost:5173`, and `http://localhost:4173` for `preview`) go in `WEB_ALLOWED_ORIGINS`.
+- The same list drives CORS for the HTTP endpoints (`app.enableCors` in `main.ts`), so the web app can call `/health` cross-origin.
 
 ## Access token and auth gate
 

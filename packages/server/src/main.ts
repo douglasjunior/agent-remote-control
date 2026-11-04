@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
+import { parseAllowedOrigins } from './modules/web/utils/web-origin.util.js';
 
 
 async function bootstrap() {
@@ -12,6 +13,7 @@ async function bootstrap() {
   });
 
   const app = await NestFactory.create(AppModule);
+  app.enableCors({ origin: [...parseAllowedOrigins(process.env.WEB_ALLOWED_ORIGINS)] });
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3000);
 }

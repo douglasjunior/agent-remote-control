@@ -47,8 +47,7 @@ packages/web/src/
   `unauthorized`) `AppLayout` renders `MissingTokenPage`.
 - The token lives in `localStorage` (`arc.accessToken`). A `#token=` URL fragment replaces it and is removed
   with `history.replaceState`. Every storage access is wrapped in `try/catch`.
-- Vite proxies `/ws` and `/health` to `localhost:3000` in `dev` and `preview` without `changeOrigin`, so the
-  server's origin check sees a same-origin request. `ARC_SERVER_PORT` changes the proxy target port (default `3000`).
+- The WebSocket URL is `VITE_SERVER_URL` (Vite env, read from the root `.env` through `envDir`, at build time). When it is empty the app connects to `/ws` on the page's own origin, which is how the nginx setup works. The server accepts the page's origin through `WEB_ALLOWED_ORIGINS`; there is no dev proxy.
 
 ## Imports and vendored UI
 

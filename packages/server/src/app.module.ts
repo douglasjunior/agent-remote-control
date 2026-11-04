@@ -14,7 +14,10 @@ import { resolveFromRepositoryRoot } from './repository-root.util.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ envFilePath: resolveFromRepositoryRoot('.env') }),
+    ConfigModule.forRoot({
+      envFilePath: resolveFromRepositoryRoot('.env'), ignoreEnvFile: process.env.NODE_ENV === 'test',
+      expandVariables: true,
+    }),
     AgentModule,
     OrchestratorModule,
     AgentDefinitionsModule,

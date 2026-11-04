@@ -9,6 +9,15 @@ const UNAUTHORIZED_CLOSE_CODE = 4401;
 const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 10_000;
 
+function serverUrl(): string {
+  const configured = import.meta.env.VITE_SERVER_URL;
+  if (configured) {
+    return configured;
+  }
+  const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+  return `${protocol}://${location.host}/ws`;
+}
+
 export class WebSocketServerConnection implements IServerConnection {
   private socket: WebSocket | null = null;
   private status: ConnectionStatus = 'closed';
@@ -59,8 +68,7 @@ export class WebSocketServerConnection implements IServerConnection {
       return;
     }
     this.setStatus('connecting');
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const socket = new WebSocket(`${protocol}://${location.host}/ws`);
+    const socket = new WebSocket(serverUrl());
     this.socket = socket;
     socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token }));
     socket.onmessage = message => this.handleFrame(socket, message.data);
