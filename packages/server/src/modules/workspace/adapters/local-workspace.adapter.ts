@@ -4,6 +4,7 @@ import { lstat, mkdir, readdir, readlink, stat, symlink, unlink, writeFile } fro
 import { platform } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
+import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
 import type { IWorkspacePort } from '../ports/workspace.port.js';
 
 
@@ -15,9 +16,9 @@ export class LocalWorkspaceAdapter implements IWorkspacePort {
     if (customBaseDir) {
       this.baseDirectory = resolve(customBaseDir);
     } else if (process.env.WORKSPACE_DIR && process.env.WORKSPACE_DIR.trim()) {
-      this.baseDirectory = resolve(process.env.WORKSPACE_DIR.trim());
+      this.baseDirectory = resolveFromRepositoryRoot(process.env.WORKSPACE_DIR.trim());
     } else {
-      this.baseDirectory = resolve(process.cwd(), 'workspaces');
+      this.baseDirectory = resolveFromRepositoryRoot('workspaces');
     }
   }
 

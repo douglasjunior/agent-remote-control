@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
+
 import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
 
@@ -61,6 +63,12 @@ describe('LocalWorkspaceAdapter', () => {
       delete process.env.WORKSPACE_DIR;
       const adapter = new LocalWorkspaceAdapter();
       expect(adapter.getBaseDirectory()).toContain('workspaces');
+    });
+
+    it('should resolve a relative WORKSPACE_DIR from the repository root', () => {
+      process.env.WORKSPACE_DIR = './my-workspaces';
+      const adapter = new LocalWorkspaceAdapter();
+      expect(adapter.getBaseDirectory()).toBe(resolveFromRepositoryRoot('my-workspaces'));
     });
 
     it('should ignore empty or whitespace WORKSPACE_DIR and use default', () => {

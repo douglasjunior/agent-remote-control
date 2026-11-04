@@ -7,22 +7,22 @@ WORKDIR /app
 FROM base AS deps
 RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/protocol/package.json ./packages/protocol/package.json
 COPY packages/server/package.json ./packages/server/package.json
+COPY packages/web/package.json ./packages/web/package.json
 RUN pnpm install --frozen-lockfile
 
-# Compiles the backend with the installed dependencies
+# Compiles the protocol and the server with the installed dependencies; the web app is not part of the image
 FROM base AS build
 RUN corepack enable
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules
 COPY --from=deps /app/packages/server/node_modules ./packages/server/node_modules
-RUN pnpm build
+RUN pnpm --filter @agent-remote-control/server... build
 
 # Extracts the server with only its production dependencies into a self-contained directory
-FROM base AS prod-deps
-RUN corepack enable
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY packages/server/package.json ./packages/server/package.json
+FROM build AS prod-deps
 RUN pnpm --filter @agent-remote-control/server deploy --prod /deploy
 
 # Builds the whisper.cpp CLI (CPU speech-to-text) as a self-contained binary. GGML_NATIVE=OFF keeps

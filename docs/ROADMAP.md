@@ -10,7 +10,7 @@ Each stage ships something usable on its own and fits in a few focused work sess
 
 | Stage | Delivers | Status |
 |---|---|---|
-| [1](#stage-1-monorepo-and-local-web-channel) | Monorepo and local web channel | Next |
+| [1](#stage-1-monorepo-and-local-web-channel) | Monorepo and local web channel | Done |
 | [2](#stage-2-simple-mode) | Simple mode: projects, live preview, versions | Planned |
 | [3](#stage-3-peer-to-peer-remote-access) | Peer-to-peer remote access | Planned |
 | [4](#stage-4-remote-preview-over-the-datachannel) | Remote preview over the DataChannel | Planned |
@@ -18,6 +18,8 @@ Each stage ships something usable on its own and fits in a few focused work sess
 | [6](#stage-6-publish) | Publish to the web | Future |
 
 ## Stage 1: Monorepo and local web channel
+
+**Status: done.**
 
 Removes the hardest onboarding step for non-developers, creating a Discord bot, by adding a browser interface that talks to the service on `localhost`. The [Stage 1 delivery plans](plans/stage-1/README.md) break it into sessions delivered on the branch `feat/local-app-builder`.
 

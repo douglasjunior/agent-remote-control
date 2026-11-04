@@ -45,20 +45,71 @@ AI coding agents are incredible, as long as you are sitting in front of the term
 
 ## 🚀 Quick Start
 
-You need **Node.js 24+**, **Git**, at least one [supported agent CLI](#-supported-agents) installed and logged in, and a [Discord bot token](#-discord-setup).
+You need **Node.js 24+**, **Git** and at least one [supported agent CLI](#-supported-agents) installed and logged in. A [Discord bot token](#-discord-setup) is needed only for the Discord bot; the [web interface](#-web-interface) works without it.
 
 ```bash
 git clone https://github.com/douglasjunior/agent-remote-control.git
 cd agent-remote-control
 pnpm install                 # pnpm is pinned through the packageManager field
-cp .env.example .env         # then set DISCORD_BOT_TOKEN
-pnpm start:dev
+cp .env.example .env         # then set DISCORD_BOT_TOKEN to use the Discord bot
+pnpm dev                     # server and web interface together
 ```
 
-Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run.
+To use Discord, invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run. To use the browser instead, follow [Web interface](#-web-interface).
 
 > [!WARNING]
-> **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container.
+> **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container. The same applies to the **web access token**: whoever has it can run agents on the host, so never share it or expose the server port to untrusted networks.
+
+## 🌐 Web interface
+
+A browser interface to chat with the agents without Discord. It is a separate app (`packages/web`) that talks to the server over a WebSocket at `/ws`.
+
+1. **Start the server** (`pnpm dev:server`, or `pnpm dev` to start the server and the web app together).
+2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
+3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
+
+| Mode | Command | URL |
+|---|---|---|
+| Development | `pnpm dev:web` | `http://localhost:5173` |
+| Production build | `pnpm build && pnpm preview:web` | `http://localhost:4173` |
+| Production | nginx serving `packages/web/dist` | your domain |
+
+Vite (`dev` and `preview`) proxies `/ws` and `/health` to `localhost:3000`, so the browser sees a single origin and the server's origin check passes. If the web app connects to the server directly, list its origin in `WEB_ALLOWED_ORIGINS`.
+
+**nginx example**
+
+```nginx
+server {
+  listen 80;
+  server_name arc.example.com;
+
+  root /srv/agent-remote-control/web;   # a copy of packages/web/dist
+  index index.html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+
+  location /ws {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+  }
+
+  location /health {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+  }
+}
+```
+
+| Variable | Description | Default |
+|---|---|---|
+| `WEB_ENABLED` | Set to `false` to leave the web channel out of the server | `true` |
+| `WEB_ACCESS_TOKEN` | Access token; generated into `DATA_DIR/web/access-token` when empty | *(generated)* |
+| `WEB_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open the WebSocket | *(same origin only)* |
 
 ## 🤖 Supported Agents
 
@@ -180,7 +231,7 @@ cp .env.example .env
 
 | Variable | Description | Where to Get It in Discord | Default |
 |---|---|---|---|
-| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required)* |
+| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
 | `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
 | `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
@@ -196,6 +247,7 @@ cp .env.example .env
 | `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) |
 | `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
+| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
 
 ## 🐳 Docker
 
@@ -246,6 +298,8 @@ docker run -d --name agent-remote-control \
 ```
 
 Create `~/.claude.json` beforehand if it does not exist; otherwise Docker creates a directory with that name.
+
+**Web interface in Docker.** The image contains the server only. Publish the port (`-p 3000:3000`) and read the access token with `docker logs agent-remote-control`; the published port is protected by that token and by the origin check, but anyone who obtains the token can run agents on the container, so bind it to `127.0.0.1` (`-p 127.0.0.1:3000:3000`) unless a reverse proxy sits in front. Serve `packages/web/dist` with [nginx](#-web-interface) or run `pnpm preview:web` on the host.
 
 **Rootless Docker**
 
@@ -456,7 +510,7 @@ A NestJS application built on **Clean Architecture with Ports & Adapters** and *
 Start the NestJS application in watch mode:
 
 ```bash
-pnpm start:dev
+pnpm dev:server
 ```
 
 To build and run the production bundle:

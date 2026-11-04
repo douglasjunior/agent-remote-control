@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
 
+import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
+
 
 export function resolveDataDirectory(custom?: string): string {
   if (custom) {
@@ -7,7 +9,7 @@ export function resolveDataDirectory(custom?: string): string {
   }
   const fromEnv = process.env.DATA_DIR?.trim();
   if (fromEnv) {
-    return resolve(fromEnv);
+    return resolveFromRepositoryRoot(fromEnv);
   }
-  return resolve(process.cwd(), 'data');
+  return resolveFromRepositoryRoot('data');
 }

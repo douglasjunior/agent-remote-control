@@ -14,7 +14,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ['packages/server/test/**/*.e2e-spec.ts'],
+    include: ['test/**/*.e2e-spec.ts'],
     env: {
       DISCORD_BOT_TOKEN: '',
     },

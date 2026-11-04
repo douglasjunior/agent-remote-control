@@ -16,6 +16,8 @@ agent-remote-control/
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
 ├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings and global preferences (user language)
 ├── packages/
+│   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
+│   ├── web/                        # @agent-remote-control/web: React + Vite web interface (connection, conversations, components)
 │   └── server/                     # @agent-remote-control/server: the NestJS application
 │       ├── src/                    # NestJS application source code
 │       │   ├── modules/                    # Vertical modules segregated by domain
@@ -58,7 +60,7 @@ agent-remote-control/
 ├── vitest.config.ts                # Vitest root configuration: test projects and coverage
 ├── tsconfig.base.json              # Compiler options shared by every package
 ├── eslint.config.js                # ESLint flat configuration for the whole repository
-└── package.json                    # Yarn workspaces root: shared devDependencies and scripts
+└── package.json                    # pnpm workspaces root: shared devDependencies and scripts
 ```
 
 ## `.agents/` Structure
@@ -96,7 +98,9 @@ All text kept in the repository describes the **current state**, written for who
 All commands run from the repository root and apply to every package in `packages/`.
 
 - Install dependencies: `pnpm install`
-- Development mode with watch: `pnpm start:dev`
+- Development mode with watch, server and web together: `pnpm dev` (`pnpm dev:server` or `pnpm dev:web` for one of them)
+- Preview the built web app: `pnpm preview:web`
+- Every package script runs from its own folder (`packages/server`, `packages/web`); the root scripts delegate to them. The server resolves `.env`, `data/` and `workspaces/` from the repository root through `repository-root.util.ts`, whatever the working directory.
 - Build: `pnpm build`
 - TypeScript static type checking: `pnpm ts`
 - Linter: `pnpm lint`

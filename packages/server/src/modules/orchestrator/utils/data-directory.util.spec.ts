@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
+
 import { resolveDataDirectory } from './data-directory.util.js';
 
 
@@ -27,9 +29,15 @@ describe('resolveDataDirectory', () => {
     expect(resolveDataDirectory()).toBe(resolve('/from/env'));
   });
 
-  it('should fall back to the data folder under the working directory', () => {
+  it('should resolve a relative DATA_DIR from the repository root', () => {
+    process.env.DATA_DIR = './custom-data';
+
+    expect(resolveDataDirectory()).toBe(resolveFromRepositoryRoot('custom-data'));
+  });
+
+  it('should fall back to the data folder at the repository root', () => {
     process.env.DATA_DIR = '   ';
 
-    expect(resolveDataDirectory()).toBe(resolve(process.cwd(), 'data'));
+    expect(resolveDataDirectory()).toBe(resolveFromRepositoryRoot('data'));
   });
 });

@@ -29,10 +29,13 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
-    "start": "nest start --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
-    "start:dev": "nest start --watch --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
-    "start:debug": "nest start --debug --watch --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
-    "start:prod": "node packages/server/dist/main",
+    "dev": "pnpm --parallel --filter @agent-remote-control/server --filter @agent-remote-control/web run dev",
+    "dev:server": "pnpm --filter @agent-remote-control/server dev",
+    "dev:web": "pnpm --filter @agent-remote-control/web dev",
+    "preview:web": "pnpm --filter @agent-remote-control/web preview",
+    "start": "pnpm --filter @agent-remote-control/server start",
+    "start:debug": "pnpm --filter @agent-remote-control/server start:debug",
+    "start:prod": "pnpm --filter @agent-remote-control/server start:prod",
     "ts": "pnpm -r run ts",
     "format": "eslint packages/ --fix",
     "lint": "eslint packages/ --cache --cache-location .eslintcache/",
@@ -41,7 +44,7 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config packages/server/vitest.config.e2e.ts"
+    "test:e2e": "pnpm --filter @agent-remote-control/server test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
@@ -52,6 +55,8 @@
     "eslint": "^9.21.0",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.12.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.70.1",

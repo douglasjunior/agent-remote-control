@@ -7,7 +7,12 @@
   "type": "module",
   "scripts": {
     "build": "nest build",
-    "ts": "tsc --noEmit"
+    "dev": "nest start --watch",
+    "start": "nest start",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "ts": "tsc --noEmit",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts"
   },
   "dependencies": {
     "@agent-remote-control/protocol": "workspace:*",
@@ -15,10 +20,10 @@
     "@agentclientprotocol/codex-acp": "^2.2.2",
     "@agentclientprotocol/sdk": "^1.9.0",
     "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.1",
     "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
     "discord.js": "^14.27.0",
-    "dotenv": "^18.0.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "ws": "^8.22.1",

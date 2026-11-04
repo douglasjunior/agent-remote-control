@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -8,10 +9,12 @@ import { DiscordModule } from './modules/discord/discord.module.js';
 import { OrchestratorModule } from './modules/orchestrator/orchestrator.module.js';
 import { WebModule } from './modules/web/web.module.js';
 import { WorkspaceModule } from './modules/workspace/workspace.module.js';
+import { resolveFromRepositoryRoot } from './repository-root.util.js';
 
 
 @Module({
   imports: [
+    ConfigModule.forRoot({ envFilePath: resolveFromRepositoryRoot('.env') }),
     AgentModule,
     OrchestratorModule,
     AgentDefinitionsModule,
