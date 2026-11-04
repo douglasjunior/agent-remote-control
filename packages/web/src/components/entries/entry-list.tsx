@@ -9,6 +9,7 @@ import { AgentResponse } from './agent-response.js';
 import { DelegationCard } from './delegation-card.js';
 import { Markdown } from './markdown.js';
 import { QuestionCard, type QuestionAnswer } from './question-card.js';
+import { WorkingIndicator } from './working-indicator.js';
 
 
 const NOTICE_STYLES = {
@@ -26,6 +27,8 @@ export function EntryList({ entries, draft, running, onAnswer }: {
   const items = groupEntries(entries);
   const last = entries.at(-1);
   const lastQuestionId = last?.type === 'question' ? last.id : undefined;
+
+  const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && last?.type !== 'question' && last?.type !== 'agent_response';
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 p-4">
@@ -61,6 +64,7 @@ export function EntryList({ entries, draft, running, onAnswer }: {
         }
       })}
       {draft !== '' && <Markdown text={draft} />}
+      {working && <WorkingIndicator />}
     </div>
   );
 }

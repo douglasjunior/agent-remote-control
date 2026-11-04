@@ -143,3 +143,4 @@ script in `index.html` applies the class before the first paint. `ThemeToggle` (
 the header. Style through the theme tokens so both modes work.
 
 - `QuestionCard` shows the asker with its project, the question's `message`, text and rationale ("Why it matters"), as every channel does. Only the last entry of a conversation can be answered; any entry after a question closes it, leaving the asker and the question text.
+- While a turn runs, the feed shows `WorkingIndicator` (three dots and a shimmering "Working…", still under `prefers-reduced-motion`) from the first moment until a step, the draft or a question takes its place; a running `ActivityGroup` carries the same dots and label. The keyframes live in `index.css`.

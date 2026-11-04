@@ -129,3 +129,12 @@
     @apply font-sans;
   }
 }
+@keyframes working-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}
+
+@keyframes working-shimmer {
+  from { background-position: 125% 0; }
+  to { background-position: -125% 0; }
+}

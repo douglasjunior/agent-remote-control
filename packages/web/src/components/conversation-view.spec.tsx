@@ -266,6 +266,27 @@ describe('ConversationView', () => {
       expect(screen.getByRole('button', { name: 'Show details (1 step)' })).toBeInTheDocument();
     });
 
+    it('shows the agents at work as soon as the turn runs, before any step', () => {
+      const { connection } = openConversation({ entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'Hi' }] });
+      expect(screen.queryByRole('status', { name: '' })).not.toBeInTheDocument();
+
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+      expect(screen.getByRole('status')).toHaveTextContent('Working…');
+
+      emitDraft(connection, 'Writing');
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
+    it('does not show the agents at work while a question waits for the user', () => {
+      const { connection } = openConversation({
+        entries: [{ id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Which?', options: ['A'], number: 1, total: 1 }],
+      });
+
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+
     it('keeps following the bottom while the response grows', () => {
       const { connection } = openConversation();
       const element = screen.getByTestId('message-viewport');
