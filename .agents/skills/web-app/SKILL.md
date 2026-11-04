@@ -93,10 +93,19 @@ packages/web/src/
 
 The composer is disabled while the connection is not `open` or the conversation is not `configured`
 (the settings sheet then opens by itself). It stays enabled while a turn runs, next to a Stop button that
-sends `turn.cancel`. The view follows new entries, and the growth of the draft, unless the user scrolled up.
+sends `turn.cancel`.
+
+`FeedList` (`components/entries/`) renders the entries with `react-virtuoso` inside the `message-viewport` div
+(`customScrollParent`), one `FeedItem` per grouped item. Off-screen rows are unmounted, so the open state of
+activity groups and delegation cards lives in `FeedList` (a set of item ids), not in the rows. `useStickToEnd`
+keeps the viewport pinned to the end through a `ResizeObserver` on the viewport content, until the reader scrolls
+up; scrolling back within 24 px of the end resumes it, and so does a new `user_message`. While the reader is away
+from the end, an `IconButton` "Scroll to bottom" appears over the feed. Specs that render the feed wrap it in
+`VirtuosoMockContext` (jsdom has no layout; `renderApp` already does) and fire the observer through a stubbed
+`ResizeObserver`.
 
 The response being written arrives as `conversation.draft` events (`ConversationView.draft`, set by the reducer
-and by `conversation.history`) and shows as Markdown after the last entry, where the delivered response replaces
+and by `conversation.history`) and shows as streaming Markdown (`isAnimating`) after the last entry, where the delivered response replaces
 it. While a draft shows, the grouped steps no longer read "Working…".
 
 `usePromptHistory` (`components/prompt-input/`) gives the composer shell-like history: the first `ArrowUp` on

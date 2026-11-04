@@ -1,6 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { act, render } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
+import { VirtuosoMockContext } from 'react-virtuoso';
 
 import { storeAccessToken } from '../connection/access-token.js';
 import { ConnectionProvider } from '../connection/connection-context.js';
@@ -32,11 +33,13 @@ export function renderApp(path = '/'): AppHarness {
   const connection = new FakeServerConnection();
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
-    <ThemeProvider>
-      <ConnectionProvider connection={connection}>
-        <RouterProvider router={router} />
-      </ConnectionProvider>
-    </ThemeProvider>,
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
+      <ThemeProvider>
+        <ConnectionProvider connection={connection}>
+          <RouterProvider router={router} />
+        </ConnectionProvider>
+      </ThemeProvider>
+    </VirtuosoMockContext.Provider>,
   );
   act(() => connection.emitStatus('open'));
   return { connection, router };

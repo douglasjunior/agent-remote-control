@@ -17,13 +17,15 @@ function ToolStatusIcon({ status }: { readonly status: Extract<ActivityEntry, { 
   return <LoaderCircle aria-label="running" className="size-3.5 animate-spin" />;
 }
 
-export function ActivityGroup({ steps, running }: {
+export function ActivityGroup({ steps, running, open, onOpenChange }: {
   readonly steps: readonly ActivityEntry[];
   readonly running: boolean;
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
 }) {
   const count = `(${steps.length} ${steps.length === 1 ? 'step' : 'steps'})`;
   return (
-    <Collapsible className="text-sm text-muted-foreground">
+    <Collapsible className="text-sm text-muted-foreground" open={open} onOpenChange={onOpenChange}>
       <CollapsibleTrigger className="group flex items-center gap-1 hover:text-foreground">
         <ChevronRight className="size-3.5 transition-transform group-data-[state=open]:rotate-90" />
         {running ? <WorkingLabel>Working…</WorkingLabel> : 'Show details'}

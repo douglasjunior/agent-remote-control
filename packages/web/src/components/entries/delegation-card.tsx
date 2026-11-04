@@ -9,7 +9,11 @@ import { Markdown } from './markdown.js';
 
 type DelegationEntry = Extract<ConversationEntry, { type: 'delegation' }>;
 
-export function DelegationCard({ entry }: { readonly entry: DelegationEntry }) {
+export function DelegationCard({ entry, open, onOpenChange }: {
+  readonly entry: DelegationEntry;
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
+}) {
   const finished = entry.phase === 'finished';
   const title = finished && entry.durationMs !== undefined
     ? `${entry.roleName} finished in ${formatDuration(entry.durationMs)}`
@@ -17,7 +21,7 @@ export function DelegationCard({ entry }: { readonly entry: DelegationEntry }) {
 
   return (
     <Card className="gap-2 py-3 text-sm">
-      <Collapsible className="px-4">
+      <Collapsible className="px-4" open={open} onOpenChange={onOpenChange}>
         <div className="flex items-center justify-between gap-2">
           <span className="font-medium">{title}</span>
           {entry.projectName && <span className="text-xs text-muted-foreground">{entry.projectName}</span>}

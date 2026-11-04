@@ -1,18 +1,16 @@
 import { Settings } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useConnection } from '../connection/connection-context.js';
 import { useConversations } from '../conversations/conversations-context.js';
 import { emptyConversationView } from '../conversations/conversations-reducer.js';
 
 import { Composer } from './composer.js';
-import { EntryList } from './entries/entry-list.js';
+import { FeedList } from './entries/feed-list.js';
 import type { QuestionAnswer } from './entries/question-card.js';
 import { SettingsSheet } from './settings-sheet.js';
 import { Button } from './ui/button.js';
 
-
-const STICK_THRESHOLD_PX = 48;
 
 export function ConversationView({ conversationId }: { readonly conversationId: string }) {
   const { connection, status } = useConnection();
@@ -21,8 +19,6 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
   const title = state.list.find(item => item.id === conversationId)?.title ?? 'Conversation';
   const [settingsRequested, setSettingsRequested] = useState(false);
   const [settingsDismissed, setSettingsDismissed] = useState(false);
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
   const noAgents = state.agents.length === 0;
 
   useEffect(() => {
@@ -38,20 +34,6 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
       connection.send({ type: 'agents.list' });
     }
   }, [connection, status, noAgents]);
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (viewport && stickToBottom.current) {
-      viewport.scrollTop = viewport.scrollHeight;
-    }
-  }, [view.entries, view.draft, conversationId]);
-
-  const handleScroll = () => {
-    const viewport = viewportRef.current;
-    if (viewport) {
-      stickToBottom.current = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < STICK_THRESHOLD_PX;
-    }
-  };
 
   const handleAnswer = (answer: QuestionAnswer) => {
     connection.send({ type: 'question.answer', conversationId, answer });
@@ -78,9 +60,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
           Settings
         </Button>
       </div>
-      <div ref={viewportRef} onScroll={handleScroll} data-testid="message-viewport" className="min-h-0 flex-1 overflow-y-auto">
-        <EntryList entries={entries} draft={view.draft} running={running} onAnswer={handleAnswer} />
-      </div>
+      <FeedList key={conversationId} entries={entries} draft={view.draft} running={running} onAnswer={handleAnswer} />
       <Composer
         key={conversationId}
         conversationId={conversationId}

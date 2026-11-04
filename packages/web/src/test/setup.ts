@@ -20,3 +20,5 @@ vi.stubGlobal('matchMedia', () => ({
   addEventListener: vi.fn(),
   removeEventListener: vi.fn(),
 }));
+
+Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;

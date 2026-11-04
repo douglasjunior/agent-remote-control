@@ -286,51 +286,6 @@ describe('ConversationView', () => {
 
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
-
-    it('keeps following the bottom while the response grows', () => {
-      const { connection } = openConversation();
-      const element = screen.getByTestId('message-viewport');
-      Object.defineProperty(element, 'scrollHeight', { configurable: true, value: 1000 });
-      Object.defineProperty(element, 'clientHeight', { configurable: true, value: 400 });
-
-      emitDraft(connection, 'a long answer');
-
-      expect(element.scrollTop).toBe(1000);
-    });
-  });
-
-  describe('scrolling', () => {
-    function viewport() {
-      return screen.getByTestId('message-viewport');
-    }
-
-    function mockLayout(element: HTMLElement, scrollHeight: number, clientHeight: number) {
-      Object.defineProperty(element, 'scrollHeight', { configurable: true, value: scrollHeight });
-      Object.defineProperty(element, 'clientHeight', { configurable: true, value: clientHeight });
-    }
-
-    it('follows new entries unless the user scrolled up', () => {
-      const { connection } = openConversation();
-      const element = viewport();
-      mockLayout(element, 1000, 400);
-      const add = (id: string) => act(() => connection.emitEvent({
-        type: 'conversation.entry', conversationId: 'c1', entry: userEntry(id),
-      }));
-
-      add('a');
-      expect(element.scrollTop).toBe(1000);
-
-      element.scrollTop = 100;
-      fireEvent.scroll(element);
-      mockLayout(element, 2000, 400);
-      add('b');
-      expect(element.scrollTop).toBe(100);
-
-      element.scrollTop = 1590;
-      fireEvent.scroll(element);
-      add('c');
-      expect(element.scrollTop).toBe(2000);
-    });
   });
 
   describe('prompt history', () => {
