@@ -29,7 +29,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r run build",
-    "dev": "pnpm --parallel --filter @agent-remote-control/server --filter @agent-remote-control/web run dev",
+    "dev": "node scripts/dev.mjs",
     "dev:server": "pnpm --filter @agent-remote-control/server dev",
     "dev:web": "pnpm --filter @agent-remote-control/web dev",
     "preview:web": "pnpm --filter @agent-remote-control/web preview",
