@@ -17,7 +17,7 @@ Bring everything that references the old single-package layout in line with the 
    - `build`: `yarn build` from the root.
    - `prod-deps`: `yarn workspaces focus --production @agent-remote-control/server`.
    - `runner`: copy `packages/server/dist` and `packages/server/package.json` into the same relative paths under `/app`. Keep `WORKDIR /app` so `/app/data` and `/app/workspaces` still apply. Set `CMD ["node", "packages/server/dist/main"]`.
-   - Keep the image layout extensible: plan 08 adds `packages/protocol/dist` and `packages/web/dist`.
+   - Keep the image layout extensible: plan 08 adds `packages/protocol/dist`.
 2. **`.dockerignore`:** change `dist`, `coverage` and `test` to globs that match inside packages (`**/dist`, `**/coverage`, `packages/*/test`).
 3. **`docker-entrypoint.sh`:** check for paths such as `/app/node_modules/.bin` and `dist/main`; adjust only if they changed.
 4. **New `.github/workflows/ci.yml`:** on `pull_request` and on `push` to `main`, Node 24, `corepack enable`, `yarn install --immutable`, then `yarn ts`, `yarn lint`, `yarn test` and `yarn test:e2e`. Cache with `actions/setup-node` `cache: yarn`.

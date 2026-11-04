@@ -20,7 +20,7 @@ Create `packages/web`, a React + Vite + React Router + shadcn/ui + Tailwind app 
 - **`tsconfig.json`:** extends the base with `moduleResolution: "bundler"`, `jsx: "react-jsx"`, `lib: ["ES2023", "DOM", "DOM.Iterable"]`, `customConditions: ["source"]` and `types: ["vite/client", "vitest/globals", "@testing-library/jest-dom"]`.
 - **`vite.config.ts`:**
   - `resolve.conditions: ['source', ...defaultClientConditions]`.
-  - Dev proxy: `/ws` → `ws://localhost:3000` with `ws: true`, and `/health` → `http://localhost:3000`.
+  - Dev and preview proxy (`server.proxy` and `preview.proxy`): `/ws` → `ws://localhost:3000` with `ws: true`, and `/health` → `http://localhost:3000`. Do not set `changeOrigin`: the proxy keeps the browser `Host`, so the server's origin check sees a same-origin request. The app always connects to the relative `/ws`; nginx in production proxies the same path.
   - `build.outDir: 'dist'`.
 - **Vitest project `web`:** `environment: 'jsdom'` and a setup file that imports `@testing-library/jest-dom/vitest`.
 - **Scripts:** `dev`, `build` (`tsc --noEmit && vite build`), `ts`, `preview`. Root `yarn dev:web` runs the Vite dev server.
@@ -56,14 +56,14 @@ packages/web/src/
 - Validate every incoming frame with `parseServerEvent`; drop invalid frames with a `console.warn`.
 - Queue commands sent while not `open` and flush them after `auth.ok`.
 
-**Access token:** on load, read `#token=` from the URL fragment, store it in `localStorage` and remove the fragment with `history.replaceState`. Wrap storage access in `try/catch`. Without a token, render `missing-token-page.tsx`, which explains that the link with the token is printed in the server log.
+**Access token:** the server logs the token on startup. On load, read the token from `localStorage`; a `#token=` URL fragment, when present, replaces it and is removed with `history.replaceState`. Wrap storage access in `try/catch`. Without a token, render `missing-token-page.tsx`: a form that asks for the token printed in the server log, stores it and connects. A rejected token (`unauthorized`) clears the stored value and shows the same form.
 
 **Routes:** `/` and `/c/:conversationId` both render a layout with a connection status badge and the placeholder page.
 
 ## Tests
 
 - **`WebSocketServerConnection`:** a fake `WebSocket` class installed with `vi.stubGlobal` (the browser WebSocket is an external I/O boundary) plus fake timers. Cover the auth sequence, `unauthorized`, the backoff schedule and its reset, the queued commands and invalid frames.
-- **Access token:** fragment present or absent, storage throwing.
+- **Access token:** fragment present or absent, form submission, rejected token, storage throwing.
 - **Provider and pages:** Testing Library with a fake `IServerConnection`.
 
 ## Skills
@@ -73,7 +73,7 @@ Create `.agents/skills/web-app/SKILL.md` (follow `skill-authoring`). It covers f
 ## Acceptance
 
 - `yarn ts`, `yarn lint`, `yarn test` and `yarn build` pass.
-- With the server from plan 05 running and `WEB_ALLOWED_ORIGINS=http://localhost:5173`, `yarn dev:web` plus opening the token URL on port 5173 shows the badge as connected.
+- With the server from plan 05 running, `yarn dev:web` and `yarn workspace @agent-remote-control/web preview` (after a build) each show the badge as connected after the token from the server log is entered. If the web connects directly to the server instead of through the proxy, its origin goes in `WEB_ALLOWED_ORIGINS`.
 
 ## Commit
 

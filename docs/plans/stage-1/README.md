@@ -9,7 +9,7 @@ Stage 1 of the [roadmap](../../ROADMAP.md): a Yarn workspaces monorepo plus a lo
 | 01 | [Monorepo: relocate the server](01-monorepo-server.md) | — | Sonnet 5.5 | medium |
 | 02 | [Monorepo: Docker, CI and docs](02-monorepo-docker-ci-docs.md) | 01 | Sonnet 5.5 | low |
 | 03 | [Protocol package](03-protocol-package.md) | 01 | Sonnet 5.5 | low |
-| 04 | [Server: transport, auth and static serving](04-server-transport.md) | 03 | Sonnet 5.5 | high |
+| 04 | [Server: transport and auth](04-server-transport.md) | 03 | Sonnet 5.5 | high |
 | 05 | [Server: web conversations](05-server-conversations.md) | 04 | Sonnet 5.5 | high |
 | 06 | [Web: scaffold and connection](06-web-scaffold.md) | 03 | Sonnet 5.5 | medium |
 | 07 | [Web: chat interface](07-web-chat.md) | 05, 06 | Sonnet 5.5 | medium |

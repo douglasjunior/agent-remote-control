@@ -45,9 +45,9 @@ Moving the server is a pure relocation: no behavior change, every test still gre
 - **`packages/server`** gains a `web` module: an inbound adapter beside `discord`, consuming the same channel-agnostic orchestrator.
 - **`packages/web`** shows the conversation list, the chat, live progress and agent questions as buttons.
 
-**Transport port.** The `web` module depends on `IClientTransportPort`, which accepts client connections and exchanges `protocol` messages with them. The first adapter is a WebSocket server (`ws`) on the existing NestJS HTTP port (`PORT`, default `3000`). Plain `ws` with JSON frames is chosen over Socket.IO because a WebRTC DataChannel carries the same frames, so the Stage 3 adapter implements the same port without touching the module.
+**Transport port.** The `web` module depends on `IClientTransportPort`, which accepts client connections and exchanges `protocol` messages with them. The first adapter is a WebSocket server (`ws`) on the existing NestJS HTTP port (`PORT`, default `3000`), at `/ws`. Plain `ws` with JSON frames is chosen over Socket.IO because a WebRTC DataChannel carries the same frames, so the Stage 3 adapter implements the same port without touching the module.
 
-**Serving the interface locally.** The server serves the web package's production build as static files on the same port, so the user opens the link with the access token that the server prints at startup (`http://localhost:3000/#token=...`). During development, the Vite dev server proxies the WebSocket to the server.
+**Serving the interface locally.** The web package is a separate app: the Vite dev server or `vite preview` locally, nginx in production. Each proxies `/ws` to the server, so the browser sees a single origin. The server prints its access token at startup and the interface asks for it on first use.
 
 ## Stage 2: Simple mode
 
