@@ -50,7 +50,6 @@ describe('WebSocketServerConnection', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.stubGlobal('WebSocket', FakeWebSocket);
-    vi.stubEnv('VITE_SERVER_URL', '');
     FakeWebSocket.instances = [];
     localStorage.clear();
     storeAccessToken('secret');
@@ -64,7 +63,6 @@ describe('WebSocketServerConnection', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -84,12 +82,6 @@ describe('WebSocketServerConnection', () => {
 
     latest().receive({ type: 'auth.ok' });
     expect(statuses).toEqual(['connecting', 'open']);
-  });
-
-  it('connects to VITE_SERVER_URL when it is set', () => {
-    vi.stubEnv('VITE_SERVER_URL', 'ws://localhost:3000/ws');
-    connection.connect();
-    expect(latest().url).toBe('ws://localhost:3000/ws');
   });
 
   it('uses wss on https pages', () => {

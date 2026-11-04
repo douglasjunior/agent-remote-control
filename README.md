@@ -74,7 +74,7 @@ A browser interface to chat with the agents without Discord. It is a separate ap
 | Production build | `pnpm build && pnpm preview:web` | `http://localhost:4173` |
 | Production | nginx serving `packages/web/dist` | your domain |
 
-The web app connects straight to the server at `VITE_SERVER_URL` (for example `ws://localhost:3000/ws`; set it in the root `.env`). The browser origin that serves the app must be listed in `WEB_ALLOWED_ORIGINS`: the server uses that list for the WebSocket origin check and for CORS on its HTTP endpoints. `VITE_SERVER_URL` is read when the app is built, so rebuild after changing it. Leave `VITE_SERVER_URL` empty when a reverse proxy serves the app and the server on one origin (the nginx example below): the app then connects to `/ws` on the page's own origin.
+Vite (`dev` and `preview`) proxies `/ws` and `/health` to the server, using the `PORT` from the root `.env` (default `3000`), so the browser sees a single origin and the server's origin check passes. If the web app reaches the server directly instead, list its origin in `WEB_ALLOWED_ORIGINS`.
 
 **nginx example**
 
@@ -109,8 +109,7 @@ server {
 |---|---|---|
 | `WEB_ENABLED` | Set to `false` to leave the web channel out of the server | `true` |
 | `WEB_ACCESS_TOKEN` | Access token; generated into `DATA_DIR/web/access-token` when empty | *(generated)* |
-| `WEB_ALLOWED_ORIGINS` | Browser origins (comma-separated) allowed to open the WebSocket and to call the HTTP endpoints (CORS); use `http://localhost:5173,http://localhost:4173` for the Vite dev server and `preview:web` | *(same origin only)* |
-| `VITE_SERVER_URL` | WebSocket URL the web app connects to, read at build time; empty means `/ws` on the page's own origin | *(same origin)* |
+| `WEB_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open the WebSocket | *(same origin only)* |
 
 ## 🤖 Supported Agents
 
