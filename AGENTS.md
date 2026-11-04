@@ -15,43 +15,50 @@ agent-remote-control/
 ├── .agents/                        # AI agent governance
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
 ├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings and global preferences (user language)
-├── src/                            # NestJS application source code
-│   ├── modules/                    # Vertical modules segregated by domain
-│   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, bridges and demux
-│   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
-│   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
-│   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
-│   │   └── workspace/              # Workspace directory and manifest
-│   │
-│   │   Internal folders of a module (each module uses only the ones it needs):
-│   │       ├── adapters/           # Secondary/technology adapters (*.adapter.ts)
-│   │       ├── bridges/            # Bridge processes between protocols (e.g. ACP ↔ agy)
-│   │       ├── constants/          # Domain constants
-│   │       ├── demux/              # Decomposition of streams into typed events
-│   │       ├── formatters/         # Output formatting for the channel
-│   │       ├── handlers/           # Primary/driving adapters (Discord events/commands)
-│   │       ├── models/             # Domain types and models (*.model.ts, *.type.ts)
-│   │       ├── ports/              # Interfaces and injection Symbols (*.port.ts)
-│   │       ├── prompts/            # Agent system prompts (*.prompt.ts)
-│   │       ├── services/           # Concrete supporting services (*.service.ts)
-│   │       ├── testing/            # Stubs, fakes and fixtures shared by tests
-│   │       ├── use-cases/          # Business rules and orchestration (*.use-case.ts)
-│   │       ├── utils/              # Utilities without domain state (*.util.ts)
-│   │       └── <name>.module.ts    # Module configuration and NestJS DI wiring
-│   ├── app.controller.ts           # Root diagnostics/healthcheck controller
-│   ├── app.module.ts               # Application root module
-│   ├── app.service.ts              # Application root service
-│   └── main.ts                     # NestJS application bootstrap
-├── .github/workflows/              # CI/CD: publishes the multi-platform Docker image to Docker Hub on every GitHub release
-├── test/                           # e2e tests and global test utilities
+├── packages/
+│   └── server/                     # @agent-remote-control/server: the NestJS application
+│       ├── src/                    # NestJS application source code
+│       │   ├── modules/                    # Vertical modules segregated by domain
+│       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, bridges and demux
+│       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
+│       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
+│       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
+│       │   │   └── workspace/              # Workspace directory and manifest
+│       │   │
+│       │   │   Internal folders of a module (each module uses only the ones it needs):
+│       │   │       ├── adapters/           # Secondary/technology adapters (*.adapter.ts)
+│       │   │       ├── bridges/            # Bridge processes between protocols (e.g. ACP ↔ agy)
+│       │   │       ├── constants/          # Domain constants
+│       │   │       ├── demux/              # Decomposition of streams into typed events
+│       │   │       ├── formatters/         # Output formatting for the channel
+│       │   │       ├── handlers/           # Primary/driving adapters (Discord events/commands)
+│       │   │       ├── models/             # Domain types and models (*.model.ts, *.type.ts)
+│       │   │       ├── ports/              # Interfaces and injection Symbols (*.port.ts)
+│       │   │       ├── prompts/            # Agent system prompts (*.prompt.ts)
+│       │   │       ├── services/           # Concrete supporting services (*.service.ts)
+│       │   │       ├── testing/            # Stubs, fakes and fixtures shared by tests
+│       │   │       ├── use-cases/          # Business rules and orchestration (*.use-case.ts)
+│       │   │       ├── utils/              # Utilities without domain state (*.util.ts)
+│       │   │       └── <name>.module.ts    # Module configuration and NestJS DI wiring
+│       │   ├── app.controller.ts           # Root diagnostics/healthcheck controller
+│       │   ├── app.module.ts               # Application root module
+│       │   ├── app.service.ts              # Application root service
+│       │   └── main.ts                     # NestJS application bootstrap
+│       ├── test/                   # e2e tests and global test utilities
+│       ├── nest-cli.json           # NestJS CLI configuration
+│       ├── tsconfig.json           # Server TypeScript configuration (extends tsconfig.base.json)
+│       ├── tsconfig.build.json     # Build TypeScript configuration
+│       ├── vitest.config.ts        # Vitest project "server" (unit tests)
+│       ├── vitest.config.e2e.ts    # Vitest configuration for e2e tests
+│       └── package.json            # Server dependencies and scripts
+├── .github/workflows/              # CI (type check, lint and tests) on pull requests; publishes the multi-platform Docker image to Docker Hub on every GitHub release
 ├── Dockerfile                      # Production image (Debian-based) with the app and Codex
 ├── docker-entrypoint.sh            # Provides the CLIs listed in ARC_AGENTS at container startup
 ├── .dockerignore                   # Files excluded from the Docker build context
-├── vitest.config.ts                # Vitest configuration for unit tests
-├── vitest.config.e2e.ts            # Vitest configuration for e2e tests
-├── tsconfig.json                   # Base TypeScript configuration
-├── nest-cli.json                   # NestJS CLI configuration
-└── package.json                    # Project dependencies and scripts
+├── vitest.config.ts                # Vitest root configuration: test projects and coverage
+├── tsconfig.base.json              # Compiler options shared by every package
+├── eslint.config.js                # ESLint flat configuration for the whole repository
+└── package.json                    # Yarn workspaces root: shared devDependencies and scripts
 ```
 
 ## `.agents/` Structure
@@ -68,7 +75,7 @@ Before creating or changing any code, consult the catalog in `.agents/skills/`, 
 - **Testing with Vitest**:
   - Unit tests live side by side with the files under test, following the `*.spec.ts` pattern.
   - Target of **100% coverage** of executable production code lines.
-  - `vi.mock` is restricted **exclusively to external I/O boundaries** (third-party SDKs such as Discord.js and the ACP SDK, and native Node modules such as `node:fs` and `node:child_process`). Internal code in `src/` is **never** mocked with `vi.mock`; use stubs/fakes that implement the ports (`implements IMyPort`).
+  - `vi.mock` is restricted **exclusively to external I/O boundaries** (third-party SDKs such as Discord.js and the ACP SDK, and native Node modules such as `node:fs` and `node:child_process`). Internal code in `packages/server/src/` is **never** mocked with `vi.mock`; use stubs/fakes that implement the ports (`implements IMyPort`).
 - **Ban on barrel exports (`index.ts`)**:
   - Do not use `index.ts` files that re-export symbols from folders or modules. Always import directly from the symbol's source file to avoid unnecessary coupling and circular dependencies.
 
@@ -86,15 +93,17 @@ All text kept in the repository describes the **current state**, written for who
 
 ## Essential Commands
 
-- Install dependencies: `yarn install`
-- Development mode with watch: `yarn start:dev`
-- Build: `yarn build`
-- TypeScript static type checking: `yarn ts`
-- Linter: `yarn lint`
-- Code formatting via ESLint: `yarn format` (or `yarn lint:fix`)
-- Run unit tests: `yarn test`
-- Test coverage: `yarn test:cov`
-- End-to-end (e2e) tests: `yarn test:e2e`
+All commands run from the repository root and apply to every package in `packages/`.
+
+- Install dependencies: `pnpm install`
+- Development mode with watch: `pnpm start:dev`
+- Build: `pnpm build`
+- TypeScript static type checking: `pnpm ts`
+- Linter: `pnpm lint`
+- Code formatting via ESLint: `pnpm format` (or `pnpm lint:fix`)
+- Run unit tests: `pnpm test`
+- Test coverage: `pnpm test:cov`
+- End-to-end (e2e) tests: `pnpm test:e2e`
 
 ## Mandatory Rules for AI Agents
 
@@ -108,7 +117,7 @@ All text kept in the repository describes the **current state**, written for who
 3. **Orchestration via Use Cases**: All business logic and flow coordination is done exclusively by Use Case classes (`*.use-case.ts`). Do not use workflow classes.
 4. **No barrel exports**: Import classes, ports and types directly from their definition file, without `index.ts`.
 5. **No obvious comments**: Do not repeat what the code, typing or signature already says.
-6. **Stubs and fakes for internal dependencies**: Isolate internal `src/` dependencies by injecting stubs in the constructor or overriding providers in `Test.createTestingModule`; `vi.mock` is reserved for external I/O boundaries.
+6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in `Test.createTestingModule`; `vi.mock` is reserved for external I/O boundaries.
 7. **Pruning pass before finishing**: Check comments and text introduced in the diff and remove any noise before submitting.
-8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `yarn ts`, `yarn lint` and `yarn test` (plus `yarn test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`yarn format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
+8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `pnpm ts`, `pnpm lint` and `pnpm test` (plus `pnpm test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`pnpm format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
 9. **Skills in sync with the code**: Every change to a port contract, public signature, lifecycle or rule described in a skill updates the skill in the same commit. Before finishing, compare the skills of the touched module against the `git diff`.

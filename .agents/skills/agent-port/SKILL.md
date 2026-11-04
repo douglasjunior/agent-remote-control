@@ -20,12 +20,12 @@ description: >
 
 ## `IAgentPort` Contract
 
-The `IAgentPort` port lives in `src/modules/agent/ports/agent.port.ts` and decouples
+The `IAgentPort` port lives in `packages/server/src/modules/agent/ports/agent.port.ts` and decouples
 the application core from the technical details of communicating with AI agents.
 
 Each `IAgentPort` instance represents one agent subprocess with a single ACP
 session. Consumers obtain instances through the `IAgentPortFactory` factory
-(`src/modules/agent/ports/agent-port-factory.port.ts`), registered in `AgentModule` with
+(`packages/server/src/modules/agent/ports/agent-port-factory.port.ts`), registered in `AgentModule` with
 `AcpAgentPortFactoryAdapter`:
 
 ```ts
@@ -80,7 +80,7 @@ same ACP session and the same `cwd`.
 `AgentUpdate` is `{ kind: 'text'; text: string }` and `AgentToolStatus` is
 `'pending' | 'in_progress' | 'completed' | 'failed'`. No type from
 `@agentclientprotocol/sdk` appears in the port; the SDK is only imported in
-`src/modules/agent/{adapters,bridges,demux,testing}`.
+`packages/server/src/modules/agent/{adapters,bridges,demux,testing}`.
 
 ## Session Lifecycle
 
@@ -210,7 +210,7 @@ mode, with no bridge or extra dependency:
 
 ### ACP Versions
 
-`@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `yarn why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
+`@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `pnpm why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
 
 ## Prescriptive Rules
 

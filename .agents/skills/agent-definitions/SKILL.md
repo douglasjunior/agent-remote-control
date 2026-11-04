@@ -17,7 +17,7 @@ description: >
 > or persona structure changed → update; a technical refactor that preserves the described
 > pattern → leave it alone.
 
-The `AgentDefinitionsModule` lives in `src/modules/agent-definitions/` and centralizes
+The `AgentDefinitionsModule` lives in `packages/server/src/modules/agent-definitions/` and centralizes
 the catalog of personas, specialized system prompts and model parameters for the system's
 development agents.
 
@@ -137,7 +137,7 @@ editing the CEO's prompt.
 
 ## Specialized System Prompts
 
-The specialized prompts live in `src/modules/agent-definitions/prompts/`:
+The specialized prompts live in `packages/server/src/modules/agent-definitions/prompts/`:
 
 Every agent prompt ends with `FINAL_RESPONSE_INSTRUCTIONS` (`final-response.prompt.ts`): the
 turn's final response comes exactly once inside `<final_response>…</final_response>`
@@ -224,7 +224,7 @@ from the narration.
 
 ## Registry Service (`AgentRegistryService`)
 
-The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `src/modules/orchestrator/ports/agent-registry.port.ts`:
+The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `packages/server/src/modules/orchestrator/ports/agent-registry.port.ts`:
 
 - `getSystemPrompt(agentRole: string)`: resolves the definition case-insensitively and calls `buildSystemPrompt` with all other registered definitions. Unregistered roles receive a generic prompt;
 - `getDefaultModel(agentRole: string)`: returns the identifier of the preferred model associated with the role;

@@ -50,9 +50,9 @@ You need **Node.js 24+**, **Git**, at least one [supported agent CLI](#-supporte
 ```bash
 git clone https://github.com/douglasjunior/agent-remote-control.git
 cd agent-remote-control
-yarn install                 # Yarn 4 is pinned in the repository
+pnpm install                 # pnpm is pinned through the packageManager field
 cp .env.example .env         # then set DISCORD_BOT_TOKEN
-yarn start:dev
+pnpm start:dev
 ```
 
 Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run.
@@ -161,7 +161,7 @@ sequenceDiagram
 ## 📋 Prerequisites
 
 - **Node.js** `>=24`
-- **Yarn**: the repository pins Yarn 4 in `.yarn/releases`, so any globally installed Yarn (or `corepack enable`) works.
+- **pnpm**: the repository pins its version in the `packageManager` field, so `corepack enable` is enough.
 - **Git** installed and configured
 - At least one agent installed and authenticated, with its command on the `PATH` (an agent without it is not offered):
   - **Claude Code CLI** (`claude` on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
@@ -443,38 +443,39 @@ Create the feature/password-reset branch in the my-backend project, commit the c
 
 ## 🏗️ Architecture
 
-A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `src/modules/`:
+A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `packages/server/src/modules/`:
 
-- **`agent`** (`src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
-- **`orchestrator`** (`src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
-- **`workspace`** (`src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
-- **`discord`** (`src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
+- **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
+- **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
+- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
+- **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
+- **`discord`** (`packages/server/src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
 
 ## 🧪 Development
 
 Start the NestJS application in watch mode:
 
 ```bash
-yarn start:dev
+pnpm start:dev
 ```
 
 To build and run the production bundle:
 
 ```bash
-yarn build
-yarn start:prod
+pnpm build
+pnpm start:prod
 ```
 
 The project targets **100% unit test coverage** of executable production code lines, with end-to-end (e2e) tests for the entry points:
 
 ```bash
-yarn test        # unit tests
-yarn test:cov    # unit tests with a coverage report
-yarn test:e2e    # end-to-end tests
-yarn ts          # TypeScript static type checking
-yarn lint        # static analysis with ESLint
-yarn format      # formatting and autofix via ESLint
+# All commands run from the repository root and apply to every package in `packages/`
+pnpm test        # unit tests
+pnpm test:cov    # unit tests with a coverage report
+pnpm test:e2e    # end-to-end tests
+pnpm ts          # TypeScript static type checking
+pnpm lint        # static analysis with ESLint
+pnpm format      # formatting and autofix via ESLint
 ```
 
 ## 🤝 Contributing
@@ -483,7 +484,7 @@ Contributions are very welcome, from bug reports and ideas to new agents and new
 
 1. Read [`AGENTS.md`](AGENTS.md) for the architecture, conventions and mandatory rules, and the [skills catalog](.agents/skills/) for the rules of the module you are touching.
 2. Fork the repository and create a topic branch.
-3. Make sure `yarn ts`, `yarn lint` and `yarn test` pass.
+3. Make sure `pnpm ts`, `pnpm lint` and `pnpm test` pass.
 4. Write commit messages following [Conventional Commits](https://www.conventionalcommits.org/) in English and open a pull request.
 
 Found a bug or have an idea? [Open an issue](https://github.com/douglasjunior/agent-remote-control/issues).

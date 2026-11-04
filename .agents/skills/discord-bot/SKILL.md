@@ -18,7 +18,7 @@ description: >
 > *which* rule — it is the nature of the change: a Discord bot guideline or convention
 > changed → update; technical refactor that preserves the described pattern → leave it alone.
 
-The `DiscordModule` module lives in `src/modules/discord/` and acts as the first primary
+The `DiscordModule` module lives in `packages/server/src/modules/discord/` and acts as the first primary
 entry port (*driving adapter*) of the system. It listens to messages and interactions,
 routes prompts to the orchestrator with the initial persona `'CEO'`, streams activities
 in real time and delivers the consolidated final response in the corresponding thread.

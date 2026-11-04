@@ -27,16 +27,13 @@
   },
   "homepage": "https://github.com/douglasjunior/agent-remote-control",
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
   "scripts": {
-    "build": "yarn workspaces foreach -Apt run build",
+    "build": "pnpm -r run build",
     "start": "nest start --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
     "start:dev": "nest start --watch --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
     "start:debug": "nest start --debug --watch --config packages/server/nest-cli.json --path packages/server/tsconfig.build.json",
     "start:prod": "node packages/server/dist/main",
-    "ts": "yarn workspaces foreach -Apt run ts",
+    "ts": "pnpm -r run ts",
     "format": "eslint packages/ --fix",
     "lint": "eslint packages/ --cache --cache-location .eslintcache/",
     "lint:fix": "eslint packages/ --fix",
@@ -61,5 +58,5 @@
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
   },
-  "packageManager": "yarn@4.18.1"
+  "packageManager": "pnpm@12.16.1"
 }

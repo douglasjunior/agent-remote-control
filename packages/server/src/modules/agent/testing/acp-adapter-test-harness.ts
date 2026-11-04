@@ -318,7 +318,7 @@ export function acpSdkMockModule() {
           },
           signal: new AbortController().signal,
           closed: Promise.resolve(),
-          close: vi.fn(),
+          close: vi.fn() as Mock,
         };
       },
     };
@@ -327,7 +327,7 @@ export function acpSdkMockModule() {
 
   return {
     PROTOCOL_VERSION: 'mock-protocol-version',
-    ndJsonStream: vi.fn(() => ({ kind: 'nd-json-stream' })),
+    ndJsonStream: vi.fn(() => ({ kind: 'nd-json-stream' })) as Mock,
     client,
   };
 }

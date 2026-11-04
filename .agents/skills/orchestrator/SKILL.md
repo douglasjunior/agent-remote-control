@@ -19,7 +19,7 @@ description: >
 > which rule — it is the nature of the change: an orchestrator guideline or convention
 > changed → update; technical refactor that preserves the described pattern → leave it alone.
 
-The `OrchestratorModule` module lives in `src/modules/orchestrator/` and centralizes
+The `OrchestratorModule` module lives in `packages/server/src/modules/orchestrator/` and centralizes
 all turn coordination between input clients (chat channels such as Discord,
 HTTP APIs or scheduled jobs) and the development agent adapters.
 
@@ -30,7 +30,7 @@ and relays activity and text streams on demand.
 
 ## Core Models
 
-The models live in `src/modules/orchestrator/models/`:
+The models live in `packages/server/src/modules/orchestrator/models/`:
 
 ### `SessionContext` (`session-context.model.ts`)
 
@@ -115,7 +115,7 @@ are in `agent-config-outcome.model.ts`.
 
 ## Orchestrator Ports
 
-The orchestrator ports live in `src/modules/orchestrator/ports/`:
+The orchestrator ports live in `packages/server/src/modules/orchestrator/ports/`:
 
 ### 1. `ISessionStorePort` (`session-store.port.ts`)
 

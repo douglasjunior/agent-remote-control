@@ -11,7 +11,6 @@ export default defineConfig([
     '**/node_modules/',
     'packages/*/dist/',
     'packages/*/coverage/',
-    '.yarn/',
     '**/.eslintcache/',
     '**/.tsbuildinfo/',
     'scripts/',

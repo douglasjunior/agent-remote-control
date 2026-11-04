@@ -26,7 +26,8 @@ the internal content of files, what is exposed and how classes and functions are
 ### Ban on barrel exports (`index.ts`)
 
 Using `index.ts` files to re-export multiple symbols from a folder or module is
-**forbidden across the whole repository**.
+**forbidden across the whole repository**. A package exposes files to other packages
+through subpath exports in its `package.json`, never through an `index.ts`.
 
 In the NestJS ecosystem, with dependency injection and metadata decorators, barrel files
 introduce hidden circular dependencies, hinder tree-shaking and improperly couple consumers

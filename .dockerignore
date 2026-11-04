@@ -1,6 +1,6 @@
 node_modules
-dist
-coverage
+**/dist
+**/coverage
 .git
 .github
 .eslintcache
@@ -10,7 +10,7 @@ data
 workspaces
 .claude
 .vscode
-test
+packages/*/test
 **/*.spec.ts
 Dockerfile
 .dockerignore
