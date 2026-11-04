@@ -5,11 +5,12 @@ import importPlugin from 'eslint-plugin-import';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+
 export default defineConfig([
   globalIgnores([
     '**/node_modules/',
-    '**/dist/',
-    '**/coverage/',
+    'packages/*/dist/',
+    'packages/*/coverage/',
     '.yarn/',
     '**/.eslintcache/',
     '**/.tsbuildinfo/',
@@ -19,7 +20,9 @@ export default defineConfig([
   {
     settings: {
       'import/resolver': {
-        typescript: {},
+        typescript: {
+          project: 'packages/*/tsconfig.json',
+        },
       },
     },
   },
@@ -67,7 +70,7 @@ export default defineConfig([
         },
       ],
       'object-shorthand': ['error'],
-      'indent': 'off',
+      indent: 'off',
       'array-bracket-newline': ['error', { multiline: true }],
       'comma-dangle': 'off',
       'no-multi-spaces': 'error',

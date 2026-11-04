@@ -1,6 +1,7 @@
 # compiled output
 /dist
-/node_modules
+/packages/*/dist
+node_modules
 /build
 
 # TypeScript build cache
@@ -21,6 +22,7 @@ lerna-debug.log*
 
 # Tests
 /coverage
+/packages/*/coverage
 /.nyc_output
 
 # IDEs and editors
