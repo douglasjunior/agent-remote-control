@@ -8,17 +8,18 @@ The orchestrator deals with agents: running turns, delegation, the questions age
 
 ## Read first
 
-`AGENTS.md`, the skills `orchestrator`, `discord-bot`, `web-channel`, `clean-architecture-nestjs` and `tests-best-practices`, and in `modules/orchestrator`: `services/orchestrator.service.ts` (replaced by three ports), `use-cases/{resolve-conversation-input,start-agent-config-selection,submit-agent-config-selection,cancel-agent-config-selection}.use-case.ts`, `services/{agent-capabilities,agent-profile-list,language-change-request,user-question-queue}.service.ts`, `adapters/in-memory-agent-config-selection-store.adapter.ts` and the models `agent-config-selection`, `agent-config-outcome`, `user-question`.
+`AGENTS.md`, the skills `orchestrator`, `discord-bot`, `web-channel`, `clean-architecture-nestjs` and `tests-best-practices`, and in `modules/orchestrator`: `services/orchestrator.service.ts`, `use-cases/{resolve-conversation-input,start-agent-config-selection,submit-agent-config-selection,cancel-agent-config-selection}.use-case.ts`, `services/{agent-capabilities,agent-profile-list,language-change-request,user-question-queue}.service.ts`, `adapters/in-memory-agent-config-selection-store.adapter.ts` and the models `agent-config-selection`, `agent-config-outcome`, `user-question`.
 
 ## Orchestrator after this plan
 
 Keeps: turns, delegation, cancellation, quota, shell, audio transcription, the settings and preferences stores, and the question queue.
 
 - **Neutral option model:** `AgentOption { id, name, description? }` replaces `SelectionOption`. It has no `index`: numbering is a menu concern. `AgentCapabilitiesService` returns it for agents, models and efforts.
-- **`AgentProfilesService`** (settings per conversation, no menu state): `current(conversationId)` (the conversation's settings, else the most recent ones), `list(conversationId)` (every role with its display name and profile), `save(conversationId, roles | undefined, profile)` (`undefined` = every role; returns the settings and the profile) and `ensure(conversationId)` returning `'configured' | 'inherited' | 'missing'` (`inherited` copies the most recent settings into the conversation).
-- **`UserLanguageService`:** `get()` and `set(raw)` (normalizes and persists; `null` when invalid).
+- **`AgentProfilesService`** (settings per conversation, no menu state): `current(conversationId)` (the conversation's settings, else the most recent ones), `list(conversationId)` (every role with its display name and profile), `save(conversationId, roles | undefined, profile)` (`undefined` = every role; returns the saved settings) and `ensure(conversationId)` returning `'configured' | 'inherited' | 'missing'` (`inherited` copies the most recent settings into the conversation).
+- **`UserLanguageService`:** `get()` (`English` while none is stored) and `set(raw)` (normalizes and persists; `undefined` when the language is invalid).
+- **`ConfigureAgentProfilesUseCase`:** checks the agent, the roles, the model and the effort against the lists, takes the names from them and saves through `AgentProfilesService`. It answers `{ ok: true }` or `{ ok: false, error }` with `Unknown agent`, `Unknown role`, `Unknown model`, `An effort needs a model` or `Unknown effort`.
 - **`UserQuestionQueueService.submit`** takes structured input: `{ kind: 'option', optionIndex }` or `{ kind: 'text', text }`, plus optional attachments. It never reads a number from text. `current(conversationId)` already exposes the open question so a channel can decide how to read what the user typed.
-- **Three ports are the only public surface** of `OrchestratorModule`, each with an interface and an injection Symbol in `ports/`, implemented by a small service. The `OrchestratorService` facade and the exports of internal services are removed; channels never import `AgentCapabilitiesService`, `AgentProfilesService`, `UserLanguageService`, `UserQuestionQueueService` or a use case.
+- **Three ports are the only public surface** of `OrchestratorModule`, each with an interface and an injection Symbol in `ports/`, implemented by a small service. `OrchestratorService` is deleted and the module exports no internal service; channels never import `AgentCapabilitiesService`, `AgentProfilesService`, `UserLanguageService`, `UserQuestionQueueService` or a use case.
   - `IAgentTurnPort` (`AgentTurnService`): `executeTurn`, `cancelTurn`, `transcribeAudio`, `isShellCommandEnabled`, `runShellCommand`, `getQuota`.
   - `IAgentConfigurationPort` (`AgentConfigurationService`): `listAgents`, `getDefaultAgent`, `currentAgent`, `listModels`, `listEfforts`, `listRoles`, `listProfiles`, `hasSettings` (a pure query), `ensureSettings`, `saveProfiles` (a profile the caller already resolved), `configureProfiles` (checks the ids against the lists, takes the names from them and saves; returns `{ ok }` or an error), `getLanguage` and `setLanguage`.
   - `IUserQuestionPort` (`UserQuestionService`): `hasPendingQuestions`, `currentQuestion`, `answerQuestion`.
@@ -28,11 +29,11 @@ Removed from the orchestrator: `IAgentConfigSelectionStorePort` and its adapter,
 
 ## Discord after this plan
 
-The removed code moves to `modules/discord` and keeps its behavior: the selection store (port, in-memory adapter), the menu models, the profile list service, the language request service and the four use cases. A new `DiscordConversationService` exposes what the handlers called on the orchestrator facade before: `resolveInput`, `startAgentSelection`, `startConfigSelection`, `startProfilesSelection`, `cancelConfigSelection`, `hasActiveConfigSelection`, `requestLanguageChange`, `hasPendingLanguageChange` and `cancelLanguageChange`.
+The removed code moves to `modules/discord` and keeps its behavior: the selection store (port, in-memory adapter), the menu models, the profile list service, the language request service and the four use cases. The handlers and the use cases depend on the orchestrator ports only. A new `DiscordConversationService` is the handlers' entry point for the dialog state: `resolveInput`, `startAgentSelection`, `startConfigSelection`, `startProfilesSelection`, `cancelConfigSelection`, `hasActiveConfigSelection`, `requestLanguageChange`, `hasPendingLanguageChange` and `cancelLanguageChange`.
 
 `resolveInput` is where Discord decides what a typed message means: with a question open, a whole number becomes `{ kind: 'option' }` when the question has options and anything else becomes `{ kind: 'text' }`. Menu options get their `index` when the menu is built.
 
-The Discord behavior does not change: its specs move with the code and keep passing, and the e2e suite for the bot stays green.
+Discord behavior is unchanged. Its specs move with the code and use the port stubs, and the e2e suite for the bot stays green.
 
 ## Web after this plan
 
@@ -43,7 +44,7 @@ No menu state. The protocol changes:
 - **Server events:** `agents.list { agents }`; `models.list { agentId, models }`; `efforts.list { agentId, modelId, efforts }`; `profiles { conversationId, configured, profiles }` (`configured` is `hasSettings`: the conversation has settings or can inherit the most recent ones) where each profile is `{ role, roleName, agent?, model?, effort? }` with `{ id, name }` values and `agent.available`. `profiles.set` answers by broadcasting `profiles` for the conversation, so every open tab updates.
 - **Validation in `profiles.set`:** done by the orchestrator's `configureProfiles`: the agent must be one of `agents.list`, the model one of `models.list` for that agent, and the effort (which requires a model) one of `efforts.list`; otherwise an `error` event. Names come from the lists, never from the client.
 - **First message:** `message.send` calls `ensureSettings` first. When it returns `missing` and agents are available, the server publishes a warning `notice` ("Choose an agent, model and effort for this conversation before sending messages.") and does not run or record the message. When no agent is installed the turn runs with the default agent, as in Discord. The client reads `configured` from `profiles` and keeps the composer disabled until it is true.
-- `message.send` no longer resolves menu or question state: it executes a turn, which the orchestrator steers or queues when one is running. Questions are answered only with `question.answer`.
+- `message.send` always executes a turn, which the orchestrator steers or queues when one is running; it never reads menu or question state. Questions are answered only with `question.answer`.
 
 ## Steps
 
@@ -57,14 +58,14 @@ No menu state. The protocol changes:
 
 ## Tests
 
-- Orchestrator: specs for `AgentProfilesService`, `UserLanguageService`, the structured `submit` and the new facade methods.
-- Discord: the moved specs, plus the option-number reading in `resolveInput`.
-- Web: use cases with the stub orchestrator and the fake store; handler routing, validation errors and the first-message refusal.
+- Orchestrator: specs for `AgentProfilesService`, `UserLanguageService`, `ConfigureAgentProfilesUseCase`, the structured `submit` and the three port services.
+- Discord: the moved specs, rewritten over `StubAgentConfigurationPort`, `StubAgentTurnPort` and `StubUserQuestionPort`, plus the option-number reading in `resolveInput`.
+- Web: use cases over the port stubs and the fake store; handler routing, the refusal and validation errors reported by `configureProfiles`, and the first-message refusal.
 - e2e: web `agents.list` and `profiles.get` round trip.
 
 ## Acceptance
 
-`pnpm ts`, `pnpm lint`, `pnpm test` (100% line coverage target kept) and `pnpm test:e2e` pass. `grep -rn "selection\|option number" packages/server/src/modules/orchestrator` finds no menu or numbered-input code.
+`pnpm ts`, `pnpm lint`, `pnpm test` (100% line coverage of production code) and `pnpm test:e2e` pass. `grep -rniE "selection|option number" packages/server/src/modules/orchestrator --exclude='*.spec.ts'` finds no menu or numbered-input code, and no file outside `modules/orchestrator` imports one of its `services/`, `use-cases/` or `adapters/` (ports, models and pure utils only), which `grep -rnE "orchestrator/(services|use-cases|adapters)" packages/server/src --exclude='*.spec.ts'` confirms for the production code of `discord` and `web`.
 
 ## Commits
 
