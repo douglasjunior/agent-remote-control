@@ -252,4 +252,29 @@ describe('ConversationView', () => {
       expect(screen.queryByText('History 1/1')).not.toBeInTheDocument();
     });
   });
+
+  describe('file mentions', () => {
+    it('inserts the chosen path with Enter instead of sending the message', async () => {
+      const user = userEvent.setup();
+      const { connection } = openConversation();
+      const field = screen.getByLabelText('Message');
+
+      await user.click(field);
+      await user.keyboard('read @');
+      const search = connection.sent.findLast(command => command.type === 'files.search');
+      await act(async () => connection.emitEvent({
+        type: 'files.results',
+        requestId: search?.type === 'files.search' ? search.requestId : '',
+        items: [{ path: 'app/main.ts', kind: 'file', matches: [0] }],
+        walking: false,
+      }));
+
+      expect(screen.getByRole('listbox', { name: 'Files' })).toBeInTheDocument();
+      await user.keyboard('{Enter}');
+
+      expect(field).toHaveValue('read @app/main.ts ');
+      expect(connection.sent.some(command => command.type === 'message.send')).toBe(false);
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+  });
 });

@@ -1,2 +1,4 @@
 export const MAX_MESSAGE_LENGTH = 20_000;
 export const MAX_PROMPT_HISTORY = 100;
+export const MAX_MENTION_RESULTS = 50;
+export const MAX_MENTION_QUERY_LENGTH = 200;

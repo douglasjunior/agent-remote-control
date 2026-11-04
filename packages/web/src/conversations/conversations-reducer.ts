@@ -93,6 +93,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'auth.ok':
     case 'auth.failed':
     case 'prompts.list':
+    case 'files.results':
     case 'models.list':
     case 'efforts.list':
     case 'error':

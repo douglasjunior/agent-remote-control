@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { MAX_MESSAGE_LENGTH } from './limits.js';
+import { MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH } from './limits.js';
 
 
 export const clientCommandSchema = z.discriminatedUnion('type', [
@@ -15,6 +15,8 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
   z.object({ type: z.literal('prompts.history'), requestId: z.string() }),
+  z.object({ type: z.literal('files.search'), requestId: z.string(), query: z.string().max(MAX_MENTION_QUERY_LENGTH) }),
+  z.object({ type: z.literal('files.close'), requestId: z.string() }),
   z.object({ type: z.literal('agents.list') }),
   z.object({ type: z.literal('models.list'), agentId: z.string() }),
   z.object({ type: z.literal('efforts.list'), agentId: z.string(), modelId: z.string() }),

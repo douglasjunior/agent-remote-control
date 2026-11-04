@@ -94,6 +94,20 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
   and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
   found among the known conversations. Files that do not match the protocol schemas are ignored.
+- File search for `@` mentions is one session per connection (`WebFileSearchSessionsService`). The first
+  `files.search { requestId, query }` with a new id replaces the connection's session and starts a walk of
+  the workspace base directory; later ones with the same id only change the query; `files.close` (and the
+  connection closing) stops the walk. Each update is a `files.results { requestId, items, walking }`:
+  up to `MAX_MENTION_RESULTS` items `{ path, kind, matches }`, where `path` is relative to the base
+  directory with `/` separators and a trailing `/` on directories, and `matches` are the indexes of the
+  characters of `path` matched by the query. `walking` is `true` until the walk ends.
+- `IWorkspaceFileSearchPort` (workspace module) opens a `FileSearchSession` (`setQuery`, `stop`) over a
+  listener (`onResults`, `onWalking`). `LocalWorkspaceFileSearchAdapter` walks breadth first, one batch
+  per directory, skipping dot entries and `node_modules`; a symbolic link counts when its target resolves
+  and a link back to an ancestor is not entered. `FileSearchIndex` scores the entries with `fuzzysort`
+  (case-insensitive subsequence match over the whole path, so `site/comp` finds `site/app/components`) in
+  slices of 5 000 entries under a generation token, and without a query lists the base directory, folders
+  first.
 - `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`, written atomically
   after every append. A file that is not a list of strings is ignored.
 

@@ -1,5 +1,5 @@
 import { parseClientCommand } from './client-command.js';
-import { MAX_MESSAGE_LENGTH } from './limits.js';
+import { MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH } from './limits.js';
 
 
 describe('parseClientCommand', () => {
@@ -11,6 +11,9 @@ describe('parseClientCommand', () => {
     { type: 'message.send', conversationId: 'c', text: 'hi' },
     { type: 'turn.cancel', conversationId: 'c' },
     { type: 'prompts.history', requestId: 'r' },
+    { type: 'files.search', requestId: 'r', query: 'src/ap' },
+    { type: 'files.search', requestId: 'r', query: '' },
+    { type: 'files.close', requestId: 'r' },
     { type: 'agents.list' },
     { type: 'models.list', agentId: 'claude' },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus' },
@@ -41,6 +44,9 @@ describe('parseClientCommand', () => {
     ['empty role list', { type: 'profiles.set', conversationId: 'c', roles: [], agentId: 'claude' }],
     ['profiles.set without an agent', { type: 'profiles.set', conversationId: 'c' }],
     ['prompts.history without a request id', { type: 'prompts.history' }],
+    ['files.close without a request id', { type: 'files.close' }],
+    ['files.search without a query', { type: 'files.search', requestId: 'r' }],
+    ['oversized files.search query', { type: 'files.search', requestId: 'r', query: 'a'.repeat(MAX_MENTION_QUERY_LENGTH + 1) }],
     ['models.list without an agent', { type: 'models.list' }],
     ['fractional option index', { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 1.5 } }],
     ['blank text answer', { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: '  ' } }],

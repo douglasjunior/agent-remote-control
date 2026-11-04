@@ -1,7 +1,9 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from 'vitest';
 
+import { LocalWorkspaceFileSearchAdapter } from './adapters/local-workspace-file-search.adapter.js';
 import { LocalWorkspaceAdapter } from './adapters/local-workspace.adapter.js';
+import { IWorkspaceFileSearchPort } from './ports/workspace-file-search.port.js';
 import { IWorkspacePort } from './ports/workspace.port.js';
 import { WorkspaceModule } from './workspace.module.js';
 
@@ -15,5 +17,6 @@ describe('WorkspaceModule', () => {
     const workspacePort = module.get<IWorkspacePort>(IWorkspacePort);
 
     expect(workspacePort).toBeInstanceOf(LocalWorkspaceAdapter);
+    expect(module.get(IWorkspaceFileSearchPort)).toBeInstanceOf(LocalWorkspaceFileSearchAdapter);
   });
 });

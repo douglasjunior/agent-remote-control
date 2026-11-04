@@ -100,6 +100,17 @@ the first line sends `prompts.history` and the navigation runs over the `prompts
 `requestId`, 5 s timeout) until the message is sent. `ArrowDown` on the last line walks back to the text being
 typed. The server records prompts; the client never appends.
 
+`useFileMentions` opens a file list when the caret is on an `@` that begins a word. Each open list is one
+server search session: the hook generates a `requestId`, sends `files.search` with it (no wait for a bare `@`,
+200 ms after typing a query), applies every `files.results` for that id (the list fills while `walking` is
+`true`) and sends `files.close` when the list closes. "Open" is derived from text, caret, focus and results;
+`Esc` dismisses the token until the caret leaves every mention. The highlight returns to the first item when
+the searched query changes, not when more results stream in. While the list is open the arrows, `Tab` and
+`Enter` belong to it, before the history and the send. A file is inserted as `@path ` (quoted when it has
+whitespace); a directory as `@dir/` with no space so the list goes into it. The popup highlights the
+characters listed in each item's `matches`, dims the folder part and shows a spinner while `walking`.
+`FileMentionPopup` is composed from tokens, not a shadcn `command`, because the field must keep the focus.
+
 ## Theme
 
 `ThemeProvider` keeps the choice (`'light' | 'dark' | 'system'`, default `'system'`) in `localStorage`

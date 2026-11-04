@@ -7,6 +7,7 @@ import { WebConversationEventsService } from '../services/web-conversation-event
 import { FakeClientConnection } from './fake-client-connection.js';
 import { FakeConversationStore } from './fake-conversation-store.js';
 import { FakePromptHistory } from './fake-prompt-history.js';
+import { FakeWorkspaceFileSearch } from './fake-workspace-file-search.js';
 import { StubWorkspacePort } from './stub-workspace.port.js';
 
 
@@ -20,7 +21,8 @@ export function createWebHarness() {
   const questions = new StubUserQuestionPort();
   const workspace = new StubWorkspacePort();
   const promptHistory = new FakePromptHistory();
+  const fileSearch = new FakeWorkspaceFileSearch();
   const observer = new FakeClientConnection('observer');
   registry.register(observer);
-  return { store, registry, events, agentTurn, configuration, questions, workspace, promptHistory, observer };
+  return { store, registry, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, observer };
 }

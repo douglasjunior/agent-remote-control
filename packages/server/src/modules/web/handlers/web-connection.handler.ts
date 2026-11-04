@@ -7,6 +7,7 @@ import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
+import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
@@ -43,6 +44,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly setProfiles: SetConversationProfilesUseCase,
     private readonly answerQuestion: AnswerConversationQuestionUseCase,
     private readonly promptHistory: ListPromptHistoryUseCase,
+    private readonly fileSearch: WebFileSearchSessionsService,
   ) {}
 
   onModuleInit(): void {
@@ -64,7 +66,10 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     };
 
     const timer = setTimeout(reject, AUTH_TIMEOUT_MS);
-    connection.onClose(() => clearTimeout(timer));
+    connection.onClose(() => {
+      clearTimeout(timer);
+      this.fileSearch.close(connection.id);
+    });
 
     connection.onMessage((data) => {
       if (rejected) {
@@ -103,6 +108,12 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'prompts.history':
         connection.send({ type: 'prompts.list', requestId: command.requestId, prompts: [...await this.promptHistory.execute()] });
+        return;
+      case 'files.search':
+        this.fileSearch.search(connection, command.requestId, command.query);
+        return;
+      case 'files.close':
+        this.fileSearch.close(connection.id, command.requestId);
         return;
       case 'agents.list':
         connection.send({ type: 'agents.list', agents: [...this.agentOptions.agents()] });

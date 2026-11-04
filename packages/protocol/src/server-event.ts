@@ -36,6 +36,16 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     state: conversationStateSchema,
   }),
   z.object({ type: z.literal('prompts.list'), requestId: z.string(), prompts: z.array(z.string()) }),
+  z.object({
+    type: z.literal('files.results'),
+    requestId: z.string(),
+    items: z.array(z.object({
+      path: z.string(),
+      kind: z.enum(['file', 'directory']),
+      matches: z.array(z.number().int().min(0)),
+    })),
+    walking: z.boolean(),
+  }),
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
   z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
   z.object({

@@ -13,6 +13,7 @@ import { IPromptHistoryPort } from './ports/prompt-history.port.js';
 import { WebAccessTokenService } from './services/web-access-token.service.js';
 import { WebConnectionRegistryService } from './services/web-connection-registry.service.js';
 import { WebConversationEventsService } from './services/web-conversation-events.service.js';
+import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
 import { CancelConversationTurnUseCase } from './use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from './use-cases/create-conversation.use-case.js';
@@ -34,6 +35,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     WebAccessTokenService,
     WebConnectionRegistryService,
     WebConversationEventsService,
+    WebFileSearchSessionsService,
     CreateConversationUseCase,
     ListConversationsUseCase,
     GetConversationHistoryUseCase,

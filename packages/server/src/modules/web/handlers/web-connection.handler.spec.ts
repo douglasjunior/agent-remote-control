@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
 import { createWebHarness } from '../testing/web-harness.js';
@@ -32,7 +33,7 @@ describe('WebConnectionHandler', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
     harness = createWebHarness();
-    const { store, events, agentTurn, configuration, questions, workspace, promptHistory } = harness;
+    const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
     const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory);
     handler = new WebConnectionHandler(
@@ -51,6 +52,7 @@ describe('WebConnectionHandler', () => {
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
       new AnswerConversationQuestionUseCase(questions, events),
       new ListPromptHistoryUseCase(promptHistory),
+      new WebFileSearchSessionsService(fileSearch),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -163,6 +165,34 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(connection.sent).toEqual([{ type: 'prompts.list', requestId: 'r1', prompts: ['latest', 'older'] }]);
+    });
+
+    it('streams files.results for files.search and only changes the query on the same request id', async () => {
+      connection.sent.length = 0;
+
+      connection.receive({ type: 'files.search', requestId: 'r2', query: 'src' });
+      connection.receive({ type: 'files.search', requestId: 'r2', query: 'srcx' });
+      await settle();
+      harness.fileSearch.sessions[0].emit([{ path: 'app/src/', kind: 'directory', matches: [0] }]);
+
+      expect(harness.fileSearch.sessions).toHaveLength(1);
+      expect(harness.fileSearch.sessions[0].queries).toEqual(['src', 'srcx']);
+      expect(connection.sent.at(-1)).toEqual({
+        type: 'files.results',
+        requestId: 'r2',
+        items: [{ path: 'app/src/', kind: 'directory', matches: [0] }],
+        walking: true,
+      });
+    });
+
+    it('stops the file search on files.close and when the connection closes', async () => {
+      connection.receive({ type: 'files.search', requestId: 'r2', query: '' });
+      connection.receive({ type: 'files.close', requestId: 'r2' });
+      connection.receive({ type: 'files.search', requestId: 'r3', query: '' });
+      await settle();
+      connection.simulateClose();
+
+      expect(harness.fileSearch.sessions.map(session => session.stopped)).toEqual([true, true]);
     });
 
     it('answers conversation.history with the entries and the state', async () => {
