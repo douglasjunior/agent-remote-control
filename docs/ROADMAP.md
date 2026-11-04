@@ -19,7 +19,7 @@ Each stage ships something usable on its own and fits in a few focused work sess
 
 ## Stage 1: Monorepo and local web channel
 
-Removes the hardest onboarding step for non-developers, creating a Discord bot, by adding a browser interface that talks to the service on `localhost`. The [Stage 1 delivery plans](plans/stage-1/README.md) break it into sessions delivered on the branch `feat/stage-1-web-channel`.
+Removes the hardest onboarding step for non-developers, creating a Discord bot, by adding a browser interface that talks to the service on `localhost`. The [Stage 1 delivery plans](plans/stage-1/README.md) break it into sessions delivered on the branch `feat/local-app-builder`.
 
 ### 1a. Monorepo
 

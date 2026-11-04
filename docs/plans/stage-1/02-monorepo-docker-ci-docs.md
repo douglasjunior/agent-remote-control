@@ -31,7 +31,7 @@ Bring everything that references the old single-package layout in line with the 
 - `docker build .` succeeds, and `docker run --rm -e DISCORD_BOT_TOKEN= -p 3000:3000 <image>` boots and answers `GET /` with `Hello World!`.
 - `yarn ts`, `yarn lint` and `yarn test` pass.
 - `grep -rn "src/" AGENTS.md README.md .agents/skills` only returns paths under `packages/`.
-- The CI workflow runs green on the draft pull request of the stage branch.
+- The CI workflow runs green on the draft pull request of the roadmap branch.
 
 ## Out of scope
 

@@ -1,6 +1,6 @@
 # Stage 1 delivery plans
 
-Stage 1 of the [roadmap](../../ROADMAP.md): a Yarn workspaces monorepo plus a local web channel. The whole stage is delivered on the branch `feat/stage-1-web-channel`, which merges into `main` through a single pull request once plan 08 is done. Each plan is sized for a single focused session and self-contained, so it runs without the conversation that produced it.
+Stage 1 of the [roadmap](../../ROADMAP.md): a Yarn workspaces monorepo plus a local web channel. The whole roadmap is delivered on the branch `feat/local-app-builder`, which merges into `main` through a single pull request. Each plan is sized for a single focused session and self-contained, so it runs without the conversation that produced it.
 
 ## Order and model
 
@@ -29,10 +29,10 @@ Start a fresh session per plan and prompt:
 
 ```text
 Implement docs/plans/stage-1/0N-<name>.md. Follow AGENTS.md and the skills it points to.
-Work on the branch feat/stage-1-web-channel, run the acceptance checks, then commit and push.
+Work on the branch feat/local-app-builder, run the acceptance checks, then commit and push.
 ```
 
-Keep a draft pull request from `feat/stage-1-web-channel` to `main` open from the start, so the CI added in plan 02 checks every push.
+Keep a draft pull request from `feat/local-app-builder` to `main` open while the roadmap is in progress, so the CI added in plan 02 checks every push.
 
 Every plan ends with the checks from `AGENTS.md`: `yarn ts`, `yarn lint` and `yarn test`, plus `yarn test:e2e` when entry points change. A plan is done only when all of them pass.
 
