@@ -110,7 +110,7 @@ describe('conversation entry mapping', () => {
         round: 2,
         role: 'DEVELOPER',
         roleName: 'Developer',
-        summary: 'Adding the login screen',
+        taskSpec: 'Do the work', summary: 'Adding the login screen',
         errorMessage: 'boom',
         durationMs: 800,
       });
@@ -121,9 +121,9 @@ describe('conversation entry mapping', () => {
     });
 
     it('maps a started delegation', () => {
-      const entry = delegationEntry({ delegationId: 'dl-1', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', summary: 'Adding the login screen' });
+      const entry = delegationEntry({ delegationId: 'dl-1', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', taskSpec: 'Do the work', summary: 'Adding the login screen' });
 
-      expect(entry).toMatchObject({ id: 'delegation:dl-1:started', delegationId: 'dl-1', phase: 'started', projectName: 'app', summary: 'Adding the login screen' });
+      expect(entry).toMatchObject({ id: 'delegation:dl-1:started', delegationId: 'dl-1', phase: 'started', projectName: 'app', prompt: 'Do the work', summary: 'Adding the login screen' });
       expect(entry).not.toHaveProperty('response');
       expect(valid(entry)).toBe(true);
     });
@@ -135,7 +135,7 @@ describe('conversation entry mapping', () => {
         round: 2,
         role: 'DEVELOPER',
         roleName: 'Developer',
-        summary: 'Adding the login screen',
+        taskSpec: 'Do the work', summary: 'Adding the login screen',
         response: 'done',
         agentInfo,
         durationMs: 1200,

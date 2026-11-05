@@ -12,10 +12,10 @@ const AT = '2026-01-01T00:00:00.000Z';
 
 const user = (id: string): ConversationEntry => ({ id, at: AT, type: 'user_message', text: id });
 const started = (id: string, role: string, roleName: string, summary = 'Do the work'): ConversationEntry => ({
-  id, at: AT, type: 'delegation', delegationId: role, phase: 'started', round: 1, role, roleName, summary,
+  id, at: AT, type: 'delegation', delegationId: role, phase: 'started', round: 1, role, roleName, prompt: 'Do the work', summary,
 });
 const finished = (id: string, role: string, roleName: string, phase: 'finished' | 'failed' = 'finished'): ConversationEntry => ({
-  id, at: AT, type: 'delegation', delegationId: role, phase, round: 1, role, roleName, summary: 'Do the work', durationMs: 4000,
+  id, at: AT, type: 'delegation', delegationId: role, phase, round: 1, role, roleName, prompt: 'Do the work', summary: 'Do the work', durationMs: 4000,
 });
 
 function renderPanel(entries: readonly ConversationEntry[], running: boolean, props: Partial<Parameters<typeof SquadPanel>[0]> = {}) {

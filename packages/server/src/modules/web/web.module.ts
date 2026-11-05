@@ -11,6 +11,7 @@ import { IClientTransportPort } from './ports/client-transport.port.js';
 import { IConversationStorePort } from './ports/conversation-store.port.js';
 import { IPromptHistoryPort } from './ports/prompt-history.port.js';
 import { WebAccessTokenService } from './services/web-access-token.service.js';
+import { WebAgentQuotaService } from './services/web-agent-quota.service.js';
 import { WebConnectionRegistryService } from './services/web-connection-registry.service.js';
 import { WebConversationEventsService } from './services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from './services/web-conversation-turns.service.js';
@@ -37,6 +38,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
     { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
     WebAccessTokenService,
+    WebAgentQuotaService,
     WebConnectionRegistryService,
     WebConversationEventsService,
     WebConversationTurnsService,

@@ -16,6 +16,7 @@ const delegation = (phase: Delegation['phase'], role: string, extra: Partial<Del
   round: 1,
   role,
   roleName: role,
+  prompt: 'Do the work',
   summary: `${role} summary`,
   ...extra,
 });

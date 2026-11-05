@@ -541,7 +541,7 @@ describe('DiscordMessageHandler', () => {
         delegationId: 'dl-1', round: 1,
         role: 'DEVELOPER',
         roleName: 'Developer',
-        summary: 'Doing the work',
+        taskSpec: 'Do the work', summary: 'Doing the work',
         projectName: 'my-app',
       };
       agentTurn.executeTurn = async (request: TurnRequest) => {
@@ -608,7 +608,7 @@ describe('DiscordMessageHandler', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           phase: 'started',
         });
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' }, 'CEO');
@@ -643,7 +643,7 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
-        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work', phase: 'started' });
+        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work', phase: 'started' });
         return { response: 'Done.', status: 'completed' };
       };
 
@@ -720,7 +720,7 @@ describe('DiscordMessageHandler', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           phase: 'started',
         });
         resolveDelete();
@@ -2050,7 +2050,7 @@ describe('DiscordMessageHandler', () => {
         return { content, edit: vi.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', summary: 'Doing the work', phase: 'started' });
+        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', taskSpec: 'Do the work', summary: 'Doing the work', phase: 'started' });
         request.onQuestion?.(prompt);
         return { response: 'Done.', status: 'completed' };
       };
@@ -2226,7 +2226,7 @@ describe('DiscordMessageHandler', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           phase: 'started',
         });
         vi.advanceTimersByTime(2 * 60 * 1000);

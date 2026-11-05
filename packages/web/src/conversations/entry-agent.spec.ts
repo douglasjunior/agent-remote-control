@@ -17,7 +17,7 @@ const entries: Record<string, ConversationEntry> = {
   },
   step: { id: 't', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Run tests', status: 'completed' },
   delegation: {
-    id: 'd', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Build it',
+    id: 'd', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Build it',
   },
 };
 

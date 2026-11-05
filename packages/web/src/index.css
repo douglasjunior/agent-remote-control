@@ -50,6 +50,8 @@
   --agent-git-ops: oklch(0.6 0.17 50);
   --attention: oklch(0.6 0.15 70);
   --good: oklch(0.52 0.14 160);
+  --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+  --scrollbar-thumb-hover: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
 }
 
 .dark {
@@ -149,6 +151,33 @@
   }
   html {
     @apply font-sans;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  /* The transparent border insets the thumb, so it floats thin inside a track wide enough to grab. */
+  ::-webkit-scrollbar-thumb {
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background: var(--scrollbar-thumb) padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    border-width: 2px;
+    background: var(--scrollbar-thumb-hover) padding-box;
+  }
+
+  /* Only where the pseudo-elements do not exist: in Chromium these properties would turn them off. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
   }
 }
 @keyframes working-dot {

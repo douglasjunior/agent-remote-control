@@ -226,7 +226,7 @@ describe('SendConversationMessageUseCase', () => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' }, 'CEO');
         request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' }, 'CEO');
-        request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' });
+        request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' });
         request.onInterimMessage?.('working');
         request.onQuestion?.(prompt);
       };
@@ -294,7 +294,7 @@ describe('SendConversationMessageUseCase', () => {
 
     describe('across turns', () => {
       const delegating = (delegationId: string) => async (request: TurnRequest) => {
-        const event = { delegationId, round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' };
+        const event = { delegationId, round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' };
         request.onDelegation?.({ ...event, phase: 'started' });
         request.onDelegation?.({ ...event, phase: 'finished', response: 'done', agentInfo: { roleName: 'Developer', agentName: 'agy' }, durationMs: 5 });
       };

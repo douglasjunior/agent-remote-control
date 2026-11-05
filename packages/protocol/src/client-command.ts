@@ -38,6 +38,7 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('files.search'), requestId: z.string(), query: z.string().max(MAX_MENTION_QUERY_LENGTH) }),
   z.object({ type: z.literal('files.close'), requestId: z.string() }),
   z.object({ type: z.literal('agents.list') }),
+  z.object({ type: z.literal('quota.get'), refresh: z.boolean().optional() }),
   z.object({ type: z.literal('models.list'), agentId: z.string() }),
   z.object({ type: z.literal('efforts.list'), agentId: z.string(), modelId: z.string() }),
   z.object({ type: z.literal('profiles.get'), conversationId: z.string() }),

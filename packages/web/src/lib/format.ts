@@ -16,6 +16,19 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
   return 'just now';
 }
 
+/** The largest unit only, for a narrow column: `<1m`, `46m`, `3h`, `4d`. */
+export function formatCountdown(durationMs: number): string {
+  const minutes = Math.round(durationMs / 60_000);
+  if (minutes < 1) {
+    return '<1m';
+  }
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours}h` : `${Math.round(hours / 24)}d`;
+}
+
 /** Whole seconds under a minute, then minutes and seconds, then hours and minutes: `42 s`, `9m 10s`, `1h 5m`. */
 export function formatDuration(durationMs: number): string {
   const totalSeconds = Math.round(durationMs / 1000);

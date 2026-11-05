@@ -431,7 +431,7 @@ describe('DiscordActivityFormatter', () => {
     };
 
     it('should announce a delegation with and without a project', () => {
-      const delegation = { delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' };
+      const delegation = { delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' };
 
       expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
         '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` — it is working on it now.',
@@ -456,7 +456,7 @@ describe('DiscordActivityFormatter', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           ...finishedDetails,
           phase: 'finished',
           response: '\nLogin implemented.\n',
@@ -470,7 +470,7 @@ describe('DiscordActivityFormatter', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           projectName: 'my-app',
           ...finishedDetails,
           phase: 'finished',
@@ -485,7 +485,7 @@ describe('DiscordActivityFormatter', () => {
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
-          summary: 'Doing the work',
+          taskSpec: 'Do the work', summary: 'Doing the work',
           ...finishedDetails,
           phase: 'finished',
           usage: { totalTokens: 12_345, inputTokens: 10_000, outputTokens: 2_345 },

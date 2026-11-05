@@ -10,6 +10,8 @@ type DelegationEventBase = {
   readonly roleName: string;
   readonly projectName?: string;
   readonly summary: string;
+  /** The task as the CEO wrote it for the agent. */
+  readonly taskSpec: string;
 };
 
 export type DelegationEvent =

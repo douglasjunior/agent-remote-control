@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
@@ -61,6 +62,7 @@ describe('WebConnectionHandler', () => {
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
       new WebUploadSessionsService(uploads),
+      new WebAgentQuotaService(agentTurn),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -141,6 +143,40 @@ describe('WebConnectionHandler', () => {
 
     beforeEach(() => {
       connection.receive({ type: 'auth', token: 'secret' });
+    });
+
+    it('answers quota.get to the requester with the reports and their time', async () => {
+      const reports = [{ agent: { id: 'cursor', name: 'Cursor' }, status: 'unsupported' as const }];
+      harness.agentTurn.quotaReports = reports;
+
+      connection.receive({ type: 'quota.get' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'quota.report', reports, fetchedAt: new Date().toISOString() }]);
+    });
+
+    it('passes the refresh of quota.get on, ignoring the reports it remembers', async () => {
+      connection.receive({ type: 'quota.get' });
+      await settle();
+      const reports = [{ agent: { id: 'cursor', name: 'Cursor' }, status: 'failed' as const }];
+      harness.agentTurn.quotaReports = reports;
+
+      connection.receive({ type: 'quota.get', refresh: true });
+      await settle();
+
+      expect(sent().at(-1)).toMatchObject({ type: 'quota.report', reports });
+    });
+
+    it('answers quota.failed, never an error event, when the usage cannot be read', async () => {
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      harness.agentTurn.throwOnQuota = true;
+
+      connection.receive({ type: 'quota.get' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'quota.failed' }]);
+      expect(warn).toHaveBeenCalledWith('quota_failed: quota down');
+      warn.mockRestore();
     });
 
     it('answers conversation.list to the requester', async () => {

@@ -15,6 +15,8 @@ export interface Handoff {
   readonly role: string;
   readonly roleName: string;
   readonly summary: string;
+  /** What the CEO wrote for the agent. */
+  readonly prompt: string;
   readonly projectName?: string;
   readonly status: HandoffStatus;
   readonly startedAt: number;
@@ -60,7 +62,7 @@ function stepsByDelegation(entries: readonly ConversationEntry[]): ReadonlyMap<s
 }
 
 function toHandoff(started: DelegationEntry, closing: DelegationEntry | undefined, steps: readonly ActivityEntry[]): Handoff {
-  const { id, delegationId, round, role, roleName, summary, projectName, at } = started;
+  const { id, delegationId, round, role, roleName, summary, prompt, projectName, at } = started;
   return {
     id,
     delegationId,
@@ -68,6 +70,7 @@ function toHandoff(started: DelegationEntry, closing: DelegationEntry | undefine
     role,
     roleName,
     summary,
+    prompt,
     ...(projectName ? { projectName } : {}),
     status: closing ? (closing.phase === 'finished' ? 'done' : 'failed') : 'working',
     startedAt: Date.parse(at),

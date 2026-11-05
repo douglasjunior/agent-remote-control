@@ -305,7 +305,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
 
-    const delegation = { delegationId: expect.any(String), round: 1, role: 'DEVELOPER', roleName: 'DEVELOPER name', projectName: 'my-app', summary: 'Working on it' };
+    const delegation = { delegationId: expect.any(String), round: 1, role: 'DEVELOPER', roleName: 'DEVELOPER name', projectName: 'my-app', taskSpec: 'Go.', summary: 'Working on it' };
     expect(events).toEqual([
       { ...delegation, phase: 'started' },
       {

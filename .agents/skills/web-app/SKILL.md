@@ -31,6 +31,7 @@ packages/web/src/
 ├── components/              # app components; components/ui is vendored shadcn
 │   ├── agent/               # AgentMark: the round lens with an animated glyph per role
 │   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
+│   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query
 ```
@@ -89,7 +90,7 @@ packages/web/src/
 | `user_message` | Right-aligned bubble |
 | `agent_response` | Agent mark and clickable colored name, Markdown, and a footer `roleName · agentName · modelName · effortName`; `failed` shows `errorMessage`; `cancelled` shows a muted label |
 | `interim` | Muted markdown under the Coordinator's mark and name |
-| `delegation` | One handoff row per delegation (`started` joined with its `finished` or `failed` entry by `delegationId`, never by round and role, which repeat across turns): agent mark, the CEO's `summary` as the title, the agent's name below, the live time or the duration; delegations of the same round that follow each other with no other entry between them stack as one squad. A chevron opens the agent's steps, then its response or error |
+| `delegation` | One handoff row per delegation (`started` joined with its `finished` or `failed` entry by `delegationId`, never by round and role, which repeat across turns): agent mark, the CEO's `summary` as the title, the agent's name below, the live time or the duration; delegations of the same round that follow each other with no other entry between them stack as one squad. A chevron opens the CEO's `prompt` (a tinted block that scrolls past 240 px; empty entries from older histories show nothing), then the agent's steps, then its response or error |
 | `thought`, `tool` | Consecutive runs of one agent (`role`) grouped in one collapsible, closed by default and headed by the agent's name and what it does now (`toolLabel` turns tool titles into plain words); steps of a delegated agent go inside its delegation row instead; `removed` thoughts are hidden |
 | `question` | Card with an attention border, titled by the asker's name, with one button per option (1-based `optionIndex`) and an inline `PromptInput` for an answer of its own, with attachments and voice; "Question n of m" when `total > 1`; only the open question (`closed: false`) is enabled; a closed one keeps the asker and the text |
 | `notice` | Inline line styled by `level` |
@@ -149,12 +150,22 @@ or the composer unmounts.
 
 `FileMentionPopup` is composed from tokens, not a shadcn `command`, because the field must keep the focus.
 
+## Agent usage
+
+`UsageIndicator` (`components/usage/`) sits in the header next to the connection badge: one vertical meter per agent, in the server's order, each at the agent's closest limit (`tightestFraction`), then the lowest percent left in mono. An agent without numbers shows an empty track; with no reports yet the tracks pulse and the text is `–`. The accessible name carries the percent. Levels match the Discord `/usage` (`quotaLevel`: `good` from 50%, `attention` from 20%, `critical` below, drawn with `--good`, `--attention` and `--destructive`).
+
+A click opens `UsagePanel` in a shadcn `Popover`, built to be read at a glance: one line per bucket in columns aligned across the agents under a "Limit, Left, Resets" header, with the label, a thin bar, the percent left and a compact time until the reset (`formatCountdown`; the full sentence is the `title` and the screen reader text), left out once it has passed. Color marks what needs attention: a percent stays in the foreground color while `good`, and a `critical` row is tinted. `bucketLabel` names a bucket by its window and adds the qualifier from its name when a sibling shares that window (`Week · Sonnet only`). A group is named only when the agent has more than one; an agent without numbers takes one line, with "No usage data" or "Could not read usage". A row never moves on refresh, because the order is the server's.
+
+`useAgentQuota` holds the numbers outside the conversations reducer, since only this indicator reads them. It sends `quota.get` when the status becomes `open`, every `QUOTA_REFRESH_MS` (5 minutes) while the tab is visible, and on returning to the tab when the numbers are that old; the panel's refresh button sends `refresh: true`. Each query starts the agents' CLIs, so keep this rate low. The last numbers stay on screen through a refresh, a `quota.failed` ("Could not refresh") or a lost connection.
+
 ## Theme
 
 `ThemeProvider` keeps the choice (`'light' | 'dark' | 'system'`, default `'system'`) in `localStorage`
 (`arc.theme`) and toggles the `dark` class on `<html>`; `system` follows `prefers-color-scheme` live. An inline
 script in `index.html` applies the class before the first paint. `ThemeToggle` (a shadcn dropdown menu) sits in
 the header. Style through the theme tokens so both modes work.
+
+Scrollbars are styled once, in the base layer of `index.css`, for every scrolling element: a thin floating thumb on a transparent track, from `--scrollbar-thumb` and `--scrollbar-thumb-hover`. A component adds no scrollbar styling of its own; `scrollbar-width` or `scrollbar-color` on an element turn the `::-webkit-scrollbar` rules off in Chromium, so those properties apply only where the pseudo-elements do not exist.
 
 - `QuestionCard` shows the asker with its project, the question's `message`, text and rationale ("Why it matters"), as every channel does. The question the server has not closed (`closed: false`) can be answered wherever it sits in the feed, even above newer entries; `openQuestion(entries)` (`conversations/open-question.ts`) returns the last such question and both `FeedList` and `deriveTeam` use it. A closed question shows only the asker and the question text. `data-question-id` marks the card.
 - While a turn runs, the feed shows `WorkingIndicator` (three dots and a shimmering "Working…", still under `prefers-reduced-motion`) from the first moment until a step, the draft or a question takes its place; a running `ActivityGroup` carries the same dots and label. The keyframes live in `index.css`.

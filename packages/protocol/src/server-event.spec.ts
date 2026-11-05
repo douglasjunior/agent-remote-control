@@ -30,6 +30,19 @@ describe('parseServerEvent', () => {
     { type: 'upload.done', uploadId: 'u', attachment: { path: '.arc-uploads/c/a.png', name: 'a.png' } },
     { type: 'upload.failed', uploadId: 'u', reason: 'Too large' },
     { type: 'agents.list', agents: [{ id: 'claude', name: 'Claude Code', description: 'CLI' }, { id: 'codex', name: 'Codex' }] },
+    {
+      type: 'quota.report',
+      fetchedAt: at,
+      reports: [
+        {
+          agent: { id: 'claude', name: 'Claude Code' },
+          status: 'ok',
+          quota: { groups: [{ name: 'Limits', buckets: [{ id: 'five', name: 'Session', window: '5h', remainingFraction: 1.2, resetTime: at }] }] },
+        },
+        { agent: { id: 'cursor', name: 'Cursor' }, status: 'unsupported' },
+      ],
+    },
+    { type: 'quota.failed' },
     { type: 'models.list', agentId: 'claude', models: [{ id: 'opus', name: 'Opus' }] },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus', efforts: [{ id: 'high', name: 'High' }] },
     { type: 'profiles', conversationId: 'c', configured: false, profiles: [{ role: 'CEO', roleName: 'CEO' }] },

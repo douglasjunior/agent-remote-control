@@ -90,10 +90,10 @@ describe('ConversationView', () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
-        { id: 'd1', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'started', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', summary: 'Planning the login', projectName: 'app' },
-        { id: 'd2', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'finished', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', summary: 'Planning the login', response: 'all done', durationMs: 550_000 },
-        { id: 'd3', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the login' },
-        { id: 'd4', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'failed', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the login', errorMessage: 'compiler exploded', durationMs: 4000 },
+        { id: 'd1', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'started', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', prompt: 'Do the work', summary: 'Planning the login', projectName: 'app' },
+        { id: 'd2', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'finished', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', prompt: 'Do the work', summary: 'Planning the login', response: 'all done', durationMs: 550_000 },
+        { id: 'd3', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the login' },
+        { id: 'd4', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'failed', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the login', errorMessage: 'compiler exploded', durationMs: 4000 },
         { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'fyi' },
         { id: 'n2', at: AT, type: 'notice', level: 'warning', text: 'careful' },
         { id: 'n3', at: AT, type: 'notice', level: 'error', text: 'bad' },
@@ -119,7 +119,7 @@ describe('ConversationView', () => {
     const { connection } = openConversation({
       entries: [
         userEntry('u1'),
-        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the API' },
         { id: 't1', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' },
         { id: 't2', at: AT, type: 'thought', role: 'DEVELOPER', text: 'Looking at the router' },
       ],
@@ -133,11 +133,43 @@ describe('ConversationView', () => {
     expect(feed.getByText('Looking at the router')).toBeInTheDocument();
   });
 
+  it('shows what the Coordinator asked of an agent when its delegation opens', async () => {
+    const user = userEvent.setup();
+    openConversation({
+      entries: [
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Build the **login** screen', summary: 'Building the login' },
+      ],
+    });
+    const feed = within(screen.getByTestId('message-viewport'));
+
+    expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
+    await user.click(feed.getByRole('button', { name: 'See the prompt' }));
+
+    expect(feed.getByText('Prompt from the Coordinator')).toBeInTheDocument();
+    expect(feed.getByText('login')).toBeInTheDocument();
+  });
+
+  it('opens a delegation stored without a prompt empty', async () => {
+    const user = userEvent.setup();
+    openConversation({
+      entries: [
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: '', summary: 'Building the login' },
+      ],
+    });
+    const feed = within(screen.getByTestId('message-viewport'));
+
+    await user.click(feed.getByRole('button', { name: 'See the prompt' }));
+
+    expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
+  });
+
   it('shows a delegation that started without steps as working', () => {
     const { connection } = openConversation({
       entries: [
         userEntry('u1'),
-        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the API' },
       ],
     });
     act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
@@ -162,9 +194,9 @@ describe('ConversationView', () => {
     openConversation({
       entries: [
         userEntry('u1'),
-        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
-        { id: 'a2', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'started', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', summary: 'Reviewing the docs' },
-        { id: 'a3', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'finished', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', summary: 'Reviewing the docs', durationMs: 1000 },
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the API' },
+        { id: 'a2', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'started', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', prompt: 'Do the work', summary: 'Reviewing the docs' },
+        { id: 'a3', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'finished', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', prompt: 'Do the work', summary: 'Reviewing the docs', durationMs: 1000 },
         { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'All done' },
       ],
     });

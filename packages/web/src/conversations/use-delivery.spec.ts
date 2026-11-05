@@ -8,7 +8,7 @@ import { useDelivery } from './use-delivery.js';
 const AT = '2026-01-01T00:00:00.000Z';
 const user: ConversationEntry = { id: 'u1', at: AT, type: 'user_message', text: 'build it' };
 const delegation: ConversationEntry = {
-  id: 'd1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Build it',
+  id: 'd1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Build it',
 };
 const answer = (status: 'completed' | 'failed' | 'cancelled'): ConversationEntry => ({ id: `a-${status}`, at: AT, type: 'agent_response', status, response: 'done' });
 

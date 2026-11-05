@@ -111,6 +111,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'upload.failed':
     case 'models.list':
     case 'efforts.list':
+    case 'quota.report':
+    case 'quota.failed':
     case 'error':
       return state;
   }

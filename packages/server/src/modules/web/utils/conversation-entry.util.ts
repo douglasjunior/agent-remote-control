@@ -83,6 +83,7 @@ export function delegationEntry(event: DelegationEvent): ConversationEntry {
     roleName: event.roleName,
     ...(event.projectName ? { projectName: event.projectName } : {}),
     summary: event.summary,
+    prompt: event.taskSpec,
   };
   if (event.phase === 'started') {
     return base;

@@ -21,6 +21,8 @@ describe('parseClientCommand', () => {
     { type: 'files.search', requestId: 'r', query: '' },
     { type: 'files.close', requestId: 'r' },
     { type: 'agents.list' },
+    { type: 'quota.get' },
+    { type: 'quota.get', refresh: true },
     { type: 'models.list', agentId: 'claude' },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus' },
     { type: 'profiles.get', conversationId: 'c' },

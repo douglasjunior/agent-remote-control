@@ -1,5 +1,19 @@
-import { formatDuration, formatRelativeTime } from './format.js';
+import { formatCountdown, formatDuration, formatRelativeTime } from './format.js';
 
+
+describe('formatCountdown', () => {
+  it.each([
+    [20_000, '<1m'],
+    [46 * 60_000, '46m'],
+    [59 * 60_000, '59m'],
+    [60 * 60_000, '1h'],
+    [3 * 3_600_000, '3h'],
+    [24 * 3_600_000, '1d'],
+    [4 * 86_400_000, '4d'],
+  ])('formats %d ms as %s', (duration, expected) => {
+    expect(formatCountdown(duration)).toBe(expected);
+  });
+});
 
 describe('formatRelativeTime', () => {
   const now = Date.parse('2026-01-10T12:00:00.000Z');

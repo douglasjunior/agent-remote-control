@@ -834,6 +834,7 @@ export class ExecuteAgentTurnUseCase {
       roleName: this.agentRegistry.getDisplayName(delegateToRole),
       projectName,
       summary,
+      taskSpec,
     };
     const startedAt = Date.now();
 

@@ -31,7 +31,7 @@ describe('groupEntries', () => {
 
   describe('delegations', () => {
     const delegation = (phase: 'started' | 'finished' | 'failed', role: string, round = 1, extra: object = {}): ConversationEntry => ({
-      id: `d:${round}:${role}:${phase}`, at, type: 'delegation', delegationId: `${round}:${role}`, phase, round, role, roleName: role, summary: `${role} summary`, ...extra,
+      id: `d:${round}:${role}:${phase}`, at, type: 'delegation', delegationId: `${round}:${role}`, phase, round, role, roleName: role, prompt: 'Do the work', summary: `${role} summary`, ...extra,
     });
 
     it('joins the start and the end of a delegation into one handoff placed at its start', () => {
@@ -45,7 +45,7 @@ describe('groupEntries', () => {
       expect(items.map(item => item.kind)).toEqual(['entry', 'squad', 'activity']);
       expect(items[1]).toMatchObject({
         id: 'squad:d:1:DEVELOPER:started',
-        handoffs: [{ role: 'DEVELOPER', summary: 'DEVELOPER summary', projectName: 'app', status: 'done', response: 'done', durationMs: 9000, startedAt: Date.parse(at) }],
+        handoffs: [{ role: 'DEVELOPER', summary: 'DEVELOPER summary', prompt: 'Do the work', projectName: 'app', status: 'done', response: 'done', durationMs: 9000, startedAt: Date.parse(at) }],
       });
     });
 

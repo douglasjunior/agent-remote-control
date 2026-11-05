@@ -6,6 +6,7 @@ import { runInLogConversation } from '../../logging/utils/log-conversation.util.
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
@@ -52,6 +53,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly promptHistory: ListPromptHistoryUseCase,
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
+    private readonly quota: WebAgentQuotaService,
   ) {}
 
   onModuleInit(): void {
@@ -142,6 +144,8 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'agents.list':
         connection.send({ type: 'agents.list', agents: [...this.agentOptions.agents()] });
         return;
+      case 'quota.get':
+        return this.answerQuota(connection, command.refresh);
       case 'models.list': {
         const models = await this.agentOptions.models(command.agentId);
         connection.send(models
@@ -206,6 +210,17 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'question.answer':
         return this.reportUnless(connection, command.conversationId, 'There is no open question', () =>
           this.answerQuestion.execute(command.conversationId, command.answer));
+    }
+  }
+
+  /** A background refresh that fails answers `quota.failed`: an `error` event would interrupt the settings sheet, which treats it as its own. */
+  private async answerQuota(connection: IClientConnection, refresh: boolean | undefined): Promise<void> {
+    try {
+      const { reports, fetchedAt } = await this.quota.read(refresh);
+      connection.send({ type: 'quota.report', reports, fetchedAt });
+    } catch (error) {
+      this.logger.warn(`quota_failed: ${error instanceof Error ? error.message : String(error)}`);
+      connection.send({ type: 'quota.failed' });
     }
   }
 

@@ -61,6 +61,13 @@ describe('conversationEntrySchema', () => {
     expect(conversationEntrySchema.safeParse(entry).success).toBe(true);
   });
 
+  it('keeps the prompt of a delegation and reads one stored without it as empty', () => {
+    const stored = { id: 'd', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen' };
+
+    expect(conversationEntrySchema.parse({ ...stored, prompt: 'Add it' })).toMatchObject({ prompt: 'Add it' });
+    expect(conversationEntrySchema.parse(stored)).toMatchObject({ prompt: '' });
+  });
+
   it.each([
     ['unknown type', { id: '1', at, type: 'nope' }],
     ['the removed selection entry', { id: '1', at, type: 'selection', mode: 'selection', step: 'agent', options: [] }],

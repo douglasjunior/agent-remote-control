@@ -162,8 +162,8 @@ describe('FeedList', () => {
       { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'a notice' },
       { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'from the coordinator' },
       { id: 'x1', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Run tests', status: 'completed' },
-      { id: 'd1', at: AT, type: 'delegation', delegationId: '1:GIT_OPS', phase: 'started', round: 1, role: 'GIT_OPS', roleName: 'Git Ops', summary: 'Open the PR' },
-      { id: 'd2', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Build it' },
+      { id: 'd1', at: AT, type: 'delegation', delegationId: '1:GIT_OPS', phase: 'started', round: 1, role: 'GIT_OPS', roleName: 'Git Ops', prompt: 'Do the work', summary: 'Open the PR' },
+      { id: 'd2', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Build it' },
     ], '', 'DEVELOPER');
 
     const dimmed = (text: string) => screen.getByText(text).closest('[data-dimmed]')!.getAttribute('data-dimmed');

@@ -7,7 +7,7 @@ import { AT, openConversation, userEntry } from '../test/render-app.js';
 
 
 const delegation = (id: string, role: string, roleName: string, summary: string, phase: 'started' | 'finished' = 'started'): ConversationEntry => ({
-  id, at: AT, type: 'delegation', delegationId: role, phase, round: 1, role, roleName, summary, ...(phase === 'finished' ? { durationMs: 3000 } : {}),
+  id, at: AT, type: 'delegation', delegationId: role, phase, round: 1, role, roleName, prompt: 'Do the work', summary, ...(phase === 'finished' ? { durationMs: 3000 } : {}),
 });
 const answer: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'All finished' };
 const interim: ConversationEntry = { id: 'i1', at: AT, type: 'interim', text: 'Briefing the team' };

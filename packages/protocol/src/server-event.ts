@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { agentOptionSchema } from './agent-option.js';
 import { roleProfileSchema } from './agent-profile.js';
+import { agentQuotaReportSchema } from './agent-quota.js';
 import { attachmentSchema } from './attachment.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
@@ -77,6 +78,12 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('upload.done'), uploadId: z.string(), attachment: attachmentSchema }),
   z.object({ type: z.literal('upload.failed'), uploadId: z.string(), reason: z.string() }),
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
+  z.object({
+    type: z.literal('quota.report'),
+    reports: z.array(agentQuotaReportSchema).readonly(),
+    fetchedAt: z.string(),
+  }),
+  z.object({ type: z.literal('quota.failed') }),
   z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
   z.object({
     type: z.literal('efforts.list'),

@@ -4,10 +4,14 @@ import {
   type AgentProviderInfo,
   IAgentPortFactory,
 } from '../../agent/ports/agent-port-factory.port.js';
+import type { AgentQuota, AgentQuotaBucket } from '../../agent/ports/agent.port.js';
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
 
 
 const QUOTA_TIMEOUT_MS = 15_000;
+const WINDOW_SPAN = /^(\d+)(m|h|d)$/;
+const UNIT_MINUTES: Readonly<Record<string, number>> = { m: 1, h: 60, d: 1440 };
+const NAMED_WINDOW_MINUTES: Readonly<Record<string, number>> = { weekly: 10_080, monthly: 43_200 };
 
 @Injectable()
 export class GetAgentQuotaUseCase {
@@ -40,10 +44,27 @@ export class GetAgentQuotaUseCase {
       // A query that loses the race may still reject after disconnect().
       pending.catch(() => undefined);
       const quota = await this.withTimeout(pending);
-      return quota ? { agent, status: 'ok', quota } : { agent, status: 'unsupported' };
+      return quota ? { agent, status: 'ok', quota: this.inWindowOrder(quota) } : { agent, status: 'unsupported' };
     } finally {
       await port.disconnect().catch(() => undefined);
     }
+  }
+
+  /** Each CLI lists its limits in its own order; every channel shows them shortest window first. */
+  private inWindowOrder(quota: AgentQuota): AgentQuota {
+    return {
+      ...quota,
+      groups: quota.groups.map(group => ({
+        ...group,
+        buckets: [...group.buckets].sort((a, b) => this.windowMinutes(a) - this.windowMinutes(b)),
+      })),
+    };
+  }
+
+  /** A window that states no duration, such as Claude's `limit`, sorts last. */
+  private windowMinutes({ window }: AgentQuotaBucket): number {
+    const span = WINDOW_SPAN.exec(window);
+    return span ? Number(span[1]) * UNIT_MINUTES[span[2]!]! : NAMED_WINDOW_MINUTES[window] ?? Infinity;
   }
 
   private async withTimeout<T>(work: Promise<T>): Promise<T> {

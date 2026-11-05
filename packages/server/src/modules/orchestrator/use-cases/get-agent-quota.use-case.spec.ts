@@ -39,6 +39,28 @@ describe('GetAgentQuotaUseCase', () => {
     expect(factory.createdAgentIds).toEqual(['agy', 'copilot']);
   });
 
+  it('should list the limits of each group from the shortest window to the longest, unknown windows last', async () => {
+    const bucket = (window: string) => ({ id: window, name: window, window, remainingFraction: 1 });
+    const agy = new StubAgentPort();
+    agy.quotaToReturn = {
+      description: 'Usage',
+      groups: [
+        { name: 'First', buckets: ['limit', 'monthly', 'weekly', '5h'].map(bucket) },
+        { name: 'Second', buckets: ['7d', '30m', '1d'].map(bucket) },
+      ],
+    };
+    const factory = buildFactory({ agy });
+    factory.agents = [{ agentId: 'agy', displayName: 'Antigravity' }];
+
+    const [report] = await new GetAgentQuotaUseCase(factory).execute();
+
+    expect(report?.quota?.description).toBe('Usage');
+    expect(report?.quota?.groups.map(group => [group.name, group.buckets.map(item => item.window)])).toEqual([
+      ['First', ['5h', 'weekly', 'monthly', 'limit']],
+      ['Second', ['30m', '1d', '7d']],
+    ]);
+  });
+
   it('should return an empty list when no agent is available', async () => {
     const factory = buildFactory({});
     for (const { agentId } of factory.agents) {

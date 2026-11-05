@@ -48,6 +48,8 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     projectName: z.string().optional(),
     /** One plain-language sentence from the CEO telling the user what the agent was asked to do. */
     summary: z.string(),
+    /** What the CEO wrote for the agent. A stored history is validated whole, so an entry written without it reads as empty rather than losing the conversation. */
+    prompt: z.string().default(''),
     response: z.string().optional(),
     /** Why the agent stopped; present when `phase` is `failed`. */
     errorMessage: z.string().optional(),
