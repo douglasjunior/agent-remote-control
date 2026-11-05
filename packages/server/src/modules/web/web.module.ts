@@ -14,6 +14,7 @@ import { WebAccessTokenService } from './services/web-access-token.service.js';
 import { WebConnectionRegistryService } from './services/web-connection-registry.service.js';
 import { WebConversationEventsService } from './services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from './services/web-conversation-turns.service.js';
+import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
@@ -39,6 +40,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     WebConnectionRegistryService,
     WebConversationEventsService,
     WebConversationTurnsService,
+    WebConversationUploadsService,
     WebFileSearchSessionsService,
     WebUploadSessionsService,
     CreateConversationUseCase,

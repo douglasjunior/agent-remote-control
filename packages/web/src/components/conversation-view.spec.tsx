@@ -540,7 +540,7 @@ describe('ConversationView', () => {
 
     it('attaches dropped files and shows the drop hint while dragging', () => {
       const { connection } = openConversation();
-      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-[640px]"]') as HTMLElement;
+      const zone = screen.getByLabelText('Message').closest('div[class*="flex-col"]') as HTMLElement;
 
       fireEvent.dragEnter(zone, { dataTransfer: { types: ['Files'], files: [] } });
       expect(screen.getByText('Drop files to attach them')).toBeInTheDocument();
@@ -552,7 +552,7 @@ describe('ConversationView', () => {
 
     it('does not accept drops while the composer is disabled', () => {
       const { connection } = openConversation({ configured: false });
-      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-[640px]"]') as HTMLElement;
+      const zone = screen.getByLabelText('Message').closest('div[class*="flex-col"]') as HTMLElement;
 
       fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [new File(['x'], 'dropped.txt')] } });
 

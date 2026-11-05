@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useConnection } from '../connection/connection-context.js';
 import { useConversations } from '../conversations/conversations-context.js';
 import { emptyConversationView } from '../conversations/conversations-reducer.js';
+import { openQuestion } from '../conversations/open-question.js';
 import { deriveTeam } from '../conversations/team-state.js';
 import { useDelivery } from '../conversations/use-delivery.js';
 import { usePresence } from '../conversations/use-presence.js';
@@ -12,6 +13,7 @@ import { useMediaQuery } from '../lib/use-media-query.js';
 
 import { AgentMark } from './agent/agent-mark.js';
 import { Composer } from './composer.js';
+import { AnswerInputProvider } from './entries/answer-input.js';
 import { FeedList, type FeedHandle } from './entries/feed-list.js';
 import type { QuestionAnswer } from './entries/question-card.js';
 import { SettingsSheet } from './settings-sheet.js';
@@ -72,6 +74,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
 
   const running = view.state !== 'idle';
   const entries = useMemo(() => view.entryIds.map(id => view.entries[id]), [view.entryIds, view.entries]);
+  const questionId = useMemo(() => openQuestion(entries)?.id, [entries]);
   const team = useMemo(() => deriveTeam(entries, running, view.interrupted), [entries, running, view.interrupted]);
   usePresence(team);
   const delivery = useDelivery(entries, running);
@@ -112,17 +115,19 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
       {entries.length === 0 && !running && view.loaded
         ? <div className="min-h-0 flex-1"><TeamIntro onPick={text => setSuggestion(current => ({ text, nonce: current.nonce + 1 }))} /></div>
         : (
-          <FeedList
-            ref={feed}
-            entries={entries}
-            team={team}
-            draft={view.draft}
-            running={running}
-            focus={focus}
-            onFocus={toggleFocus}
-            onHover={setHovered}
-            onAnswer={handleAnswer}
-          />
+          <AnswerInputProvider conversationId={conversationId} questionId={questionId} onAnswer={handleAnswer}>
+            <FeedList
+              ref={feed}
+              entries={entries}
+              team={team}
+              draft={view.draft}
+              running={running}
+              focus={focus}
+              onFocus={toggleFocus}
+              onHover={setHovered}
+              onAnswer={handleAnswer}
+            />
+          </AnswerInputProvider>
         )}
       <Composer
         key={`${conversationId}:${suggestion.nonce}`}

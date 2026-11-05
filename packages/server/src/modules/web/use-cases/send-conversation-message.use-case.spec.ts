@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
@@ -23,7 +24,7 @@ function setup() {
     harness.store,
     harness.workspace,
     harness.promptHistory,
-    harness.uploads,
+    new WebConversationUploadsService(harness.workspace, harness.uploads),
     harness.turns,
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];

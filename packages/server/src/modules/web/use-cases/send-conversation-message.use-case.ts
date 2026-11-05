@@ -1,19 +1,16 @@
 import type { Attachment } from '@agent-remote-control/protocol/attachment';
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { resolve } from 'node:path';
 
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
-import { IWorkspaceUploadPort } from '../../workspace/ports/workspace-upload.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { IPromptHistoryPort } from '../ports/prompt-history.port.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
-import { contentTypeOf } from '../utils/content-type.util.js';
+import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { noticeEntry, userMessageEntry } from '../utils/conversation-entry.util.js';
-import { isUploadPathOf } from '../utils/upload-path.util.js';
 
 
 const TITLE_MAX_LENGTH = 60;
@@ -32,7 +29,7 @@ export class SendConversationMessageUseCase {
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
     @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
     @Inject(IPromptHistoryPort) private readonly promptHistory: IPromptHistoryPort,
-    @Inject(IWorkspaceUploadPort) private readonly uploads: IWorkspaceUploadPort,
+    private readonly uploads: WebConversationUploadsService,
     private readonly turns: WebConversationTurnsService,
   ) {}
 
@@ -47,7 +44,7 @@ export class SendConversationMessageUseCase {
         await this.events.publishEntry(conversationId, noticeEntry('warning', NOT_CONFIGURED_NOTICE));
         return;
       }
-      const files = await this.fetchUploads(conversationId, attachments);
+      const files = await this.uploads.resolve(conversationId, attachments);
       if (!files) {
         await this.events.publishEntry(conversationId, noticeEntry('error', INVALID_ATTACHMENT_NOTICE));
         return;
@@ -68,20 +65,6 @@ export class SendConversationMessageUseCase {
   /** Without any installed agent the turn runs with the default one, so only a choosable agent is required. */
   private async isConfigured(conversationId: string): Promise<boolean> {
     return await this.configuration.ensureSettings(conversationId) !== 'missing' || this.configuration.listAgents().length === 0;
-  }
-
-  /**
-   * The files this conversation uploaded, in the form every channel hands the orchestrator, or `null` when
-   * one of the attachments is not an existing upload of this conversation.
-   */
-  private async fetchUploads(conversationId: string, attachments: readonly Attachment[]): Promise<readonly TurnAttachment[] | null> {
-    const files = await Promise.all(attachments.map(async ({ path, name }): Promise<TurnAttachment | null> => {
-      const size = isUploadPathOf(conversationId, path) ? await this.uploads.fileSize(path) : null;
-      return size === null
-        ? null
-        : { name, path: resolve(this.workspace.getBaseDirectory(), path), contentType: contentTypeOf(name), size };
-    }));
-    return files.every(file => file !== null) ? files : null;
   }
 
   private async recordUserMessage(conversationId: string, text: string, attachments: readonly Attachment[]): Promise<void> {

@@ -1,13 +1,16 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render as renderTree, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createRef } from 'react';
+import { createRef, type ReactElement } from 'react';
 import { VirtuosoMockContext } from 'react-virtuoso';
 
+import { FeedProviders } from '../../test/feed-providers.js';
 import { AT, userEntry } from '../../test/render-app.js';
 
 import { FeedList, type FeedHandle } from './feed-list.js';
 
+
+const render = (tree: ReactElement) => renderTree(tree, { wrapper: FeedProviders });
 
 type ObserverRecord = { callback: () => void; targets: Element[] };
 

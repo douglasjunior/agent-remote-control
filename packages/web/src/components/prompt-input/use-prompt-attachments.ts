@@ -77,6 +77,8 @@ export function usePromptAttachments(connection: IServerConnection, conversation
   }, []);
 
   const clear = useCallback(() => {
+    running.current.forEach(controller => controller.abort());
+    running.current.clear();
     count.current = 0;
     setItems([]);
   }, []);

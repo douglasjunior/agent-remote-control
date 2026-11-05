@@ -1,4 +1,5 @@
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
 import { questionEntry } from '../utils/conversation-entry.util.js';
 
@@ -13,7 +14,12 @@ function setup() {
   const harness = createWebHarness();
   harness.store.seed('web-1');
   const resumeWork = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns);
-  const useCase = new AnswerConversationQuestionUseCase(harness.questions, harness.events, resumeWork);
+  const useCase = new AnswerConversationQuestionUseCase(
+    harness.questions,
+    harness.events,
+    resumeWork,
+    new WebConversationUploadsService(harness.workspace, harness.uploads),
+  );
   return { ...harness, useCase, types: () => (harness.store.histories.get('web-1') ?? []).map(entry => entry.type) };
 }
 
@@ -48,6 +54,32 @@ describe('AnswerConversationQuestionUseCase', () => {
     await useCase.execute('web-1', { kind: 'option', optionIndex: 1 });
 
     await vi.waitFor(() => expect(agentTurn.deliveredAnswers).toEqual([restoredWork]));
+  });
+
+  describe('with attachments', () => {
+    const file = { path: '.arc-uploads/web-1/shot.png', name: 'shot.png' };
+
+    it('hands the uploaded files to the agent and keeps them in the echo', async () => {
+      const { useCase, questions, store, uploads } = setup();
+      uploads.files.set(file.path, 10);
+      questions.prompt = prompt;
+      questions.submission = { kind: 'answered', asker };
+
+      await useCase.execute('web-1', { kind: 'text', text: '', attachments: [file] });
+
+      expect(questions.answers[0]?.answer).toMatchObject({ kind: 'text', text: '', attachments: [{ name: 'shot.png', contentType: 'image/png', size: 10 }] });
+      expect(store.histories.get('web-1')?.[0]).toMatchObject({ type: 'user_message', attachments: [file] });
+    });
+
+    it('reports a file that is not an upload of this conversation, without answering', async () => {
+      const { useCase, questions, types } = setup();
+      questions.prompt = prompt;
+
+      await expect(useCase.execute('web-1', { kind: 'text', text: 'see', attachments: [file] })).resolves.toBe(true);
+
+      expect(questions.answers).toEqual([]);
+      expect(types()).toEqual(['notice']);
+    });
   });
 
   it('echoes nothing for an invalid option', async () => {

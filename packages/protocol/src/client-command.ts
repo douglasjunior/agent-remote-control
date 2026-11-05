@@ -54,7 +54,13 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     conversationId: z.string(),
     answer: z.discriminatedUnion('kind', [
       z.object({ kind: z.literal('option'), optionIndex: z.number().int().min(1) }),
-      z.object({ kind: z.literal('text'), text: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH) }),
+      z.object({
+        kind: z.literal('text'),
+        text: z.string().trim().max(MAX_MESSAGE_LENGTH),
+        attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).optional(),
+      }).refine(answer => answer.text.length > 0 || (answer.attachments?.length ?? 0) > 0, {
+        message: 'An answer needs text or an attachment',
+      }),
     ]),
   }),
 ]);

@@ -1,30 +1,30 @@
+import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import type { CSSProperties } from 'react';
 
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
+import { PromptInput } from '../prompt-input/prompt-input.js';
 import { Button } from '../ui/button.js';
 
+import { useAnswerInput } from './answer-input.js';
 import { Markdown } from './markdown.js';
 
 
 type QuestionEntry = Extract<ConversationEntry, { type: 'question' }>;
 
-export type QuestionAnswer = { kind: 'option'; optionIndex: number } | { kind: 'text'; text: string };
+export type QuestionAnswer = Extract<ClientCommand, { type: 'question.answer' }>['answer'];
+
+function AnswerField() {
+  const input = useAnswerInput();
+  return <PromptInput input={input} layout="inline" label="Your answer" placeholder="Write your own answer…" submitLabel="Answer" />;
+}
 
 export function QuestionCard({ entry, active, onAnswer }: {
   readonly entry: QuestionEntry;
   readonly active: boolean;
   readonly onAnswer: (answer: QuestionAnswer) => void;
 }) {
-  const [text, setText] = useState('');
-
-  const submitText = (event: FormEvent) => {
-    event.preventDefault();
-    onAnswer({ kind: 'text', text: text.trim() });
-    setText('');
-  };
-
   const { color } = agentIdentity(entry.askerRole, entry.askerRoleName);
 
   return (
@@ -71,17 +71,7 @@ export function QuestionCard({ entry, active, onAnswer }: {
             ))}
           </div>
         )}
-        {active && (
-          <form onSubmit={submitText} className="flex gap-2">
-            <input
-              aria-label="Your answer"
-              value={text}
-              onChange={event => setText(event.target.value)}
-              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-            />
-            <Button type="submit" size="sm" disabled={!text.trim()}>Answer</Button>
-          </form>
-        )}
+        {active && <AnswerField />}
       </div>
     </div>
   );

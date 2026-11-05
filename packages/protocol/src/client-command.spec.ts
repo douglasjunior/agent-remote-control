@@ -76,4 +76,11 @@ describe('parseClientCommand', () => {
     const text = 'a'.repeat(MAX_MESSAGE_LENGTH);
     expect(parseClientCommand({ type: 'message.send', conversationId: 'c', text }).ok).toBe(true);
   });
+
+  it('accepts an answer with attachments only and refuses an empty one', () => {
+    const command = (answer: unknown) => ({ type: 'question.answer', conversationId: 'c', answer });
+
+    expect(parseClientCommand(command({ kind: 'text', text: '', attachments: [{ path: 'a', name: 'a' }] })).ok).toBe(true);
+    expect(parseClientCommand(command({ kind: 'text', text: '  ' })).ok).toBe(false);
+  });
 });

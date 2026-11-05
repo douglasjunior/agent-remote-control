@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
@@ -38,7 +39,8 @@ describe('WebConnectionHandler', () => {
     harness = createWebHarness();
     const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, uploads, harness.turns);
+    const conversationUploads = new WebConversationUploadsService(workspace, uploads);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, conversationUploads, harness.turns);
     const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns);
     handler = new WebConnectionHandler(
       transport,
@@ -54,7 +56,7 @@ describe('WebConnectionHandler', () => {
       new ListAgentOptionsUseCase(configuration),
       getProfiles,
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
-      new AnswerConversationQuestionUseCase(questions, events, resumeWork),
+      new AnswerConversationQuestionUseCase(questions, events, resumeWork, conversationUploads),
       resumeWork,
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),

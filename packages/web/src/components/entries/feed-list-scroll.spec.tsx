@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { createRef, useEffect, useImperativeHandle, useState, type ReactNode, type Ref } from 'react';
 import type { ListRange, VirtuosoHandle } from 'react-virtuoso';
 
+import { FeedProviders } from '../../test/feed-providers.js';
 import { AT, userEntry } from '../../test/render-app.js';
 
 import { FeedList, type FeedHandle } from './feed-list.js';
@@ -41,7 +42,7 @@ const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', sta
 const entries = [userEntry('u1'), question, userEntry('u2'), userEntry('u3'), userEntry('u4'), reply];
 
 function renderFeed(list: ConversationEntry[] = entries, handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
-  return render(<FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />);
+  return render(<FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />, { wrapper: FeedProviders });
 }
 
 describe('FeedList open question out of view', () => {

@@ -91,7 +91,7 @@ packages/web/src/
 | `interim` | Muted markdown under the Coordinator's mark and name |
 | `delegation` | One handoff row per delegation (`started` joined with its `finished` or `failed` entry by `delegationId`, never by round and role, which repeat across turns): agent mark, the CEO's `summary` as the title, the agent's name below, the live time or the duration; delegations of the same round that follow each other with no other entry between them stack as one squad. A chevron opens the agent's steps, then its response or error |
 | `thought`, `tool` | Consecutive runs of one agent (`role`) grouped in one collapsible, closed by default and headed by the agent's name and what it does now (`toolLabel` turns tool titles into plain words); steps of a delegated agent go inside its delegation row instead; `removed` thoughts are hidden |
-| `question` | Card with an attention border, titled by the asker's name, with one button per option (1-based `optionIndex`) and a text field; "Question n of m" when `total > 1`; only the open question (`closed: false`) is enabled; a closed one keeps the asker and the text |
+| `question` | Card with an attention border, titled by the asker's name, with one button per option (1-based `optionIndex`) and an inline `PromptInput` for an answer of its own, with attachments and voice; "Question n of m" when `total > 1`; only the open question (`closed: false`) is enabled; a closed one keeps the asker and the text |
 | `notice` | Inline line styled by `level` |
 
 The composer is disabled while the connection is not `open` or the conversation is not `configured`
@@ -144,6 +144,8 @@ menu (`useMicrophones`) with "System default" and the audio inputs, the chosen o
 microphone access once when the browser still hides device names. The choice is kept in `localStorage`
 (`arc.microphone`) and recording asks for that device exactly; a device that is gone falls back to the default. The microphone is released when the recording ends
 or the composer unmounts.
+
+`usePromptInput` holds all of the above (text, attachments, recording, mentions, history) and `PromptInput` renders it, in two layouts: `block` with the tools around the field, used by `Composer`, and `inline` with field and tools in one frame, used inside the question card. The state lives apart from the field because the feed unmounts off-screen rows: `AnswerInputProvider` keeps it above `FeedList`, so a recording or an upload survives scrolling, and only the card reads the context, so typing does not render the feed. It resets when the open question changes.
 
 `FileMentionPopup` is composed from tokens, not a shadcn `command`, because the field must keep the focus.
 
