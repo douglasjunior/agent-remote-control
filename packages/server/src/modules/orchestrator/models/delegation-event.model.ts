@@ -27,4 +27,8 @@ export type DelegationEvent =
     readonly phase: 'failed';
     readonly errorMessage: string;
     readonly durationMs: number;
+  }
+  | DelegationEventBase & {
+    readonly phase: 'cancelled';
+    readonly durationMs: number;
   };

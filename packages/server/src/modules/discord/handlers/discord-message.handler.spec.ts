@@ -577,6 +577,47 @@ describe('DiscordMessageHandler', () => {
       expect(contents).toContain('Done.');
     });
 
+    it('should announce nothing when a delegation is cancelled', async () => {
+      const send = vi.fn().mockImplementation(async (content: string) => ({
+        content,
+        edit: vi.fn().mockResolvedValue(undefined),
+      }));
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send,
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+      agentTurn.executeTurn = async (request: TurnRequest) => {
+        request.onDelegation?.({
+          delegationId: 'dl-1',
+          round: 1,
+          role: 'DEVELOPER',
+          roleName: 'Developer',
+          taskSpec: 'Do the work',
+          summary: 'Doing the work',
+          phase: 'cancelled',
+          durationMs: 5,
+        });
+        return { response: '', status: 'cancelled' };
+      };
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      const contents = send.mock.calls.map(([content]) => String(content));
+      expect(contents.filter(content => content.includes('Developer'))).toEqual([]);
+    });
+
     it('should proceed gracefully when a delegation cannot be announced', async () => {
       const send = vi.fn().mockImplementation(async (content: string) => ({
         content,

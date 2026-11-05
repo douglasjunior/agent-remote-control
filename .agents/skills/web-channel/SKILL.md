@@ -66,7 +66,7 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `prompts.history` (with a `requestId`) answers the requester with `prompts.list`: the stored prompts, most
   recent first. The history is global to the machine, capped at `MAX_PROMPT_HISTORY`, never repeats the
   latest prompt, and is recorded by the server only; the client never appends.
-- Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished` or `failed`),
+- Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`),
   `onInterimMessage` → `interim`, `onQuestion` → `question` (with `askerRole` besides `askerRoleName`, and `closed: false`); the `TurnResult` becomes `agent_response`.
   Steering and cancellation markers have no entry.
 - Entry ids are stable so the store and the client upsert by id, and each carries what makes it unique across the conversation; other entries get a random id:

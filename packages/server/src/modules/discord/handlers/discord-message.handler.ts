@@ -288,6 +288,9 @@ export class DiscordMessageHandler implements OnModuleInit {
       };
 
       const onDelegation = (event: DelegationEvent): void => {
+        if (event.phase === 'cancelled') {
+          return;
+        }
         typing.keepAlive();
         void cleanInitialProgress();
 

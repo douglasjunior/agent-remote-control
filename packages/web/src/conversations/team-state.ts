@@ -28,13 +28,14 @@ export interface TeamMember {
 }
 
 const CEO_ROLE = 'CEO';
+const CLOSING_STATE = { finished: 'done', failed: 'failed', cancelled: 'idle' } as const;
 
 /**
  * The team as the current turn left it: every role of the team in order, then any other role delegated to.
  * A user message ends the turn that precedes it, except for delegations still open while a turn runs: the
  * coordinator accepts new messages while delegates keep working, so those stay in the team with their
  * activity. The agent whose question is still open is waiting, whatever was published after the question.
- * A delegation still open when no turn runs was cancelled or stopped by a restart, so its agent is idle. An open
+ * A delegation still open when no turn runs was stopped by a restart, so its agent is idle. An open
  * question outlives a restart, which leaves its agent waiting with no turn running.
  */
 export function deriveTeam(
@@ -75,7 +76,7 @@ export function deriveTeam(
         delegates.set(entry.role, {
           member: {
             ...base,
-            state: entry.phase === 'finished' ? 'done' : 'failed',
+            state: CLOSING_STATE[entry.phase],
             ...(entry.durationMs !== undefined ? { durationMs: entry.durationMs } : {}),
           },
           delegationId: entry.delegationId,

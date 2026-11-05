@@ -41,7 +41,7 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     type: z.literal('delegation'),
     /** Pairs the `started` entry with the entry that closes the same delegation. */
     delegationId: z.string(),
-    phase: z.enum(['started', 'finished', 'failed']),
+    phase: z.enum(['started', 'finished', 'failed', 'cancelled']),
     round: z.number().int(),
     role: z.string(),
     roleName: z.string(),

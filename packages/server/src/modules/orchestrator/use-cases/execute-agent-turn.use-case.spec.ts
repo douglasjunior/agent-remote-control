@@ -653,14 +653,15 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(finished && 'usage' in finished ? finished.usage : undefined).toBeUndefined();
   });
 
-  it('should not report a finished delegation when the delegate is cancelled', async () => {
+  it('should close a cancelled delegation with its own phase', async () => {
     stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Go.</delegate>'];
     delegateStubPort.promptErrorToThrow = new PromptCancelledError();
-    const phases: string[] = [];
+    const events: DelegationEvent[] = [];
 
-    await useCase.execute(turnRequest({ onDelegation: event => phases.push(event.phase) }));
+    await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
 
-    expect(phases).toEqual(['started']);
+    expect(events.map(event => event.phase)).toEqual(['started', 'cancelled']);
+    expect(events[1]).toMatchObject({ delegationId: events[0]!.delegationId, durationMs: expect.any(Number) });
   });
 
   it('should tag what a turn and its delegates do with the conversation', async () => {

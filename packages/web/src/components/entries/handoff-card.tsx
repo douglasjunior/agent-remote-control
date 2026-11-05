@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
-import type { Handoff } from '../../conversations/group-entries.js';
+import type { Handoff, HandoffStatus } from '../../conversations/group-entries.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { formatDuration } from '../../lib/format.js';
 import { useNow } from '../../lib/use-now.js';
@@ -12,6 +12,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/colla
 import { ActivitySteps } from './activity-group.js';
 import { Markdown } from './markdown.js';
 
+
+const RESTING_MARK: Record<HandoffStatus, AgentMarkState> = { working: 'idle', done: 'done', failed: 'failed', cancelled: 'idle' };
 
 function triggerLabel({ status, response, steps }: Handoff): string {
   if (status === 'failed') {
@@ -47,9 +49,9 @@ function HandoffRow({ handoff, running, open, dimmed, onOpenChange, onHover }: {
 }) {
   const { label, color } = agentIdentity(handoff.role, handoff.roleName);
   const working = handoff.status === 'working' && running;
-  const stopped = handoff.status === 'working' && !running;
+  const stopped = handoff.status === 'cancelled' || (handoff.status === 'working' && !running);
   const now = useNow(working);
-  const markState: AgentMarkState = working ? 'working' : stopped ? 'idle' : handoff.status === 'working' ? 'idle' : handoff.status;
+  const markState: AgentMarkState = working ? 'working' : RESTING_MARK[handoff.status];
   const time = working
     ? formatDuration(Math.max(0, now - handoff.startedAt))
     : stopped

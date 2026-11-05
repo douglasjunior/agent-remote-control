@@ -120,6 +120,13 @@ describe('conversation entry mapping', () => {
       expect(valid(entry)).toBe(true);
     });
 
+    it('maps a cancelled delegation', () => {
+      const entry = delegationEntry({ delegationId: 'dl-1', phase: 'cancelled', round: 2, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Adding the login screen', durationMs: 5 });
+
+      expect(entry).toMatchObject({ id: 'delegation:dl-1:cancelled', delegationId: 'dl-1', phase: 'cancelled', durationMs: 5 });
+      expect(valid(entry)).toBe(true);
+    });
+
     it('maps a started delegation', () => {
       const entry = delegationEntry({ delegationId: 'dl-1', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', taskSpec: 'Do the work', summary: 'Adding the login screen' });
 

@@ -922,6 +922,7 @@ export class ExecuteAgentTurnUseCase {
       return this.formatAgentResult(delegateToRole, projectName, response, { agentInfo });
     } catch (error) {
       if (this.isCancellation(error)) {
+        request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
         throw error;
       }
       request.onDelegation?.({

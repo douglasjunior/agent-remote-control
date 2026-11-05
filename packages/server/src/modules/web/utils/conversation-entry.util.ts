@@ -91,6 +91,9 @@ export function delegationEntry(event: DelegationEvent): ConversationEntry {
   if (event.phase === 'failed') {
     return { ...base, errorMessage: event.errorMessage, durationMs: event.durationMs };
   }
+  if (event.phase === 'cancelled') {
+    return { ...base, durationMs: event.durationMs };
+  }
   return {
     ...base,
     response: event.response,

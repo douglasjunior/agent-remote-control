@@ -165,6 +165,25 @@ describe('ConversationView', () => {
     expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
   });
 
+  it('keeps a cancelled delegation stopped while a later turn runs', () => {
+    const started = { at: AT, type: 'delegation', delegationId: '1:DEVELOPER', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the API' } as const;
+    const { connection } = openConversation({
+      entries: [
+        userEntry('u1'),
+        { ...started, id: 'a1', phase: 'started' },
+        { ...started, id: 'a2', phase: 'cancelled', durationMs: 1000 },
+        { id: 'r1', at: AT, type: 'agent_response', status: 'cancelled', response: '' },
+        userEntry('u2'),
+      ],
+    });
+    act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+    const row = within(screen.getByTestId('message-viewport')).getByRole('region', { name: 'Delegation' }).firstElementChild;
+    expect(row).toHaveAttribute('data-status', 'stopped');
+    expect(row).toHaveTextContent('Stopped');
+    expect(screen.getByRole('region', { name: 'Your squad' }).querySelector('[data-role="DEVELOPER"]')).toHaveAttribute('data-state', 'idle');
+  });
+
   it('shows a delegation that started without steps as working', () => {
     const { connection } = openConversation({
       entries: [

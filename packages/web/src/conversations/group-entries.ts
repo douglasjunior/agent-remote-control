@@ -4,7 +4,9 @@ import type { ConversationEntry } from '@agent-remote-control/protocol/conversat
 export type ActivityEntry = Extract<ConversationEntry, { type: 'thought' | 'tool' }>;
 type DelegationEntry = Extract<ConversationEntry, { type: 'delegation' }>;
 
-export type HandoffStatus = 'working' | 'done' | 'failed';
+export type HandoffStatus = 'working' | 'done' | 'failed' | 'cancelled';
+
+const CLOSING_STATUS = { finished: 'done', failed: 'failed', cancelled: 'cancelled', started: 'working' } as const;
 
 /** One delegation, from the entry that started it to the entry that closed it. */
 export interface Handoff {
@@ -72,7 +74,7 @@ function toHandoff(started: DelegationEntry, closing: DelegationEntry | undefine
     summary,
     prompt,
     ...(projectName ? { projectName } : {}),
-    status: closing ? (closing.phase === 'finished' ? 'done' : 'failed') : 'working',
+    status: CLOSING_STATUS[closing?.phase ?? 'started'],
     startedAt: Date.parse(at),
     steps,
     ...(closing?.durationMs !== undefined ? { durationMs: closing.durationMs } : {}),
