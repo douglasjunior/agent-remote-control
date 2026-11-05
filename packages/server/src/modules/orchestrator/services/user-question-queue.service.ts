@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import type { OpenWorkQuestions } from '../models/open-work.model.js';
 import type {
   AnsweredQuestion,
   QuestionAnswerInput,
@@ -17,6 +18,10 @@ type QuestionRequest = {
   readonly questions: readonly UserQuestion[];
   readonly answers: AnsweredQuestion[];
   readonly notify?: (prompt: QuestionPrompt) => void;
+  /** Called with the answers so far while questions remain; the last answer leaves with the request. */
+  readonly onAnswer?: (answers: readonly AnsweredQuestion[]) => void;
+  /** Present on a request restored after a restart, which has no turn waiting for its answers. */
+  readonly restoredWorkId?: string;
   readonly resolve: (answers: readonly AnsweredQuestion[]) => void;
   readonly reject: (error: Error) => void;
 };
@@ -41,10 +46,11 @@ export class UserQuestionQueueService {
     message: string,
     questions: readonly UserQuestion[],
     notify?: (prompt: QuestionPrompt) => void,
+    onAnswer?: (answers: readonly AnsweredQuestion[]) => void,
   ): Promise<readonly AnsweredQuestion[]> {
     return new Promise((resolve, reject) => {
       const queue = this.queues.get(conversationKey) ?? [];
-      queue.push({ asker, message, questions, answers: [], notify, resolve, reject });
+      queue.push({ asker, message, questions, answers: [], notify, onAnswer, resolve, reject });
       this.queues.set(conversationKey, queue);
       this.logger.log(
         `[Questions Queued] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Position=${queue.length}`,
@@ -53,6 +59,20 @@ export class UserQuestionQueueService {
         this.notifyHead(conversationKey);
       }
     });
+  }
+
+  /** Queues a request a restart left unanswered. Nothing waits on it: the answered submission carries the answers. */
+  restore(
+    conversationKey: string,
+    workId: string,
+    asker: QuestionAsker,
+    { message, questions, answers }: OpenWorkQuestions,
+    onAnswer: (answers: readonly AnsweredQuestion[]) => void,
+  ): void {
+    const queue = this.queues.get(conversationKey) ?? [];
+    queue.push({ asker, message, questions, answers: [...answers], onAnswer, restoredWorkId: workId, resolve: () => undefined, reject: () => undefined });
+    this.queues.set(conversationKey, queue);
+    this.logger.log(`[Questions Restored] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Answered=${answers.length}`);
   }
 
   current(conversationKey: string): QuestionPrompt | undefined {
@@ -87,6 +107,7 @@ export class UserQuestionQueueService {
     request.answers.push(answer);
 
     if (request.answers.length < request.questions.length) {
+      request.onAnswer?.([...request.answers]);
       return { kind: 'next', prompt: this.buildPrompt(request, queue.length - 1) };
     }
 
@@ -95,7 +116,12 @@ export class UserQuestionQueueService {
     this.logger.log(`[Questions Answered] Conversation=${conversationKey}, Role=${request.asker.role}`);
     request.resolve(request.answers);
     const next = queue[0] && this.buildPrompt(queue[0], queue.length - 1);
-    return { kind: 'answered', asker: request.asker, ...(next ? { next } : {}) };
+    return {
+      kind: 'answered',
+      asker: request.asker,
+      ...(next ? { next } : {}),
+      ...(request.restoredWorkId ? { restoredWork: { workId: request.restoredWorkId, answers: request.answers } } : {}),
+    };
   }
 
   /** Rejects every waiting agent with a cancellation, so the turns waiting on them end as cancelled. */

@@ -15,8 +15,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       conditions: ['source', ...defaultClientConditions],
     },
-    server: { proxy: serverProxy },
-    preview: { proxy: serverProxy },
+    server: { allowedHosts: ['.devtunnels.ms'], proxy: serverProxy },
+    preview: { allowedHosts: ['.devtunnels.ms'], proxy: serverProxy },
     build: { outDir: 'dist' },
   };
 });

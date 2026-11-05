@@ -40,19 +40,20 @@ describe('ConversationView', () => {
     const user = userEvent.setup();
     const { connection } = openConversation({
       entries: [
-        { id: 't1', at: AT, type: 'thought', text: 'thinking hard' },
-        { id: 't2', at: AT, type: 'thought', text: 'hidden', removed: true },
-        { id: 'x1', at: AT, type: 'tool', title: 'Read file', status: 'completed' },
-        { id: 'x2', at: AT, type: 'tool', title: 'Run tests', status: 'failed' },
-        { id: 'x3', at: AT, type: 'tool', title: 'Lint', status: 'in_progress' },
+        { id: 't1', at: AT, type: 'thought', role: 'CEO', text: 'thinking hard' },
+        { id: 't2', at: AT, type: 'thought', role: 'CEO', text: 'hidden', removed: true },
+        { id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'Read file', status: 'completed' },
+        { id: 'x2', at: AT, type: 'tool', role: 'CEO', title: 'Run tests', status: 'failed' },
+        { id: 'x3', at: AT, type: 'tool', role: 'CEO', title: 'Lint', status: 'in_progress' },
       ],
     });
     act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
 
-    const trigger = screen.getByRole('button', { name: 'Working… (4 steps)' });
-    expect(screen.queryByText('Read file')).not.toBeInTheDocument();
+    const trigger = screen.getByRole('button', { name: /Coordinator.*Running project commands….*\(4 steps\)/ });
+    expect(screen.queryByText('Reading files')).not.toBeInTheDocument();
     await user.click(trigger);
-    expect(screen.getByText('Read file')).toBeInTheDocument();
+    expect(screen.getByText('Thinking')).toBeInTheDocument();
+    expect(screen.getByTitle('Read file')).toBeInTheDocument();
     expect(screen.getByText('thinking hard')).toBeInTheDocument();
     expect(screen.queryByText('hidden')).not.toBeInTheDocument();
     expect(screen.getByLabelText('completed')).toBeInTheDocument();
@@ -60,12 +61,12 @@ describe('ConversationView', () => {
     expect(screen.getByLabelText('running')).toBeInTheDocument();
 
     act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'idle' }));
-    expect(screen.getByRole('button', { name: 'Show details (4 steps)' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Coordinator.*Show details.*\(4 steps\)/ })).toBeInTheDocument();
   });
 
   it('uses the singular for a single step', () => {
-    openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', title: 'One', status: 'completed' }] });
-    expect(screen.getByRole('button', { name: 'Show details (1 step)' })).toBeInTheDocument();
+    openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'One', status: 'completed' }] });
+    expect(screen.getByRole('button', { name: /Show details.*\(1 step\)/ })).toBeInTheDocument();
   });
 
   it('renders agent responses with the footer, failures and cancellations', () => {
@@ -85,36 +86,101 @@ describe('ConversationView', () => {
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
   });
 
-  it('renders delegations and notices', async () => {
+  it('renders each delegation as one handoff card and shows notices', async () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
-        { id: 'd1', at: AT, type: 'delegation', phase: 'started', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead', projectName: 'app' },
-        { id: 'd2', at: AT, type: 'delegation', phase: 'finished', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead', response: 'all done', durationMs: 42_000 },
-        { id: 'd3', at: AT, type: 'delegation', phase: 'finished', round: 2, role: 'DEVELOPER', roleName: 'Developer' },
+        { id: 'd1', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'started', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', summary: 'Planning the login', projectName: 'app' },
+        { id: 'd2', at: AT, type: 'delegation', delegationId: '1:TECH_LEAD', phase: 'finished', round: 1, role: 'TECH_LEAD', roleName: 'Tech Lead Agent', summary: 'Planning the login', response: 'all done', durationMs: 550_000 },
+        { id: 'd3', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the login' },
+        { id: 'd4', at: AT, type: 'delegation', delegationId: '2:DEVELOPER', phase: 'failed', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the login', errorMessage: 'compiler exploded', durationMs: 4000 },
         { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'fyi' },
         { id: 'n2', at: AT, type: 'notice', level: 'warning', text: 'careful' },
         { id: 'n3', at: AT, type: 'notice', level: 'error', text: 'bad' },
       ],
     });
-    expect(screen.getByText('Tech Lead started')).toBeInTheDocument();
-    expect(screen.getByText('app')).toBeInTheDocument();
-    expect(screen.getByText('Tech Lead finished in 42 s')).toBeInTheDocument();
-    expect(screen.getByText('Developer finished')).toBeInTheDocument();
-    expect(screen.queryByText('all done')).not.toBeInTheDocument();
-    await user.click(screen.getByText('Show response'));
-    expect(screen.getByText('all done')).toBeInTheDocument();
+    const feed = within(screen.getByTestId('message-viewport'));
+    expect(feed.getByText(/Planning the login/)).toBeInTheDocument();
+    expect(feed.getByText('9m 10s')).toBeInTheDocument();
+    expect(feed.getByText('Failed · 4 s')).toBeInTheDocument();
+    expect(feed.queryByText('all done')).not.toBeInTheDocument();
+    await user.click(feed.getByRole('button', { name: 'See the result' }));
+    expect(feed.getByText('all done')).toBeInTheDocument();
+    expect(feed.queryByText('compiler exploded')).not.toBeInTheDocument();
+    await user.click(feed.getByRole('button', { name: 'See what went wrong' }));
+    expect(feed.getByText('compiler exploded')).toBeInTheDocument();
     expect(screen.getByText('fyi')).toBeInTheDocument();
     expect(screen.getByText('careful')).toBeInTheDocument();
     expect(screen.getByText('bad')).toBeInTheDocument();
   });
 
-  it('sends structured answers and keeps only the latest question active', async () => {
+  it('shows what a working agent does in its delegation row and keeps its steps inside', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation({
       entries: [
-        { id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Old question', options: ['A'], number: 1, total: 1 },
-        { id: 'q2', at: AT, type: 'question', askerRoleName: 'Tech Lead', text: 'Pick one', rationale: 'because', options: ['Yes', 'No'], number: 2, total: 3 },
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
+        { id: 't1', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' },
+        { id: 't2', at: AT, type: 'thought', role: 'DEVELOPER', text: 'Looking at the router' },
+      ],
+    });
+    act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+    const feed = within(screen.getByTestId('message-viewport'));
+    expect(within(screen.getByRole('region', { name: 'Your squad' })).getByText('Thinking')).toBeInTheDocument();
+    expect(feed.queryByText('Looking at the router')).not.toBeInTheDocument();
+    await user.click(feed.getByRole('button', { name: 'See the steps' }));
+    expect(feed.getByText('Looking at the router')).toBeInTheDocument();
+  });
+
+  it('shows a delegation that started without steps as working', () => {
+    const { connection } = openConversation({
+      entries: [
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
+      ],
+    });
+    act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+    expect(within(screen.getByRole('region', { name: 'Your squad' })).getByText('Starting')).toBeInTheDocument();
+    expect(within(screen.getByTestId('message-viewport')).getByRole('region', { name: 'Delegation' }).firstElementChild).toHaveAttribute('data-status', 'working');
+  });
+
+  it('introduces the team in an empty conversation and offers a request to start from', async () => {
+    const user = userEvent.setup();
+    openConversation();
+
+    expect(screen.getByRole('heading', { name: 'Meet your team' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Fix the failing tests/ }));
+
+    const field = screen.getByLabelText('Message');
+    expect(field).toHaveValue('Fix the failing tests');
+    expect(field).toHaveFocus();
+  });
+
+  it('lists agents that worked together one line each and stops the clock when the turn ends', () => {
+    openConversation({
+      entries: [
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', summary: 'Building the API' },
+        { id: 'a2', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'started', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', summary: 'Reviewing the docs' },
+        { id: 'a3', at: AT, type: 'delegation', delegationId: '1:CODE_REVIEWER', phase: 'finished', round: 1, role: 'CODE_REVIEWER', roleName: 'Reviewer', summary: 'Reviewing the docs', durationMs: 1000 },
+        { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'All done' },
+      ],
+    });
+
+    const feed = within(screen.getByTestId('message-viewport'));
+    expect(feed.getByRole('region', { name: 'Delegation' }).children).toHaveLength(2);
+    expect(feed.getByText('Stopped')).toBeInTheDocument();
+    expect(feed.getByText(/2 agents/)).toBeInTheDocument();
+  });
+
+  it('sends structured answers and keeps only the open question active', async () => {
+    const user = userEvent.setup();
+    const { connection } = openConversation({
+      entries: [
+        { id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Old question', options: ['A'], number: 1, total: 1, closed: true },
+        { id: 'q2', at: AT, type: 'question', askerRole: 'TECH_LEAD', askerRoleName: 'Tech Lead', text: 'Pick one', rationale: 'because', options: ['Yes', 'No'], number: 2, total: 3, closed: false },
       ],
     });
     expect(document.body).toHaveTextContent('Question 2 of 3');
@@ -135,10 +201,10 @@ describe('ConversationView', () => {
     expect(activeInput).toHaveValue('');
   });
 
-  it('closes the question once the user has answered it', () => {
+  it('renders a question the server closed in its closed form', () => {
     openConversation({
       entries: [
-        { id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Open?', options: ['A'], number: 1, total: 1 },
+        { id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Open?', options: ['A'], number: 1, total: 1, closed: true },
         { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'Answers sent to CEO.' },
       ],
     });
@@ -150,8 +216,8 @@ describe('ConversationView', () => {
     openConversation({
       entries: [
         {
-          id: 'q1', at: AT, type: 'question', askerRoleName: 'Developer', projectName: 'api', message: 'Found two auth flows',
-          text: 'Which one?', rationale: 'It changes the login route', options: ['A'], number: 1, total: 1,
+          id: 'q1', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', projectName: 'api', message: 'Found two auth flows',
+          text: 'Which one?', rationale: 'It changes the login route', options: ['A'], number: 1, total: 1, closed: false,
         },
       ],
     });
@@ -162,7 +228,7 @@ describe('ConversationView', () => {
 
   it('renders a question without options', () => {
     openConversation({
-      entries: [{ id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Open?', options: [], number: 1, total: 1 }],
+      entries: [{ id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Open?', options: [], number: 1, total: 1, closed: false }],
     });
     expect(screen.queryByText(/Question 1 of/)).not.toBeInTheDocument();
     expect(screen.getByLabelText('Your answer')).toBeEnabled();
@@ -257,13 +323,13 @@ describe('ConversationView', () => {
     });
 
     it('stops calling the steps "Working…" once the response is being written', () => {
-      const { connection } = openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', title: 'Read', status: 'completed' }] });
+      const { connection } = openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'Read', status: 'completed' }] });
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
-      expect(screen.getByRole('button', { name: 'Working… (1 step)' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Reading files….*\(1 step\)/ })).toBeInTheDocument();
 
       emitDraft(connection, 'Writing');
 
-      expect(screen.getByRole('button', { name: 'Show details (1 step)' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Show details.*\(1 step\)/ })).toBeInTheDocument();
     });
 
     it('shows the agents at work as soon as the turn runs, before any step', () => {
@@ -271,7 +337,7 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('status', { name: '' })).not.toBeInTheDocument();
 
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
-      expect(screen.getByRole('status')).toHaveTextContent('Working…');
+      expect(screen.getByRole('status')).toHaveTextContent('Coordinator is thinking…');
 
       emitDraft(connection, 'Writing');
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -279,7 +345,7 @@ describe('ConversationView', () => {
 
     it('does not show the agents at work while a question waits for the user', () => {
       const { connection } = openConversation({
-        entries: [{ id: 'q1', at: AT, type: 'question', askerRoleName: 'CEO', text: 'Which?', options: ['A'], number: 1, total: 1 }],
+        entries: [{ id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Which?', options: ['A'], number: 1, total: 1, closed: false }],
       });
 
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
@@ -474,7 +540,7 @@ describe('ConversationView', () => {
 
     it('attaches dropped files and shows the drop hint while dragging', () => {
       const { connection } = openConversation();
-      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-3xl"]') as HTMLElement;
+      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-[640px]"]') as HTMLElement;
 
       fireEvent.dragEnter(zone, { dataTransfer: { types: ['Files'], files: [] } });
       expect(screen.getByText('Drop files to attach them')).toBeInTheDocument();
@@ -486,7 +552,7 @@ describe('ConversationView', () => {
 
     it('does not accept drops while the composer is disabled', () => {
       const { connection } = openConversation({ configured: false });
-      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-3xl"]') as HTMLElement;
+      const zone = screen.getByLabelText('Message').closest('div[class*="max-w-[640px]"]') as HTMLElement;
 
       fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: [new File(['x'], 'dropped.txt')] } });
 

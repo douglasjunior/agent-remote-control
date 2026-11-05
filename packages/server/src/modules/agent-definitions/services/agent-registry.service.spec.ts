@@ -58,7 +58,7 @@ describe('AgentRegistryService', () => {
       const prompt = service.getSystemPrompt('CEO');
 
       expect(prompt).toContain('- DEVELOPER (Developer Agent):');
-      expect(prompt).toContain('- REVIEWER (Reviewer Agent): <delegate role="REVIEWER">.');
+      expect(prompt).toContain('- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" summary="<summary>">.');
       expect(prompt).not.toContain('- CEO (');
     });
 

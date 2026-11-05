@@ -2,6 +2,7 @@ import { parseClientCommand } from '@agent-remote-control/protocol/client-comman
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
+import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
@@ -17,12 +18,15 @@ import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-pr
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
+import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
 
 export const AUTH_TIMEOUT_MS = 5_000;
 export const AUTH_FAILED_CLOSE_CODE = 4401;
+
+const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set(['message.send', 'question.answer', 'turn.cancel', 'work.resume']);
 
 @Injectable()
 export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
@@ -44,6 +48,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly getProfiles: GetConversationProfilesUseCase,
     private readonly setProfiles: SetConversationProfilesUseCase,
     private readonly answerQuestion: AnswerConversationQuestionUseCase,
+    private readonly resumeWork: ResumeConversationWorkUseCase,
     private readonly promptHistory: ListPromptHistoryUseCase,
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
@@ -94,12 +99,22 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         connection.send({ type: 'error', message: 'Invalid command' });
         return;
       }
-      void this.route(connection, parsed.value).catch((error: unknown) => {
+      const command = parsed.value;
+      const conversationId = 'conversationId' in command ? command.conversationId : undefined;
+      void runInLogConversation(conversationId, () => this.handle(connection, command)).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        this.logger.error(`command_failed: ${parsed.value.type}: ${message}`);
+        this.logger.error(`command_failed: ${command.type}: ${message}`);
         connection.send({ type: 'error', message: 'The command failed' });
       });
     });
+  }
+
+  /** Commands that change a turn are logged by type only: what the user wrote stays out of the log. */
+  private handle(connection: IClientConnection, command: ClientCommand): Promise<void> {
+    if (LOGGED_COMMANDS.has(command.type)) {
+      this.logger.log(`[Command] ${command.type}`);
+    }
+    return this.route(connection, command);
   }
 
   private async route(connection: IClientConnection, command: ClientCommand): Promise<void> {
@@ -154,13 +169,14 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     }
     switch (command.type) {
       case 'conversation.history': {
-        const { entries, state, draft } = await this.getHistory.execute(command.conversationId);
+        const { entries, state, draft, interrupted } = await this.getHistory.execute(command.conversationId);
         connection.send({
           type: 'conversation.history',
           conversationId: command.conversationId,
           entries: [...entries],
           state,
           ...(draft !== '' && { draft }),
+          interrupted: [...interrupted],
         });
         return;
       }
@@ -171,6 +187,9 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'turn.cancel':
         await this.cancelTurn.execute(command.conversationId);
+        return;
+      case 'work.resume':
+        void this.resumeWork.execute(command.conversationId, command.workId);
         return;
       case 'profiles.get': {
         const { configured, profiles } = await this.getProfiles.execute(command.conversationId);
@@ -197,6 +216,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     attempt: () => Promise<boolean>,
   ): Promise<void> {
     if (!await attempt()) {
+      this.logger.warn(`[Command Rejected] ${message}`);
       connection.send({ type: 'error', message, conversationId });
     }
   }

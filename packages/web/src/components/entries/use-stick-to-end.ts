@@ -23,6 +23,12 @@ export function useStickToEnd(viewport: HTMLElement | null) {
     scrollToEnd('auto');
   }, [scrollToEnd]);
 
+  /** Stops following the end so a programmatic scroll away from it is not undone. */
+  const release = useCallback(() => {
+    stickToEnd.current = false;
+    setAtEnd(false);
+  }, []);
+
   useEffect(() => {
     if (!viewport) {
       return undefined;
@@ -55,5 +61,5 @@ export function useStickToEnd(viewport: HTMLElement | null) {
     };
   }, [viewport]);
 
-  return { atEnd, follow, scrollToEnd };
+  return { atEnd, follow, release, scrollToEnd };
 }

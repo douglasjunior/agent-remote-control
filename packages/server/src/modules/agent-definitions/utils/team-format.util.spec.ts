@@ -19,12 +19,12 @@ function agent(overrides: Partial<AgentDefinition>): AgentDefinition {
 
 describe('team-format.util', () => {
   it('should list the delegate tag forms allowed by the project contract', () => {
-    expect(formatDelegationForms(agent({ delegation: {} }))).toBe('<delegate role="AGENT">');
+    expect(formatDelegationForms(agent({ delegation: {} }))).toBe('<delegate role="AGENT" summary="<summary>">');
     expect(formatDelegationForms(agent({ delegation: { project: 'optional' } }))).toBe(
-      '<delegate role="AGENT"> or <delegate role="AGENT" project="<project-folder>">',
+      '<delegate role="AGENT" summary="<summary>"> or <delegate role="AGENT" summary="<summary>" project="<project-folder>">',
     );
     expect(formatDelegationForms(agent({ delegation: { project: 'required' } }))).toBe(
-      '<delegate role="AGENT" project="<project-folder>">',
+      '<delegate role="AGENT" summary="<summary>" project="<project-folder>">',
     );
   });
 

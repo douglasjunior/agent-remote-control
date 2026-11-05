@@ -24,6 +24,7 @@ agent-remote-control/
 │       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, bridges and demux
 │       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
+│       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │

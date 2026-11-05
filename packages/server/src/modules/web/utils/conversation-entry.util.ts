@@ -29,33 +29,43 @@ export function noticeEntry(level: NoticeLevel, text: string): ConversationEntry
   return { id: randomUUID(), ...stamp(), type: 'notice', level, text };
 }
 
+/** Keyed by the question, so concurrent history requests closing it record a single notice. */
+export function abandonedQuestionNotice(questionId: string): ConversationEntry {
+  return {
+    ...noticeEntry('warning', 'The agent is no longer waiting for this answer. Send a message to continue.'),
+    id: `question-abandoned:${questionId}`,
+  };
+}
+
 export function interimEntry(text: string): ConversationEntry {
   return { id: randomUUID(), ...stamp(), type: 'interim', text };
 }
 
 /** Steering and cancellation markers have no entry; empty thoughts are skipped. */
-export function activityEntry(activity: TurnActivity): ConversationEntry | null {
+export function activityEntry(activity: TurnActivity, role: string, turnId: string): ConversationEntry | null {
   if (activity.kind === 'thought') {
     if (!activity.removed && !activity.text.trim()) {
       return null;
     }
     return {
-      id: `thought:${activity.id}`,
+      id: `thought:${turnId}:${role}:${activity.id}`,
       ...stamp(),
       type: 'thought',
       text: activity.text,
       ...(activity.removed ? { removed: true } : {}),
+      role,
     };
   }
   if (activity.kind === 'tool') {
     return {
-      id: `tool:${activity.toolCallId}`,
+      id: `tool:${turnId}:${role}:${activity.toolCallId}`,
       ...stamp(),
       type: 'tool',
       title: activity.title,
       status: activity.status,
       ...(activity.result !== undefined ? { result: activity.result } : {}),
       ...(activity.details !== undefined ? { details: activity.details } : {}),
+      role,
     };
   }
   return null;
@@ -63,7 +73,8 @@ export function activityEntry(activity: TurnActivity): ConversationEntry | null 
 
 export function delegationEntry(event: DelegationEvent): ConversationEntry {
   const base = {
-    id: `delegation:${event.round}:${event.role}:${event.phase}`,
+    id: `delegation:${event.delegationId}:${event.phase}`,
+    delegationId: event.delegationId,
     ...stamp(),
     type: 'delegation' as const,
     phase: event.phase,
@@ -71,9 +82,13 @@ export function delegationEntry(event: DelegationEvent): ConversationEntry {
     role: event.role,
     roleName: event.roleName,
     ...(event.projectName ? { projectName: event.projectName } : {}),
+    summary: event.summary,
   };
   if (event.phase === 'started') {
     return base;
+  }
+  if (event.phase === 'failed') {
+    return { ...base, errorMessage: event.errorMessage, durationMs: event.durationMs };
   }
   return {
     ...base,
@@ -89,6 +104,7 @@ export function questionEntry(prompt: QuestionPrompt): ConversationEntry {
     id: randomUUID(),
     ...stamp(),
     type: 'question',
+    askerRole: asker.role,
     askerRoleName: asker.roleName,
     ...(asker.projectName ? { projectName: asker.projectName } : {}),
     text: question.text,
@@ -96,6 +112,7 @@ export function questionEntry(prompt: QuestionPrompt): ConversationEntry {
     options: [...question.options],
     number: prompt.number,
     total: prompt.total,
+    closed: false,
     ...(prompt.message ? { message: prompt.message } : {}),
   };
 }

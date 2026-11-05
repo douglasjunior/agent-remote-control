@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 
+import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
@@ -14,6 +15,7 @@ import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-pr
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
+import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
@@ -36,7 +38,8 @@ describe('WebConnectionHandler', () => {
     harness = createWebHarness();
     const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, uploads);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, uploads, harness.turns);
+    const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns);
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -45,13 +48,14 @@ describe('WebConnectionHandler', () => {
       events,
       new ListConversationsUseCase(store),
       new CreateConversationUseCase(store),
-      new GetConversationHistoryUseCase(store, events),
+      new GetConversationHistoryUseCase(store, events, questions, agentTurn),
       sendMessage,
       new CancelConversationTurnUseCase(agentTurn, events),
       new ListAgentOptionsUseCase(configuration),
       getProfiles,
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
-      new AnswerConversationQuestionUseCase(questions, events),
+      new AnswerConversationQuestionUseCase(questions, events, resumeWork),
+      resumeWork,
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
       new WebUploadSessionsService(uploads),
@@ -261,6 +265,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.sent).toContainEqual({
         type: 'conversation.history',
         conversationId: 'web-1',
+        interrupted: [],
         entries: [],
         state: 'running',
       });
@@ -359,6 +364,15 @@ describe('WebConnectionHandler', () => {
       expect(harness.questions.answers.map(entry => entry.answer)).toEqual([{ kind: 'option', optionIndex: 2 }, { kind: 'text', text: 'my own' }]);
     });
 
+    it('resumes interrupted work', async () => {
+      harness.store.seed('web-1');
+      harness.agentTurn.interruptedWork = [{ id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: null, summary: 'Build' }];
+
+      connection.receive({ type: 'work.resume', conversationId: 'web-1', workId: 'w' });
+
+      await vi.waitFor(() => expect(harness.agentTurn.resumedWorkIds).toEqual(['w']));
+    });
+
     it('rejects an answer when no question is waiting', async () => {
       harness.store.seed('web-1');
 
@@ -366,6 +380,26 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(sent()).toEqual([{ type: 'error', message: 'There is no open question', conversationId: 'web-1' }]);
+    });
+
+    it('logs the command and its rejection under the conversation, without what the user wrote', async () => {
+      harness.store.seed('web-1');
+      const logged: (readonly [string, string | undefined])[] = [];
+      const record = (message: unknown) => {
+        logged.push([String(message), currentLogConversation()]);
+      };
+      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(record);
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(record);
+
+      connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'text', text: 'private words' } });
+      await settle();
+      log.mockRestore();
+      warn.mockRestore();
+
+      expect(logged).toEqual([
+        ['[Command] question.answer', 'web-1'],
+        ['[Command Rejected] There is no open question', 'web-1'],
+      ]);
     });
 
     it('answers a command for an unknown conversation with an error', async () => {

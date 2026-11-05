@@ -29,7 +29,10 @@ packages/web/src/
 ├── theme/                   # ThemeProvider and useTheme (light, dark, system)
 ├── pages/                   # route-level screens
 ├── components/              # app components; components/ui is vendored shadcn
-└── lib/utils.ts             # shadcn cn()
+│   ├── agent/               # AgentMark: the round lens with an animated glyph per role
+│   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
+│   └── entries/             # feed rows: handoff rows, activity groups, messages, questions
+└── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query
 ```
 
 ## Connection
@@ -84,11 +87,11 @@ packages/web/src/
 | Entry | Rendering |
 |---|---|
 | `user_message` | Right-aligned bubble |
-| `agent_response` | Markdown with footer `roleName · agentName · modelName · effortName`; `failed` shows `errorMessage`; `cancelled` shows a muted label |
-| `interim` | Muted markdown |
-| `delegation` | Compact card ("X started", "X finished in N s") with the response in a collapsible |
-| `thought`, `tool` | Consecutive runs grouped in one collapsible, closed by default: "Working… (N steps)" while the turn runs and the group is last, otherwise "Show details (N steps)"; `removed` thoughts are hidden |
-| `question` | Card with one button per option (1-based `optionIndex`) and a text field; "Question n of m" when `total > 1`; only the latest question is enabled |
+| `agent_response` | Agent mark and clickable colored name, Markdown, and a footer `roleName · agentName · modelName · effortName`; `failed` shows `errorMessage`; `cancelled` shows a muted label |
+| `interim` | Muted markdown under the Coordinator's mark and name |
+| `delegation` | One handoff row per delegation (`started` joined with its `finished` or `failed` entry by `delegationId`, never by round and role, which repeat across turns): agent mark, the CEO's `summary` as the title, the agent's name below, the live time or the duration; delegations of the same round that follow each other with no other entry between them stack as one squad. A chevron opens the agent's steps, then its response or error |
+| `thought`, `tool` | Consecutive runs of one agent (`role`) grouped in one collapsible, closed by default and headed by the agent's name and what it does now (`toolLabel` turns tool titles into plain words); steps of a delegated agent go inside its delegation row instead; `removed` thoughts are hidden |
+| `question` | Card with an attention border, titled by the asker's name, with one button per option (1-based `optionIndex`) and a text field; "Question n of m" when `total > 1`; only the open question (`closed: false`) is enabled; a closed one keeps the asker and the text |
 | `notice` | Inline line styled by `level` |
 
 The composer is disabled while the connection is not `open` or the conversation is not `configured`
@@ -97,12 +100,12 @@ sends `turn.cancel`.
 
 `FeedList` (`components/entries/`) renders the entries with `react-virtuoso` inside the `message-viewport` div
 (`customScrollParent`), one `FeedItem` per grouped item. Off-screen rows are unmounted, so the open state of
-activity groups and delegation cards lives in `FeedList` (a set of item ids), not in the rows. `useStickToEnd`
+activity groups and handoff rows lives in `FeedList` (a set of item ids), not in the rows; so do the focus and the hover callbacks, which pass through the Virtuoso context. `useStickToEnd`
 keeps the viewport pinned to the end through a `ResizeObserver` on the viewport content, until the reader scrolls
 up; scrolling back within 24 px of the end resumes it, and so does a new `user_message`. While the reader is away
 from the end, an `IconButton` "Scroll to bottom" appears over the feed. Specs that render the feed wrap it in
 `VirtuosoMockContext` (jsdom has no layout; `renderApp` already does) and fire the observer through a stubbed
-`ResizeObserver`.
+`ResizeObserver`. `FeedList` follows the visible range through Virtuoso's `rangeChanged`. While an open question is outside it, a `WaitingLine` sits between the feed and the composer: "<Agent> is waiting for your answer" in the agent's color with a "Go to question" button, one line because only one question is open. The button and a click on a `waiting` station (besides its normal selection, switching to the Chat tab on a narrow window) call `FeedHandle.goToQuestion`: it releases `useStickToEnd` so the scroll away from the end is not undone, scrolls with `scrollToIndex` on the Virtuoso ref and focuses the card's first control. `VirtuosoMockContext` does not scroll, so specs of that path replace `Virtuoso` with a stand-in that records `scrollToIndex` and reports a fixed range (`feed-list-scroll.spec.tsx`). The "Working…" indicator stays hidden only while the last entry is itself the open question.
 
 The response being written arrives as `conversation.draft` events (`ConversationView.draft`, set by the reducer
 and by `conversation.history`) and shows as streaming Markdown (`isAnimating`) after the last entry, where the delivered response replaces
@@ -151,5 +154,22 @@ or the composer unmounts.
 script in `index.html` applies the class before the first paint. `ThemeToggle` (a shadcn dropdown menu) sits in
 the header. Style through the theme tokens so both modes work.
 
-- `QuestionCard` shows the asker with its project, the question's `message`, text and rationale ("Why it matters"), as every channel does. Only the last entry of a conversation can be answered; any entry after a question closes it, leaving the asker and the question text.
+- `QuestionCard` shows the asker with its project, the question's `message`, text and rationale ("Why it matters"), as every channel does. The question the server has not closed (`closed: false`) can be answered wherever it sits in the feed, even above newer entries; `openQuestion(entries)` (`conversations/open-question.ts`) returns the last such question and both `FeedList` and `deriveTeam` use it. A closed question shows only the asker and the question text. `data-question-id` marks the card.
 - While a turn runs, the feed shows `WorkingIndicator` (three dots and a shimmering "Working…", still under `prefers-reduced-motion`) from the first moment until a step, the draft or a question takes its place; a running `ActivityGroup` carries the same dots and label. The keyframes live in `index.css`.
+
+## Team presentation
+
+**The feed is the history; the right panel is the present moment.** The conversation grows without limit, so the
+panel never does: it holds one station per role and no per-entry data, and everything that happened lives in the feed.
+
+- `agentIdentity(role, roleName)` (`lib/agent-identity.ts`) gives each role its `mark` id, plain-language label, tagline, `stage` (Leads, Idea, Plan, Build, Review, Ship; "Helps" for unknown roles), `responsibility`, example request and color token (`--agent-<role>` in `index.css`, light and dark). A role outside the team gets the generic mark and a color derived from its name. A stage is the role's specialty, never progress: the Coordinator may delegate to any role in any order.
+- `AgentMark` (`components/agent/`) is the round lens with a custom SVG glyph per role (`generic` for unknown roles), a done or failed badge, a working glow and a waiting glow in the attention color; its accessible name is `"<label>, <state>"`. The per-glyph keyframes live in `index.css` and run only under `prefers-reduced-motion: no-preference`.
+- `deriveTeam(entries, running)` (`conversations/team-state.ts`) turns the entries into one `TeamMember` per role for the current turn plus the delegations still open from earlier turns (a `user_message` drops the closed ones, because the coordinator accepts new messages while delegates keep running; open ones stay `working` while a turn runs and keep counting their steps, other agents count only the current turn). A `finished` or `failed` entry closes the delegation with the same `delegationId`. The members are: `working`, `waiting` (the asker of the `openQuestion`, by `askerRole`, whatever entries follow it), `done`, `failed` or `idle`, with the CEO's `summary`, project, start time, duration, step count and last action. The coordinator is `idle`, not `working`, while a delegate works or another agent has an open question. A delegation still open when no turn runs counts as stopped. Roles the turn did not involve stay `idle`.
+- `SquadPanel` (`components/squad/`) renders the roster: the six team roles plus an unknown role only if it was delegated to in the current turn. A `Station` has the mark, name, stage, time, a summary clamped to two lines and one ticker line with the latest action. The Coordinator reads "Coordinating the squad" and looks active while delegates work, "Thinking" when it works itself. Selecting a station reveals only its static `responsibility`. The header carries the live tally (`squadStatus`), which also labels the Squad tab. The panel scrolls only when the window is shorter than the roster, and resets with each new user message.
+- The spine is a neutral line through the lens centers (`useSquadSpine`, positioned from measured lenses) and implies no order. `useSquadMotion` sends light pulses on short-lived elements animated with the Web Animations API: Coordinator to a working station on an interval, a bigger one when it starts and one back when it ends; each pulse removes itself on finish. Nothing runs under `prefers-reduced-motion` or without `Element.animate`.
+- The delivery moment (`useDelivery`) counts a turn seen running here that delegated and ended with a completed answer; the panel then plays its flare and bloom once (`data-delivered`). A conversation opened with its turn already over never plays it.
+- Focus: selecting a station or clicking an agent name in the feed sets the focus in `ConversationView`; it resets with the conversation (the view is keyed by id). The feed dims items of other agents (`entryAgent`: handoffs and activity by role, `agent_response` and `interim` by CEO, `question` by `askerRole`; user messages and notices never dim) and a chip in the chat header, "<Agent> only ×", clears it. Hovering a feed item highlights its station.
+- Layout (`ConversationView`): the chat column (centered, max 680 px) and the 420 px panel side by side; below 1108 px of viewport (820 px beside the conversation list) they become two shadcn tabs, both kept mounted.
+- The answer that closes a turn that delegated carries "N agents · duration" in its footer (`TeamRecap` from `groupEntries`).
+- `usePresence` sets the tab title, tints the page light with the active agent's color and, when the browser already granted permission, notifies a question while the tab is hidden. `AmbientGlow` is the light that follows the pointer (`usePointerGlow`: eased `requestAnimationFrame`, off for touch screens and reduced motion). An empty conversation shows `TeamIntro`, whose cards fill the composer (`Composer.initialText`).
+- Every animation sits behind `motion-safe:` or a `prefers-reduced-motion: no-preference` query; `index.css` holds the keyframes.

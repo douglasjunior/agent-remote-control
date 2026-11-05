@@ -1,7 +1,9 @@
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { createWebHarness } from '../testing/web-harness.js';
+import { questionEntry } from '../utils/conversation-entry.util.js';
 
 import { AnswerConversationQuestionUseCase } from './answer-conversation-question.use-case.js';
+import { ResumeConversationWorkUseCase } from './resume-conversation-work.use-case.js';
 
 
 const asker = { role: 'DEVELOPER', roleName: 'Developer', projectName: null };
@@ -10,7 +12,8 @@ const prompt: QuestionPrompt = { asker, question: { text: 'Which?', options: ['a
 function setup() {
   const harness = createWebHarness();
   harness.store.seed('web-1');
-  const useCase = new AnswerConversationQuestionUseCase(harness.questions, harness.events);
+  const resumeWork = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns);
+  const useCase = new AnswerConversationQuestionUseCase(harness.questions, harness.events, resumeWork);
   return { ...harness, useCase, types: () => (harness.store.histories.get('web-1') ?? []).map(entry => entry.type) };
 }
 
@@ -34,6 +37,17 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(questions.answers[0]?.answer).toEqual({ kind: 'option', optionIndex: 2 });
     expect(types()).toEqual(['user_message', 'notice']);
     expect(store.histories.get('web-1')?.[0]).toMatchObject({ text: 'b' });
+  });
+
+  it('delivers the answers of a restored question, which no turn is waiting for', async () => {
+    const { useCase, questions, agentTurn } = setup();
+    questions.prompt = prompt;
+    const restoredWork = { workId: 'w', answers: [{ question: prompt.question, answer: 'a', optionNumber: 1 }] };
+    questions.submission = { kind: 'answered', asker, restoredWork };
+
+    await useCase.execute('web-1', { kind: 'option', optionIndex: 1 });
+
+    await vi.waitFor(() => expect(agentTurn.deliveredAnswers).toEqual([restoredWork]));
   });
 
   it('echoes nothing for an invalid option', async () => {
@@ -63,5 +77,43 @@ describe('AnswerConversationQuestionUseCase', () => {
 
     expect(questions.answers[0]?.answer).toEqual({ kind: 'text', text: 'use Postgres' });
     expect(types()).toEqual(['user_message', 'question']);
+  });
+
+  describe('closing the open question', () => {
+    const openQuestion = async (harness: ReturnType<typeof setup>) => {
+      const entry = questionEntry(prompt);
+      await harness.events.publishEntry('web-1', entry);
+      return entry;
+    };
+
+    it.each([
+      ['answered', { kind: 'answered', asker } as const],
+      ['next', { kind: 'next', prompt } as const],
+      ['invalid', { kind: 'invalid', prompt } as const],
+    ])('closes it in place on a %s submission, before what follows', async (_kind, submission) => {
+      const harness = setup();
+      const entry = await openQuestion(harness);
+      harness.questions.prompt = prompt;
+      harness.questions.submission = submission;
+
+      await harness.useCase.execute('web-1', { kind: 'option', optionIndex: 1 });
+
+      const history = harness.store.histories.get('web-1') ?? [];
+      expect(history[0]).toEqual({ ...entry, closed: true });
+      expect(history.filter(item => item.type === 'question' && item.id === entry.id)).toHaveLength(1);
+      expect(history.slice(1).some(item => item.type === 'question' && !item.closed)).toBe(submission.kind !== 'answered');
+    });
+
+    it('closes it with a notice when no question is waiting', async () => {
+      const harness = setup();
+      const entry = await openQuestion(harness);
+
+      await expect(harness.useCase.execute('web-1', { kind: 'option', optionIndex: 1 })).resolves.toBe(false);
+
+      expect(harness.store.histories.get('web-1')).toEqual([
+        { ...entry, closed: true },
+        expect.objectContaining({ id: `question-abandoned:${entry.id}`, type: 'notice', level: 'warning' }),
+      ]);
+    });
   });
 });

@@ -59,7 +59,7 @@ describe('ceo-workspace-files.prompt', () => {
       const skill = contentOf('.agents/skills/agent-team/SKILL.md');
 
       expect(skill).toContain('### GIT_OPS — Git Ops Agent\nAdds repositories to the workspace.');
-      expect(skill).toContain('- Delegate as <delegate role="GIT_OPS"> or <delegate role="GIT_OPS" project="<project-folder>">.');
+      expect(skill).toContain('- Delegate as <delegate role="GIT_OPS" summary="<summary>"> or <delegate role="GIT_OPS" summary="<summary>" project="<project-folder>">.');
       expect(skill).toContain('- Runs in "resume" session mode unless you set session="new" or session="resume".');
       expect(skill).toContain('- Modifies files, so no other agent that modifies files');
     });
@@ -149,6 +149,15 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('- **Questions**: one or more `<question>` tags');
       expect(skill).toContain('Never combine questions with delegations or attachments.');
       expect(skill).toContain('## Questions to the User\nWhen the work cannot go on without a decision only the user can make');
+    });
+  });
+
+  describe('response-protocol skill pending requests', () => {
+    const skill = contentOf('.agents/skills/response-protocol/SKILL.md');
+
+    it('should cover every pending request and report each agent result', () => {
+      expect(skill).toContain('the final answer covers each pending request');
+      expect(skill).toContain('each `<agent_result>` is reported even when a newer message moved the conversation on');
     });
   });
 

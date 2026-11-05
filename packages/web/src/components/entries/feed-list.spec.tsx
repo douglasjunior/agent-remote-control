@@ -1,11 +1,12 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { createRef } from 'react';
 import { VirtuosoMockContext } from 'react-virtuoso';
 
 import { AT, userEntry } from '../../test/render-app.js';
 
-import { FeedList } from './feed-list.js';
+import { FeedList, type FeedHandle } from './feed-list.js';
 
 
 type ObserverRecord = { callback: () => void; targets: Element[] };
@@ -43,12 +44,12 @@ function scrollTo(element: HTMLElement, top: number) {
   fireEvent.scroll(element);
 }
 
-const toolEntry = (id: string): ConversationEntry => ({ id, at: AT, type: 'tool', title: `tool ${id}`, status: 'completed' });
+const toolEntry = (id: string): ConversationEntry => ({ id, at: AT, type: 'tool', role: 'CEO', title: `tool ${id}`, status: 'completed' });
 
-function renderFeed(entries: ConversationEntry[], draft = '') {
+function renderFeed(entries: ConversationEntry[], draft = '', focus: string | null = null) {
   const tree = (list: ConversationEntry[], text: string) => (
     <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-      <FeedList entries={list} draft={text} running={false} onAnswer={vi.fn()} />
+      <FeedList team={[]} entries={list} draft={text} running={false} focus={focus} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
     </VirtuosoMockContext.Provider>
   );
   const view = render(tree(entries, draft));
@@ -150,5 +151,103 @@ describe('FeedList', () => {
 
     await user.click(screen.getByRole('button', { name: /Show details/ }));
     expect(screen.queryByText('tool t1')).not.toBeInTheDocument();
+  });
+
+  it('dims the items of other agents when the feed is focused, and never the user or notices', () => {
+    renderFeed([
+      userEntry('u1', 'hello'),
+      { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'a notice' },
+      { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'from the coordinator' },
+      { id: 'x1', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Run tests', status: 'completed' },
+      { id: 'd1', at: AT, type: 'delegation', delegationId: '1:GIT_OPS', phase: 'started', round: 1, role: 'GIT_OPS', roleName: 'Git Ops', summary: 'Open the PR' },
+      { id: 'd2', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Build it' },
+    ], '', 'DEVELOPER');
+
+    const dimmed = (text: string) => screen.getByText(text).closest('[data-dimmed]')!.getAttribute('data-dimmed');
+    expect(dimmed('hello')).toBe('false');
+    expect(dimmed('a notice')).toBe('false');
+    expect(dimmed('from the coordinator')).toBe('true');
+    expect(dimmed('Open the PR')).toBe('true');
+    expect(dimmed('Build it')).toBe('false');
+    expect(screen.getByRole('button', { name: /Developer/ }).closest('[data-dimmed]')).toHaveAttribute('data-dimmed', 'false');
+  });
+
+  it('dims nothing without a focus', () => {
+    renderFeed([{ id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'plain' }]);
+
+    expect(screen.getByText('plain').closest('[data-dimmed]')).toHaveAttribute('data-dimmed', 'false');
+  });
+
+  describe('open question', () => {
+    const question = (closed: boolean): ConversationEntry => ({
+      id: 'q1', at: AT, type: 'question', askerRole: 'TECH_LEAD', askerRoleName: 'Tech Lead', text: 'Which branch?', options: ['main', 'dev'], number: 1, total: 1, closed,
+    });
+    const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'Merge requests are open' };
+
+    function renderQuestionFeed(entries: ConversationEntry[], viewportHeight: number, onAnswer = vi.fn(), handle = createRef<FeedHandle>()) {
+      render(
+        <VirtuosoMockContext.Provider value={{ viewportHeight, itemHeight: 100 }}>
+          <FeedList ref={handle} team={[]} entries={entries} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={onAnswer} />
+        </VirtuosoMockContext.Provider>,
+      );
+      return { onAnswer, handle };
+    }
+
+    it('shows no waiting line while the open question is in view', () => {
+      renderQuestionFeed([question(false), reply], 100_000);
+
+      expect(screen.queryByRole('button', { name: 'Go to question' })).not.toBeInTheDocument();
+    });
+
+    it('stays answerable after a newer entry and sends the answer', async () => {
+      const user = userEvent.setup();
+      const { onAnswer } = renderQuestionFeed([question(false), reply], 100_000);
+
+      await user.click(screen.getByRole('button', { name: 'dev' }));
+
+      expect(onAnswer).toHaveBeenCalledWith({ kind: 'option', optionIndex: 2 });
+      expect(screen.queryByText('Tech Lead is waiting for your answer')).not.toBeInTheDocument();
+    });
+
+    it('shows a closed question in its closed form', () => {
+      renderQuestionFeed([question(true), reply], 100_000);
+
+      expect(screen.getByText('Which branch?')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'dev' })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Your answer')).not.toBeInTheDocument();
+    });
+
+    it('keeps the agents shown as working unless the open question is the last entry', () => {
+      const { unmount } = render(
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
+          <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
+        </VirtuosoMockContext.Provider>,
+      );
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      unmount();
+
+      render(
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
+          <FeedList team={[]} entries={[question(false), userEntry('u2')]} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
+        </VirtuosoMockContext.Provider>,
+      );
+      expect(screen.getByRole('status')).toBeInTheDocument();
+    });
+
+    it('focuses the first control of the question card through the handle', () => {
+      const { handle } = renderQuestionFeed([question(false), reply], 100_000);
+
+      act(() => handle.current?.goToQuestion());
+
+      expect(screen.getByRole('button', { name: 'main' })).toHaveFocus();
+    });
+
+    it('does nothing through the handle without an open question', () => {
+      const { handle } = renderQuestionFeed([question(true), reply], 100_000);
+
+      act(() => handle.current?.goToQuestion());
+
+      expect(document.body).toHaveFocus();
+    });
   });
 });

@@ -1,6 +1,6 @@
 import type { Attachment } from '@agent-remote-control/protocol/attachment';
 import { Check, ChevronDown, Mic, Paperclip, Send, Square, Trash2 } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 
 import { useConnection } from '../connection/connection-context.js';
 import { cn } from '../lib/utils.js';
@@ -19,15 +19,16 @@ import {
 import { Textarea } from './ui/textarea.js';
 
 
-export function Composer({ conversationId, disabled, running, onSend, onStop }: {
+export function Composer({ conversationId, initialText = '', disabled, running, onSend, onStop }: {
   readonly conversationId: string;
+  readonly initialText?: string;
   readonly disabled: boolean;
   readonly running: boolean;
   readonly onSend: (text: string, attachments: readonly Attachment[]) => void;
   readonly onStop: () => void;
 }) {
   const { connection } = useConnection();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const { onKeyDown: onHistoryKeyDown, reset: resetHistory, position } = usePromptHistory(connection, setText);
   const attachments = usePromptAttachments(connection, conversationId);
   const recorder = useVoiceRecorder();
@@ -53,6 +54,12 @@ export function Composer({ conversationId, disabled, running, onSend, onStop }: 
     fieldRef.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
     pendingCaret.current = null;
   });
+
+  useEffect(() => {
+    if (initialText !== '') {
+      fieldRef.current?.focus();
+    }
+  }, [initialText]);
 
   const trimmed = text.trim();
   const canSend = !disabled && !attachments.uploading && (trimmed !== '' || attachments.ready.length > 0);
@@ -98,7 +105,7 @@ export function Composer({ conversationId, disabled, running, onSend, onStop }: 
     <div className="border-t p-3">
       <div
         {...(disabled ? {} : attachments.dropHandlers)}
-        className={cn('relative mx-auto flex w-full max-w-3xl flex-col gap-2 rounded-lg', attachments.dragging && 'ring-2 ring-primary')}
+        className={cn('relative mx-auto flex w-full max-w-[640px] flex-col gap-2 rounded-lg', attachments.dragging && 'ring-2 ring-primary')}
       >
         {attachments.dragging && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-background/90 text-sm text-primary">

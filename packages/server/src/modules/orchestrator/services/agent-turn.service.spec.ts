@@ -8,9 +8,11 @@ import type { GetAgentQuotaUseCase } from '../use-cases/get-agent-quota.use-case
 import type { RunShellCommandUseCase } from '../use-cases/run-shell-command.use-case.js';
 
 import { AgentTurnService } from './agent-turn.service.js';
+import type { OpenWorkService } from './open-work.service.js';
 
 
 describe('AgentTurnService', () => {
+  let openWork: OpenWorkService;
   let service: AgentTurnService;
   let execute: ExecuteAgentTurnUseCase;
   let cancel: CancelAgentTurnUseCase;
@@ -25,7 +27,18 @@ describe('AgentTurnService', () => {
       execute: vi.fn().mockResolvedValue({ exitCode: 0 }),
     } as unknown as RunShellCommandUseCase;
     getQuota = { execute: vi.fn() } as unknown as GetAgentQuotaUseCase;
-    service = new AgentTurnService(execute, cancel, runShell, getQuota);
+    openWork = { continuable: vi.fn().mockReturnValue([{ id: 'w' }]) } as unknown as OpenWorkService;
+    service = new AgentTurnService(execute, cancel, runShell, getQuota, openWork);
+  });
+
+  it('should list the interrupted work and resume it', async () => {
+    const request = { conversationId: 'c' } as TurnRequest;
+    (execute as unknown as { resume: unknown }).resume = vi.fn().mockResolvedValue({ status: 'completed' });
+    (execute as unknown as { deliverAnswers: unknown }).deliverAnswers = vi.fn().mockResolvedValue({ status: 'failed' });
+
+    expect(service.listInterruptedWork('c')).toEqual([{ id: 'w' }]);
+    await expect(service.resumeWork('w', request)).resolves.toEqual({ status: 'completed' });
+    await expect(service.deliverAnswers({ workId: 'w', answers: [] }, request)).resolves.toEqual({ status: 'failed' });
   });
 
   it('should delegate executeTurn to ExecuteAgentTurnUseCase', async () => {

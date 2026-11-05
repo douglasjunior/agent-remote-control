@@ -42,7 +42,7 @@ while it is enabled. Buttons with visible text do not need one.
 
 - `components.json` records the project setup. It was created with
   `npx shadcn@latest init --preset b6XG5WQ02q`: style `base-nova` (built on `@base-ui/react`, **not** Radix),
-  base color `mist`, Lucide icons, Instrument Sans and Space Grotesk fonts. Keep that preset; do not
+  base color `mist`, Lucide icons, Instrument Sans for the body. The heading font (`--font-heading`) is Bricolage Grotesque and the mono font (`--font-mono`, tickers and timers) is JetBrains Mono, both from `@fontsource-variable`. Keep that preset; do not
   re-run `init` with another one.
 - Theme tokens (`--primary`, `--muted`, ...) live in `src/index.css`. Style through these tokens and
   Tailwind utilities, never with hard-coded colors.

@@ -76,7 +76,7 @@ class ScriptedAgentTurnPort extends StubAgentTurnPort {
         request.onQueued?.();
       }
       for (const activity of this.activitiesToEmit) {
-        request.onActivity?.(activity);
+        request.onActivity?.(activity, 'CEO');
       }
     };
   }
@@ -489,18 +489,18 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
 
       vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
-        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft' });
+        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft' }, 'CEO');
         await vi.advanceTimersByTimeAsync(1500);
-        req.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
+        req.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' }, 'CEO');
         req.onActivity?.({
           kind: 'tool',
           toolCallId: 'c1',
           title: 'ls',
           status: 'completed',
           details: 'file1.txt',
-        });
-        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft', removed: true });
-        req.onActivity?.({ kind: 'cancelled', id: 'x' });
+        }, 'CEO');
+        req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft', removed: true }, 'CEO');
+        req.onActivity?.({ kind: 'cancelled', id: 'x' }, 'CEO');
         return agentTurn.turnResult;
       });
 
@@ -538,16 +538,17 @@ describe('DiscordMessageHandler', () => {
         channel: mockThread,
       } as unknown as Message;
       const delegation = {
-        round: 1,
+        delegationId: 'dl-1', round: 1,
         role: 'DEVELOPER',
         roleName: 'Developer',
+        summary: 'Doing the work',
         projectName: 'my-app',
       };
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' });
+        request.onActivity?.({ kind: 'thought', id: 'ceo-1', text: 'Planning' }, 'CEO');
         request.onDelegation?.({ ...delegation, phase: 'started' });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' }, 'CEO');
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' }, 'CEO');
         request.onDelegation?.({
           ...delegation,
           phase: 'finished',
@@ -555,7 +556,7 @@ describe('DiscordMessageHandler', () => {
           agentInfo: { roleName: 'Developer', agentName: 'agy' },
           durationMs: 3_000,
         });
-        request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' });
+        request.onActivity?.({ kind: 'thought', id: 'ceo-2', text: 'Reviewing' }, 'CEO');
         return { response: 'Done.', status: 'completed' };
       };
 
@@ -604,12 +605,13 @@ describe('DiscordMessageHandler', () => {
           return { content, edit: vi.fn().mockResolvedValue(undefined) };
         });
         request.onDelegation?.({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           phase: 'started',
         });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' });
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'completed' }, 'CEO');
         return { response: 'Done.', status: 'completed' };
       };
 
@@ -641,7 +643,7 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onInterimMessage?.('Splitting this in two.');
-        request.onDelegation?.({ round: 1, role: 'DEVELOPER', roleName: 'Developer', phase: 'started' });
+        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work', phase: 'started' });
         return { response: 'Done.', status: 'completed' };
       };
 
@@ -713,11 +715,12 @@ describe('DiscordMessageHandler', () => {
       } as unknown as Message;
 
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        request.onActivity?.({ kind: 'thought', id: 't1', text: 'Thinking' });
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'Thinking' }, 'CEO');
         request.onDelegation?.({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           phase: 'started',
         });
         resolveDelete();
@@ -1099,9 +1102,9 @@ describe('DiscordMessageHandler', () => {
     } as unknown as Message;
 
     vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
-      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' });
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' }, 'CEO');
       await vi.advanceTimersByTimeAsync(1500);
-      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true });
+      req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true }, 'CEO');
       resolveSend(mockDeletedMsg);
       await sendDeferred;
       return agentTurn.turnResult;
@@ -2047,7 +2050,7 @@ describe('DiscordMessageHandler', () => {
         return { content, edit: vi.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        request.onDelegation?.({ round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', phase: 'started' });
+        request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', summary: 'Doing the work', phase: 'started' });
         request.onQuestion?.(prompt);
         return { response: 'Done.', status: 'completed' };
       };
@@ -2182,7 +2185,7 @@ describe('DiscordMessageHandler', () => {
 
       agentTurn.executeTurn = async (request: TurnRequest) => {
         vi.advanceTimersByTime(4 * 60 * 1000);
-        request.onActivity?.({ kind: 'thought', id: '1', text: 'thinking' });
+        request.onActivity?.({ kind: 'thought', id: '1', text: 'thinking' }, 'CEO');
         vi.advanceTimersByTime(2 * 60 * 1000);
         expect(sendTyping).toHaveBeenCalled();
         return {
@@ -2220,9 +2223,10 @@ describe('DiscordMessageHandler', () => {
       agentTurn.executeTurn = async (request: TurnRequest) => {
         vi.advanceTimersByTime(4 * 60 * 1000);
         request.onDelegation?.({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           phase: 'started',
         });
         vi.advanceTimersByTime(2 * 60 * 1000);

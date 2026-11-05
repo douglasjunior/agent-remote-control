@@ -66,14 +66,13 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `prompts.history` (with a `requestId`) answers the requester with `prompts.list`: the stored prompts, most
   recent first. The history is global to the machine, capped at `MAX_PROMPT_HISTORY`, never repeats the
   latest prompt, and is recorded by the server only; the client never appends.
-- Turn callbacks become entries: `onActivity` → `thought` or `tool`, `onDelegation` → `delegation`,
-  `onInterimMessage` → `interim`, `onQuestion` → `question`; the `TurnResult` becomes `agent_response`.
+- Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary`; `phase` is `started`, `finished` or `failed`),
+  `onInterimMessage` → `interim`, `onQuestion` → `question` (with `askerRole` besides `askerRoleName`, and `closed: false`); the `TurnResult` becomes `agent_response`.
   Steering and cancellation markers have no entry.
-- Entry ids are stable (`thought:<id>`, `tool:<toolCallId>`, `delegation:<round>:<role>:<phase>`) so the
-  store and the client upsert by id; other entries get a random id.
-- Conversation state is `running` from the start of the turn, `queued` after `onQueued` until output
-  arrives, and `idle` when the turn ends or throws. A `steered` result leaves the state to the turn that
-  absorbed the prompt. Errors become `notice` entries with level `error`.
+- Entry ids are stable so the store and the client upsert by id, and each carries what makes it unique across the conversation; other entries get a random id:
+  - `thought:<turnId>:<role>:<id>` and `tool:<turnId>:<role>:<toolCallId>`: the `turnId` is generated for each `SendConversationMessageUseCase` turn execution, because every agent numbers its own thoughts (`synthetic:<n>` restarts with each stream) and a shared id would overwrite another turn's or agent's entry. A step streamed again within its turn updates in place.
+  - `delegation:<delegationId>:<phase>`: the orchestrator generates a `delegationId` (UUID) for each delegation and the `delegation` entry carries it as a required field. The `round` restarts at 1 in each turn, so an id built from it would overwrite the delegation of an earlier turn.
+- Conversation state belongs to the conversation, not to a turn. `WebConversationTurnsService` tracks the active turns of each conversation (`begin`, `markRunning`, `markQueued`, `end`) and derives the published state: `running` when any active turn is running, `queued` only when every active turn is queued, `idle` only when none is active. A state is published only when it changes, so overlapping turns never repeat `running` or `idle`. A turn removes itself when it ends, however it ends: a result (a `steered` one included, which leaves `running` to the turn that absorbed the prompt) or a thrown error, which also becomes a `notice` entry with level `error`. When the conversation becomes `idle` the service closes the questions still open, publishes `idle` and flushes the store. `conversation.history` reports the state published by the same events service, so it always matches the stream.
 - The web channel has no dialog state. Agent configuration is a stateless API over the orchestrator's lists:
   `agents.list`, `models.list { agentId }` and `efforts.list { agentId, modelId }` answer the requester with
   `agents.list`, `models.list` and `efforts.list` events (an unavailable agent answers `error`, so no CLI is
@@ -95,9 +94,12 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   or no agent is installed (the default agent runs). Otherwise the server publishes a warning `notice` and
   neither records the message nor runs a turn.
 - Questions are answered with `question.answer` (`answer` is `{ kind: 'option', optionIndex }` or
-  `{ kind: 'text', text }`), passed to `IUserQuestionPort.answerQuestion` unchanged. Without an open question the command answers an
+  `{ kind: 'text', text }`), passed to `IUserQuestionPort.answerQuestion` unchanged. Without an open question the command closes the questions still shown as open and answers an
   `error` event. A valid answer is echoed as a `user_message` (the text typed, or the text of the chosen option). The confirmation, the next
   question or a retry follow as entries.
+- A `question` entry stays open (`closed: false`) until the server closes it by upserting the same entry id with `closed: true`, which keeps it in place in the history. `WebConversationEventsService.closeOpenQuestions` does it, and it knows the open questions because it sees every entry it publishes. Two events close a question: any `question.answer` the orchestrator accepts (`next`, `invalid` or `answered`), before the entries that follow it are published, and the conversation reaching `idle`, because nothing can answer the question any more (cancellation included). Closing a question does not discard the draft.
+- Web turns are `resumable`, so a server restart keeps their questions and work (see the orchestrator skill). `conversation.history` settles the questions first (`GetConversationHistoryUseCase`): the open entry of the question the queue restored is tracked again, a restored question with no open entry is published, and any other open entry has nothing waiting on it and is closed by `settleOrphanedQuestions`. `closeUnanswerableQuestions` closes every open one when the orchestrator refuses an answer. Both closings add one `warning` `notice`, id `question-abandoned:<questionId>`, telling the user to send a message to continue; a refused answer is not delivered. A conversation becoming `idle` keeps its questions open while the orchestrator still has one pending.
+- Answering the last question of a restored request (`restoredWork` in the submission) runs `ResumeConversationWorkUseCase.deliverAnswers`. `work.resume { conversationId, workId }` runs its `execute`, for an agent a restart stopped mid-round; an agent that asked never offers it, and a request for work no longer listed does nothing. `conversation.history` carries the list in `interrupted`, and `conversation.interrupted { conversationId, interrupted }` broadcasts it when it changes. `WebConversationTurnsService.run` turns the callbacks of any turn into entries. `WebConversationEventsService` records nothing after `onModuleDestroy`, because what dying turns report during a shutdown did not happen to the conversation.
 - `WebConversationEventsService` upserts an entry and broadcasts `conversation.entry` (broadcast first, so
   persistence never reorders the stream), and keeps the state in memory. It also keeps the draft of each
   conversation in memory: the user-facing text of the CEO's response being written (`TurnRequest.onDraft`),

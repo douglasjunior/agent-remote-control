@@ -3,6 +3,7 @@ import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.po
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
+import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
 
 import { FakeClientConnection } from './fake-client-connection.js';
 import { FakeConversationStore } from './fake-conversation-store.js';
@@ -20,11 +21,12 @@ export function createWebHarness() {
   const agentTurn = new StubAgentTurnPort();
   const configuration = new StubAgentConfigurationPort();
   const questions = new StubUserQuestionPort();
+  const turns = new WebConversationTurnsService(events, store, questions, agentTurn);
   const workspace = new StubWorkspacePort();
   const promptHistory = new FakePromptHistory();
   const fileSearch = new FakeWorkspaceFileSearch();
   const uploads = new FakeWorkspaceUpload();
   const observer = new FakeClientConnection('observer');
   registry.register(observer);
-  return { store, registry, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads, observer };
+  return { store, registry, events, turns, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads, observer };
 }

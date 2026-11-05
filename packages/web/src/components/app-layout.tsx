@@ -6,6 +6,7 @@ import { useConnection } from '../connection/connection-context.js';
 import { ConversationsProvider } from '../conversations/conversations-context.js';
 import { MissingTokenPage } from '../pages/missing-token-page.js';
 
+import { AmbientGlow } from './ambient-glow.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { IconButton } from './icon-button.js';
@@ -23,7 +24,8 @@ export function AppLayout() {
 
   return (
     <ConversationsProvider>
-      <div className="flex h-dvh">
+      <AmbientGlow />
+      <div className="relative z-10 flex h-dvh">
         <aside className="hidden w-72 shrink-0 border-r md:block">
           <ConversationList />
         </aside>

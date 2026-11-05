@@ -87,6 +87,9 @@ export class DiscordActivityFormatter {
     if (event.phase === 'finished') {
       return `↩️ **${event.roleName} finished**${this.formatProject(event)} — the CEO is reviewing the result.`;
     }
+    if (event.phase === 'failed') {
+      return `⚠️ **${event.roleName} failed**${this.formatProject(event)} — the CEO is deciding what to do next.`;
+    }
     return `🔀 **Task delegated** to agent **${event.roleName}** (\`${event.role}\`)${this.formatProject(event)} — it is working on it now.`;
   }
 

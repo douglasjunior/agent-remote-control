@@ -37,7 +37,18 @@ export type QuestionPrompt = {
   readonly waitingAskers: number;
 };
 
+export type RestoredWorkAnswers = {
+  readonly workId: string;
+  readonly answers: readonly AnsweredQuestion[];
+};
+
 export type QuestionSubmission =
   | { readonly kind: 'next'; readonly prompt: QuestionPrompt }
   | { readonly kind: 'invalid'; readonly prompt: QuestionPrompt }
-  | { readonly kind: 'answered'; readonly asker: QuestionAsker; readonly next?: QuestionPrompt };
+  | {
+    readonly kind: 'answered';
+    readonly asker: QuestionAsker;
+    readonly next?: QuestionPrompt;
+    /** Present on a request restored after a restart: no turn is waiting for these answers, so the channel delivers them. */
+    readonly restoredWork?: RestoredWorkAnswers;
+  };

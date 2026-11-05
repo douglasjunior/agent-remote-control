@@ -2,7 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/instrument-sans";
-@import "@fontsource-variable/space-grotesk";
+@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/jetbrains-mono";
 
 @source "../node_modules/streamdown/dist/*.js";
 
@@ -41,6 +42,14 @@
   --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
   --sidebar-border: oklch(0.925 0.005 214.3);
   --sidebar-ring: oklch(0.723 0.014 214.4);
+  --agent-ceo: oklch(0.62 0.14 75);
+  --agent-product-owner: oklch(0.52 0.2 300);
+  --agent-tech-lead: oklch(0.52 0.17 255);
+  --agent-developer: oklch(0.5 0.1 186);
+  --agent-code-reviewer: oklch(0.55 0.2 350);
+  --agent-git-ops: oklch(0.6 0.17 50);
+  --attention: oklch(0.6 0.15 70);
+  --good: oklch(0.52 0.14 160);
 }
 
 .dark {
@@ -75,6 +84,14 @@
   --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.56 0.021 213.5);
+  --agent-ceo: oklch(0.84 0.13 85);
+  --agent-product-owner: oklch(0.76 0.15 300);
+  --agent-tech-lead: oklch(0.76 0.13 250);
+  --agent-developer: oklch(0.8 0.13 183);
+  --agent-code-reviewer: oklch(0.77 0.16 350);
+  --agent-git-ops: oklch(0.8 0.15 55);
+  --attention: oklch(0.82 0.15 80);
+  --good: oklch(0.78 0.15 160);
 }
 
 @theme inline {
@@ -100,7 +117,10 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --font-sans: 'Instrument Sans Variable', sans-serif;
-  --font-heading: 'Space Grotesk Variable', sans-serif;
+  --font-heading: 'Bricolage Grotesque Variable', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+  --color-attention: var(--attention);
+  --color-good: var(--good);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -139,4 +159,69 @@
 @keyframes working-shimmer {
   from { background-position: 125% 0; }
   to { background-position: -125% 0; }
+}
+
+@keyframes mark-spin { to { transform: rotate(360deg); } }
+@keyframes mark-twinkle { 50% { transform: scale(0.72) rotate(45deg); } }
+@keyframes mark-seek { 0%, 100% { transform: rotate(-35deg); } 35% { transform: rotate(50deg); } 70% { transform: rotate(10deg); } }
+@keyframes mark-nudge-left { 50% { transform: translateX(-2px); } }
+@keyframes mark-nudge-right { 50% { transform: translateX(2px); } }
+@keyframes mark-blink { 50% { opacity: 0; } }
+@keyframes mark-scan { 0%, 100% { transform: translate(-3px, -2px); } 50% { transform: translate(4px, 3px); } }
+@keyframes mark-travel {
+  0% { transform: translate(0, 0); opacity: 0; }
+  15%, 85% { opacity: 1; }
+  100% { transform: translate(14px, -11px); opacity: 0; }
+}
+@keyframes mark-pop { from { transform: scale(0); } }
+@keyframes mark-attention { 50% { box-shadow: 0 0 30px 0 var(--attention); } }
+@keyframes live-pulse { 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes ticker-in { from { opacity: 0; transform: translateY(5px); } }
+@keyframes ticker-bar { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+@keyframes squad-flare { 40% { box-shadow: 0 0 34px 6px color-mix(in oklab, var(--agent-developer) 75%, transparent); } }
+@keyframes squad-bloom { 40% { transform: scale(1.16); box-shadow: 0 0 26px 2px var(--c); } }
+
+.agent-mark svg {
+  width: 62%;
+  height: 62%;
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .agent-mark[data-state='working'] .g-orbit { transform-origin: 16px 16px; animation: mark-spin 3.4s linear infinite; }
+  .agent-mark[data-state='working'] .g-star { transform-origin: 16px 16px; animation: mark-twinkle 1.9s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-needle { transform-origin: 16px 16px; animation: mark-seek 2.8s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-left { animation: mark-nudge-left 1.1s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-right { animation: mark-nudge-right 1.1s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-cursor { animation: mark-blink 0.8s steps(2) infinite; }
+  .agent-mark[data-state='working'] .g-glass { animation: mark-scan 2.1s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-dot { animation: mark-travel 1.6s ease-in-out infinite; }
+  .agent-mark[data-state='done'] .mark-badge { animation: mark-pop 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) both; }
+  .agent-mark[data-state='waiting'] { animation: mark-attention 1.6s ease-in-out infinite; }
+  .squad-live-dot[data-live='true'] { animation: live-pulse 1.6s infinite; }
+  .squad-ticker-text { animation: ticker-in 0.35s ease both; }
+  .squad-ticker-bar { animation: ticker-bar 1s ease-in-out infinite; }
+  .squad-ticker-bar:nth-child(2) { animation-delay: 0.15s; }
+  .squad-ticker-bar:nth-child(3) { animation-delay: 0.3s; }
+  .squad-panel[data-delivered='true'] .squad-spine { animation: squad-flare 1.4s ease-out; }
+  .squad-panel[data-delivered='true'] .agent-mark { animation: squad-bloom 0.7s ease-out both; animation-delay: calc(var(--i, 0) * 90ms); }
+}
+
+.squad-pulse {
+  position: absolute;
+  top: 0;
+  left: 30px;
+  z-index: 2;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 12px 3px var(--c);
+  pointer-events: none;
 }

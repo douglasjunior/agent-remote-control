@@ -19,7 +19,15 @@ describe('formatRelativeTime', () => {
 });
 
 describe('formatDuration', () => {
-  it('rounds to whole seconds', () => {
-    expect(formatDuration(42_400)).toBe('42 s');
+  it.each([
+    [400, '0 s'],
+    [42_400, '42 s'],
+    [60_000, '1m'],
+    [550_000, '9m 10s'],
+    [3_599_000, '59m 59s'],
+    [3_600_000, '1h'],
+    [3_900_000, '1h 5m'],
+  ])('formats %i ms as %s', (durationMs, expected) => {
+    expect(formatDuration(durationMs)).toBe(expected);
   });
 });

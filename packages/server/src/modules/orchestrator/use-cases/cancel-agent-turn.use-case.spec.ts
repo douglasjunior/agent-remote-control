@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { OpenWorkService } from '../services/open-work.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
+import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -11,6 +13,7 @@ import type { RunShellCommandUseCase } from './run-shell-command.use-case.js';
 
 
 describe('CancelAgentTurnUseCase', () => {
+  let openWork: OpenWorkService;
   let useCase: CancelAgentTurnUseCase;
   let agentPort: StubAgentPort;
   let runtime: ConversationRuntimeService;
@@ -24,7 +27,8 @@ describe('CancelAgentTurnUseCase', () => {
     questionQueue = new UserQuestionQueueService();
     shellRunning = false;
     const runShellCommand = { cancel: () => shellRunning } as unknown as RunShellCommandUseCase;
-    useCase = new CancelAgentTurnUseCase(runtime, questionQueue, runShellCommand);
+    openWork = new OpenWorkService(new InMemoryOpenWorkStoreFake());
+    useCase = new CancelAgentTurnUseCase(runtime, questionQueue, runShellCommand, openWork);
   });
 
   const runBlockingTurn = (): { started: Promise<void>; finish: () => void; done: Promise<void> } => {
@@ -93,5 +97,13 @@ describe('CancelAgentTurnUseCase', () => {
     await expect(useCase.execute('conv-th-1')).rejects.toThrow('cancel failed');
     turn.finish();
     await turn.done;
+  });
+
+  it('forgets the open work of the conversation', async () => {
+    await openWork.open('conv-1', { id: 'd', role: 'DEVELOPER', roleName: 'Dev', projectName: null, summary: 'Build', taskSpec: 'Go', cwd: '/w', round: 1, root: false });
+
+    await useCase.execute('conv-1');
+
+    expect(openWork.conversations()).toEqual([]);
   });
 });

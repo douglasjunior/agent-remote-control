@@ -7,6 +7,16 @@ import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
 
 
+export const interruptedWorkSchema = z.object({
+  id: z.string(),
+  role: z.string(),
+  roleName: z.string(),
+  projectName: z.string().nullable(),
+  summary: z.string(),
+});
+
+export type InterruptedWork = z.infer<typeof interruptedWorkSchema>;
+
 export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth.ok') }),
   z.object({ type: z.literal('auth.failed') }),
@@ -27,6 +37,8 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     state: conversationStateSchema,
     /** The response being written when the history was read; absent when there is none. */
     draft: z.string().optional(),
+    /** The agents a server restart stopped, which the user can set going again. */
+    interrupted: z.array(interruptedWorkSchema).optional(),
   }),
   z.object({
     type: z.literal('conversation.entry'),
@@ -38,6 +50,11 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     conversationId: z.string(),
     /** The user-facing text of the response being written, whole at every event; empty when it is discarded. */
     text: z.string(),
+  }),
+  z.object({
+    type: z.literal('conversation.interrupted'),
+    conversationId: z.string(),
+    interrupted: z.array(interruptedWorkSchema),
   }),
   z.object({
     type: z.literal('conversation.state'),

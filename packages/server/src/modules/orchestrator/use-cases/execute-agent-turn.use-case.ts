@@ -1,10 +1,12 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import {
   PromptCancelledError,
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
+import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
@@ -12,13 +14,17 @@ import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
 import type { AudioTranscript } from '../models/audio-transcription.model.js';
+import type { OpenWork, OpenWorkQuestions } from '../models/open-work.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
-import type { AnsweredQuestion, QuestionAsker, UserQuestion } from '../models/user-question.model.js';
+import type {
+  AnsweredQuestion,
+  RestoredWorkAnswers, QuestionAsker, UserQuestion,
+} from '../models/user-question.model.js';
 import {
   type DelegationContract,
   IAgentRegistryPort,
@@ -29,6 +35,7 @@ import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
+import { buildLostSessionTaskPrompt, buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
 import {
   buildAgentLanguagePrompt,
   buildCeoLanguagePrompt,
@@ -42,6 +49,7 @@ import {
   type DelegationResult,
   DelegationDetectorService,
 } from '../services/delegation-detector.service.js';
+import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { resolveProfile } from '../utils/agent-profile.util.js';
@@ -56,7 +64,31 @@ import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachment
 const UNSET_LABEL = 'default';
 const LOG_PREVIEW_LENGTH = 100;
 
-type ValidatedDelegation = DelegationResult & { readonly cwd: string };
+type ValidatedDelegation = DelegationResult & {
+  readonly cwd: string;
+  /** Present on a delegation resumed after a restart, which keeps the id of the one it continues. */
+  readonly workId?: string;
+  /** What the agent receives first, in place of the task. */
+  readonly firstPrompt?: string;
+  readonly answerDelivery?: AnswerDelivery;
+};
+
+/**
+ * Answers on their way to an agent that asked before a restart. The record keeps the questions until the prompt is sent,
+ * so a restart before that asks them again; from then on the agent has them and is simply working.
+ */
+type AnswerDelivery = {
+  readonly workId: string;
+  readonly questions: OpenWorkQuestions;
+  /** The first prompt does not carry the task, which a session created in place of the lost one would not know. */
+  readonly taskSpec: string;
+};
+
+/** Work a restart interrupted, with the answers when the agent had asked and the user has answered since. */
+type Resumption = {
+  readonly work: OpenWork;
+  readonly answers?: readonly AnsweredQuestion[];
+};
 
 type ValidatedDecision =
   | Exclude<CeoDecision, { kind: 'delegate' }>
@@ -91,13 +123,37 @@ export class ExecuteAgentTurnUseCase {
     private readonly questionParser: QuestionParserService,
     private readonly questionQueue: UserQuestionQueueService,
     private readonly audioTranscription: TranscribeAudioAttachmentsUseCase,
+    private readonly openWork: OpenWorkService,
   ) {}
 
-  async execute(request: TurnRequest): Promise<TurnResult> {
+  execute(request: TurnRequest): Promise<TurnResult> {
+    return runInLogConversation(request.conversationId, () => this.executeTurn(request));
+  }
+
+  /** Claims the work before anything else runs, so a second request for it finds it taken. */
+  resume(workId: string, request: TurnRequest): Promise<TurnResult> {
+    const work = this.openWork.claimStopped(request.conversationId, workId);
+    return work ? this.executeResumption(request, { work }) : this.noWork(workId);
+  }
+
+  deliverAnswers({ workId, answers }: RestoredWorkAnswers, request: TurnRequest): Promise<TurnResult> {
+    const work = this.openWork.claimAsked(request.conversationId, workId);
+    return work ? this.executeResumption(request, { work, answers }) : this.noWork(workId);
+  }
+
+  private executeResumption(request: TurnRequest, resumption: Resumption): Promise<TurnResult> {
+    return runInLogConversation(request.conversationId, () => this.executeTurn({ ...request, prompt: '', resumable: true }, resumption));
+  }
+
+  private noWork(workId: string): Promise<TurnResult> {
+    return Promise.resolve({ response: '', status: 'failed', errorMessage: `No interrupted work: ${workId}` });
+  }
+
+  private async executeTurn(request: TurnRequest, resumed?: Resumption): Promise<TurnResult> {
     const conversationKey = request.conversationId;
     const endTurn = this.conversationRuntime.beginTurn(conversationKey);
     try {
-      return await this.runTurn(conversationKey, await this.transcribeAudio(request));
+      return await this.runTurn(conversationKey, await this.transcribeAudio(request), resumed);
     } finally {
       endTurn();
     }
@@ -126,6 +182,7 @@ export class ExecuteAgentTurnUseCase {
   private async runTurn(
     conversationKey: string,
     request: TurnRequest,
+    resumed?: Resumption,
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let ceoPort: IAgentPort | undefined;
@@ -146,7 +203,7 @@ export class ExecuteAgentTurnUseCase {
 
     try {
       agentId = await this.resolveRoleAgentId(request.conversationId, request.agentRole);
-      if (await this.steerRunningCeo(conversationKey, agentId, request)) {
+      if (!resumed && await this.steerRunningCeo(conversationKey, agentId, request)) {
         return await this.buildSteeredResult(conversationKey, request);
       }
       return await this.runDelegationLoop(
@@ -162,6 +219,7 @@ export class ExecuteAgentTurnUseCase {
             ceoPort = port;
           },
         },
+        resumed,
       );
     } catch (error) {
       const conversationLabel = session?.conversationId ?? 'none';
@@ -186,14 +244,42 @@ export class ExecuteAgentTurnUseCase {
       readonly onSessionResolved: (session: SessionContext) => void;
       readonly onCeoPort: (ceoPort: IAgentPort) => void;
     },
+    resumed?: Resumption,
   ): Promise<TurnResult> {
     let session: SessionContext | undefined;
     let prompt = this.enrichPromptWithAttachments(request.prompt, request.attachments);
     const running = new RunningDelegations();
     let lastBlockSignature: string | undefined;
     let delegationRounds = 0;
+    const resumedRoot = resumed?.work.root ? resumed : undefined;
+    const ceoWorkId = request.resumable ? resumedRoot?.work.id ?? randomUUID() : undefined;
+    let ceoAnswerDelivery = resumedRoot && this.answerDeliveryOf(resumedRoot);
 
     try {
+      if (resumed && !resumed.work.root) {
+        session = await this.resolveSession(request);
+        observers.onSessionResolved(session);
+        running.add(this.startDelegations(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey));
+        await this.openWork.discardInterruptedRoots(request.conversationId);
+        prompt = await running.nextResults();
+      } else if (resumedRoot) {
+        prompt = await this.firstPromptOf(resumedRoot, request);
+      }
+      if (ceoWorkId) {
+        await this.openWork.discardInterruptedRoots(request.conversationId);
+        await this.openWork.open(request.conversationId, {
+          id: ceoWorkId,
+          role: request.agentRole,
+          roleName: this.agentRegistry.getDisplayName(request.agentRole),
+          projectName: null,
+          summary: '',
+          taskSpec: resumedRoot?.work.taskSpec ?? prompt,
+          ...(ceoAnswerDelivery ? { questions: ceoAnswerDelivery.questions } : {}),
+          cwd: request.workspacePath,
+          round: 1,
+          root: true,
+        });
+      }
       for (let round = 1; ; round++) {
         const { response, decision } = await this.conversationRuntime.runOnCeo(
           conversationKey,
@@ -213,7 +299,9 @@ export class ExecuteAgentTurnUseCase {
               prompt = `${block.text}\n${prompt}`;
             }
             lastBlockSignature = block?.signature;
-            return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1);
+            const answerDelivery = ceoAnswerDelivery;
+            ceoAnswerDelivery = undefined;
+            return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1, ceoWorkId, answerDelivery);
           },
           round === 1 ? request.onQueued : undefined,
         );
@@ -239,7 +327,37 @@ export class ExecuteAgentTurnUseCase {
       }
     } finally {
       await this.stopRunningDelegations(running, conversationKey);
+      if (ceoWorkId) {
+        await this.openWork.close(request.conversationId, ceoWorkId);
+      }
     }
+  }
+
+  private async toResumedDelegation(resumption: Resumption, request: TurnRequest): Promise<ValidatedDelegation> {
+    const { work } = resumption;
+    const answerDelivery = this.answerDeliveryOf(resumption);
+    return {
+      delegateToRole: work.role,
+      projectName: work.projectName ?? undefined,
+      taskSpec: work.taskSpec,
+      summary: work.summary,
+      sessionMode: 'resume',
+      cwd: work.cwd,
+      workId: work.id,
+      firstPrompt: await this.firstPromptOf(resumption, request),
+      ...(answerDelivery ? { answerDelivery } : {}),
+    };
+  }
+
+  private answerDeliveryOf({ work, answers }: Resumption): AnswerDelivery | undefined {
+    return answers && work.questions ? { workId: work.id, questions: work.questions, taskSpec: work.taskSpec } : undefined;
+  }
+
+  /** An agent that asked gets its answers like any other; only one that stopped mid-round is told it was interrupted. */
+  private async firstPromptOf({ work, answers }: Resumption, request: TurnRequest): Promise<string> {
+    return answers
+      ? this.formatAnswers(await this.transcribeAnswers(request, answers))
+      : buildResumedWorkPrompt(work.taskSpec);
   }
 
   private async steerRunningCeo(
@@ -327,8 +445,10 @@ export class ExecuteAgentTurnUseCase {
     turn: ActiveTurn,
     session: SessionContext,
     isUserMessage: boolean,
+    workId: string | undefined,
+    answerDelivery: AnswerDelivery | undefined,
   ): Promise<{ response: string; decision: CeoRoundDecision }> {
-    const runCeo = async (text: string, isUserText = false) => this.takeUserLanguage(await this.runAgentTurn(
+    const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => this.takeUserLanguage(await this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
@@ -339,9 +459,10 @@ export class ExecuteAgentTurnUseCase {
       'resume',
       undefined,
       isUserText,
+      delivery,
     ));
 
-    let response = await runCeo(prompt, isUserMessage);
+    let response = await runCeo(prompt, isUserMessage, answerDelivery);
     for (;;) {
       let decision = await this.decide(response, request);
       for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
@@ -356,7 +477,7 @@ export class ExecuteAgentTurnUseCase {
         return { response, decision };
       }
 
-      const answers = await this.askUser(request, this.buildAsker(request.agentRole, undefined), decision.message, decision.questions);
+      const answers = await this.askUser(request, this.buildAsker(request.agentRole, undefined), decision.message, decision.questions, workId);
       response = await runCeo(this.formatAnswers(answers), true);
     }
   }
@@ -499,13 +620,13 @@ export class ExecuteAgentTurnUseCase {
     { projectName, sessionMode }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
-      return `Role "${role}" does not take a project folder. Use <delegate role="${role}"> without the project attribute.`;
+      return `Role "${role}" does not take a project folder. Use <delegate role="${role}" summary="<summary>"> without the project attribute.`;
     }
     if (!projectName && contract.project === 'required') {
-      return `Role "${role}" requires a project folder. Use <delegate role="${role}" project="<project-folder>">.`;
+      return `Role "${role}" requires a project folder. Use <delegate role="${role}" summary="<summary>" project="<project-folder>">.`;
     }
     if (sessionMode && !contract.sessionMode) {
-      return `Role "${role}" does not take a session mode. Use <delegate role="${role}"> without the session attribute.`;
+      return `Role "${role}" does not take a session mode. Use <delegate role="${role}" summary="<summary>"> without the session attribute.`;
     }
     return undefined;
   }
@@ -549,6 +670,7 @@ export class ExecuteAgentTurnUseCase {
     runAgent: (text: string) => Promise<string>,
     asker: QuestionAsker,
     request: TurnRequest,
+    workId: string | undefined,
   ): Promise<string> {
     let response = firstResponse;
     let repairs = 0;
@@ -567,7 +689,7 @@ export class ExecuteAgentTurnUseCase {
         continue;
       }
       repairs = 0;
-      const answers = await this.askUser(request, asker, parsed.message, parsed.questions);
+      const answers = await this.askUser(request, asker, parsed.message, parsed.questions, workId);
       response = await runAgent(this.formatAnswers(answers));
     }
   }
@@ -577,9 +699,26 @@ export class ExecuteAgentTurnUseCase {
     asker: QuestionAsker,
     message: string,
     questions: readonly UserQuestion[],
+    workId: string | undefined,
   ): Promise<readonly AnsweredQuestion[]> {
     this.logger.log(`[Questions Asked] Conversation=${request.conversationId}, Role=${asker.role}, Questions=${questions.length}`);
-    const answers = await this.questionQueue.ask(request.conversationId, asker, message, questions, request.onQuestion);
+    const { conversationId } = request;
+    if (workId) {
+      await this.openWork.update(conversationId, workId, { questions: { message, questions, answers: [] } });
+    }
+    const answers = await this.questionQueue.ask(
+      conversationId,
+      asker,
+      message,
+      questions,
+      request.onQuestion,
+      workId
+        ? answered => void this.openWork.update(conversationId, workId, { questions: { message, questions, answers: answered } })
+        : undefined,
+    );
+    if (workId) {
+      await this.openWork.update(conversationId, workId, { questions: undefined });
+    }
     return this.transcribeAnswers(request, answers);
   }
 
@@ -656,7 +795,7 @@ export class ExecuteAgentTurnUseCase {
 
   private async delegate(
     session: SessionContext,
-    { delegateToRole, projectName, taskSpec, sessionMode, cwd }: ValidatedDelegation,
+    { delegateToRole, projectName, taskSpec, summary, sessionMode, cwd, workId, firstPrompt, answerDelivery }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
     conversationKey: string,
@@ -682,15 +821,19 @@ export class ExecuteAgentTurnUseCase {
       this.conversationRuntime.unregisterDelegation(conversationKey, existing);
     }
 
+    await this.replaceInterruptedWork(conversationKey, delegateToRole, workId);
+
     const delegatePort = this.agentPortFactory.create(
       await this.resolveRoleAgentId(request.conversationId, delegateToRole),
     );
     const agentInfo = await this.buildAgentInfo(delegatePort, delegateToRole, request.conversationId);
     const event = {
+      delegationId: workId ?? randomUUID(),
       round,
       role: delegateToRole,
       roleName: this.agentRegistry.getDisplayName(delegateToRole),
       projectName,
+      summary,
     };
     const startedAt = Date.now();
 
@@ -701,6 +844,7 @@ export class ExecuteAgentTurnUseCase {
 
     const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
     let currentTaskSpec = taskSpec;
+    const openWorkId = request.resumable ? event.delegationId : undefined;
 
     const delegationTurn = new ActiveTurn(delegatePort);
     const activeDelegation: ActiveDelegation = {
@@ -717,15 +861,32 @@ export class ExecuteAgentTurnUseCase {
       turn: delegationTurn,
       steer: async (newSpec: string) => {
         currentTaskSpec = newSpec;
+        if (openWorkId) {
+          await this.openWork.update(conversationKey, openWorkId, { taskSpec: newSpec });
+        }
         const languagePrompt = await this.buildLanguagePrompt(delegateToRole, request.agentRole);
         return delegatePort.supportsSteering && delegatePort.sendSteeringPrompt(`${newSpec}\n\n${languagePrompt}`);
       },
     };
 
     this.conversationRuntime.registerDelegation(conversationKey, activeDelegation);
+    if (openWorkId) {
+      await this.openWork.open(conversationKey, {
+        id: openWorkId,
+        role: delegateToRole,
+        roleName: event.roleName,
+        projectName: projectName ?? null,
+        summary,
+        taskSpec,
+        cwd,
+        round,
+        root: false,
+        ...(answerDelivery ? { questions: answerDelivery.questions } : {}),
+      });
+    }
 
     try {
-      const runDelegate = (text: string) => this.runAgentTurn(
+      const runDelegate = (text: string, delivery?: AnswerDelivery) => this.runAgentTurn(
         delegatePort,
         cwd,
         delegateToRole,
@@ -735,12 +896,15 @@ export class ExecuteAgentTurnUseCase {
         session,
         effectiveSessionMode,
         projectName,
+        false,
+        delivery,
       );
       const response = await this.answerQuestions(
-        await runDelegate(currentTaskSpec),
-        runDelegate,
+        await runDelegate(firstPrompt ?? currentTaskSpec, answerDelivery),
+        text => runDelegate(text),
         this.buildAsker(delegateToRole, projectName),
         request,
+        openWorkId,
       );
       const durationMs = Date.now() - startedAt;
       this.logger.log(
@@ -759,11 +923,30 @@ export class ExecuteAgentTurnUseCase {
       if (this.isCancellation(error)) {
         throw error;
       }
+      request.onDelegation?.({
+        ...event,
+        phase: 'failed',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        durationMs: Date.now() - startedAt,
+      });
       return this.formatFailedResult(session, round, delegateToRole, projectName, error, agentInfo);
     } finally {
+      if (openWorkId) {
+        await this.openWork.close(conversationKey, openWorkId);
+      }
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
+    }
+  }
+
+  /** A new delegation of a role takes the place of whatever a restart left stopped for it. */
+  private async replaceInterruptedWork(conversationKey: string, role: string, keptWorkId: string | undefined): Promise<void> {
+    for (const work of this.openWork.interrupted(conversationKey)) {
+      if (work.role === role && work.id !== keptWorkId) {
+        this.questionQueue.discard(conversationKey, role, work.projectName);
+        await this.openWork.close(conversationKey, work.id);
+      }
     }
   }
 
@@ -778,6 +961,7 @@ export class ExecuteAgentTurnUseCase {
     sessionMode: 'resume' | 'new' = 'resume',
     projectName?: string,
     isUserMessage = false,
+    answerDelivery?: AnswerDelivery,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
     let accumulatedChunks = '';
@@ -804,6 +988,9 @@ export class ExecuteAgentTurnUseCase {
           await this.workspacePort.ensureDirectory(workspacePath);
           await agentPort.createSession(workspacePath);
           systemPromptPending = true;
+          if (answerDelivery) {
+            fullPrompt = `${buildLostSessionTaskPrompt(answerDelivery.taskSpec)}\n\n${fullPrompt}`;
+          }
         }
         const { currentSessionId } = agentPort;
         if (currentSessionId && currentSessionId !== storedSessionId) {
@@ -823,13 +1010,16 @@ export class ExecuteAgentTurnUseCase {
       await this.applyAgentConfig(agentPort, role, request.conversationId);
 
       const stream = this.agentProtocol.stream({
-        onActivity: activity => request.onActivity?.(activity),
+        onActivity: activity => request.onActivity?.(activity, role),
         // Only the CEO talks to the user, so the answers other agents write stay out of the draft.
         ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(visibleReply(answer)) }),
       });
       unsubscribeActivity = agentPort.onActivity(activity => stream.read(activity));
 
       turn.throwIfCancelled();
+      if (answerDelivery) {
+        await this.openWork.update(request.conversationId, answerDelivery.workId, { questions: undefined });
+      }
       for await (const update of agentPort.prompt(fullPrompt)) {
         accumulatedChunks += update.text;
       }

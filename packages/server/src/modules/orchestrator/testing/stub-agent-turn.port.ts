@@ -1,7 +1,9 @@
 import type { AgentQuotaReport } from '../models/agent-quota-report.model.js';
+import type { InterruptedWork } from '../models/open-work.model.js';
 import type { ShellCommandResult } from '../models/shell-command-result.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult } from '../models/turn-result.model.js';
+import type { RestoredWorkAnswers } from '../models/user-question.model.js';
 import type { IAgentTurnPort } from '../ports/agent-turn.port.js';
 
 
@@ -10,6 +12,7 @@ export class StubAgentTurnPort implements IAgentTurnPort {
   /** Runs while the turn executes, before it resolves; use it to emit callbacks. */
   turnBehavior?: (request: TurnRequest) => void | Promise<void>;
   turnError?: Error;
+  interruptedWork: readonly InterruptedWork[] = [];
   cancelResult = true;
   shellEnabled = true;
   shellResult: ShellCommandResult = { command: '', output: '', exitCode: 0, truncated: false, timedOut: false, cancelled: false };
@@ -20,6 +23,8 @@ export class StubAgentTurnPort implements IAgentTurnPort {
 
   readonly turnRequests: TurnRequest[] = [];
   readonly cancelledConversations: string[] = [];
+  readonly resumedWorkIds: string[] = [];
+  readonly deliveredAnswers: RestoredWorkAnswers[] = [];
   readonly shellCalls: { conversationId: string; command: string }[] = [];
 
   get lastRequest(): TurnRequest | undefined {
@@ -33,6 +38,21 @@ export class StubAgentTurnPort implements IAgentTurnPort {
       throw this.turnError;
     }
     return this.turnResult;
+  }
+
+  listInterruptedWork(): readonly InterruptedWork[] {
+    return this.interruptedWork;
+  }
+
+  async resumeWork(workId: string, request: TurnRequest): Promise<TurnResult> {
+    this.resumedWorkIds.push(workId);
+    this.interruptedWork = this.interruptedWork.filter(work => work.id !== workId);
+    return this.executeTurn(request);
+  }
+
+  async deliverAnswers(answers: RestoredWorkAnswers, request: TurnRequest): Promise<TurnResult> {
+    this.deliveredAnswers.push(answers);
+    return this.executeTurn(request);
   }
 
   async cancelTurn(conversationId: string): Promise<boolean> {

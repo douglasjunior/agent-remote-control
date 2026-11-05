@@ -433,7 +433,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     seedAgentSettings(dataDir, 'channel-delegation:thread-delegation');
     mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
-      'On it.\n<delegate role="DEVELOPER" project="my-app">\nImplement the login screen.\n</delegate>',
+      'On it.\n<delegate role="DEVELOPER" summary="Doing the work" project="my-app">\nImplement the login screen.\n</delegate>',
       'Login delivered.',
     ]);
     const developer = new ScriptedAgentFake(['Login screen implemented.']);
@@ -868,7 +868,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     it('should let the delegated agent interview the user one question at a time without the CEO', async () => {
       seedAgentSettings(dataDir, 'channel-questions:thread-questions');
       const ceo = new ScriptedAgentFake([
-        '<delegate role="PRODUCT_OWNER">Discover the refund approval feature.</delegate>',
+        '<delegate role="PRODUCT_OWNER" summary="Doing the work">Discover the refund approval feature.</delegate>',
         'The intent document is ready.',
       ]);
       const owner = new ScriptedAgentFake([

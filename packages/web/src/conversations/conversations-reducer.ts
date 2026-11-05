@@ -2,7 +2,7 @@ import type { AgentOption } from '@agent-remote-control/protocol/agent-option';
 import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { ConversationState, ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
+import type { InterruptedWork, ServerEvent } from '@agent-remote-control/protocol/server-event';
 
 
 export type ConversationView = {
@@ -11,6 +11,7 @@ export type ConversationView = {
   /** The response being written, shown after the entries until the entry that delivers it arrives. */
   readonly draft: string;
   readonly state: ConversationState;
+  readonly interrupted: readonly InterruptedWork[];
   readonly loaded: boolean;
   readonly configured: boolean;
   readonly profilesLoaded: boolean;
@@ -34,6 +35,7 @@ export const emptyConversationView: ConversationView = {
   entries: {},
   draft: '',
   state: 'idle',
+  interrupted: [],
   loaded: false,
   configured: false,
   profilesLoaded: false,
@@ -75,6 +77,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         entries: Object.fromEntries(event.entries.map(entry => [entry.id, entry])),
         draft: event.draft ?? '',
         state: event.state,
+        interrupted: event.interrupted ?? [],
         loaded: true,
       }));
     case 'conversation.entry':
@@ -85,6 +88,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
       }));
     case 'conversation.draft':
       return updateView(state, event.conversationId, view => ({ ...view, draft: event.text }));
+    case 'conversation.interrupted':
+      return updateView(state, event.conversationId, view => ({ ...view, interrupted: event.interrupted }));
     case 'conversation.state':
       return updateView(state, event.conversationId, view => ({ ...view, state: event.state }));
     case 'agents.list':

@@ -47,12 +47,12 @@ Encapsulates the parameters for running an interaction round:
 - `workspacePath`: local working directory associated with the turn;
 - `agentRole`: root role that receives the prompt (e.g. `'CEO'`);
 - `attachments`: optional list of `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) with files received and downloaded locally;
-- `onActivity`: optional callback `(activity: TurnActivity) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts and tools, with the response protocol already read (a `thought` may carry `removed`);
+- `onActivity`: optional callback `(activity: TurnActivity, role: string) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts and tools, with the role of the agent that produced each one, with the response protocol already read (a `thought` may carry `removed`);
 - `onDraft`: optional callback `(text: string) => void` with the part of the CEO's response that the user reads, as far as it is written: whole at every call (replaced by the next one, so a channel keeps only the last), empty when discarded. The protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and a tag still being typed are left out (`visibleReply`, `visible-reply.util.ts`). The finished response reaches the channel through the result, `onInterimMessage` or `onQuestion`; the orchestrator discards the draft (`''`) before asking the CEO to repair a response. Answers written by delegated agents never reach it;
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
 - `onQuestion`: optional callback `(prompt: QuestionPrompt) => void`, called when an agent of this turn asks and the question reaches the front of the conversation queue on its own (see "Questions to the User").
-- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works and `phase: 'finished'` when it completes successfully; carries `round`, `role`, `roleName` and `projectName?`. `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
+- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error; a cancelled delegation emits neither; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?` and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair). `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
@@ -344,8 +344,8 @@ My understanding is: ... (free text, shown before the first question)
   `<option>`, and stay in the text.
 - **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) keeps in memory a
   queue of requests per conversation, in the order the agents asked, and exposes one question at a time.
-  It stays in memory because the asking agent waits alive inside the turn, and a restart already brings down
-  turns and delegations. Operations:
+  The queue lives in memory because the asking agent waits alive inside the turn; for a `resumable` turn the
+  questions and answers are also kept on disk (see "Work Across a Restart"). Operations:
   - `ask(conversationKey, asker, message, questions, notify?)`: queues and resolves with
     `AnsweredQuestion[]` when the user answers all of them; `notify` shows the first question when the
     request reaches the front of the queue on its own (empty queue or front request discarded);
@@ -356,6 +356,9 @@ My understanding is: ... (free text, shown before the first question)
     accompany the answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
     (resolves the agent's wait and carries the question of the next request, if any) and `invalid`; with no
     pending question, `undefined`;
+  - `restore(conversationKey, workId, asker, questions, onAnswer)`: queues a request a restart left unanswered, with
+    the answers already given. Nothing waits on it: its `answered` submission carries `restoredWork` (`workId` and
+    `answers`), and the channel hands it to `IAgentTurnPort.deliverAnswers`;
   - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
   - `cancel(conversationKey)`: empties the queue and rejects all waits with `PromptCancelledError`;
   - `discard(conversationKey, role, projectName)`: removes the request of an agent that is being
@@ -378,6 +381,31 @@ My understanding is: ... (free text, shown before the first question)
 - **Locked state**: while the conversation has pending questions the agent is waiting, and a channel that offers a
   free-form input treats the next message as the answer (`hasPendingQuestions`, `currentQuestion`, `answerQuestion`). `/cancel` unlocks the conversation (see below).
   through steering. `/cancel` unlocks the conversation (see below).
+
+### Work Across a Restart
+
+A turn with `TurnRequest.resumable` (the web channel sets it; Discord does not) keeps its work on disk through
+`OpenWorkService` over `IOpenWorkStorePort` (`JsonOpenWorkStoreAdapter`, `DATA_DIR/open-work.json`, written atomically).
+Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `summary`,
+`taskSpec`, `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
+never written. A resumed record keeps its questions until the prompt with the answers is sent: a restart before that asks
+the last question again, and from then on the agent has the answers and counts as working. The record is closed when that work
+ends, however it ends, and `CancelAgentTurnUseCase` closes every record of the conversation.
+
+- **Shutdown** freezes the service in `onModuleDestroy`, before the agents are disconnected, so the turns dying during a
+  graceful restart do not erase their records.
+- **Boot**: `RestoreOpenWorkUseCase` loads the records as interrupted and puts unanswered questions back in the queue.
+- **An agent that asked** was not interrupted: it was already waiting. `IAgentTurnPort.deliverAnswers` claims the record
+  (`claimAsked`) and the agent receives `<user_answers>` like any other answer. Only when its session cannot be resumed, the
+  answers are preceded by `buildLostSessionTaskPrompt`, since a new session does not know the task.
+- **An agent that stopped mid-round** has no question to set it going, so the user continues it: `IAgentTurnPort.resumeWork`
+  claims the record (`claimStopped`) and the agent receives `buildResumedWorkPrompt`. `listInterruptedWork`
+  (`OpenWorkService.continuable`) lists these records only. A root is listed only when no delegate stopped with it, because
+  the delegates' results start its next round.
+- **Either way** a delegate keeps its `delegationId`, runs on its stored ACP session (`session="resume"`), and its result goes
+  to a new CEO round like any other; a root record runs on the CEO.
+- **Replaced work**: a new turn discards interrupted roots that did not ask, and delegating a role again discards
+  what a restart left stopped for that role, its questions included.
 
 ### User Language
 
@@ -433,7 +461,7 @@ CEO port and the following delegates are born on the new agent.
 `OrchestratorModule` exports only three ports (interface plus Symbol in `ports/`), each implemented by a small service. Channels depend on them and never on the services and use cases behind them; their specs use the stubs in `testing/` (`StubAgentTurnPort`, `StubAgentConfigurationPort`, `StubUserQuestionPort`), which implement the interfaces.
 
 - **Attachments are the channel's to fetch and the orchestrator's to interpret.** A channel obtains the files in its own way (Discord downloads them from its CDN, the web channel reads its uploads) and hands them over only as `TurnRequest.attachments` (`TurnAttachment`: `name`, absolute `path`, `contentType`, `size`) plus the text as typed; it never rewrites the prompt for them. Audio becomes text in the turn (see `TranscribeAudioAttachmentsUseCase`); other files are listed in an `[ATTACHMENTS]` block for the agent to inspect.
-- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `cancelTurn(conversationId)`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
+- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `listInterruptedWork(conversationId)`, `resumeWork(workId, request)`, `deliverAnswers(answers, request)`, `cancelTurn(conversationId)`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
 - **`IAgentConfigurationPort`** (`AgentConfigurationService`): `listAgents()`, `getDefaultAgent()`, `currentAgent(conversationId)`, `listModels(agentId)`, `listEfforts(agentId, modelId)`, `listRoles()`, `listProfiles(conversationId)`, `hasSettings(conversationId)` (a pure query: own or inheritable settings exist), `ensureSettings(conversationId)`, `saveProfiles(conversationId, roles | undefined, profile)` (a profile the caller already resolved), `configureProfiles(input)` (`ConfigureAgentProfilesUseCase`: checks agent, roles, model and effort against the lists, takes the names from them, saves, and returns `{ ok: true }` or `{ ok: false, error }` with `Unknown agent`, `Unknown role`, `Unknown model`, `An effort needs a model` or `Unknown effort`), `getLanguage()` and `setLanguage(input)`.
 - **`IUserQuestionPort`** (`UserQuestionService`): `hasPendingQuestions(conversationId)`, `currentQuestion(conversationId)` and `answerQuestion(conversationId, answer)` (structured, see the question queue).
 

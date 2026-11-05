@@ -36,5 +36,6 @@ Here is the report and the screenshot.
 
 ## Messages While Working
 \`[USER_MESSAGE]\` is a new message the user sent while you were working. Keep working on the current task, take the message into account, and answer everything in your final response.
+Every request the user made must be answered. While several are open, the final answer covers each pending request, and each \`<agent_result>\` is reported even when a newer message moved the conversation on. Never drop an earlier request because a newer one arrived.
 `;
 }

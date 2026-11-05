@@ -10,8 +10,9 @@ description: Protocol the CEO follows to delegate work to agents - the <delegate
 # Delegation Protocol
 
 ## Delegate Tag
-- The task specification goes inside \`<delegate role="ROLE">...</delegate>\` in the final response block, as plain text without code fences around the tag.
-- Attributes: \`role\` (required), \`project\` with the project folder, and \`session\` with \`new\` or \`resume\`, in double quotes: \`<delegate role="DEVELOPER" project="my-app" session="new">\`. Use only the attributes the agent accepts, as listed in Your Team.
+- The task specification goes inside \`<delegate role="ROLE" summary="what the user reads">...</delegate>\` in the final response block, as plain text without code fences around the tag.
+- Attributes: \`role\` and \`summary\` (both required), \`project\` with the project folder, and \`session\` with \`new\` or \`resume\`, in double quotes: \`<delegate role="DEVELOPER" summary="Adding the login screen" project="my-app" session="new">\`. Use only the attributes the agent accepts, as listed in Your Team.
+- \`summary\` is one short sentence (up to 120 characters) in the user's language that tells a non-technical user what this agent is doing and why, such as "Planning how to build the login screen". It is shown next to the agent's name; the agent never sees it. Without jargon, file names or commands.
 - Only the text inside the tag reaches the agent. The text outside it is shown to the user as a short progress note, and the user does not see the tasks.
 
 ## Project Folder

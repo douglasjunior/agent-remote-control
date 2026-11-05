@@ -12,7 +12,10 @@ export type TurnRequest = {
   workspacePath: string;
   agentRole: string;
   readonly attachments?: readonly TurnAttachment[];
-  onActivity?: (activity: TurnActivity) => void;
+  /** Keeps the work of this turn on disk, so a restart leaves it resumable through `IAgentTurnPort.resumeWork`. */
+  readonly resumable?: boolean;
+  /** `role` is the agent whose activity it is. */
+  onActivity?: (activity: TurnActivity, role: string) => void;
   /**
    * The text of the CEO's response that the user reads, as far as it is written: whole at every call, replaced by
    * the next one, and empty when it is discarded. The finished response reaches the channel through the turn

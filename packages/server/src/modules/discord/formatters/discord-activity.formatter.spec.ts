@@ -431,7 +431,7 @@ describe('DiscordActivityFormatter', () => {
     };
 
     it('should announce a delegation with and without a project', () => {
-      const delegation = { round: 1, role: 'DEVELOPER', roleName: 'Developer' };
+      const delegation = { delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' };
 
       expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
         '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` — it is working on it now.',
@@ -445,14 +445,18 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatDelegation({ ...delegation, ...finishedDetails, phase: 'finished', projectName: 'my-app' })).toBe(
         '↩️ **Developer finished** in project `my-app` — the CEO is reviewing the result.',
       );
+      expect(formatter.formatDelegation({ ...delegation, phase: 'failed', errorMessage: 'boom', durationMs: 5, projectName: 'my-app' })).toBe(
+        '⚠️ **Developer failed** in project `my-app` — the CEO is deciding what to do next.',
+      );
     });
 
     it('should present the delegate response with its name and role', () => {
       expect(
         formatter.formatDelegateResult({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           ...finishedDetails,
           phase: 'finished',
           response: '\nLogin implemented.\n',
@@ -463,9 +467,10 @@ describe('DiscordActivityFormatter', () => {
     it('should name the project in the delegate response when there is one', () => {
       expect(
         formatter.formatDelegateResult({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           projectName: 'my-app',
           ...finishedDetails,
           phase: 'finished',
@@ -477,9 +482,10 @@ describe('DiscordActivityFormatter', () => {
     it('should show the delegate model, effort, tokens and duration in its footer', () => {
       expect(
         formatter.formatDelegateFooter({
-          round: 1,
+          delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
           roleName: 'Developer',
+          summary: 'Doing the work',
           ...finishedDetails,
           phase: 'finished',
           usage: { totalTokens: 12_345, inputTokens: 10_000, outputTokens: 2_345 },

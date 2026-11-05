@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module.js';
+import { IAppLoggerPort } from './modules/logging/ports/app-logger.port.js';
 
 
 async function bootstrap() {
@@ -11,7 +12,8 @@ async function bootstrap() {
     logger.error(`unhandled_rejection: ${message}`);
   });
 
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get<IAppLoggerPort>(IAppLoggerPort));
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3000);
 }

@@ -1,8 +1,9 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { useState, type FormEvent } from 'react';
+import { useState, type CSSProperties, type FormEvent } from 'react';
 
+import { agentIdentity } from '../../lib/agent-identity.js';
+import { cn } from '../../lib/utils.js';
 import { Button } from '../ui/button.js';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card.js';
 
 import { Markdown } from './markdown.js';
 
@@ -24,24 +25,31 @@ export function QuestionCard({ entry, active, onAnswer }: {
     setText('');
   };
 
+  const { color } = agentIdentity(entry.askerRole, entry.askerRoleName);
+
   return (
-    <Card className={active ? 'min-w-0 border-primary/50' : 'min-w-0 opacity-60'}>
-      <CardHeader>
-        <CardTitle className="text-sm">
-          {entry.askerRoleName}
-          {entry.projectName && <span className="font-normal text-muted-foreground">{` · ${entry.projectName}`}</span>}
-          {' '}
-          asks
-          {entry.total > 1 && (
-            <span className="ml-2 font-normal text-muted-foreground">
-              {`Question ${entry.number} of ${entry.total}`}
-            </span>
-          )}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3 text-sm">
+    <div
+      data-question-id={entry.id}
+      style={{ '--c': color } as CSSProperties}
+      className={cn(
+        'flex min-w-0 flex-col gap-2.5 rounded-[14px] border p-[15px] text-sm sm:ml-[46px]',
+        active ? 'border-attention bg-[color-mix(in_oklab,var(--attention)_9%,var(--card))]' : 'bg-card',
+      )}
+    >
+      <p className="text-[13.5px] font-semibold text-(--c)">
+        {entry.askerRoleName}
+        {entry.projectName && <span className="font-normal text-muted-foreground">{` · ${entry.projectName}`}</span>}
+        {' '}
+        asks
+        {entry.total > 1 && (
+          <span className="ml-2 font-normal text-muted-foreground">
+            {`Question ${entry.number} of ${entry.total}`}
+          </span>
+        )}
+      </p>
+      <div className="flex flex-col gap-3">
         {active && entry.message && <Markdown text={entry.message} className="text-muted-foreground" />}
-        <Markdown text={entry.text} className="font-medium" />
+        <Markdown text={entry.text} className="font-heading text-base font-semibold" />
         {active && entry.rationale && (
           <p className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">Why it matters: </span>
@@ -74,7 +82,7 @@ export function QuestionCard({ entry, active, onAnswer }: {
             <Button type="submit" size="sm" disabled={!text.trim()}>Answer</Button>
           </form>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

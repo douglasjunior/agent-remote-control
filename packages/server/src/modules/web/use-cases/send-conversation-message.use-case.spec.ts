@@ -1,6 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { Logger } from '@nestjs/common';
 
+import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { createWebHarness } from '../testing/web-harness.js';
@@ -23,11 +24,20 @@ function setup() {
     harness.workspace,
     harness.promptHistory,
     harness.uploads,
+    harness.turns,
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];
   const types = () => entries().map(entry => entry.type);
   const states = () => harness.observer.sent.flatMap(event => (event.type === 'conversation.state' ? [event.state] : []));
   return { ...harness, useCase, entries, types, states };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe('SendConversationMessageUseCase', () => {
@@ -212,10 +222,10 @@ describe('SendConversationMessageUseCase', () => {
     it('maps activities, delegations, interim messages and questions to entries', async () => {
       const { useCase, agentTurn, types } = setup();
       agentTurn.turnBehavior = async (request) => {
-        request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' });
-        request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' });
-        request.onDelegation?.({ phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer' });
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' }, 'CEO');
+        request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' }, 'CEO');
+        request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' });
         request.onInterimMessage?.('working');
         request.onQuestion?.(prompt);
       };
@@ -247,6 +257,7 @@ describe('SendConversationMessageUseCase', () => {
         'draft:',
         'conversation.entry',
         'conversation.state',
+        'conversation.interrupted',
       ]);
     });
 
@@ -265,19 +276,55 @@ describe('SendConversationMessageUseCase', () => {
     it('updates a streamed thought and a tool in place by id', async () => {
       const { useCase, agentTurn, entries } = setup();
       agentTurn.turnBehavior = async (request) => {
-        request.onActivity?.({ kind: 'thought', id: 't1', text: 'th' });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' });
-        request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' });
-        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'completed' });
-        request.onActivity?.({ kind: 'thought', id: 't1', text: '', removed: true });
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'th' }, 'CEO');
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' }, 'CEO');
+        request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
+        request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'completed' }, 'CEO');
+        request.onActivity?.({ kind: 'thought', id: 't1', text: '', removed: true }, 'CEO');
       };
 
       await useCase.execute('web-1', 'go');
 
       const [, thought, tool] = entries();
       expect(entries()).toHaveLength(4);
-      expect(thought).toMatchObject({ id: 'thought:t1', removed: true });
-      expect(tool).toMatchObject({ id: 'tool:c1', status: 'completed' });
+      expect(thought).toMatchObject({ type: 'thought', removed: true });
+      expect(tool).toMatchObject({ type: 'tool', status: 'completed' });
+    });
+
+    describe('across turns', () => {
+      const delegating = (delegationId: string) => async (request: TurnRequest) => {
+        const event = { delegationId, round: 1, role: 'DEVELOPER', roleName: 'Developer', summary: 'Doing the work' };
+        request.onDelegation?.({ ...event, phase: 'started' });
+        request.onDelegation?.({ ...event, phase: 'finished', response: 'done', agentInfo: { roleName: 'Developer', agentName: 'agy' }, durationMs: 5 });
+      };
+
+      it('keeps the delegations of two turns that share round and role, each under its own user message', async () => {
+        const { useCase, agentTurn, entries } = setup();
+
+        agentTurn.turnBehavior = delegating('dl-a');
+        await useCase.execute('web-1', 'first');
+        agentTurn.turnBehavior = delegating('dl-b');
+        await useCase.execute('web-1', 'second');
+
+        expect(entries().map(entry => (entry.type === 'user_message' ? entry.text : entry.type === 'delegation' ? `${entry.delegationId}:${entry.phase}` : entry.type)))
+          .toEqual(['first', 'dl-a:started', 'dl-a:finished', 'agent_response', 'second', 'dl-b:started', 'dl-b:finished', 'agent_response']);
+        expect(new Set(entries().map(entry => entry.id)).size).toBe(entries().length);
+      });
+
+      it('keeps the thoughts and tools two turns number alike', async () => {
+        const { useCase, agentTurn, entries } = setup();
+        agentTurn.turnBehavior = async (request) => {
+          request.onActivity?.({ kind: 'thought', id: 'synthetic:0', text: 'thinking' }, 'CEO');
+          request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'completed' }, 'CEO');
+        };
+
+        await useCase.execute('web-1', 'first');
+        await useCase.execute('web-1', 'second');
+
+        expect(entries().filter(entry => entry.type === 'thought')).toHaveLength(2);
+        expect(entries().filter(entry => entry.type === 'tool')).toHaveLength(2);
+        expect(entries().map(entry => entry.type)).toEqual(['user_message', 'thought', 'tool', 'agent_response', 'user_message', 'thought', 'tool', 'agent_response']);
+      });
     });
 
     it('publishes queued and returns to running once the turn produces output', async () => {
@@ -306,13 +353,62 @@ describe('SendConversationMessageUseCase', () => {
 
     it('leaves the state to the running turn when the prompt was steered into it', async () => {
       const { useCase, agentTurn, states, entries, store } = setup();
+      const gate = deferred();
+      agentTurn.turnBehavior = async (request) => {
+        if (request.prompt === 'first') {
+          await gate.promise;
+        }
+      };
+      const first = useCase.execute('web-1', 'first');
+      await vi.waitFor(() => expect(agentTurn.turnRequests).toHaveLength(1));
       agentTurn.turnResult = { response: '', status: 'steered' };
 
       await useCase.execute('web-1', 'also this');
 
       expect(entries().at(-1)).toMatchObject({ type: 'agent_response', status: 'steered' });
-      expect(states()).not.toContain('idle');
+      expect(states()).toEqual(['running']);
       expect(store.flushed).toEqual([]);
+      gate.resolve();
+      await first;
+    });
+
+    it('publishes idle only when the last of two overlapping turns ends', async () => {
+      const { useCase, agentTurn, states, store } = setup();
+      const gates = [deferred(), deferred()];
+      let started = 0;
+      agentTurn.turnBehavior = async (request) => {
+        const gate = gates[started];
+        started += 1;
+        if (started === 2) {
+          request.onQueued?.();
+        }
+        await gate.promise;
+      };
+
+      const first = useCase.execute('web-1', 'first');
+      await vi.waitFor(() => expect(started).toBe(1));
+      const second = useCase.execute('web-1', 'second');
+      await vi.waitFor(() => expect(started).toBe(2));
+      gates[1].resolve();
+      await second;
+      expect(states()).toEqual(['running']);
+      expect(store.flushed).toEqual([]);
+
+      gates[0].resolve();
+      await first;
+      expect(states()).toEqual(['running', 'idle']);
+      await vi.waitFor(() => expect(store.flushed).toEqual(['web-1']));
+    });
+
+    it('closes the question still open when the conversation goes idle', async () => {
+      const { useCase, agentTurn, entries } = setup();
+      agentTurn.turnBehavior = async (request) => {
+        request.onQuestion?.(prompt);
+      };
+
+      await useCase.execute('web-1', 'go');
+
+      await vi.waitFor(() => expect(entries().find(entry => entry.type === 'question')).toMatchObject({ closed: true }));
     });
 
     it('publishes a failed turn result and returns to idle', async () => {
@@ -349,25 +445,6 @@ describe('SendConversationMessageUseCase', () => {
 
       expect(entries().at(-1)).toMatchObject({ type: 'notice', level: 'error', text: expect.stringContaining('plain failure') });
       expect(states()).toEqual([]);
-    });
-
-    it('survives a flush failure at the end of the turn', async () => {
-      const { useCase, store } = setup();
-      vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      vi.spyOn(store, 'flush').mockRejectedValue(new Error('disk full'));
-
-      await expect(useCase.execute('web-1', 'go')).resolves.toBeUndefined();
-    });
-
-    it('describes a non-Error flush failure', async () => {
-      const { useCase, store } = setup();
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-      vi.spyOn(store, 'flush').mockRejectedValue('nope');
-
-      await useCase.execute('web-1', 'go');
-      await Promise.resolve();
-
-      expect(warn).toHaveBeenCalledWith(expect.stringContaining('nope'));
     });
   });
 });

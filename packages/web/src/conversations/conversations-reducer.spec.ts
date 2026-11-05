@@ -110,4 +110,14 @@ describe('conversationsReducer', () => {
   ])('ignores $type', (event) => {
     expect(conversationsReducer(initialConversationsState, event)).toBe(initialConversationsState);
   });
+
+  it('keeps the interrupted work from the history and from its own event', () => {
+    const work = { id: 'w', role: 'DEVELOPER', roleName: 'Dev', projectName: null, summary: 'Build' };
+
+    const loaded = reduce([{ type: 'conversation.history', conversationId: 'a', entries: [], state: 'idle', interrupted: [work] }]);
+    expect(loaded.byId.a?.interrupted).toEqual([work]);
+
+    expect(reduce([{ type: 'conversation.interrupted', conversationId: 'a', interrupted: [] }], loaded).byId.a?.interrupted).toEqual([]);
+    expect(reduce([{ type: 'conversation.history', conversationId: 'a', entries: [], state: 'idle' }], loaded).byId.a?.interrupted).toEqual([]);
+  });
 });

@@ -33,6 +33,7 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('upload.finish'), uploadId: z.string() }),
   z.object({ type: z.literal('upload.abort'), uploadId: z.string() }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
+  z.object({ type: z.literal('work.resume'), conversationId: z.string(), workId: z.string() }),
   z.object({ type: z.literal('prompts.history'), requestId: z.string() }),
   z.object({ type: z.literal('files.search'), requestId: z.string(), query: z.string().max(MAX_MENTION_QUERY_LENGTH) }),
   z.object({ type: z.literal('files.close'), requestId: z.string() }),

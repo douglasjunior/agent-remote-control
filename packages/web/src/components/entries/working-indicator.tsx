@@ -1,3 +1,5 @@
+import type { TeamMember } from '../../conversations/team-state.js';
+import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
 
 
@@ -21,11 +23,20 @@ export function WorkingLabel({ children }: { readonly children: string }) {
 }
 
 /** Shown from the moment the turn starts until the first step or the response appears. */
-export function WorkingIndicator() {
+export function WorkingIndicator({ members }: { readonly members: readonly TeamMember[] }) {
+  const working = members.filter(member => member.state === 'working');
+  const lead = working.length === 1 ? working[0]! : undefined;
+  let label = 'Coordinator is thinking…';
+  if (lead) {
+    label = `${agentIdentity(lead.role, lead.roleName).label} is ${lead.role === 'CEO' ? 'thinking' : 'working'}…`;
+  } else if (working.length > 1) {
+    label = `${working.length} agents are working…`;
+  }
+
   return (
     <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+      <WorkingLabel>{label}</WorkingLabel>
       <WorkingDots />
-      <WorkingLabel>Working…</WorkingLabel>
     </div>
   );
 }

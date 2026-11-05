@@ -35,7 +35,7 @@ describe('ceo.prompt', () => {
 
   it('should require the final answer and its tags inside the final response block', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
-    expect(CEO_SYSTEM_PROMPT).toContain('inside `<delegate role="ROLE" project="project-folder">...</delegate>`');
+    expect(CEO_SYSTEM_PROMPT).toContain('inside `<delegate role="ROLE" summary="what the user reads" project="project-folder">...</delegate>`');
   });
 
   it('should show the text outside the tags to the user and end the turn with an answer without tags', () => {
@@ -54,6 +54,12 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('You are the CEO, the lead orchestrator of agent-remote-control.');
     expect(CEO_SYSTEM_PROMPT).toContain('You NEVER execute technical work yourself');
     expect(CEO_SYSTEM_PROMPT).toContain('If no agent fits a request, tell the user instead of doing it yourself.');
+  });
+
+  it('should answer every request, reporting each agent result despite a newer message', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Answer every request the user made in the conversation.');
+    expect(CEO_SYSTEM_PROMPT).toContain('your answer covers each one');
+    expect(CEO_SYSTEM_PROMPT).toContain('Report every `<agent_result>` even if a newer message moved the conversation on');
   });
 
   it('should answer questions about its own decisions and stop when told to', () => {
@@ -98,10 +104,10 @@ describe('ceo.prompt', () => {
     const prompt = buildCeoSystemPrompt([developer, reviewer]);
 
     expect(prompt).toContain(
-      '- DEVELOPER (Developer Agent): <delegate role="DEVELOPER" project="<project-folder>">. Runs in "resume" session mode unless you set session="new" or session="resume". Modifies files,',
+      '- DEVELOPER (Developer Agent): <delegate role="DEVELOPER" summary="<summary>" project="<project-folder>">. Runs in "resume" session mode unless you set session="new" or session="resume". Modifies files,',
     );
     expect(prompt).toContain(
-      '- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" project="<project-folder>">. Always runs in "new" session mode, so never set the session attribute. Read-only,',
+      '- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" summary="<summary>" project="<project-folder>">. Always runs in "new" session mode, so never set the session attribute. Read-only,',
     );
     expect(prompt).not.toContain('Writes code.');
   });

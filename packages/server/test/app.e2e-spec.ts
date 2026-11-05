@@ -103,6 +103,7 @@ describe('AppController (e2e)', () => {
     expect(created?.conversation.id).toMatch(/^web-/);
     expect(events).toContainEqual({
       type: 'conversation.history',
+      interrupted: [],
       conversationId: created?.conversation.id,
       entries: [],
       state: 'idle',

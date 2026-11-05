@@ -15,17 +15,18 @@ describe('conversation query use cases', () => {
   });
 
   it('returns the history with the current state', async () => {
-    const { store, events } = createWebHarness();
+    const { store, events, questions, agentTurn } = createWebHarness();
     store.seed('web-1');
     const entry = { id: 'e', at: '2026-01-01T00:00:00.000Z', type: 'interim' as const, text: 'x' };
     await store.upsertEntry('web-1', entry);
     events.publishState('web-1', 'running');
     events.publishDraft('web-1', 'Working on');
 
-    expect(await new GetConversationHistoryUseCase(store, events).execute('web-1')).toEqual({
+    expect(await new GetConversationHistoryUseCase(store, events, questions, agentTurn).execute('web-1')).toEqual({
       entries: [entry],
       state: 'running',
       draft: 'Working on',
+      interrupted: [],
     });
   });
 });

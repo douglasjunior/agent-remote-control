@@ -12,6 +12,7 @@ export type DelegationResult = {
   readonly delegateToRole: string;
   readonly projectName: string | undefined;
   readonly taskSpec: string;
+  readonly summary: string;
   readonly sessionMode?: DelegationSessionMode;
 };
 
@@ -29,7 +30,8 @@ type ParsedTag =
 const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
 const ROLE = /^[A-Za-z][\w-]*$/;
 
-const DELEGATE_ATTRIBUTES = ['role', 'project', 'session'];
+const DELEGATE_ATTRIBUTES = ['role', 'project', 'session', 'summary'];
+const MAX_SUMMARY_LENGTH = 120;
 const ATTACHMENT_ATTRIBUTES = ['path'];
 
 @Injectable()
@@ -116,7 +118,7 @@ export class DelegationDetectorService {
   private parseDelegation(attributes: TagAttributes, content: string): DelegationResult | string {
     const role = attributes.get('role');
     if (!role || !ROLE.test(role)) {
-      return 'Every <delegate> needs a role attribute with the role name, as in <delegate role="DEVELOPER">.';
+      return 'Every <delegate> needs a role attribute with the role name, as in <delegate role="DEVELOPER" summary="Adding the login screen">.';
     }
 
     const projectName = attributes.get('project');
@@ -129,6 +131,11 @@ export class DelegationDetectorService {
       return `The session attribute of <delegate role="${role}"> must be "new" or "resume".`;
     }
 
+    const summary = attributes.get('summary')?.replace(/\s+/g, ' ').slice(0, MAX_SUMMARY_LENGTH).trim();
+    if (!summary) {
+      return `<delegate role="${role}"> needs a summary attribute: one short sentence, in the user's language, telling the user what the agent is doing, as in <delegate role="${role}" summary="Adding the login screen">.`;
+    }
+
     const taskSpec = content.trim();
     if (!taskSpec) {
       return `<delegate role="${role}"> has no task specification. Write the task between <delegate ...> and </delegate>.`;
@@ -138,6 +145,7 @@ export class DelegationDetectorService {
       delegateToRole: role.toUpperCase(),
       projectName,
       taskSpec,
+      summary,
       ...(session ? { sessionMode: session } : {}),
     };
   }

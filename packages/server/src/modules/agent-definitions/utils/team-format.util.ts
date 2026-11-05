@@ -5,10 +5,10 @@ export function formatDelegationForms(agent: AgentDefinition): string {
   const { project } = agent.delegation;
   const forms: string[] = [];
   if (project !== 'required') {
-    forms.push(`<delegate role="${agent.role}">`);
+    forms.push(`<delegate role="${agent.role}" summary="<summary>">`);
   }
   if (project) {
-    forms.push(`<delegate role="${agent.role}" project="<project-folder>">`);
+    forms.push(`<delegate role="${agent.role}" summary="<summary>" project="<project-folder>">`);
   }
   return forms.join(' or ');
 }

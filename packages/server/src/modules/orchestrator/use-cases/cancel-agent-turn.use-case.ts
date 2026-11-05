@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { OpenWorkService } from '../services/open-work.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 
 import { RunShellCommandUseCase } from './run-shell-command.use-case.js';
@@ -14,6 +15,7 @@ export class CancelAgentTurnUseCase {
     private readonly conversationRuntime: ConversationRuntimeService,
     private readonly questionQueue: UserQuestionQueueService,
     private readonly runShellCommand: RunShellCommandUseCase,
+    private readonly openWork: OpenWorkService,
   ) {}
 
   async execute(conversationId: string): Promise<boolean> {
@@ -22,6 +24,7 @@ export class CancelAgentTurnUseCase {
     try {
       const questionsCancelled = this.questionQueue.cancel(conversationId);
       const shellCancelled = this.runShellCommand.cancel(conversationId);
+      await this.openWork.closeAll(conversationId);
       const cancelled =
         await this.conversationRuntime.cancel(conversationId) || questionsCancelled || shellCancelled;
       if (cancelled) {
