@@ -20,6 +20,7 @@ export interface AgentDefinition {
   readonly delegation: AgentDelegationContract;
   readonly turnReminder?: string;
   readonly systemPromptEveryTurn?: boolean;
+  readonly plansDirectory?: true;
   buildSystemPrompt(team: readonly AgentDefinition[]): string;
   buildWorkspaceFiles?(team: readonly AgentDefinition[], workspaceDir: string): readonly WorkspaceFile[];
 }

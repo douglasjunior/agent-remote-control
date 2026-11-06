@@ -10,6 +10,7 @@ describe('ActiveDelegation', () => {
       roleName: 'Developer Agent',
       agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
       projectName: 'my-app',
+      summary: 'Summary',
       taskSpec: 'Build login',
       cwd: '/mock/my-app',
       startedAt: 1000,

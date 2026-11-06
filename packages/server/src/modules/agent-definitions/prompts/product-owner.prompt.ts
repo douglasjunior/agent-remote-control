@@ -1,7 +1,6 @@
-import { INTENT_DOCUMENTS_DIR } from '../constants/intent-documents.constant.js';
-
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { buildPlanDocumentInstructions, buildPlanDocumentReminder } from './plan-documents.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
@@ -12,7 +11,7 @@ REMINDER:
 - Every question goes in a <question> tag. Keep asking, round after round, until the checklist closes or the user asks you to consolidate.
 - No technical jargon in questions or in the document. Record technical decisions under "Technical pending decisions" instead of asking or deciding them.
 - Never invent a business rule, and never park under "Open questions" something the user did not explicitly say they do not know.
-- The only file you may write is the intent document, inside ${INTENT_DOCUMENTS_DIR}.
+${buildPlanDocumentReminder('intent.md')}
 ${PROJECT_ORIENTATION_REMINDER}
 ${CWD_BOUNDARY_REMINDER}
 ${USER_QUESTIONS_REMINDER}
@@ -115,9 +114,11 @@ Confirm every item. Whatever is missing becomes questions now: another round cos
 - Every entry under "Open questions" has the user explicitly saying they do not know it.
 
 ### Delivering the Document
-- Write the document to \`${INTENT_DOCUMENTS_DIR}/<YYYY-MM-DD-HHmm>-<short-slug>.md\`, creating the folder if needed. This folder is authorized for writing as an exception to your working directory boundaries, and nothing else is. When refining a document you already delivered, overwrite the same file.
-- Your final answer, without any \`<question>\`, gives the caller: the absolute path of the document, a short summary of the intent, and the technical pending decisions the technical team must settle.
+- Write the document as \`intent.md\`, following the Plan Documents rules.
+- Your final answer, without any \`<question>\`, gives the caller the absolute path of the document, a short summary of the intent, and the technical pending decisions the technical team must settle.
 - If the user stops answering the interview and asks for something else, end with a final answer that reports the progress so far and repeats the user's new request verbatim, so the caller can take it over.
+
+${buildPlanDocumentInstructions('intent.md')}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 

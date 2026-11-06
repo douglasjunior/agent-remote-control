@@ -41,6 +41,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDelegationContract = vi.fn().mockReturnValue({});
   getTurnReminder = vi.fn().mockReturnValue('');
   isSystemPromptEveryTurn = vi.fn().mockReturnValue(false);
+  usesPlansDirectory = vi.fn().mockReturnValue(false);
   getWorkspaceFiles = vi.fn((workspaceDir: string) => (workspaceDir === '/ws' ? this.files : []));
 }
 

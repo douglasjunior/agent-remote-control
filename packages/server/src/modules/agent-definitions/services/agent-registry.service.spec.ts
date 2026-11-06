@@ -172,6 +172,15 @@ describe('AgentRegistryService', () => {
     });
   });
 
+  describe('usesPlansDirectory', () => {
+    it('should report the Product Owner and the Tech Lead as writing plan documents', () => {
+      expect(service.usesPlansDirectory('PRODUCT_OWNER')).toBe(true);
+      expect(service.usesPlansDirectory('tech_lead')).toBe(true);
+      expect(service.usesPlansDirectory('DEVELOPER')).toBe(false);
+      expect(service.usesPlansDirectory('UNKNOWN_ROLE')).toBe(false);
+    });
+  });
+
   describe('getWorkspaceFiles', () => {
     it('should collect the workspace files of every definition, built with its team', () => {
       service.registerDefinition({

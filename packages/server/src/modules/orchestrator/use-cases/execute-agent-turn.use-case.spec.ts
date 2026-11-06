@@ -49,7 +49,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
   getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
   getDisplayName = vi.fn((role: string) => role);
-  listRoles = vi.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER']);
+  listRoles = vi.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'PRODUCT_OWNER']);
   hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD'].includes(role));
   getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
   getDelegationContract = vi.fn(
@@ -58,6 +58,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
 
   getTurnReminder = vi.fn().mockReturnValue('');
   isSystemPromptEveryTurn = vi.fn().mockReturnValue(false);
+  usesPlansDirectory = vi.fn((role: string) => role === 'TECH_LEAD');
   getWorkspaceFiles = vi.fn().mockReturnValue([]);
 }
 
@@ -71,7 +72,18 @@ class StubWorkspacePort implements IWorkspacePort {
 }
 
 const toCeo = (prompt: string) => `${prompt}\n\n${buildCeoLanguagePrompt('English')}`;
-const noActiveDelegations = '[ACTIVE_DELEGATIONS]\nNone\n\n';
+const idleTeam = [
+  '[TEAM_PROFILES]',
+  '- DEVELOPER: Agent: Stub Agent, Model: default, Effort: default, Status: idle',
+  '- CODE_REVIEWER: Agent: Stub Agent, Model: default, Effort: default, Status: idle',
+  '- TECH_LEAD: Agent: Stub Agent, Model: default, Effort: default, Status: idle',
+  '- PRODUCT_OWNER: Agent: Stub Agent, Model: default, Effort: default, Status: idle',
+  '',
+  '',
+].join('\n');
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 const toAgent = (prompt: string) => `${prompt}\n\n${buildAgentLanguagePrompt('English')}`;
 
 function textChunk(text: string): AgentUpdate {
@@ -207,7 +219,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
     expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nImplement login.')]);
     expect(stubAgentPort.promptCalls).toEqual([
-      toCeo(`CEO prompt\n\n${noActiveDelegations}Add login`),
+      toCeo(`CEO prompt\n\n${idleTeam}Add login`),
       toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nLogin implemented.\n</agent_result>'),
     ]);
     expect(delegateStubPort.closeSessionCalls).toBe(1);
@@ -221,7 +233,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest({ prompt: 'Oi' }));
 
-      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${noActiveDelegations}Oi\n\n${buildLanguageDetectionPrompt()}`]);
+      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${idleTeam}Oi\n\n${buildLanguageDetectionPrompt()}`]);
       expect(result.response).toBe('Olá!');
       expect(preferencesStore.updates).toEqual([{ language: 'Brazilian Portuguese' }]);
     });
@@ -241,7 +253,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${noActiveDelegations}Hi\n\n${buildCeoLanguagePrompt('Spanish')}`]);
+      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${idleTeam}Hi\n\n${buildCeoLanguagePrompt('Spanish')}`]);
       expect(result.response).toBe('Hola.');
       expect(preferencesStore.updates).toEqual([]);
     });
@@ -281,7 +293,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.response).toBe('Done.');
     expect(stubAgentPort.promptCalls).toEqual([
-      toCeo(`CEO prompt\n\n${noActiveDelegations}Add login\n\nCEO turn reminder`),
+      toCeo(`CEO prompt\n\n${idleTeam}Add login\n\nCEO turn reminder`),
       toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nLogin implemented.\n</agent_result>\n\nCEO turn reminder'),
     ]);
     expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nImplement login.\n\nDEVELOPER turn reminder')]);
@@ -428,7 +440,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     await useCase.execute(turnRequest());
 
-    expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]\nNone\n');
+    expect(stubAgentPort.promptCalls[0]).toContain(idleTeam);
   });
 
   it('should not repeat an empty running agents list in later rounds', async () => {
@@ -442,9 +454,63 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest());
 
     expect(stubAgentPort.promptCalls).toHaveLength(3);
-    expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]\nNone');
-    expect(stubAgentPort.promptCalls[1]).not.toContain('[ACTIVE_DELEGATIONS]');
-    expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
+    expect(stubAgentPort.promptCalls[0]).toContain('[TEAM_PROFILES]');
+    expect(stubAgentPort.promptCalls[1]).not.toContain('[TEAM_PROFILES]');
+    expect(stubAgentPort.promptCalls[2]).not.toContain('[TEAM_PROFILES]');
+  });
+
+  it('should list the profile of every role but the CEO, falling back to the CEO profile for roles without one', async () => {
+    settingsStore.settings = buildStubSettings({
+      CEO: buildStubProfile('claude', { agentName: 'Claude Code' }),
+      DEVELOPER: buildStubProfile('codex', { agentName: 'OpenAI Codex', modelName: '6.1 Terra', effortName: 'Medium' }),
+    });
+    stubAgentPort.mockResponses = ['Hello.'];
+
+    await useCase.execute(turnRequest());
+
+    const prompt = stubAgentPort.promptCalls[0]!;
+    expect(prompt).toContain('- DEVELOPER: Agent: OpenAI Codex, Model: 6.1 Terra, Effort: Medium, Status: idle');
+    expect(prompt).toContain('- CODE_REVIEWER: Agent: Claude Code, Model: default, Effort: default, Status: idle');
+    expect(prompt).not.toContain('- CEO:');
+  });
+
+  it('should name the default agent when the conversation has no settings and its id when it is not listed', async () => {
+    portFactory.agents = [];
+    portFactory.defaultAgentId = 'unlisted';
+    stubAgentPort.mockResponses = ['Hello.'];
+
+    await useCase.execute(turnRequest());
+
+    expect(stubAgentPort.promptCalls[0]).toContain('- DEVELOPER: Agent: unlisted, Model: default, Effort: default, Status: idle');
+  });
+
+  describe('plans directory', () => {
+    it('should give the Tech Lead the plans folder of its project', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" project="my-app">Plan it.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['Planned.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[0]).toContain('[PLANS_DIRECTORY]\nFolder for this task: /mock/workspace/.plans/my-app\n');
+    });
+
+    it('should give a role without a project the general plans folder', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning">Plan it.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['Planned.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[0]).toContain('Folder for this task: /mock/workspace/.plans/general\n');
+    });
+
+    it('should keep the plans folder away from roles that do not write plans', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['Built.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[0]).not.toContain('[PLANS_DIRECTORY]');
+    });
   });
 
   describe('delegation contract', () => {
@@ -591,7 +657,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ prompt: 'Again' }));
 
     expect(stubAgentPort.createSessionCalls).toHaveLength(1);
-    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}Hi`), toCeo(`${noActiveDelegations}Again`)]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}Hi`), toCeo(`${idleTeam}Again`)]);
   });
 
   it('should send the system prompt again when the first turn failed before the session existed', async () => {
@@ -603,7 +669,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ prompt: 'Hello?' }));
 
     expect(failed.status).toBe('failed');
-    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${buildPreviousTurnPrompt([`Your previous turn failed: ${failed.errorMessage}`])}\n${noActiveDelegations}Hello?`)]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${buildPreviousTurnPrompt([`Your previous turn failed: ${failed.errorMessage}`])}\n${idleTeam}Hello?`)]);
   });
 
   it('should isolate agent ports between different threads', async () => {
@@ -613,8 +679,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ conversationId: 'conv-th-a', prompt: 'a' }));
     await useCase.execute(turnRequest({ conversationId: 'conv-th-b', prompt: 'b' }));
 
-    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}a`)]);
-    expect(delegateStubPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}b`)]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}a`)]);
+    expect(delegateStubPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}b`)]);
   });
 
   it('should queue a second message of the same thread until the current turn finishes', async () => {
@@ -643,8 +709,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     releaseFirst();
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
-    expect(firstResult.response).toBe(`reply to ${toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`)}`);
-    expect(secondResult.response).toBe(`reply to ${toCeo(`${noActiveDelegations}two`)}`);
+    expect(firstResult.response).toBe(`reply to ${toCeo(`Mock system prompt.\n\n${idleTeam}one`)}`);
+    expect(secondResult.response).toBe(`reply to ${toCeo(`${idleTeam}two`)}`);
   });
 
   it('should create a single session when two messages start a new conversation at once', async () => {
@@ -668,7 +734,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     releaseFirst();
     await Promise.all([first, second]);
 
-    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`), toCeo(`${noActiveDelegations}two`)]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}one`), toCeo(`${idleTeam}two`)]);
   });
 
   it('should return failed when the session cannot be saved', async () => {
@@ -911,7 +977,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
-      expect(stubAgentPort.promptCalls).toEqual([toCeo(`${noActiveDelegations}Continue`)]);
+      expect(stubAgentPort.promptCalls).toEqual([toCeo(`${idleTeam}Continue`)]);
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }]);
     });
 
@@ -926,7 +992,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual([
-        toCeo(`CEO prompt\n\n${noActiveDelegations}Continue`),
+        toCeo(`CEO prompt\n\n${idleTeam}Continue`),
         toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nImplemented.\n</agent_result>'),
       ]);
       expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nGo.')]);
@@ -950,7 +1016,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest({ prompt: 'Continue' }));
 
       expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
-      expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}Continue`)]);
+      expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}Continue`)]);
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null }]);
     });
 
@@ -1537,6 +1603,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/my-app',
         startedAt: Date.now(),
@@ -1813,7 +1880,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentInfo: expect.objectContaining({ roleName: 'CEO', agentName: 'stub' }),
       });
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
-      expect(stubAgentPort.steeringPrompts[0]).toMatch(/^\[ACTIVE_DELEGATIONS\]\nNone\n\n\n\[USER_MESSAGE\]\n[\s\S]*\n\ntwo\n\n\[USER_LANGUAGE\]/);
+      expect(stubAgentPort.steeringPrompts[0]).toMatch(new RegExp(`^${escapeRegExp(idleTeam)}\\n\\[USER_MESSAGE\\]\\n[\\s\\S]*\\n\\ntwo\\n\\n\\[USER_LANGUAGE\\]`));
       expect(stubAgentPort.promptCalls).toHaveLength(1);
       expect(onQueued).not.toHaveBeenCalled();
 
@@ -1822,7 +1889,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(firstResult).toMatchObject({
         status: 'completed',
-        response: `reply to ${toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`)}`,
+        response: `reply to ${toCeo(`Mock system prompt.\n\n${idleTeam}one`)}`,
       });
       expect(stubAgentPort.promptCalls).toHaveLength(1);
     });
@@ -1842,7 +1909,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(second.status).toBe('steered');
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       const steeringText = stubAgentPort.steeringPrompts[0]!;
-      expect(steeringText.startsWith('[ACTIVE_DELEGATIONS]\nNone\n\n\n[USER_MESSAGE]')).toBe(true);
+      expect(steeringText.startsWith(`${idleTeam}\n[USER_MESSAGE]`)).toBe(true);
       expect(steeringText).toContain(
         '[ATTACHMENTS]\n- Name: notes.txt\n  Size: 256 bytes\n  Type: text/plain\n  Path: /tmp/attachments/notes.txt\n'
         + 'Inspect these files using your available tools as needed.\n\ntwo',
@@ -1879,6 +1946,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        summary: 'Summary',
         taskSpec: 'Implement the endpoint',
         cwd: '/mock/workspace/my-app',
         startedAt: Date.now(),
@@ -1893,7 +1961,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const second = await useCase.execute(turnRequest({ prompt: 'two' }));
 
       expect(second.status).toBe('steered');
-      expect(stubAgentPort.steeringPrompts[0]).toContain('- Role: DEVELOPER, Project: my-app, Agent: stub, Model: default, Effort: default, Running: 0s, Waiting for user: no, Task: "Implement the endpoint"');
+      expect(stubAgentPort.steeringPrompts[0]).toContain('- DEVELOPER: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: my-app, Waiting for user: no, Summary: "Summary"');
       expect(stubAgentPort.steeringPrompts[0]).toContain('two');
 
       gate.release();
@@ -1919,7 +1987,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const [firstResult, secondResult] = await Promise.all([first, second]);
 
       expect(firstResult.status).toBe('completed');
-      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${noActiveDelegations}two`)}` });
+      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}two`)}` });
     });
 
     it('should queue the message when the agent does not support steering', async () => {
@@ -1936,7 +2004,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       gate.release();
       const [, secondResult] = await Promise.all([first, second]);
 
-      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${noActiveDelegations}two`)}` });
+      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}two`)}` });
     });
 
     it('should queue the message when the configured agent differs from the running CEO agent', async () => {
@@ -1963,7 +2031,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   describe('active delegations and transparent steering', () => {
-    it('should prepend [ACTIVE_DELEGATIONS] block to CEO prompt when active delegations exist', async () => {
+    it('should prepend [TEAM_PROFILES] block to CEO prompt when active delegations exist', async () => {
       const activeDelegatePort = new StubAgentPort();
       const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
@@ -1971,6 +2039,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        summary: 'Summary',
         taskSpec: 'Run build and tests',
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
@@ -1983,6 +2052,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Code Reviewer',
         agentInfo: { roleName: 'Code Reviewer', agentName: 'stub' },
         projectName: null,
+        summary: 'Summary',
         taskSpec: 'Review code',
         cwd: '/mock/workspace',
         startedAt: Date.now(),
@@ -1995,9 +2065,9 @@ describe('ExecuteAgentTurnUseCase', () => {
       const result = await useCase.execute(turnRequest({ prompt: 'How is it going?' }));
 
       expect(result.status).toBe('completed');
-      expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Agent: stub, Model: default, Effort: default, Running: 0s, Waiting for user: no, Task: "Run build and tests"');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: CODE_REVIEWER, Project: none, Agent: stub, Model: default, Effort: default, Running: 0s, Waiting for user: no, Task: "Review code"');
+      expect(stubAgentPort.promptCalls[0]).toContain('[TEAM_PROFILES]');
+      expect(stubAgentPort.promptCalls[0]).toContain('- DEVELOPER: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: project-a, Waiting for user: no, Summary: "Summary"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- CODE_REVIEWER: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: none, Waiting for user: no, Summary: "Summary"');
       expect(stubAgentPort.promptCalls[0]).toContain('How is it going?');
     });
 
@@ -2010,6 +2080,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
@@ -2084,6 +2155,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/my-app',
         startedAt: Date.now(),
@@ -2102,7 +2174,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(activeDelegatePort.closeSessionCalls).toBe(1);
       expect(activeDelegatePort.connected).toBe(false);
       expect(delegateStubPort.promptCalls).toEqual([expect.stringContaining('Change course.')]);
-      expect(stubAgentPort.promptCalls[1]).toBe(toCeo(`${noActiveDelegations}<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nRestarted task done.\n</agent_result>`));
+      expect(stubAgentPort.promptCalls[1]).toBe(toCeo(`${idleTeam}<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nRestarted task done.\n</agent_result>`));
     });
 
     it('should cancel, close, unregister and recreate the delegate in the same project when supportsSteering is false', async () => {
@@ -2120,6 +2192,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        summary: 'Summary',
         taskSpec: 'Old task in project-a',
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now() - 5000,
@@ -2157,6 +2230,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        summary: 'Summary',
         taskSpec: 'Concurrent newer task',
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
@@ -2213,6 +2287,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       roleName: role,
       agentInfo: { roleName: role, agentName: 'stub' },
       projectName,
+      summary: 'Summary',
       taskSpec: 'Running task',
       cwd: `/mock/workspace/${projectName}`,
       startedAt: Date.now(),
@@ -2452,9 +2527,9 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(interim).toEqual(['Plan received.']);
       expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="TECH_LEAD" project="project-a" agent="stub" model="default" effort="default">\nPlan ready.\n</agent_result>');
       expect(stubAgentPort.promptCalls[1]).not.toContain('Review done.');
-      expect(stubAgentPort.promptCalls[1]).toContain('- Role: CODE_REVIEWER, Project: project-b');
+      expect(stubAgentPort.promptCalls[1]).toContain('- CODE_REVIEWER: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: project-b');
       expect(stubAgentPort.promptCalls[2]).toContain('<agent_result role="CODE_REVIEWER" project="project-b" agent="stub" model="default" effort="default">\nReview done.\n</agent_result>');
-      expect(stubAgentPort.promptCalls[2]).toContain('[ACTIVE_DELEGATIONS]\nNone');
+      expect(stubAgentPort.promptCalls[2]).toContain('[TEAM_PROFILES]');
     });
 
     it('should hand over together the results that finish while the CEO is busy', async () => {
@@ -2502,9 +2577,28 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: TECH_LEAD, Project: project-z');
-      expect(stubAgentPort.promptCalls[1]).toContain('- Role: PRODUCT_OWNER, Project: project-y');
-      expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
+      expect(stubAgentPort.promptCalls[0]).toContain('- TECH_LEAD: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: project-z');
+      expect(stubAgentPort.promptCalls[1]).toContain('- PRODUCT_OWNER: Agent: stub, Model: default, Effort: default, Status: working, Running: 0s, Project: project-y');
+      expect(stubAgentPort.promptCalls[2]).not.toContain('[TEAM_PROFILES]');
+    });
+
+    it('should send the team again when a profile changed while the agents worked', async () => {
+      const developer = delegatePort('Built.');
+      const original = developer.prompt.bind(developer);
+      developer.prompt = async function* (text: string) {
+        settingsStore.settings = buildStubSettings({ DEVELOPER: buildStubProfile('codex', { agentName: 'OpenAI Codex' }) });
+        yield* original(text);
+      };
+      delegatePorts = [developer];
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>',
+        'Done.',
+      ];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[0]).toContain('- DEVELOPER: Agent: Stub Agent, Model: default, Effort: default, Status: idle');
+      expect(stubAgentPort.promptCalls[1]).toContain('- DEVELOPER: Agent: OpenAI Codex, Model: default, Effort: default, Status: idle');
     });
 
     it('should show how long an agent has been running and whether it waits for the user', async () => {
@@ -2520,8 +2614,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       await useCase.execute(turnRequest({ prompt: 'Status?' }));
 
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: DEVELOPER, Project: project-a, Agent: stub, Model: default, Effort: default, Running: 2m, Waiting for user: yes, Task: "Running task"');
-      expect(stubAgentPort.promptCalls[0]).toContain('- Role: TECH_LEAD, Project: project-b, Agent: stub, Model: default, Effort: default, Running: 4s, Waiting for user: no, Task: "Running task"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- DEVELOPER: Agent: stub, Model: default, Effort: default, Status: working, Running: 2m, Project: project-a, Waiting for user: yes, Summary: "Summary"');
+      expect(stubAgentPort.promptCalls[0]).toContain('- TECH_LEAD: Agent: stub, Model: default, Effort: default, Status: working, Running: 4s, Project: project-b, Waiting for user: no, Summary: "Summary"');
       questionQueue.cancel('conv-1');
       await expect(asked).rejects.toBeInstanceOf(PromptCancelledError);
     });
@@ -2668,7 +2762,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(next).toContain(`- Your previous turn failed: ${result.errorMessage}`);
         expect(next).toContain(`- ${stoppedReviewer}`);
         expect(next).not.toContain('DEVELOPER (Project');
-        expect(next.indexOf('[PREVIOUS_TURN]')).toBeLessThan(next.indexOf('[ACTIVE_DELEGATIONS]'));
+        expect(next.indexOf('[PREVIOUS_TURN]')).toBeLessThan(next.indexOf('[TEAM_PROFILES]'));
         expect(next).toContain('What happened?');
         expect(stubAgentPort.promptCalls[4]).not.toContain('[PREVIOUS_TURN]');
       });
@@ -3017,6 +3111,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: null,
+        summary: 'Summary',
         taskSpec: 'Old task',
         cwd: '/mock/workspace',
         startedAt: Date.now(),
@@ -3225,6 +3320,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        summary: 'Summary',
         taskSpec: 'Old task',
         cwd: '/mock/workspace/my-app',
         startedAt: Date.now(),

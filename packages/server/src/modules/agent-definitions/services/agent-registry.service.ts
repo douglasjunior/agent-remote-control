@@ -63,6 +63,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.systemPromptEveryTurn === true;
   }
 
+  usesPlansDirectory(agentRole: string): boolean {
+    return this.getDefinition(agentRole)?.plansDirectory === true;
+  }
+
   getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[] {
     return this.getAllDefinitions().flatMap(definition =>
       definition.buildWorkspaceFiles?.(this.getTeam(definition), workspaceDir) ?? []);

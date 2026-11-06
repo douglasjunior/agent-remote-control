@@ -9,6 +9,7 @@ export interface ActiveDelegation {
   readonly roleName: string;
   readonly agentInfo: TurnAgentInfo;
   readonly projectName: string | null;
+  readonly summary: string;
   readonly taskSpec: string;
   readonly cwd: string;
   readonly startedAt: number;

@@ -17,6 +17,7 @@ export interface IAgentRegistryPort {
   getDelegationContract(agentRole: string): DelegationContract;
   getTurnReminder(agentRole: string): string;
   isSystemPromptEveryTurn(agentRole: string): boolean;
+  usesPlansDirectory(agentRole: string): boolean;
   getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[];
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { buildPlanDocumentInstructions, buildPlanDocumentReminder } from './plan-documents.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import {
   TECH_LEAD_SYSTEM_PROMPT,
@@ -20,14 +21,15 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Actionable Specification & Plan Structure');
   });
 
-  it('should instruct delivering plans directly in conversation without creating spec files on disk', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Deliver plans and specifications directly as structured text in the conversation');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT create spec files on disk such as spec.md, plan.md, or tasks.md');
+  it('should write the plan to plan.md and return its path instead of the plan', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Write the plan to `plan.md`');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildPlanDocumentInstructions('plan.md'));
+    expect(TECH_LEAD_TURN_REMINDER).toContain(buildPlanDocumentReminder('plan.md'));
   });
 
   it('should prohibit modifying code files and enforce read-only exploration', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('strictly planning, specification, investigation, and architecture');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, create git commits, or implement production changes');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, create git commits, or implement production changes. The plan document is the only file you write');
   });
 
   it('should ask the user each design decision with the trade-offs and a recommendation', () => {
@@ -46,9 +48,10 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Overview & Objectives');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Architecture & Technical Decisions');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Impact Analysis & Affected Areas');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Phased Developer Task Breakdown');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('One `### Step N: <name>` heading per step, numbered from 1');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Verification & Acceptance Criteria');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Depends on: T1');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Depends on: Step 1');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('keep the step numbers of the steps that remain valid');
   });
 
   it('should require the final answer inside the final response block', () => {
@@ -67,10 +70,10 @@ describe('tech-lead.prompt', () => {
 
   it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, decision discipline, and final response instructions', () => {
     expect(TECH_LEAD_TURN_REMINDER).toContain('Tech Lead and software architect');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('Do NOT implement production code or modify files directly');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('Do NOT implement production code or modify project files');
     expect(TECH_LEAD_TURN_REMINDER).toContain('Decide nothing silently');
     expect(TECH_LEAD_TURN_REMINDER).toContain('the pros and cons of each option and your recommendation');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('affected files, sequential tasks for the Developer, and concrete verification criteria');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('affected files, numbered steps for the Developer, and concrete verification criteria');
     expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>');
   });
 });

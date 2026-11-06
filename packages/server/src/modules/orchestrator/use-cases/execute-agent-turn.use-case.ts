@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import {
@@ -9,10 +10,11 @@ import {
 import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
+import { PLANS_DIRECTORY_NAME, PLANS_NO_PROJECT_FOLDER } from '../constants/plans-directory.constant.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
-import type { AgentProfileSettings } from '../models/agent-settings.model.js';
+import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { AudioTranscript } from '../models/audio-transcription.model.js';
 import type { OpenWork, OpenWorkQuestions } from '../models/open-work.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
@@ -34,6 +36,7 @@ import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
+import { buildPlansDirectoryPrompt } from '../prompts/plans-directory.prompt.js';
 import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
 import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
 import { buildLostSessionTaskPrompt, buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
@@ -309,7 +312,7 @@ export class ExecuteAgentTurnUseCase {
                 `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
               );
             }
-            const block = this.buildActiveDelegationsBlock(conversationKey);
+            const block = await this.buildTeamProfilesBlock(conversationKey, request);
             if (block.signature !== lastBlockSignature) {
               prompt = `${block.text}\n${prompt}`;
             }
@@ -397,7 +400,7 @@ export class ExecuteAgentTurnUseCase {
     const prompt = buildCeoSteeringPrompt(this.enrichPromptWithAttachments(request.prompt, request.attachments));
     const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
     const languagePrompt = await this.buildLanguagePrompt(request.agentRole, request.agentRole);
-    const block = this.buildActiveDelegationsBlock(conversationKey).text;
+    const block = (await this.buildTeamProfilesBlock(conversationKey, request)).text;
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
@@ -439,21 +442,46 @@ export class ExecuteAgentTurnUseCase {
     return `${role} (Project: ${projectName ?? 'none'}, Task: "${taskSpec}")`;
   }
 
-  /** The signature ignores elapsed time, so only a change in who runs, what they were asked or their wait state resends the block. */
-  private buildActiveDelegationsBlock(conversationKey: string): { readonly text: string; readonly signature: string } {
+  /** The signature ignores elapsed time, so only a change in a profile, in who is working, their task summary or their wait state resends the block. */
+  private async buildTeamProfilesBlock(
+    conversationKey: string,
+    request: TurnRequest,
+  ): Promise<{ readonly text: string; readonly signature: string }> {
     const delegations = this.conversationRuntime.getActiveDelegations(conversationKey);
-    if (delegations.length === 0) {
-      return { text: '[ACTIVE_DELEGATIONS]\nNone\n', signature: '' };
-    }
+    const settings = await this.settingsStore.load(request.conversationId);
     const lines: string[] = [];
     const signature: string[] = [];
-    for (const { role, projectName, taskSpec, startedAt, agentInfo } of delegations) {
-      const waiting = this.questionQueue.isWaiting(conversationKey, role, projectName) ? 'yes' : 'no';
-      const project = projectName ?? 'none';
-      lines.push(`- Role: ${role}, Project: ${project}, Agent: ${agentInfo.agentName}, Model: ${agentInfo.modelName ?? UNSET_LABEL}, Effort: ${agentInfo.effortName ?? UNSET_LABEL}, Running: ${this.formatElapsed(Date.now() - startedAt)}, Waiting for user: ${waiting}, Task: "${taskSpec}"`);
-      signature.push(`${role}\u0000${project}\u0000${waiting}\u0000${taskSpec}`);
+    for (const role of this.agentRegistry.listRoles()) {
+      if (role === request.agentRole) {
+        continue;
+      }
+      const delegation = delegations.find(active => active.role === role);
+      const { agentName, modelName, effortName } = delegation?.agentInfo ?? this.describeProfile(settings, role);
+      const profile = `Agent: ${agentName}, Model: ${modelName ?? UNSET_LABEL}, Effort: ${effortName ?? UNSET_LABEL}`;
+      if (!delegation) {
+        lines.push(`- ${role}: ${profile}, Status: idle`);
+        signature.push(`${role}\u0000${profile}\u0000idle`);
+        continue;
+      }
+      const waiting = this.questionQueue.isWaiting(conversationKey, role, delegation.projectName) ? 'yes' : 'no';
+      const work = `Project: ${delegation.projectName ?? 'none'}, Waiting for user: ${waiting}, Summary: "${delegation.summary}"`;
+      lines.push(`- ${role}: ${profile}, Status: working, Running: ${this.formatElapsed(Date.now() - delegation.startedAt)}, ${work}`);
+      signature.push(`${role}\u0000${profile}\u0000working\u0000${work}`);
     }
-    return { text: `[ACTIVE_DELEGATIONS]\n${lines.join('\n')}\n`, signature: signature.join('\u0001') };
+    return { text: `[TEAM_PROFILES]\n${lines.join('\n')}\n`, signature: signature.join('\u0001') };
+  }
+
+  private describeProfile(settings: AgentSettings | null, role: string): Omit<TurnAgentInfo, 'roleName'> {
+    const profile = settings ? resolveProfile(settings, role) : undefined;
+    if (!profile) {
+      const { defaultAgentId } = this.agentPortFactory;
+      return { agentName: this.agentPortFactory.listAgents().find(agent => agent.agentId === defaultAgentId)?.displayName ?? defaultAgentId };
+    }
+    return {
+      agentName: profile.agentName,
+      ...(profile.modelName ? { modelName: profile.modelName } : {}),
+      ...(profile.effortName ? { effortName: profile.effortName } : {}),
+    };
   }
 
   private formatElapsed(elapsedMs: number): string {
@@ -900,6 +928,7 @@ export class ExecuteAgentTurnUseCase {
       roleName: event.roleName,
       agentInfo,
       projectName: projectName ?? null,
+      summary,
       get taskSpec() {
         return currentTaskSpec;
       },
@@ -1031,7 +1060,10 @@ export class ExecuteAgentTurnUseCase {
 
       const reminder = this.agentRegistry.getTurnReminder(role);
       const languagePrompt = await this.buildLanguagePrompt(role, request.agentRole);
-      let fullPrompt = [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n');
+      const plansPrompt = this.agentRegistry.usesPlansDirectory(role)
+        ? buildPlansDirectoryPrompt(join(this.workspacePort.getBaseDirectory(), PLANS_DIRECTORY_NAME, projectName ?? PLANS_NO_PROJECT_FOLDER))
+        : undefined;
+      let fullPrompt = [prompt, reminder, languagePrompt, plansPrompt].filter(Boolean).join('\n\n');
       let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);

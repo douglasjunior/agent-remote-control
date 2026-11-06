@@ -17,10 +17,11 @@ ${workspaceDir}/
 ├── ${WORKSPACE_MANIFEST_FILE}   ← repository URL → project folder
 ├── AGENTS.md                    ← your manual
 ├── .agents/skills/              ← your skills
+├── .plans/                      ← plans and intent documents written by the Product Owner and the Tech Lead
 ├── my-app/                      ← a project: valid project folder
 └── other-repo/
 \`\`\`
-- Project folders are the direct, non-hidden subfolders. List your CWD to see them; that listing is the source of truth for delegation.
+- Project folders are the direct, non-hidden subfolders; \`.plans/\` is not one of them. List your CWD to see them; that listing is the source of truth for delegation.
 - You only read here. Creating, cloning, renaming, or deleting projects is delegated.
 
 ## Workspace Manifest

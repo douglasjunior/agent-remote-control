@@ -102,11 +102,22 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('`status="failed"` means the agent stopped with an error');
     });
 
-    it('should describe the running agents list and when it is repeated', () => {
-      expect(skill).toContain('coding agent, model, effort, how long it has been running, whether it is waiting for the user\'s answer and the full task it was given');
-      expect(skill).toContain('a prompt without it means the list is the same as the last one you received');
-      expect(skill).toContain('`None` means no agent is working');
+    it('should describe the team profiles and when they are repeated', () => {
+      expect(skill).toContain('lists every agent of your team with its role, coding agent, model and effort, and whether it is idle or working');
+      expect(skill).toContain('how long it has been running, whether it is waiting for the user\'s answer and the summary of its task');
+      expect(skill).toContain('a prompt without it means it is the same as the last one you received');
       expect(skill).toContain('`[PREVIOUS_TURN]` reports how your last turn ended');
+    });
+
+    it('should ask for the context to be restated when the coding agent of a role changed', () => {
+      expect(skill).toContain('differs from the one in the last `[TEAM_PROFILES]` you received');
+      expect(skill).toContain('restate the goal, the current state of the work');
+      expect(skill).toContain('A change of model or effort alone keeps the session');
+    });
+
+    it('should route follow-up work through the plan documents by path', () => {
+      expect(skill).toContain('Implement step 2 of the plan at /abs/path/plan.md');
+      expect(skill).toContain('give its path, name the step or section the agent handles');
     });
 
     it('should pipeline several items through different roles', () => {
@@ -170,6 +181,11 @@ describe('ceo-workspace-files.prompt', () => {
       expect(skill).toContain('workspace-manifest.json');
       expect(skill).toContain('Read it to answer whether a repository is already in the workspace');
       expect(skill).toContain('Never write it.');
+    });
+
+    it('should keep the plans folder out of the project folders', () => {
+      expect(skill).toContain('.plans/');
+      expect(skill).toContain('`.plans/` is not one of them');
     });
 
     it('should match repository URLs regardless of protocol form', () => {

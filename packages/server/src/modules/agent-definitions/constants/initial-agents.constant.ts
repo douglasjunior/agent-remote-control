@@ -41,16 +41,18 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true },
     turnReminder: PRODUCT_OWNER_TURN_REMINDER,
+    plansDirectory: true,
   },
   {
     role: 'TECH_LEAD',
     name: 'Tech Lead Agent',
     description:
-      'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and produces actionable plans for the Developer.',
+      'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions and writes the plan, in numbered steps for the Developer, to a file, answering with the absolute path of the plan plus a summary. Resume it to refine a plan it delivered.',
     buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
     defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true },
     turnReminder: TECH_LEAD_TURN_REMINDER,
+    plansDirectory: true,
   },
   {
     role: 'DEVELOPER',
