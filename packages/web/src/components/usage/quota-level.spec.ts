@@ -39,8 +39,10 @@ describe('quota level', () => {
   });
 
   it('rounds the percent of a clamped fraction', () => {
-    expect(quotaPercent(0.126)).toBe(13);
-    expect(quotaPercent(1.5)).toBe(100);
+    expect(quotaPercent(0.126)).toBe(87);
+    expect(quotaPercent(1)).toBe(0);
+    expect(quotaPercent(1.5)).toBe(0);
+    expect(quotaPercent(-1)).toBe(100);
   });
 
   it.each([

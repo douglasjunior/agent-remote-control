@@ -25,12 +25,12 @@ function Meter({ fraction, loading = false }: { readonly fraction?: number; read
   );
 }
 
-/** Always on screen: one meter per agent, each at its closest limit, and the lowest percent left. A click opens every limit. */
+/** Always on screen: one meter per agent, each at its closest limit, and the highest percent used. A click opens every limit. */
 export function UsageIndicator() {
   const quota = useAgentQuota();
   const { reports, failed } = quota;
   const lowest = lowestFraction(reports ?? []);
-  const label = lowest === undefined ? 'Agent usage' : `Agent usage, lowest ${quotaPercent(lowest)}% left`;
+  const label = lowest === undefined ? 'Agent usage' : `Agent usage, highest ${quotaPercent(lowest)}% used`;
 
   return (
     <Popover>

@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils.js';
 import { IconButton } from '../icon-button.js';
 
 import {
-  bucketLabel, clampFraction, LEVEL_FILL, LEVEL_TEXT, quotaLevel, quotaPercent, tightestFraction,
+  bucketLabel, LEVEL_FILL, LEVEL_TEXT, quotaLevel, quotaPercent, tightestFraction,
 } from './quota-level.js';
 import type { AgentQuotaView } from './use-agent-quota.js';
 
@@ -44,12 +44,12 @@ function BucketRow({ bucket, label, now }: {
       <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-muted">
         <span
           className={cn('block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500', LEVEL_FILL[level])}
-          style={{ width: `${clampFraction(bucket.remainingFraction) * 100}%` }}
+          style={{ width: `${quotaPercent(bucket.remainingFraction)}%` }}
         />
       </span>
       <span className={cn('text-right font-mono text-[12.5px] tabular-nums', level === 'good' ? 'text-foreground' : `font-semibold ${LEVEL_TEXT[level]}`)}>
         {`${quotaPercent(bucket.remainingFraction)}%`}
-        <span className="sr-only"> left</span>
+        <span className="sr-only"> used</span>
       </span>
       <ResetCell resetTime={bucket.resetTime} now={now} />
     </li>
@@ -107,7 +107,7 @@ export function UsagePanel({ quota }: { readonly quota: AgentQuotaView }) {
         <div aria-hidden className={cn(COLUMNS, CAPTION, 'mx-2 border-y py-1 text-[10.5px]')}>
           <span>Limit</span>
           <span />
-          <span className="text-right">Left</span>
+          <span className="text-right">Used</span>
           <span className="text-right">Resets</span>
         </div>
       )}

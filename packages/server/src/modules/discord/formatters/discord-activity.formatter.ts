@@ -223,10 +223,11 @@ export class DiscordActivityFormatter {
 
   private formatQuotaBar(remainingFraction: number): string {
     const fraction = Math.min(1, Math.max(0, remainingFraction));
-    const filled = Math.round(fraction * QUOTA_BAR_LENGTH);
+    const used = 1 - fraction;
+    const filled = Math.round(used * QUOTA_BAR_LENGTH);
     const bar = '▰'.repeat(filled) + '▱'.repeat(QUOTA_BAR_LENGTH - filled);
     const marker = fraction >= 0.5 ? '🟢' : fraction >= 0.2 ? '🟡' : '🔴';
-    return `${marker} ${bar} ${Math.round(fraction * 100)}%`;
+    return `${marker} ${bar} ${Math.round(used * 100)}%`;
   }
 
   private formatReset(resetTime: string | undefined): string {

@@ -44,7 +44,7 @@ describe('UsageIndicator', () => {
     expect(trigger).toHaveTextContent('–');
   });
 
-  it('shows one meter per agent and the lowest percent left', () => {
+  it('shows one meter per agent and the highest percent used', () => {
     const { connection } = renderApp();
     emitReports(connection, [
       ok('Claude Code', { window: '5h', remainingFraction: 0.8 }, { window: '7d', remainingFraction: 0.35 }),
@@ -52,8 +52,8 @@ describe('UsageIndicator', () => {
       { agent: { id: 'cursor', name: 'Cursor' }, status: 'unsupported' },
     ]);
 
-    const trigger = screen.getByRole('button', { name: 'Agent usage, lowest 12% left' });
-    expect(trigger).toHaveTextContent('12%');
+    const trigger = screen.getByRole('button', { name: 'Agent usage, highest 88% used' });
+    expect(trigger).toHaveTextContent('88%');
     const levels = [...trigger.querySelectorAll('[data-level]')].map(meter => meter.getAttribute('data-level'));
     expect(levels).toEqual(['attention', 'critical']);
   });
@@ -73,11 +73,11 @@ describe('UsageIndicator', () => {
     expect(panel.getByText('Updated just now')).toBeInTheDocument();
     expect(panel.getByRole('heading', { name: 'Claude Code' })).toBeInTheDocument();
     expect(panel.getByText('5h')).toBeInTheDocument();
-    expect(panel.getByText('80%')).toBeInTheDocument();
+    expect(panel.getByText('20%')).toBeInTheDocument();
     expect(panel.getByText('3h')).toBeInTheDocument();
     expect(panel.getByText('resets in 3 hours')).toBeInTheDocument();
     expect(panel.getByText('Week')).toBeInTheDocument();
-    expect(panel.getByText('35%')).toBeInTheDocument();
+    expect(panel.getByText('65%')).toBeInTheDocument();
     expect(panel.getByText('No usage data')).toBeInTheDocument();
     expect(panel.getByText('Could not read usage')).toBeInTheDocument();
   });
@@ -174,7 +174,7 @@ describe('UsageIndicator', () => {
 
     emitReports(connection, [ok('Codex', { window: '5h', remainingFraction: 0.4 })]);
     expect(refresh).toBeEnabled();
-    expect(within(screen.getByRole('dialog')).getByText('40%')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByText('60%')).toBeInTheDocument();
   });
 
   it('keeps the numbers and says so when a refresh fails', async () => {

@@ -31,8 +31,9 @@ export function quotaLevel(fraction: number): QuotaLevel {
   return clamped >= 0.5 ? 'good' : clamped >= 0.2 ? 'attention' : 'critical';
 }
 
+/** The percent of the limit already used, from the remaining fraction. */
 export function quotaPercent(fraction: number): number {
-  return Math.round(clampFraction(fraction) * 100);
+  return Math.round((1 - clampFraction(fraction)) * 100);
 }
 
 export function windowLabel(bucket: AgentQuotaBucket): string {

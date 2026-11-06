@@ -819,12 +819,12 @@ describe('DiscordActivityFormatter', () => {
       expect(text).toBe(
         [
           '📊 **Antigravity usage**',
-          '🟢 ▰▰▰▰▰▰▰▰▰▱ 94% 5h · resets <t:1791759802:R>',
-          '🟡 ▰▰▰▰▱▱▱▱▱▱ 40% Month',
-          '🟡 ▰▰▱▱▱▱▱▱▱▱ 20% Week',
-          '🔴 ▱▱▱▱▱▱▱▱▱▱ 0% Broken',
-          '🟢 ▰▰▰▰▰▰▰▰▰▰ 100% 5h',
-          '🔴 ▱▱▱▱▱▱▱▱▱▱ 0% 5h',
+          '🟢 ▰▱▱▱▱▱▱▱▱▱ 6% 5h · resets <t:1791759802:R>',
+          '🟡 ▰▰▰▰▰▰▱▱▱▱ 60% Month',
+          '🟡 ▰▰▰▰▰▰▰▰▱▱ 80% Week',
+          '🔴 ▰▰▰▰▰▰▰▰▰▰ 100% Broken',
+          '🟢 ▱▱▱▱▱▱▱▱▱▱ 0% 5h',
+          '🔴 ▰▰▰▰▰▰▰▰▰▰ 100% 5h',
         ].join('\n'),
       );
     });
@@ -848,10 +848,10 @@ describe('DiscordActivityFormatter', () => {
           '📊 **Antigravity usage**',
           '',
           '**Gemini**',
-          '🟢 ▰▰▰▰▰▰▰▰▰▰ 100% Week',
+          '🟢 ▱▱▱▱▱▱▱▱▱▱ 0% Week',
           '',
           '**Claude**',
-          '🔴 ▰▱▱▱▱▱▱▱▱▱ 10% 5h',
+          '🔴 ▰▰▰▰▰▰▰▰▰▱ 90% 5h',
         ].join('\n'),
       );
     });
