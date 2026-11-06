@@ -34,6 +34,7 @@ import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
+import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
 import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
 import { buildLostSessionTaskPrompt, buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
 import {
@@ -103,6 +104,8 @@ export class ExecuteAgentTurnUseCase {
   private readonly MAX_DELEGATION_ROUNDS = 100;
   private readonly MAX_REPAIR_ATTEMPTS = 1;
   private sessionBindings: Promise<void> = Promise.resolve();
+  /** The CEO itself replaced these, so their cancellation is not unfinished work to report back to it. */
+  private readonly replacedDelegations = new WeakSet<ActiveDelegation>();
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -188,8 +191,13 @@ export class ExecuteAgentTurnUseCase {
     let ceoPort: IAgentPort | undefined;
     let agentId: string | undefined;
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
-    const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) =>
-      this.buildResult({
+    const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) => {
+      if (status === 'cancelled') {
+        this.conversationRuntime.addCeoNotice(conversationKey, 'Your previous turn was cancelled.');
+      } else if (status === 'failed') {
+        this.conversationRuntime.addCeoNotice(conversationKey, `Your previous turn failed: ${errorMessage}`);
+      }
+      return this.buildResult({
         ceoPort: currentCeoPort(),
         agentId: agentId ?? this.agentPortFactory.defaultAgentId,
         role: request.agentRole,
@@ -200,6 +208,7 @@ export class ExecuteAgentTurnUseCase {
         workspacePath: request.workspacePath,
         conversationId: request.conversationId,
       });
+    };
 
     try {
       agentId = await this.resolveRoleAgentId(request.conversationId, request.agentRole);
@@ -281,12 +290,12 @@ export class ExecuteAgentTurnUseCase {
         });
       }
       for (let round = 1; ; round++) {
+        let deliveredNotices = 0;
         const { response, decision } = await this.conversationRuntime.runOnCeo(
           conversationKey,
           agentId,
           async (ceoPort, turn) => {
             observers.onCeoPort(ceoPort);
-            const firstRound = !session;
             if (!session) {
               session = await this.resolveSession(request);
               observers.onSessionResolved(session);
@@ -295,16 +304,22 @@ export class ExecuteAgentTurnUseCase {
               );
             }
             const block = this.buildActiveDelegationsBlock(conversationKey);
-            if (block && (firstRound || block.signature !== lastBlockSignature)) {
+            if (block.signature !== lastBlockSignature) {
               prompt = `${block.text}\n${prompt}`;
             }
-            lastBlockSignature = block?.signature;
+            lastBlockSignature = block.signature;
+            const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
+            if (notices.length > 0) {
+              prompt = `${buildPreviousTurnPrompt(notices)}\n${prompt}`;
+              deliveredNotices = notices.length;
+            }
             const answerDelivery = ceoAnswerDelivery;
             ceoAnswerDelivery = undefined;
             return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1, ceoWorkId, answerDelivery);
           },
           round === 1 ? request.onQueued : undefined,
         );
+        this.conversationRuntime.acknowledgeCeoNotices(conversationKey, deliveredNotices);
 
         if (decision.kind === 'invalid') {
           return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
@@ -316,6 +331,9 @@ export class ExecuteAgentTurnUseCase {
 
         if (decision.kind === 'delegate') {
           if (++delegationRounds >= this.MAX_DELEGATION_ROUNDS) {
+            for (const { delegateToRole, projectName, taskSpec } of decision.delegations) {
+              this.conversationRuntime.addCeoNotice(conversationKey, `${this.describeDelegation(delegateToRole, projectName ?? null, taskSpec)} never started.`);
+            }
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
           running.add(this.startDelegations(session!, decision.delegations, request, round, conversationKey));
@@ -368,7 +386,7 @@ export class ExecuteAgentTurnUseCase {
     const prompt = buildCeoSteeringPrompt(this.enrichPromptWithAttachments(request.prompt, request.attachments));
     const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
     const languagePrompt = await this.buildLanguagePrompt(request.agentRole, request.agentRole);
-    const block = this.buildActiveDelegationsBlock(conversationKey)?.text;
+    const block = this.buildActiveDelegationsBlock(conversationKey).text;
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
@@ -406,11 +424,15 @@ export class ExecuteAgentTurnUseCase {
     return `[ATTACHMENTS]\n${lines.join('\n')}\nInspect these files using your available tools as needed.\n\n${prompt}`;
   }
 
+  private describeDelegation(role: string, projectName: string | null, taskSpec: string): string {
+    return `${role} (Project: ${projectName ?? 'none'}, Task: "${taskSpec}")`;
+  }
+
   /** The signature ignores elapsed time, so only a change in who runs, what they were asked or their wait state resends the block. */
-  private buildActiveDelegationsBlock(conversationKey: string): { readonly text: string; readonly signature: string } | undefined {
+  private buildActiveDelegationsBlock(conversationKey: string): { readonly text: string; readonly signature: string } {
     const delegations = this.conversationRuntime.getActiveDelegations(conversationKey);
     if (delegations.length === 0) {
-      return undefined;
+      return { text: '[ACTIVE_DELEGATIONS]\nNone\n', signature: '' };
     }
     const lines: string[] = [];
     const signature: string[] = [];
@@ -657,10 +679,20 @@ export class ExecuteAgentTurnUseCase {
     }));
   }
 
-  /** A turn that ends with delegations still running (CEO failure, invalid response, cancellation) stops them, so no agent runs unobserved. */
+  /**
+   * A turn that ends with delegations still running (CEO failure, invalid response, cancellation) stops them, so no
+   * agent runs unobserved. Discarding the questions of an agent waiting for the user is what releases it: its wait
+   * would otherwise hold the turn open until the user answered a question nobody would receive.
+   */
   private async stopRunningDelegations(running: RunningDelegations, conversationKey: string): Promise<void> {
+    const stopping = running.pendingRoles
+      .map(role => this.conversationRuntime.findActiveDelegation(conversationKey, role))
+      .filter(delegation => delegation !== undefined);
     await Promise.allSettled(
-      running.pendingRoles.map(role => this.conversationRuntime.findActiveDelegation(conversationKey, role)?.turn.cancel()),
+      stopping.map((delegation) => {
+        this.questionQueue.discard(conversationKey, delegation.role, delegation.projectName);
+        return delegation.turn.cancel();
+      }),
     );
     await running.settled();
   }
@@ -814,6 +846,7 @@ export class ExecuteAgentTurnUseCase {
       this.logger.log(
         `[Delegation Restarted] Role=${delegateToRole}, Cancelling and recreating agent process (steering unavailable or project changed)`,
       );
+      this.replacedDelegations.add(existing);
       this.questionQueue.discard(conversationKey, delegateToRole, existing.projectName);
       await existing.turn.cancel();
       await existing.agentPort.closeSession().catch(() => undefined);
@@ -923,6 +956,9 @@ export class ExecuteAgentTurnUseCase {
     } catch (error) {
       if (this.isCancellation(error)) {
         request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
+        if (!this.replacedDelegations.has(activeDelegation)) {
+          this.conversationRuntime.addCeoNotice(conversationKey, `${this.describeDelegation(delegateToRole, activeDelegation.projectName, currentTaskSpec)} was stopped before finishing.`);
+        }
         throw error;
       }
       request.onDelegation?.({

@@ -79,7 +79,7 @@ describe('AntigravityAdapter', () => {
       );
       expect(acpHarness.connectionInstance?.initialize).toHaveBeenCalledWith({
         protocolVersion: 'mock-protocol-version',
-        clientCapabilities: {},
+        clientCapabilities: { session: { notices: {} } },
       });
     });
 

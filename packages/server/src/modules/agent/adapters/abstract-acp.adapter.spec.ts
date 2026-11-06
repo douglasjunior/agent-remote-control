@@ -112,7 +112,7 @@ describe('AbstractAcpAdapter', () => {
       expect(acpHarness.spawnedProcs).toHaveLength(1);
       expect(acpHarness.connectionInstance?.initialize).toHaveBeenCalledWith({
         protocolVersion: 'mock-protocol-version',
-        clientCapabilities: {},
+        clientCapabilities: { session: { notices: {} } },
       });
     });
 
@@ -643,6 +643,29 @@ describe('AbstractAcpAdapter', () => {
       );
 
       await expect(adapter.createSession('/repo')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('notice', () => {
+    it.each([
+      [{ title: 'Model mismatch', description: 'Consider switching back.' }, 'agent_notice (warning): Model mismatch: Consider switching back.'],
+      [{ title: 'Model mismatch' }, 'agent_notice (warning): Model mismatch'],
+    ])('should log a notice and keep it out of the agent activity: %j', async (notice, expected) => {
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const adapter = new TestAcpAdapter();
+      const activities: unknown[] = [];
+      adapter.onActivity(activity => activities.push(activity));
+      await adapter.connect();
+
+      await acpHarness.lastClient?.sessionUpdate({
+        sessionId: 'session-1',
+        update: { sessionUpdate: 'notice', severity: 'warning', ...notice },
+      });
+
+      expect(warn).toHaveBeenCalledWith(expected);
+      expect(activities).toEqual([]);
+      expect(adapter.lastAgentMessage).toBe('');
+      warn.mockRestore();
     });
   });
 

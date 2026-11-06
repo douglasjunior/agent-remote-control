@@ -115,6 +115,10 @@ next `connect()` starts a new process.
 2. **Escalation**: with steering, injects the abort prompt (`CANCEL_ABORT_PROMPT_TEXT`) via `_session/steering`; without steering, resends `session/cancel`, because a concurrent `session/prompt` would be rejected by the busy agent. Opens a 15-second window.
 3. **Forced cancellation**: rejects the turn locally with `PromptCancelledError` and discards the session and the transport. The next turn reconnects and resumes the session with `loadSession`.
 
+## Agent Notices
+
+`connect()` advertises `clientCapabilities.session.notices`, so agents send warnings as `session/update` records of type `notice` instead of message text. `AbstractAcpAdapter` logs them with `logger.warn` as `agent_notice (<severity>): <title>: <description>`; they stay out of activities and of `lastAgentMessage`.
+
 ## Streaming Demux and Activities
 
 `AgentStreamDemux` breaks raw ACP notifications down into typed events:
@@ -197,6 +201,7 @@ mode, with no bridge or extra dependency:
 - Sets `CODEX_PATH` to the `codex` on the `PATH` when the user has not set another; without it, the bridge uses the bundled `@openai/codex` binary, which may not match the host's architecture or libc. Authentication is the user's (`codex login`).
 - `CODEX_CONFIG` receives `skills.max_context_tokens: 10000`, the ceiling Codex accepts for the skill listing (default of 2% of the window), merged under any JSON configuration the user already has in `CODEX_CONFIG`.
 - Session preset `mode = agent-full-access`: the bridge applies approval and sandbox from the mode on each turn, so they do not come from the config. The `agent-full-access` mode never asks for approval and uses no sandbox.
+- **Known Codex behavior to recheck on every upgrade**: `session/load` resumes a thread on the model of the Codex config, not the one it recorded ([openai/codex#32061](https://github.com/openai/codex/issues/32061)), and Codex warns `This session was recorded with model X but is resuming with Y`. The warning arrives as a notice in the log. `applySessionConfig` restores the configured model before the first prompt, so no turn runs on the other model. With `codex-acp` 2.5.0, a CEO rollout had no model-switch instruction after its resumes and its prompt cache stayed intact. The Codex App Server documentation describes a one-time model-switch instruction for a resume on a different model, so compare `turn_context` and `token_count` in `~/.codex/sessions` after resuming: extra tokens there would justify starting Codex on the configured model through `CODEX_CONFIG`.
 
 ### `CursorAdapter`
 

@@ -105,6 +105,8 @@ describe('ceo-workspace-files.prompt', () => {
     it('should describe the running agents list and when it is repeated', () => {
       expect(skill).toContain('coding agent, model, effort, how long it has been running, whether it is waiting for the user\'s answer and the full task it was given');
       expect(skill).toContain('a prompt without it means the list is the same as the last one you received');
+      expect(skill).toContain('`None` means no agent is working');
+      expect(skill).toContain('`[PREVIOUS_TURN]` reports how your last turn ended');
     });
 
     it('should pipeline several items through different roles', () => {

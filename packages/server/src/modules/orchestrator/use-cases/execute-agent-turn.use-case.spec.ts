@@ -13,6 +13,7 @@ import {
   type DelegationContract,
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
+import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
 import {
   buildAgentLanguagePrompt,
   buildCeoLanguagePrompt,
@@ -70,6 +71,7 @@ class StubWorkspacePort implements IWorkspacePort {
 }
 
 const toCeo = (prompt: string) => `${prompt}\n\n${buildCeoLanguagePrompt('English')}`;
+const noActiveDelegations = '[ACTIVE_DELEGATIONS]\nNone\n\n';
 const toAgent = (prompt: string) => `${prompt}\n\n${buildAgentLanguagePrompt('English')}`;
 
 function textChunk(text: string): AgentUpdate {
@@ -205,7 +207,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
     expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nImplement login.')]);
     expect(stubAgentPort.promptCalls).toEqual([
-      toCeo('CEO prompt\n\nAdd login'),
+      toCeo(`CEO prompt\n\n${noActiveDelegations}Add login`),
       toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nLogin implemented.\n</agent_result>'),
     ]);
     expect(delegateStubPort.closeSessionCalls).toBe(1);
@@ -219,7 +221,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest({ prompt: 'Oi' }));
 
-      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\nOi\n\n${buildLanguageDetectionPrompt()}`]);
+      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${noActiveDelegations}Oi\n\n${buildLanguageDetectionPrompt()}`]);
       expect(result.response).toBe('Olá!');
       expect(preferencesStore.updates).toEqual([{ language: 'Brazilian Portuguese' }]);
     });
@@ -239,7 +241,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest());
 
-      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\nHi\n\n${buildCeoLanguagePrompt('Spanish')}`]);
+      expect(stubAgentPort.promptCalls).toEqual([`Mock system prompt.\n\n${noActiveDelegations}Hi\n\n${buildCeoLanguagePrompt('Spanish')}`]);
       expect(result.response).toBe('Hola.');
       expect(preferencesStore.updates).toEqual([]);
     });
@@ -279,7 +281,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.response).toBe('Done.');
     expect(stubAgentPort.promptCalls).toEqual([
-      toCeo('CEO prompt\n\nAdd login\n\nCEO turn reminder'),
+      toCeo(`CEO prompt\n\n${noActiveDelegations}Add login\n\nCEO turn reminder`),
       toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nLogin implemented.\n</agent_result>\n\nCEO turn reminder'),
     ]);
     expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nImplement login.\n\nDEVELOPER turn reminder')]);
@@ -367,6 +369,82 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
     expect(stubAgentPort.promptCalls).toHaveLength(100);
     expect(delegateStubPort.promptCalls).toHaveLength(99);
+  });
+
+  it('should tell the CEO of the next turn which delegations never started when the round limit stopped the turn', async () => {
+    stubAgentPort.mockResponses = Array(105).fill('<delegate role="DEVELOPER" summary="Working on it" project="my-app">Delegating...</delegate>');
+    delegateStubPort.mockResponses = Array(105).fill('I did it.');
+    await useCase.execute(turnRequest());
+    stubAgentPort.mockResponses = ['Understood.'];
+
+    await useCase.execute(turnRequest({ prompt: 'What happened?' }));
+
+    const next = stubAgentPort.promptCalls[100]!;
+    expect(next).toContain('- DEVELOPER (Project: my-app, Task: "Delegating...") never started.');
+    expect(next).toContain('- Your previous turn failed: Max delegation rounds exceeded.');
+    expect(next).not.toContain('was stopped before finishing');
+  });
+
+  it('should tell the CEO of the next turn that the previous one was cancelled', async () => {
+    const loadSettings = settingsStore.load.bind(settingsStore);
+    settingsStore.load = async () => {
+      throw new PromptCancelledError();
+    };
+    const cancelled = await useCase.execute(turnRequest());
+    settingsStore.load = loadSettings;
+    stubAgentPort.mockResponses = ['Understood.'];
+
+    await useCase.execute(turnRequest({ prompt: 'Where were we?' }));
+
+    expect(cancelled.status).toBe('cancelled');
+    expect(stubAgentPort.promptCalls[0]).toContain('[PREVIOUS_TURN]\n- Your previous turn was cancelled.\n');
+  });
+
+  it('should keep the notices pending when the CEO round that would carry them throws', async () => {
+    const loadSettings = settingsStore.load.bind(settingsStore);
+    settingsStore.load = async () => {
+      throw new PromptCancelledError();
+    };
+    await useCase.execute(turnRequest());
+    settingsStore.load = loadSettings;
+    stubAgentPort.errorToThrowOnCreateSession = new Error('Internal error');
+    const failed = await useCase.execute(turnRequest());
+    stubAgentPort.errorToThrowOnCreateSession = null;
+    stubAgentPort.mockResponses = ['Understood.'];
+
+    await useCase.execute(turnRequest({ prompt: 'Hello?' }));
+
+    expect(failed.status).toBe('failed');
+    expect(stubAgentPort.promptCalls).toHaveLength(1);
+    expect(stubAgentPort.promptCalls[0]).toContain(buildPreviousTurnPrompt([
+      'Your previous turn was cancelled.',
+      `Your previous turn failed: ${failed.errorMessage}`,
+    ]));
+    expect(runtime.pendingCeoNotices('conv-1')).toEqual([]);
+  });
+
+  it('should send the running agents list with the first round even when nobody is working', async () => {
+    stubAgentPort.mockResponses = ['Hello.'];
+
+    await useCase.execute(turnRequest());
+
+    expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]\nNone\n');
+  });
+
+  it('should not repeat an empty running agents list in later rounds', async () => {
+    stubAgentPort.mockResponses = [
+      '<delegate role="DEVELOPER" summary="Working on it" project="my-app">First.</delegate>',
+      '<delegate role="DEVELOPER" summary="Working on it" project="my-app">Second.</delegate>',
+      'Done.',
+    ];
+    delegateStubPort.mockResponses = ['One.', 'Two.'];
+
+    await useCase.execute(turnRequest());
+
+    expect(stubAgentPort.promptCalls).toHaveLength(3);
+    expect(stubAgentPort.promptCalls[0]).toContain('[ACTIVE_DELEGATIONS]\nNone');
+    expect(stubAgentPort.promptCalls[1]).not.toContain('[ACTIVE_DELEGATIONS]');
+    expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
   });
 
   describe('delegation contract', () => {
@@ -513,7 +591,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ prompt: 'Again' }));
 
     expect(stubAgentPort.createSessionCalls).toHaveLength(1);
-    expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\nHi'), toCeo('Again')]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}Hi`), toCeo(`${noActiveDelegations}Again`)]);
   });
 
   it('should send the system prompt again when the first turn failed before the session existed', async () => {
@@ -525,7 +603,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ prompt: 'Hello?' }));
 
     expect(failed.status).toBe('failed');
-    expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\nHello?')]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${buildPreviousTurnPrompt([`Your previous turn failed: ${failed.errorMessage}`])}\n${noActiveDelegations}Hello?`)]);
   });
 
   it('should isolate agent ports between different threads', async () => {
@@ -535,8 +613,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest({ conversationId: 'conv-th-a', prompt: 'a' }));
     await useCase.execute(turnRequest({ conversationId: 'conv-th-b', prompt: 'b' }));
 
-    expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\na')]);
-    expect(delegateStubPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\nb')]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}a`)]);
+    expect(delegateStubPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}b`)]);
   });
 
   it('should queue a second message of the same thread until the current turn finishes', async () => {
@@ -565,8 +643,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     releaseFirst();
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
-    expect(firstResult.response).toBe(`reply to ${toCeo('Mock system prompt.\n\none')}`);
-    expect(secondResult.response).toBe(`reply to ${toCeo('two')}`);
+    expect(firstResult.response).toBe(`reply to ${toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`)}`);
+    expect(secondResult.response).toBe(`reply to ${toCeo(`${noActiveDelegations}two`)}`);
   });
 
   it('should create a single session when two messages start a new conversation at once', async () => {
@@ -590,7 +668,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     releaseFirst();
     await Promise.all([first, second]);
 
-    expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\none'), toCeo('two')]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`), toCeo(`${noActiveDelegations}two`)]);
   });
 
   it('should return failed when the session cannot be saved', async () => {
@@ -833,7 +911,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
-      expect(stubAgentPort.promptCalls).toEqual([toCeo('Continue')]);
+      expect(stubAgentPort.promptCalls).toEqual([toCeo(`${noActiveDelegations}Continue`)]);
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null }]);
     });
 
@@ -848,7 +926,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.createSessionCalls).toHaveLength(0);
       expect(stubAgentPort.promptCalls).toEqual([
-        toCeo('CEO prompt\n\nContinue'),
+        toCeo(`CEO prompt\n\n${noActiveDelegations}Continue`),
         toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nImplemented.\n</agent_result>'),
       ]);
       expect(delegateStubPort.promptCalls).toEqual([toAgent('DEVELOPER prompt\n\nGo.')]);
@@ -872,7 +950,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest({ prompt: 'Continue' }));
 
       expect(stubAgentPort.createSessionCalls).toEqual(['/mock/workspace']);
-      expect(stubAgentPort.promptCalls).toEqual([toCeo('Mock system prompt.\n\nContinue')]);
+      expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${noActiveDelegations}Continue`)]);
       expect(await storedAgentSessions()).toEqual([{ role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null }]);
     });
 
@@ -1735,7 +1813,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentInfo: expect.objectContaining({ roleName: 'CEO', agentName: 'stub' }),
       });
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
-      expect(stubAgentPort.steeringPrompts[0]).toMatch(/^\[USER_MESSAGE\]\n[\s\S]*\n\ntwo\n\n\[USER_LANGUAGE\]/);
+      expect(stubAgentPort.steeringPrompts[0]).toMatch(/^\[ACTIVE_DELEGATIONS\]\nNone\n\n\n\[USER_MESSAGE\]\n[\s\S]*\n\ntwo\n\n\[USER_LANGUAGE\]/);
       expect(stubAgentPort.promptCalls).toHaveLength(1);
       expect(onQueued).not.toHaveBeenCalled();
 
@@ -1744,7 +1822,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(firstResult).toMatchObject({
         status: 'completed',
-        response: `reply to ${toCeo('Mock system prompt.\n\none')}`,
+        response: `reply to ${toCeo(`Mock system prompt.\n\n${noActiveDelegations}one`)}`,
       });
       expect(stubAgentPort.promptCalls).toHaveLength(1);
     });
@@ -1764,7 +1842,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(second.status).toBe('steered');
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       const steeringText = stubAgentPort.steeringPrompts[0]!;
-      expect(steeringText.startsWith('[USER_MESSAGE]')).toBe(true);
+      expect(steeringText.startsWith('[ACTIVE_DELEGATIONS]\nNone\n\n\n[USER_MESSAGE]')).toBe(true);
       expect(steeringText).toContain(
         '[ATTACHMENTS]\n- Name: notes.txt\n  Size: 256 bytes\n  Type: text/plain\n  Path: /tmp/attachments/notes.txt\n'
         + 'Inspect these files using your available tools as needed.\n\ntwo',
@@ -1841,7 +1919,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const [firstResult, secondResult] = await Promise.all([first, second]);
 
       expect(firstResult.status).toBe('completed');
-      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo('two')}` });
+      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${noActiveDelegations}two`)}` });
     });
 
     it('should queue the message when the agent does not support steering', async () => {
@@ -1858,7 +1936,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       gate.release();
       const [, secondResult] = await Promise.all([first, second]);
 
-      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo('two')}` });
+      expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${noActiveDelegations}two`)}` });
     });
 
     it('should queue the message when the configured agent differs from the running CEO agent', async () => {
@@ -2024,7 +2102,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(activeDelegatePort.closeSessionCalls).toBe(1);
       expect(activeDelegatePort.connected).toBe(false);
       expect(delegateStubPort.promptCalls).toEqual([expect.stringContaining('Change course.')]);
-      expect(stubAgentPort.promptCalls[1]).toBe(toCeo('<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nRestarted task done.\n</agent_result>'));
+      expect(stubAgentPort.promptCalls[1]).toBe(toCeo(`${noActiveDelegations}<agent_result role="DEVELOPER" project="my-app" agent="stub" model="default" effort="default">\nRestarted task done.\n</agent_result>`));
     });
 
     it('should cancel, close, unregister and recreate the delegate in the same project when supportsSteering is false', async () => {
@@ -2376,7 +2454,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).not.toContain('Review done.');
       expect(stubAgentPort.promptCalls[1]).toContain('- Role: CODE_REVIEWER, Project: project-b');
       expect(stubAgentPort.promptCalls[2]).toContain('<agent_result role="CODE_REVIEWER" project="project-b" agent="stub" model="default" effort="default">\nReview done.\n</agent_result>');
-      expect(stubAgentPort.promptCalls[2]).not.toContain('[ACTIVE_DELEGATIONS]');
+      expect(stubAgentPort.promptCalls[2]).toContain('[ACTIVE_DELEGATIONS]\nNone');
     });
 
     it('should hand over together the results that finish while the CEO is busy', async () => {
@@ -2543,6 +2621,82 @@ describe('ExecuteAgentTurnUseCase', () => {
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('cancelled');
+    });
+
+    describe('what an unfinished turn leaves behind', () => {
+      const stoppedReviewer = 'CODE_REVIEWER (Project: project-b, Task: "Review.") was stopped before finishing.';
+
+      const failWhileReviewerWaitsForTheUser = async () => {
+        const developer = delegatePort('Built.');
+        const original = developer.prompt.bind(developer);
+        developer.prompt = async function* (text: string) {
+          await vi.waitFor(() => expect(questionQueue.hasPending('conv-1')).toBe(true));
+          yield* original(text);
+        };
+        const reviewer = delegatePort('<question>Which one?</question>');
+        delegatePorts = [developer, reviewer];
+        stubAgentPort.mockResponses = [
+          '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="CODE_REVIEWER" summary="Working on it" project="project-b">Review.</delegate>',
+          '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+          '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+        ];
+
+        const result = await useCase.execute(turnRequest({ onQuestion: vi.fn() }));
+
+        return { result, reviewer };
+      };
+
+      it('should end a failed turn whose delegate waits for an answer nobody will give', async () => {
+        const { result, reviewer } = await failWhileReviewerWaitsForTheUser();
+
+        expect(result.status).toBe('failed');
+        expect(result.errorMessage).toContain('Invalid CEO response');
+        expect(questionQueue.hasPending('conv-1')).toBe(false);
+        expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+        expect(reviewer.closeSessionCalls).toBe(1);
+      });
+
+      it('should tell the CEO of the next turn how the failed one ended, and only that turn', async () => {
+        const { result } = await failWhileReviewerWaitsForTheUser();
+        stubAgentPort.mockResponses = ['Understood.', 'Fine.'];
+
+        await useCase.execute(turnRequest({ prompt: 'What happened?' }));
+        await useCase.execute(turnRequest({ prompt: 'And now?' }));
+
+        const next = stubAgentPort.promptCalls[3]!;
+        expect(next).toContain('[PREVIOUS_TURN]');
+        expect(next).toContain(`- Your previous turn failed: ${result.errorMessage}`);
+        expect(next).toContain(`- ${stoppedReviewer}`);
+        expect(next).not.toContain('DEVELOPER (Project');
+        expect(next.indexOf('[PREVIOUS_TURN]')).toBeLessThan(next.indexOf('[ACTIVE_DELEGATIONS]'));
+        expect(next).toContain('What happened?');
+        expect(stubAgentPort.promptCalls[4]).not.toContain('[PREVIOUS_TURN]');
+      });
+
+      it('should not report as stopped a delegation the CEO replaced', async () => {
+        const developer = delegatePort('never');
+        let rejectDeveloper!: (error: Error) => void;
+        const developerStuck = new Promise<void>((_, reject) => {
+          rejectDeveloper = reject;
+        });
+        developer.prompt = async function* () {
+          await developerStuck;
+          yield textChunk('never');
+        };
+        developer.cancel = async () => {
+          rejectDeveloper(new PromptCancelledError());
+        };
+        delegatePorts = [developer, delegatePort('Plan ready.'), delegatePort('Rebuilt.')];
+        stubAgentPort.mockResponses = [
+          '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="TECH_LEAD" summary="Working on it" project="project-b">Plan.</delegate>',
+          '<delegate role="DEVELOPER" summary="Working on it" project="project-b">Rebuild.</delegate>',
+          'Done.',
+        ];
+
+        await useCase.execute(turnRequest());
+
+        expect(runtime.pendingCeoNotices('conv-1').filter(notice => notice.includes('was stopped before finishing'))).toEqual([]);
+      });
     });
   });
 

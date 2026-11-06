@@ -642,6 +642,60 @@ describe('ConversationRuntimeService', () => {
     });
   });
 
+  describe('CEO notices', () => {
+    it('should have no pending notices for a conversation that has none', () => {
+      expect(runtime.pendingCeoNotices('a')).toEqual([]);
+    });
+
+    it('should keep the notices of a conversation in the order they were added', () => {
+      runtime.addCeoNotice('a', 'first');
+      runtime.addCeoNotice('a', 'second');
+      runtime.addCeoNotice('b', 'other');
+
+      expect(runtime.pendingCeoNotices('a')).toEqual(['first', 'second']);
+      expect(runtime.pendingCeoNotices('b')).toEqual(['other']);
+    });
+
+    it('should drop only the acknowledged notices so later ones stay pending', () => {
+      runtime.addCeoNotice('a', 'first');
+      runtime.addCeoNotice('a', 'second');
+      runtime.addCeoNotice('a', 'third');
+
+      runtime.acknowledgeCeoNotices('a', 2);
+
+      expect(runtime.pendingCeoNotices('a')).toEqual(['third']);
+    });
+
+    it('should leave none pending once all of them are acknowledged', () => {
+      runtime.addCeoNotice('a', 'first');
+      runtime.addCeoNotice('a', 'second');
+
+      runtime.acknowledgeCeoNotices('a', 2);
+
+      expect(runtime.pendingCeoNotices('a')).toEqual([]);
+    });
+
+    it('should keep every notice when none was delivered', () => {
+      runtime.addCeoNotice('a', 'first');
+
+      runtime.acknowledgeCeoNotices('a', 0);
+      runtime.acknowledgeCeoNotices('unknown', 1);
+
+      expect(runtime.pendingCeoNotices('a')).toEqual(['first']);
+      expect(runtime.pendingCeoNotices('unknown')).toEqual([]);
+    });
+
+    it('should keep the notices after the idle timeout expires the runtime', async () => {
+      await runtime.run('a', 'stub', async () => undefined);
+      runtime.addCeoNotice('a', 'first');
+
+      await vi.advanceTimersByTimeAsync(IDLE_MS + 1);
+
+      expect(runtime.getCeoPort('a')).toBeUndefined();
+      expect(runtime.pendingCeoNotices('a')).toEqual(['first']);
+    });
+  });
+
   describe('teardown failures', () => {
     const failingPort = (): StubAgentPort => {
       const port = new StubAgentPort();

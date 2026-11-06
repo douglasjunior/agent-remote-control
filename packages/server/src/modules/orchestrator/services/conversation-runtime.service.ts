@@ -28,6 +28,8 @@ type ConversationRuntime = {
 export class ConversationRuntimeService implements OnApplicationShutdown {
   private readonly logger = new Logger(ConversationRuntimeService.name);
   private readonly runtimes = new Map<string, ConversationRuntime>();
+  /** Outlive the runtime, which expires while the conversation is idle and the notices wait for its next message. */
+  private readonly ceoNotices = new Map<string, string[]>();
   private readonly idleTimeoutMs: number;
 
   constructor(
@@ -123,6 +125,24 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
 
   getCeoPort(conversationKey: string): IAgentPort | undefined {
     return this.runtimes.get(conversationKey)?.agentPort ?? undefined;
+  }
+
+  addCeoNotice(conversationKey: string, notice: string): void {
+    this.ceoNotices.set(conversationKey, [...this.pendingCeoNotices(conversationKey), notice]);
+  }
+
+  pendingCeoNotices(conversationKey: string): readonly string[] {
+    return this.ceoNotices.get(conversationKey) ?? [];
+  }
+
+  /** Drops only the first `count`, so a notice added while the CEO was reading the others stays pending. */
+  acknowledgeCeoNotices(conversationKey: string, count: number): void {
+    const remaining = this.pendingCeoNotices(conversationKey).slice(count);
+    if (remaining.length > 0) {
+      this.ceoNotices.set(conversationKey, remaining);
+    } else {
+      this.ceoNotices.delete(conversationKey);
+    }
   }
 
   registerDelegation(conversationKey: string, delegation: ActiveDelegation): void {

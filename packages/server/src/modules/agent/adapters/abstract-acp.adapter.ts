@@ -219,6 +219,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       let app: ClientApp = client()
         .onNotification('session/update', ({ params }) => {
           this.syncConfigOptions(params);
+          this.logNotice(params);
           if (this.activeSession instanceof ResumedSession) {
             this.activeSession.route(params);
           }
@@ -241,7 +242,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
         'initialize',
         {
           protocolVersion: PROTOCOL_VERSION,
-          clientCapabilities: {},
+          // Without it, agents send their notices as message text, which reaches the conversation as the agent's own words.
+          clientCapabilities: { session: { notices: {} } },
         },
       );
 
@@ -785,6 +787,13 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       this.cachedConfigOptions = response.configOptions;
     } catch (err) {
       throw this.buildTransportError(err, 'setConfig');
+    }
+  }
+
+  private logNotice({ update }: SessionNotification): void {
+    if (update.sessionUpdate === 'notice') {
+      const detail = update.description ? `: ${update.description}` : '';
+      this.logger.warn(`agent_notice (${update.severity}): ${update.title}${detail}`);
     }
   }
 
