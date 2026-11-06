@@ -2693,9 +2693,189 @@ describe('ExecuteAgentTurnUseCase', () => {
           'Done.',
         ];
 
-        await useCase.execute(turnRequest());
+        const result = await useCase.execute(turnRequest());
 
+        expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+        expect(delegatePorts).toEqual([]);
+        expect(stubAgentPort.promptCalls[2]).toContain('Rebuilt.');
         expect(runtime.pendingCeoNotices('conv-1').filter(notice => notice.includes('was stopped before finishing'))).toEqual([]);
+      });
+
+      describe('a delegation the CEO replaced', () => {
+        const delegations = [
+          '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="TECH_LEAD" summary="Working on it" project="project-b">Plan.</delegate>',
+          '<delegate role="DEVELOPER" summary="Working on it" project="project-b">Rebuild.</delegate>',
+          'Done.',
+        ];
+
+        /** A developer whose prompt only ends when `releaseOn` is called, failing with `error`. */
+        const stuckDeveloper = (releaseOn: 'cancel' | 'closeSession', error: Error) => {
+          const developer = delegatePort('never');
+          let fail!: (error: Error) => void;
+          const stuck = new Promise<void>((_, reject) => {
+            fail = reject;
+          });
+          developer.prompt = async function* () {
+            await stuck;
+            yield textChunk('never');
+          };
+          if (releaseOn === 'cancel') {
+            developer.cancel = async () => {
+              fail(error);
+            };
+          } else {
+            const close = developer.closeSession.bind(developer);
+            developer.closeSession = async () => {
+              await close();
+              fail(error);
+            };
+          }
+          return developer;
+        };
+
+        const replaceInTheSameTurn = async (developer: StubAgentPort, overrides: Partial<TurnRequest> = {}) => {
+          const rebuilt = delegatePort('Rebuilt.');
+          delegatePorts = [developer, delegatePort('Plan ready.'), rebuilt];
+          stubAgentPort.mockResponses = [...delegations];
+          const result = await useCase.execute(turnRequest(overrides));
+          return { result, rebuilt };
+        };
+
+        const rebuiltResult = '<agent_result role="DEVELOPER" project="project-b" agent="stub" model="default" effort="default">\nRebuilt.\n</agent_result>';
+
+        const expectOnlyTheReplacementReachedTheCeo = (result: { status: string; response: string }, rebuilt: StubAgentPort) => {
+          expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(rebuilt.promptCalls).toHaveLength(1);
+          expect(stubAgentPort.promptCalls).toHaveLength(3);
+          expect(stubAgentPort.promptCalls[2]).toContain(rebuiltResult);
+          expect(stubAgentPort.promptCalls.filter(prompt => prompt.includes('status="failed"'))).toEqual([]);
+          expect(runtime.pendingCeoNotices('conv-1')).toEqual([]);
+          expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+        };
+
+        it('should complete the turn with the replacement result when the replaced agent is cancelled', async () => {
+          const { result, rebuilt } = await replaceInTheSameTurn(stuckDeveloper('cancel', new PromptCancelledError()));
+
+          expectOnlyTheReplacementReachedTheCeo(result, rebuilt);
+        });
+
+        it.each([
+          ['its cancel fails it with a closed session', 'cancel', 'Resumed session disposed'],
+          ['closing its session fails it as disposed', 'closeSession', 'Resumed session disposed'],
+          ['closing its session leaves it not connected', 'closeSession', 'Not connected. Call connect() first.'],
+        ] as const)('should not hand the CEO a failed result when %s', async (_name, releaseOn, message) => {
+          const { result, rebuilt } = await replaceInTheSameTurn(stuckDeveloper(releaseOn, new Error(message)));
+
+          expectOnlyTheReplacementReachedTheCeo(result, rebuilt);
+        });
+
+        it('should report the replaced delegation as cancelled and the new one as finished', async () => {
+          const events: DelegationEvent[] = [];
+
+          await replaceInTheSameTurn(
+            stuckDeveloper('closeSession', new Error('Resumed session disposed')),
+            { onDelegation: event => events.push(event) },
+          );
+
+          const phasesOf = (delegationId: string) => events.filter(event => event.delegationId === delegationId).map(event => event.phase);
+          const developerIds = [...new Set(events.filter(event => event.role === 'DEVELOPER').map(event => event.delegationId))];
+          expect(developerIds).toHaveLength(2);
+          expect(phasesOf(developerIds[0]!)).toEqual(['started', 'cancelled']);
+          expect(phasesOf(developerIds[1]!)).toEqual(['started', 'finished']);
+        });
+
+        it('should take the question of a replaced agent out of the queue and go on with the new agent', async () => {
+          const asking = delegatePort('<question>Which?</question>');
+          const onQuestion = vi.fn();
+          const rebuilt = delegatePort('Rebuilt.');
+          let pendingWhenRebuiltStarted: boolean | undefined;
+          const original = rebuilt.prompt.bind(rebuilt);
+          rebuilt.prompt = (text: string) => {
+            pendingWhenRebuiltStarted = questionQueue.hasPending('conv-1');
+            return original(text);
+          };
+          const plan = delegatePort('Plan ready.');
+          const planOriginal = plan.prompt.bind(plan);
+          plan.prompt = async function* (text: string) {
+            await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+            yield* planOriginal(text);
+          };
+          delegatePorts = [asking, plan, rebuilt];
+          stubAgentPort.mockResponses = [...delegations];
+
+          const result = await useCase.execute(turnRequest({ onQuestion }));
+
+          expect(onQuestion).toHaveBeenCalledTimes(1);
+          expect(pendingWhenRebuiltStarted).toBe(false);
+          expect(questionQueue.hasPending('conv-1')).toBe(false);
+          expectOnlyTheReplacementReachedTheCeo(result, rebuilt);
+        });
+
+        it('should end as steered, without a response, the turn whose agent another turn replaced', async () => {
+          const rebuilt = delegatePort('Rebuilt.');
+          delegatePorts = [stuckDeveloper('closeSession', new Error('Resumed session disposed')), rebuilt];
+          stubAgentPort.mockResponses = [
+            '<delegate role="DEVELOPER" summary="Working on it" project="project-b">Build.</delegate>',
+            '<delegate role="DEVELOPER" summary="Working on it" project="project-b">Rebuild.</delegate>',
+            'Done.',
+          ];
+
+          const first = useCase.execute(turnRequest({ prompt: 'First' }));
+          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          const second = await useCase.execute(turnRequest({ prompt: 'Second' }));
+
+          await expect(first).resolves.toMatchObject({ status: 'steered', response: '' });
+          expect(second).toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(stubAgentPort.promptCalls[2]).toContain(rebuiltResult);
+          expect(stubAgentPort.promptCalls.filter(prompt => prompt.includes('status="failed"'))).toEqual([]);
+          expect(runtime.pendingCeoNotices('conv-1')).toEqual([]);
+        });
+
+        it('should end as steered the resumed delegation another turn replaced', async () => {
+          const delegation = '<delegate role="DEVELOPER" project="my-app" summary="Build it">Build.</delegate>';
+          stubAgentPort.mockResponses = [delegation];
+          const beforeRestart = delegatePort('never');
+          beforeRestart.prompt = async function* () {
+            await new Promise(() => undefined);
+            yield* [];
+          };
+          delegatePorts = [beforeRestart];
+          void useCase.execute(turnRequest({ resumable: true }));
+          await vi.waitFor(() => expect(openWorkStore.saved['conv-1']?.some(work => work.role === 'DEVELOPER')).toBe(true));
+          openWork.onModuleDestroy();
+
+          const ceo = new StubAgentPort();
+          const resumedDeveloper = stuckDeveloper('closeSession', new Error('Resumed session disposed'));
+          const rebuilt = delegatePort('Rebuilt.');
+          const developers = [resumedDeveloper, rebuilt];
+          wire(new StubAgentPortFactory(agentId => (agentId === 'developer' ? developers.shift()! : ceo)));
+          settingsStore.settings = buildStubSettings({ CEO: buildStubProfile('ceo'), DEVELOPER: buildStubProfile('developer') });
+          await new RestoreOpenWorkUseCase(openWork, questionQueue).onModuleInit();
+          ceo.mockResponses = [delegation, 'Done.'];
+          const [work] = openWork.continuable('conv-1');
+
+          const resumed = useCase.resume(work!.id, turnRequest());
+          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          const second = await useCase.execute(turnRequest({ resumable: true }));
+
+          await expect(resumed).resolves.toMatchObject({ status: 'steered', response: '' });
+          expect(second).toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(rebuilt.promptCalls).toHaveLength(1);
+          expect(ceo.promptCalls.filter(prompt => prompt.includes('status="failed"'))).toEqual([]);
+        });
+
+        it('should still end as cancelled, and tell the CEO, a turn the user cancels while an agent works', async () => {
+          const developer = stuckDeveloper('cancel', new PromptCancelledError());
+          delegatePorts = [developer];
+          stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>'];
+
+          const turn = useCase.execute(turnRequest());
+          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          await expect(runtime.cancel('conv-1')).resolves.toBe(true);
+
+          await expect(turn).resolves.toMatchObject({ status: 'cancelled' });
+          expect(runtime.pendingCeoNotices('conv-1')).toContain('DEVELOPER (Project: project-a, Task: "Build.") was stopped before finishing.');
+        });
       });
     });
   });

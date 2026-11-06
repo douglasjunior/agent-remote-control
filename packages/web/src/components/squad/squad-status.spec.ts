@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { TeamMember } from '../../conversations/team-state.js';
 
-import { squadStatus } from './squad-status.js';
+import { squadNeedsAttention, squadStatus } from './squad-status.js';
 
 
 const member = (role: string, state: TeamMember['state']): TeamMember => ({ role, roleName: role, state, steps: 0 });
@@ -35,5 +35,19 @@ describe('squadStatus', () => {
 
     expect(squadStatus([member('CEO', 'idle'), stopped])).toEqual({ live: false, text: '1 stopped', tab: 'Squad' });
     expect(squadStatus([member('CEO', 'working'), stopped]).text).toBe('1 working · 1 stopped');
+  });
+});
+
+describe('squadNeedsAttention', () => {
+  it('is true for an agent waiting for the user', () => {
+    expect(squadNeedsAttention([member('DEVELOPER', 'working'), member('PRODUCT_OWNER', 'waiting')])).toBe(true);
+  });
+
+  it('is true for work a restart stopped', () => {
+    expect(squadNeedsAttention([{ ...member('DEVELOPER', 'idle'), interruptedWorkId: 'w' }])).toBe(true);
+  });
+
+  it('is false while everyone works, finished or rests', () => {
+    expect(squadNeedsAttention([member('DEVELOPER', 'working'), member('CEO', 'done')])).toBe(false);
   });
 });

@@ -104,7 +104,7 @@ export class ExecuteAgentTurnUseCase {
   private readonly MAX_DELEGATION_ROUNDS = 100;
   private readonly MAX_REPAIR_ATTEMPTS = 1;
   private sessionBindings: Promise<void> = Promise.resolve();
-  /** The CEO itself replaced these, so their cancellation is not unfinished work to report back to it. */
+  /** The CEO itself replaced these, so how they end is neither a result for it nor a reason to end the turn. */
   private readonly replacedDelegations = new WeakSet<ActiveDelegation>();
 
   constructor(
@@ -270,7 +270,11 @@ export class ExecuteAgentTurnUseCase {
         observers.onSessionResolved(session);
         running.add(this.startDelegations(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey));
         await this.openWork.discardInterruptedRoots(request.conversationId);
-        prompt = await running.nextResults();
+        const results = await running.nextResults();
+        if (results === undefined) {
+          return await finish('steered', '');
+        }
+        prompt = results;
       } else if (resumedRoot) {
         prompt = await this.firstPromptOf(resumedRoot, request);
       }
@@ -341,7 +345,12 @@ export class ExecuteAgentTurnUseCase {
         if (decision.message) {
           request.onInterimMessage?.(decision.message);
         }
-        prompt = await running.nextResults();
+        const results = await running.nextResults();
+        // Another turn replaced every agent this one was waiting for, and that turn answers the user.
+        if (results === undefined) {
+          return await finish('steered', '');
+        }
+        prompt = results;
       }
     } finally {
       await this.stopRunningDelegations(running, conversationKey);
@@ -667,7 +676,7 @@ export class ExecuteAgentTurnUseCase {
     return delegations.map(delegation => ({
       role: delegation.delegateToRole,
       outcome: this.delegate(session, delegation, request, round, conversationKey).then(
-        (block): DelegationOutcome => ({ kind: 'result', block }),
+        (block): DelegationOutcome => (block === undefined ? { kind: 'replaced' } : { kind: 'result', block }),
         (error): DelegationOutcome => {
           if (this.isCancellation(error)) {
             return { kind: 'cancelled', reason: error };
@@ -831,7 +840,7 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
-  ): Promise<string> {
+  ): Promise<string | undefined> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
       const sameProject = existing.projectName === (projectName ?? null);
@@ -954,11 +963,14 @@ export class ExecuteAgentTurnUseCase {
       });
       return this.formatAgentResult(delegateToRole, projectName, response, { agentInfo });
     } catch (error) {
+      // Closing a replaced agent's session can surface as any error, none of which is a failure of its task.
+      if (this.replacedDelegations.has(activeDelegation)) {
+        request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
+        return undefined;
+      }
       if (this.isCancellation(error)) {
         request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
-        if (!this.replacedDelegations.has(activeDelegation)) {
-          this.conversationRuntime.addCeoNotice(conversationKey, `${this.describeDelegation(delegateToRole, activeDelegation.projectName, currentTaskSpec)} was stopped before finishing.`);
-        }
+        this.conversationRuntime.addCeoNotice(conversationKey, `${this.describeDelegation(delegateToRole, activeDelegation.projectName, currentTaskSpec)} was stopped before finishing.`);
         throw error;
       }
       request.onDelegation?.({

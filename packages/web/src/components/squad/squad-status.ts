@@ -31,3 +31,8 @@ export function squadStatus(members: readonly TeamMember[]): SquadStatus {
   const delivered = members.some(member => member.role === 'CEO' && member.state === 'done');
   return { live: false, text: delivered ? 'Answer delivered' : 'Ready', tab: 'Squad' };
 }
+
+/** Whether an agent waits for the user or has work a restart stopped, which a collapsed panel must not hide. */
+export function squadNeedsAttention(members: readonly TeamMember[]): boolean {
+  return members.some(member => member.state === 'waiting' || member.interruptedWorkId !== undefined);
+}

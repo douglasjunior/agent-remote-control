@@ -1,4 +1,4 @@
-import { Settings } from 'lucide-react';
+import { PanelRightClose, PanelRightOpen, Settings } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { useConnection } from '../connection/connection-context.js';
@@ -10,22 +10,26 @@ import { useDelivery } from '../conversations/use-delivery.js';
 import { usePresence } from '../conversations/use-presence.js';
 import { agentIdentity } from '../lib/agent-identity.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
+import { useStoredFlag } from '../lib/use-stored-flag.js';
 
 import { AgentMark } from './agent/agent-mark.js';
 import { Composer } from './composer.js';
 import { AnswerInputProvider } from './entries/answer-input.js';
 import { FeedList, type FeedHandle } from './entries/feed-list.js';
 import type { QuestionAnswer } from './entries/question-card.js';
+import { IconButton } from './icon-button.js';
 import { SettingsSheet } from './settings-sheet.js';
 import { SquadPanel } from './squad/squad-panel.js';
-import { squadStatus } from './squad/squad-status.js';
+import { squadNeedsAttention, squadStatus } from './squad/squad-status.js';
 import { TeamIntro } from './team-intro.js';
 import { Button } from './ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 
 
-/** Below this width the chat and the squad panel share the space as two tabs. It leaves room for the conversation list. */
-const TABS_QUERY = '(max-width: 1107px)';
+/** Below this width the chat and the squad panel share the space as two tabs. */
+const TABS_QUERY = '(max-width: 819px)';
+const SQUAD_PANEL_ID = 'squad-panel';
+const SQUAD_OPEN_KEY = 'arc.squadPanelOpen';
 
 export function ConversationView({ conversationId }: { readonly conversationId: string }) {
   const { connection, status } = useConnection();
@@ -39,6 +43,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
   const [tab, setTab] = useState('chat');
   const feed = useRef<FeedHandle>(null);
   const tabbed = useMediaQuery(TABS_QUERY);
+  const [panelOpen, setPanelOpen] = useStoredFlag(SQUAD_OPEN_KEY, true);
   const [suggestion, setSuggestion] = useState({ text: '', nonce: 0 });
   const noAgents = state.agents.length === 0;
 
@@ -87,6 +92,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
     setTab('chat');
     requestAnimationFrame(() => feed.current?.goToQuestion());
   }, [team, toggleFocus]);
+  const attention = squadNeedsAttention(team);
   const focusedLabel = focus === null ? null : agentIdentity(focus, team.find(member => member.role === focus)?.roleName).label;
 
   const chat = (
@@ -111,6 +117,21 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
           {' '}
           Settings
         </Button>
+        {!tabbed && (
+          <IconButton
+            variant="ghost"
+            label={panelOpen ? 'Hide squad panel' : `Show squad panel${attention ? ` (${squadStatus(team).text})` : ''}`}
+            aria-expanded={panelOpen}
+            aria-controls={SQUAD_PANEL_ID}
+            className="relative"
+            onClick={() => setPanelOpen(!panelOpen)}
+          >
+            {panelOpen ? <PanelRightClose /> : <PanelRightOpen />}
+            {!panelOpen && attention && (
+              <span aria-hidden className="absolute top-1 right-1 size-2 rounded-full bg-attention motion-safe:animate-pulse" />
+            )}
+          </IconButton>
+        )}
       </div>
       {entries.length === 0 && !running && view.loaded
         ? <div className="min-h-0 flex-1"><TeamIntro onPick={text => setSuggestion(current => ({ text, nonce: current.nonce + 1 }))} /></div>
@@ -163,7 +184,7 @@ export function ConversationView({ conversationId }: { readonly conversationId: 
         : (
           <div className="flex h-full">
             {chat}
-            <aside className="w-[420px] shrink-0 border-l">{squad}</aside>
+            <aside id={SQUAD_PANEL_ID} hidden={!panelOpen} className="w-[420px] shrink-0 border-l">{squad}</aside>
           </div>
         )}
       <SettingsSheet conversationId={conversationId} open={settingsRequested || needsSettings} onOpenChange={handleSettingsOpenChange} />

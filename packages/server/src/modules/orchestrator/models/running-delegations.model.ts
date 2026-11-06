@@ -1,6 +1,7 @@
 export type DelegationOutcome =
   | { readonly kind: 'result'; readonly block: string }
-  | { readonly kind: 'cancelled'; readonly reason: unknown };
+  | { readonly kind: 'cancelled'; readonly reason: unknown }
+  | { readonly kind: 'replaced' };
 
 export interface StartedDelegation {
   readonly role: string;
@@ -13,7 +14,7 @@ export interface StartedDelegation {
  */
 export class RunningDelegations {
   private readonly pending = new Map<Promise<void>, string>();
-  private finished: DelegationOutcome[] = [];
+  private finished: Exclude<DelegationOutcome, { readonly kind: 'replaced' }>[] = [];
 
   get isEmpty(): boolean {
     return this.pending.size === 0 && this.finished.length === 0;
@@ -27,15 +28,23 @@ export class RunningDelegations {
     for (const { role, outcome } of started) {
       const tracked: Promise<void> = outcome.then((settled) => {
         this.pending.delete(tracked);
-        this.finished.push(settled);
+        if (settled.kind !== 'replaced') {
+          this.finished.push(settled);
+        }
       });
       this.pending.set(tracked, role);
     }
   }
 
-  /** Waits for at least one result and returns every result finished so far; a cancellation is thrown. */
-  async nextResults(): Promise<string> {
+  /**
+   * Waits for at least one result and returns every result finished so far; a cancellation is thrown. Returns
+   * `undefined` when nothing is left to wait for, because a later delegation replaced every agent still running.
+   */
+  async nextResults(): Promise<string | undefined> {
     while (this.finished.length === 0) {
+      if (this.pending.size === 0) {
+        return undefined;
+      }
       await Promise.race(this.pending.keys());
     }
     const batch = this.finished;

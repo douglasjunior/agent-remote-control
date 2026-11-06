@@ -86,6 +86,63 @@ describe('RunningDelegations', () => {
     await expect(running.nextResults()).rejects.toBe(reason);
   });
 
+  describe('replaced delegations', () => {
+    const replaced: DelegationOutcome = { kind: 'replaced' };
+
+    it('should not hand over a replaced delegation and keep waiting for a pending result', async () => {
+      const running = new RunningDelegations();
+      const old = deferred();
+      const current = deferred();
+      running.add([
+        { role: 'DEVELOPER', outcome: old.outcome },
+        { role: 'TECH_LEAD', outcome: current.outcome },
+      ]);
+
+      old.settle(replaced);
+      await Promise.resolve();
+      let handedOver: string | undefined;
+      const waiting = running.nextResults().then((blocks) => {
+        handedOver = blocks;
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(handedOver).toBeUndefined();
+      expect(running.pendingRoles).toEqual(['TECH_LEAD']);
+
+      current.settle(result('planned'));
+      await waiting;
+
+      expect(handedOver).toBe('planned');
+    });
+
+    it('should resolve to undefined and be empty when the only delegation was replaced', async () => {
+      const running = new RunningDelegations();
+      const developer = deferred();
+      running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+
+      developer.settle(replaced);
+
+      await expect(running.nextResults()).resolves.toBeUndefined();
+      expect(running.isEmpty).toBe(true);
+    });
+
+    it('should hand over the result of a batch that also holds a replaced delegation', async () => {
+      const running = new RunningDelegations();
+      const old = deferred();
+      const current = deferred();
+      running.add([
+        { role: 'DEVELOPER', outcome: old.outcome },
+        { role: 'TECH_LEAD', outcome: current.outcome },
+      ]);
+
+      old.settle(replaced);
+      current.settle(result('planned'));
+      await running.settled();
+
+      await expect(running.nextResults()).resolves.toBe('planned');
+      expect(running.isEmpty).toBe(true);
+    });
+  });
+
   it('should wait for every pending delegation to settle', async () => {
     const running = new RunningDelegations();
     const developer = deferred();

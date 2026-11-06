@@ -1,7 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { act, screen, within } from '@testing-library/react';
+import { act, cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AT, openConversation, userEntry } from '../test/render-app.js';
 
@@ -17,6 +17,7 @@ const setState = (connection: ReturnType<typeof openConversation>['connection'],
 const defaultMatchMedia = globalThis.matchMedia;
 
 describe('ConversationView squad', () => {
+  beforeEach(() => localStorage.clear());
   afterEach(() => {
     vi.stubGlobal('matchMedia', defaultMatchMedia);
     vi.restoreAllMocks();
@@ -169,5 +170,106 @@ describe('ConversationView squad', () => {
     openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it', 'finished'), answer] });
 
     expect(squad()).not.toHaveAttribute('data-delivered');
+  });
+
+  describe('collapsible panel', () => {
+    const panel = () => document.getElementById('squad-panel')!;
+
+    it('is open by default and collapses and restores with the toggle', async () => {
+      const user = userEvent.setup();
+      openConversation();
+      const toggle = screen.getByRole('button', { name: 'Hide squad panel' });
+      expect(toggle).toHaveAttribute('aria-expanded', 'true');
+      expect(toggle).toHaveAttribute('aria-controls', 'squad-panel');
+      expect(panel()).toBeVisible();
+
+      await user.click(toggle);
+      expect(panel()).not.toBeVisible();
+      expect(screen.getByRole('button', { name: 'Show squad panel' })).toHaveAttribute('aria-expanded', 'false');
+
+      await user.click(screen.getByRole('button', { name: 'Show squad panel' }));
+      expect(panel()).toBeVisible();
+    });
+
+    it('keeps the panel mounted while collapsed', async () => {
+      const user = userEvent.setup();
+      openConversation();
+      await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
+
+      expect(squad()).toBeInTheDocument();
+    });
+
+    it('stores the choice and starts collapsed when a collapsed choice is stored', async () => {
+      const user = userEvent.setup();
+      openConversation();
+      await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
+      expect(localStorage.getItem('arc.squadPanelOpen')).toBe('false');
+      cleanup();
+
+      const read = Storage.prototype.getItem;
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+        return key === 'arc.squadPanelOpen' ? 'false' : read.call(this, key);
+      });
+      openConversation();
+
+      expect(panel()).not.toBeVisible();
+      expect(screen.getByRole('button', { name: 'Show squad panel' })).toBeInTheDocument();
+    });
+
+    it('still toggles when storage throws', async () => {
+      const read = Storage.prototype.getItem;
+      const write = Storage.prototype.setItem;
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+        if (key === 'arc.squadPanelOpen') {
+          throw new Error('blocked');
+        }
+        return read.call(this, key);
+      });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+        if (key === 'arc.squadPanelOpen') {
+          throw new Error('blocked');
+        }
+        write.call(this, key, value);
+      });
+      const user = userEvent.setup();
+      openConversation();
+      expect(panel()).toBeVisible();
+
+      await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
+      expect(panel()).not.toBeVisible();
+    });
+
+    it('flags a collapsed panel when an agent waits for the user', async () => {
+      const user = userEvent.setup();
+      const question: ConversationEntry = {
+        id: 'q1', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which branch?', options: ['main'], number: 1, total: 1, closed: false,
+      };
+      const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it'), question, userEntry('u2')] });
+      setState(connection, 'running');
+      await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
+
+      expect(screen.getByRole('button', { name: /^Show squad panel \(.*needs your answer/ })).toBeInTheDocument();
+    });
+
+    it('flags a collapsed panel when work is stopped and shows no flag when nothing needs attention', async () => {
+      const user = userEvent.setup();
+      const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
+      await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
+      expect(screen.getByRole('button', { name: 'Show squad panel' })).toBeInTheDocument();
+
+      act(() => connection.emitEvent({
+        type: 'conversation.interrupted',
+        conversationId: 'c1',
+        interrupted: [{ id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: null, summary: 'Build it' }],
+      }));
+      expect(screen.getByRole('button', { name: 'Show squad panel (1 stopped)' })).toBeInTheDocument();
+    });
+
+    it('offers no toggle on narrow windows, where the tabs switch the panel', () => {
+      vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+      openConversation();
+
+      expect(screen.queryByRole('button', { name: /squad panel/ })).not.toBeInTheDocument();
+    });
   });
 });
