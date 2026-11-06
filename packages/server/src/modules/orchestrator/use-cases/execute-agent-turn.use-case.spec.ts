@@ -358,15 +358,15 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should return failed when max delegation rounds are exceeded', async () => {
-    stubAgentPort.mockResponses = Array(15).fill('<delegate role="DEVELOPER" summary="Working on it" project="my-app">Delegating...</delegate>');
-    delegateStubPort.mockResponses = Array(15).fill('I did it.');
+    stubAgentPort.mockResponses = Array(105).fill('<delegate role="DEVELOPER" summary="Working on it" project="my-app">Delegating...</delegate>');
+    delegateStubPort.mockResponses = Array(105).fill('I did it.');
 
     const result = await useCase.execute(turnRequest());
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
-    expect(stubAgentPort.promptCalls).toHaveLength(10);
-    expect(delegateStubPort.promptCalls).toHaveLength(9);
+    expect(stubAgentPort.promptCalls).toHaveLength(100);
+    expect(delegateStubPort.promptCalls).toHaveLength(99);
   });
 
   describe('delegation contract', () => {

@@ -100,7 +100,7 @@ type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 @Injectable()
 export class ExecuteAgentTurnUseCase {
   private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
-  private readonly MAX_DELEGATION_ROUNDS = 10;
+  private readonly MAX_DELEGATION_ROUNDS = 100;
   private readonly MAX_REPAIR_ATTEMPTS = 1;
   private sessionBindings: Promise<void> = Promise.resolve();
 
