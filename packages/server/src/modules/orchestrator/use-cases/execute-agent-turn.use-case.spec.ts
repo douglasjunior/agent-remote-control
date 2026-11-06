@@ -2811,6 +2811,62 @@ describe('ExecuteAgentTurnUseCase', () => {
           expectOnlyTheReplacementReachedTheCeo(result, rebuilt);
         });
 
+        it('should leave the replacement alone when the replaced agent\'s turn ends while that agent is still closing', async () => {
+          let releaseOld!: (error: Error) => void;
+          const oldClosing = new Promise<void>((_, reject) => {
+            releaseOld = reject;
+          });
+          const old = delegatePort('never');
+          old.prompt = async function* () {
+            await oldClosing;
+            yield textChunk('never');
+          };
+          let releaseLead!: () => void;
+          const leadGate = new Promise<void>((resolve) => {
+            releaseLead = resolve;
+          });
+          const lead = delegatePort('never');
+          lead.prompt = async function* () {
+            await leadGate;
+            yield textChunk('Plan ready.');
+          };
+          let releaseReplacement!: () => void;
+          const replacementGate = new Promise<void>((resolve) => {
+            releaseReplacement = resolve;
+          });
+          let replacementStarted = false;
+          const replacement = delegatePort('never');
+          replacement.prompt = async function* () {
+            replacementStarted = true;
+            await replacementGate;
+            yield textChunk('Rebuilt.');
+          };
+          delegatePorts = [old, lead, replacement];
+          stubAgentPort.mockResponses = [
+            '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="TECH_LEAD" summary="Working on it" project="project-b">Plan.</delegate>',
+            '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Rebuild.</delegate>',
+            '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+            '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+            'Done.',
+          ];
+
+          const first = useCase.execute(turnRequest({ prompt: 'First' }));
+          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'TECH_LEAD')).toBeDefined());
+          const second = useCase.execute(turnRequest({ prompt: 'Second' }));
+          await vi.waitFor(() => expect(replacementStarted).toBe(true));
+          releaseLead();
+          await vi.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(4));
+          await vi.waitFor(() => expect(lead.closeSessionCalls).toBe(1));
+          const replacementCancels = replacement.cancelCalls;
+          releaseOld(new Error('Resumed session disposed'));
+          releaseReplacement();
+
+          await expect(first).resolves.toMatchObject({ status: 'failed' });
+          await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(replacementCancels).toBe(0);
+          expect(replacement.cancelCalls).toBe(0);
+        });
+
         it('should end as steered, without a response, the turn whose agent another turn replaced', async () => {
           const rebuilt = delegatePort('Rebuilt.');
           delegatePorts = [stuckDeveloper('closeSession', new Error('Resumed session disposed')), rebuilt];

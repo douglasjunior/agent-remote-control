@@ -106,6 +106,8 @@ export class ExecuteAgentTurnUseCase {
   private sessionBindings: Promise<void> = Promise.resolve();
   /** The CEO itself replaced these, so how they end is neither a result for it nor a reason to end the turn. */
   private readonly replacedDelegations = new WeakSet<ActiveDelegation>();
+  /** A role can pass to another turn's agent while the replaced one closes, so the role alone does not say whose agent it is. */
+  private readonly delegationOwners = new WeakMap<ActiveDelegation, RunningDelegations>();
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -268,7 +270,7 @@ export class ExecuteAgentTurnUseCase {
       if (resumed && !resumed.work.root) {
         session = await this.resolveSession(request);
         observers.onSessionResolved(session);
-        running.add(this.startDelegations(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey));
+        running.add(this.startDelegations(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey, running));
         await this.openWork.discardInterruptedRoots(request.conversationId);
         const results = await running.nextResults();
         if (results === undefined) {
@@ -340,7 +342,7 @@ export class ExecuteAgentTurnUseCase {
             }
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
-          running.add(this.startDelegations(session!, decision.delegations, request, round, conversationKey));
+          running.add(this.startDelegations(session!, decision.delegations, request, round, conversationKey, running));
         }
         if (decision.message) {
           request.onInterimMessage?.(decision.message);
@@ -672,10 +674,11 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
+    running: RunningDelegations,
   ): readonly StartedDelegation[] {
     return delegations.map(delegation => ({
       role: delegation.delegateToRole,
-      outcome: this.delegate(session, delegation, request, round, conversationKey).then(
+      outcome: this.delegate(session, delegation, request, round, conversationKey, running).then(
         (block): DelegationOutcome => (block === undefined ? { kind: 'replaced' } : { kind: 'result', block }),
         (error): DelegationOutcome => {
           if (this.isCancellation(error)) {
@@ -696,7 +699,8 @@ export class ExecuteAgentTurnUseCase {
   private async stopRunningDelegations(running: RunningDelegations, conversationKey: string): Promise<void> {
     const stopping = running.pendingRoles
       .map(role => this.conversationRuntime.findActiveDelegation(conversationKey, role))
-      .filter(delegation => delegation !== undefined);
+      .filter(delegation => delegation !== undefined)
+      .filter(delegation => this.delegationOwners.get(delegation) === running);
     await Promise.allSettled(
       stopping.map((delegation) => {
         this.questionQueue.discard(conversationKey, delegation.role, delegation.projectName);
@@ -840,6 +844,7 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
     round: number,
     conversationKey: string,
+    running: RunningDelegations,
   ): Promise<string | undefined> {
     const existing = this.conversationRuntime.findActiveDelegation(conversationKey, delegateToRole);
     if (existing) {
@@ -912,6 +917,7 @@ export class ExecuteAgentTurnUseCase {
       },
     };
 
+    this.delegationOwners.set(activeDelegation, running);
     this.conversationRuntime.registerDelegation(conversationKey, activeDelegation);
     if (openWorkId) {
       await this.openWork.open(conversationKey, {
