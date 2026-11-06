@@ -23,6 +23,15 @@ describe('groupEntries', () => {
     expect(items.map(item => item.kind === 'activity' && item.steps.length)).toEqual([1, 2, 1]);
   });
 
+  it('drops a steered response, keeping the activity around it together', () => {
+    const steered: ConversationEntry = { id: 's1', at, type: 'agent_response', status: 'steered', response: '' };
+
+    const items = groupEntries([user('u1'), steered, thought('t1'), steered, thought('t2')]);
+
+    expect(items.map(item => item.kind)).toEqual(['entry', 'activity']);
+    expect(items[1]).toMatchObject({ steps: [{ id: 't1' }, { id: 't2' }] });
+  });
+
   it('drops removed thoughts', () => {
     const items = groupEntries([thought('t1', true), tool('x1')]);
     expect(items).toHaveLength(1);

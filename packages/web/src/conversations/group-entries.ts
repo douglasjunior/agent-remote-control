@@ -105,7 +105,8 @@ function lastAnswerOfEachTurn(entries: readonly ConversationEntry[]): ReadonlySe
  * Collapses consecutive thought and tool entries of one agent into one activity item (the steps of a delegated agent
  * go inside its handoff), and each delegation (its start and its
  * end) into one handoff; handoffs that start together form a squad. The answer that closes a turn that delegated carries a
- * recap of the team's work. Removed thoughts are dropped.
+ * recap of the team's work. Removed thoughts are dropped, and so are steered responses, which have no text: another
+ * turn answers for them.
  */
 export function groupEntries(entries: readonly ConversationEntry[]): readonly EntryItem[] {
   const closings = new Map<string, DelegationEntry>();
@@ -122,7 +123,7 @@ export function groupEntries(entries: readonly ConversationEntry[]): readonly En
   let turnHandoffs: Handoff[] = [];
   let turnStartedAt = 0;
   for (const entry of entries) {
-    if (entry.type === 'thought' && entry.removed) {
+    if ((entry.type === 'thought' && entry.removed) || (entry.type === 'agent_response' && entry.status === 'steered')) {
       continue;
     }
     const last = items.at(-1);
