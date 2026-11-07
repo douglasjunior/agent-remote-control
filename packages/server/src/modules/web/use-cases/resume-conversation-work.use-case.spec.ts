@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
 import { ResumeConversationWorkUseCase } from './resume-conversation-work.use-case.js';
@@ -10,7 +11,7 @@ const work = { id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: n
 function setup() {
   const harness = createWebHarness();
   harness.store.seed('web-1');
-  const useCase = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns);
+  const useCase = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns, new ConversationEntryService());
   return { ...harness, useCase, types: () => (harness.store.histories.get('web-1') ?? []).map(entry => entry.type) };
 }
 

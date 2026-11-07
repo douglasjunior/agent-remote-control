@@ -1,5 +1,5 @@
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
-import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES } from '@agent-remote-control/protocol/limits';
+import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
@@ -175,6 +175,146 @@ describe('usePromptAttachments', () => {
     view.unmount();
 
     expect(sent('upload.abort')).toHaveLength(1);
+  });
+
+  describe('the upload protocol', () => {
+    const stored = { path: '.arc-uploads/c1/big.bin', name: 'big.bin' };
+
+    /** Holds the server back, so each event of the upload is emitted by the test. */
+    async function startUpload(content: File = new File(['x'.repeat(UPLOAD_CHUNK_BYTES + 10)], 'big.bin')) {
+      const context = setup();
+      context.connection.hold = true;
+      await context.add(content);
+      const start = context.connection.sent[0];
+      const uploadId = start?.type === 'upload.start' ? start.uploadId : '';
+      return { ...context, uploadId };
+    }
+
+    it('announces the file, then sends one chunk per acknowledgement and finishes', async () => {
+      const { connection, api, sent, uploadId } = await startUpload();
+      expect(connection.sent[0]).toEqual({ type: 'upload.start', uploadId: expect.any(String), conversationId: 'c1', name: 'big.bin', size: UPLOAD_CHUNK_BYTES + 10 });
+
+      connection.emitEvent({ type: 'upload.ready', uploadId });
+      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      expect(sent('upload.chunk')[0]).toMatchObject({ index: 0 });
+      expect(sent('upload.finish')).toHaveLength(0);
+
+      connection.emitEvent({ type: 'upload.ack', uploadId, index: 0 });
+      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(2));
+      expect(sent('upload.chunk')[1]).toMatchObject({ index: 1 });
+
+      connection.emitEvent({ type: 'upload.ack', uploadId, index: 1 });
+      await vi.waitFor(() => expect(sent('upload.finish')).toEqual([{ type: 'upload.finish', uploadId }]));
+
+      act(() => connection.emitEvent({ type: 'upload.done', uploadId, attachment: stored }));
+      await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'ready', attachment: stored }));
+    });
+
+    it('sends the bytes of each chunk as base64', async () => {
+      const { connection, sent, uploadId } = await startUpload(new File(['hello'], 'a.txt'));
+
+      connection.emitEvent({ type: 'upload.ready', uploadId });
+
+      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      expect(sent('upload.chunk')[0]).toMatchObject({ dataBase64: btoa('hello') });
+    });
+
+    it('finishes right away for an empty file', async () => {
+      const { connection, sent, uploadId } = await startUpload(new File([], 'empty.txt'));
+
+      connection.emitEvent({ type: 'upload.ready', uploadId });
+
+      await vi.waitFor(() => expect(sent('upload.finish')).toHaveLength(1));
+      expect(sent('upload.chunk')).toHaveLength(0);
+    });
+
+    it('ignores events of other uploads and of other kinds', async () => {
+      const { connection, api, uploadId } = await startUpload();
+
+      act(() => {
+        connection.emitEvent({ type: 'upload.failed', uploadId: 'other', reason: 'nope' });
+        connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'idle' });
+        connection.emitEvent({ type: 'upload.done', uploadId, attachment: stored });
+      });
+
+      await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'ready' }));
+    });
+
+    it('fails when the connection stops being open', async () => {
+      const { connection, api } = await startUpload();
+
+      act(() => connection.emitStatus('closed'));
+
+      await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'error', error: 'Connection lost' }));
+    });
+
+    it('stops listening once settled', async () => {
+      const { connection, api, uploadId } = await startUpload();
+      act(() => connection.emitEvent({ type: 'upload.done', uploadId, attachment: stored }));
+      await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'ready' }));
+
+      act(() => connection.emitEvent({ type: 'upload.failed', uploadId, reason: 'late' }));
+
+      expect(api.current.items[0]).toMatchObject({ status: 'ready' });
+    });
+
+    describe('when the file cannot be read', () => {
+      afterEach(() => vi.unstubAllGlobals());
+
+      it.each([
+        ['with the reader error', new Error('unreadable'), 'unreadable'],
+        ['without one', null, 'Could not read the file'],
+      ])('aborts the upload and fails %s', async (_label, readerError, message) => {
+        class FailingReader {
+          error = readerError;
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            queueMicrotask(() => this.onerror?.());
+          }
+        }
+        vi.stubGlobal('FileReader', FailingReader);
+        const { connection, api, sent, uploadId } = await startUpload(new File(['x'], 'a'));
+
+        connection.emitEvent({ type: 'upload.ready', uploadId });
+
+        await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'error', error: message }));
+        expect(sent('upload.abort')).toHaveLength(1);
+      });
+
+      it('keeps the abort as the outcome when the read fails after it', async () => {
+        let failRead: () => void = () => undefined;
+        class SlowFailingReader {
+          error = new Error('unreadable');
+          onerror: (() => void) | null = null;
+          readAsDataURL() {
+            failRead = () => this.onerror?.();
+          }
+        }
+        vi.stubGlobal('FileReader', SlowFailingReader);
+        const { connection, api, sent, uploadId } = await startUpload(new File(['x'], 'a'));
+        connection.emitEvent({ type: 'upload.ready', uploadId });
+
+        act(() => api.current.remove(api.current.items[0].id));
+        failRead();
+
+        await waitFor(() => expect(sent('upload.abort')).toHaveLength(2));
+        expect(api.current.items).toEqual([]);
+      });
+
+      it('fails with a generic message when the failure is not an Error', async () => {
+        class ThrowingReader {
+          readAsDataURL() {
+            throw 'boom';
+          }
+        }
+        vi.stubGlobal('FileReader', ThrowingReader);
+        const { connection, api, uploadId } = await startUpload(new File(['x'], 'a'));
+
+        connection.emitEvent({ type: 'upload.ready', uploadId });
+
+        await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'error', error: 'Could not read the file' }));
+      });
+    });
   });
 
   describe('drag and drop', () => {

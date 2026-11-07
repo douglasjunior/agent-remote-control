@@ -2,7 +2,7 @@ import { parseClientCommand } from '@agent-remote-control/protocol/client-comman
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
-import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
+import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
@@ -54,6 +54,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
     private readonly quota: WebAgentQuotaService,
+    private readonly logContext: ConversationLogContextService,
   ) {}
 
   onModuleInit(): void {
@@ -103,7 +104,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       }
       const command = parsed.value;
       const conversationId = 'conversationId' in command ? command.conversationId : undefined;
-      void runInLogConversation(conversationId, () => this.handle(connection, command)).catch((error: unknown) => {
+      void this.logContext.run(conversationId, () => this.handle(connection, command)).catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`command_failed: ${command.type}: ${message}`);
         connection.send({ type: 'error', message: 'The command failed' });

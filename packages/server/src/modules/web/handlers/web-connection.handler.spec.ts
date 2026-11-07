@@ -1,7 +1,8 @@
 import { Logger } from '@nestjs/common';
 
-import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
+import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
@@ -32,6 +33,7 @@ describe('WebConnectionHandler', () => {
   let transport: FakeClientTransport;
   let harness: ReturnType<typeof createWebHarness>;
   let handler: WebConnectionHandler;
+  const logContext = new ConversationLogContextService();
   let connection: FakeClientConnection;
 
   beforeEach(() => {
@@ -42,8 +44,8 @@ describe('WebConnectionHandler', () => {
     const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
     const conversationUploads = new WebConversationUploadsService(workspace, uploads);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, conversationUploads, harness.turns);
-    const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
+    const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -52,18 +54,19 @@ describe('WebConnectionHandler', () => {
       events,
       new ListConversationsUseCase(store),
       new CreateConversationUseCase(store),
-      new GetConversationHistoryUseCase(store, events, questions, agentTurn),
+      new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()),
       sendMessage,
-      new CancelConversationTurnUseCase(agentTurn, events),
+      new CancelConversationTurnUseCase(agentTurn, events, new ConversationEntryService()),
       new ListAgentOptionsUseCase(configuration),
       getProfiles,
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
-      new AnswerConversationQuestionUseCase(questions, events, resumeWork, conversationUploads),
+      new AnswerConversationQuestionUseCase(questions, events, resumeWork, conversationUploads, new ConversationEntryService()),
       resumeWork,
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
       new WebUploadSessionsService(uploads),
       new WebAgentQuotaService(agentTurn),
+      logContext,
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -425,7 +428,7 @@ describe('WebConnectionHandler', () => {
       harness.store.seed('web-1');
       const logged: (readonly [string, string | undefined])[] = [];
       const record = (message: unknown) => {
-        logged.push([String(message), currentLogConversation()]);
+        logged.push([String(message), logContext.current()]);
       };
       const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(record);
       const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(record);

@@ -5,7 +5,7 @@ import type { AgentProfileSettings, AgentSettings } from '../models/agent-settin
 import type { ConversationSettingsStatus } from '../models/configure-profiles.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
-import { resolveProfile, withProfiles } from '../utils/agent-profile.util.js';
+import { profileForAllRoles, resolveProfile } from '../utils/agent-profile.util.js';
 
 import { AgentCapabilitiesService } from './agent-capabilities.service.js';
 
@@ -64,8 +64,15 @@ export class AgentProfilesService {
     profile: AgentProfileSettings,
   ): Promise<AgentSettings> {
     const current = (await this.current(conversationId)) ?? EMPTY_SETTINGS;
-    const settings = withProfiles(current, roles ?? this.agentRegistry.listRoles(), profile);
+    const settings = this.withProfiles(current, roles ?? this.agentRegistry.listRoles(), profile);
     await this.settingsStore.save(conversationId, settings);
     return settings;
+  }
+
+  private withProfiles(settings: AgentSettings, roles: readonly string[], profile: AgentProfileSettings): AgentSettings {
+    return {
+      profiles: { ...settings.profiles, ...profileForAllRoles(roles, profile) },
+      updatedAt: new Date().toISOString(),
+    };
   }
 }

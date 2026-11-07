@@ -52,8 +52,12 @@ function setup() {
   };
   const state = () => screen.getByLabelText('state').textContent;
   const press = (key: string, init: object = {}) => fireEvent.keyDown(field, { key, ...init });
+  const moveCaret = (offset: number) => {
+    field.setSelectionRange(offset, offset);
+    fireEvent.select(field);
+  };
   fireEvent.focus(field);
-  return { connection, field, type, searches, closes, answer, state, press };
+  return { connection, field, type, searches, closes, answer, state, press, moveCaret };
 }
 
 describe('useFileMentions', () => {
@@ -260,5 +264,60 @@ describe('useFileMentions', () => {
     press('a');
 
     expect(state()).toBe('open:0:app/,a.ts');
+  });
+
+  describe('the mention under the caret', () => {
+    it('reads the query between the @ and the caret and replaces the whole token when accepting', () => {
+      const { type, moveCaret, searches, answer, press, field } = setup();
+      type('see @app/src now');
+      moveCaret(8);
+      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+
+      expect(searches().at(-1)).toMatchObject({ query: 'app' });
+
+      answer();
+      press('ArrowDown');
+      press('Enter');
+      expect(field.value).toBe('see @a.ts  now');
+    });
+
+    it.each([
+      ['after whitespace', 'a b @c'],
+      ['after a line break', 'a\n@b'],
+    ])('finds the @ %s', (_label, value) => {
+      const { type, searches } = setup();
+
+      type(value);
+      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+
+      expect(searches().at(-1)).toMatchObject({ query: value.at(-1) });
+    });
+
+    it.each([
+      ['an @ inside a word', 'mail@host', 9],
+      ['no @', 'plain text', 5],
+      ['whitespace between the @ and the caret', '@a b', 4],
+      ['the caret before the @', 'x @a', 1],
+      ['an empty text', '', 0],
+    ])('has no mention to search for with %s', (_label, value, caret) => {
+      const { type, moveCaret, searches, closes, state } = setup();
+
+      type(value);
+      moveCaret(caret);
+      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+
+      expect(state()).toBe('closed');
+      expect(closes()).toHaveLength(searches().length);
+    });
+
+    it('quotes the path of a file that has whitespace', () => {
+      const { type, answer, field, press } = setup();
+      type('@');
+      answer([{ path: 'my app/a b.ts', kind: 'file', matches: [] }]);
+
+      press('Enter');
+
+      expect(field.value).toBe('@"my app/a b.ts" ');
+    });
   });
 });

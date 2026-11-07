@@ -4,6 +4,7 @@ import { FakeClientConnection } from '../testing/fake-client-connection.js';
 import { FakeConversationStore } from '../testing/fake-conversation-store.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
+import { ConversationEntryService } from './conversation-entry.service.js';
 import { WebConnectionRegistryService } from './web-connection-registry.service.js';
 import { WebConversationEventsService } from './web-conversation-events.service.js';
 
@@ -27,7 +28,7 @@ describe('WebConversationEventsService', () => {
     registry.register(observer);
     const store = new FakeConversationStore();
     vi.spyOn(store, 'upsertEntry').mockRejectedValue(new Error('disk full'));
-    const events = new WebConversationEventsService(store, registry);
+    const events = new WebConversationEventsService(store, registry, new ConversationEntryService());
 
     await expect(events.publishEntry('web-1', entry)).resolves.toBeUndefined();
 

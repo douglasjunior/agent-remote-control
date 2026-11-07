@@ -1,3 +1,4 @@
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
 import { CreateConversationUseCase } from './create-conversation.use-case.js';
@@ -22,7 +23,7 @@ describe('conversation query use cases', () => {
     events.publishState('web-1', 'running');
     events.publishDraft('web-1', 'Working on');
 
-    expect(await new GetConversationHistoryUseCase(store, events, questions, agentTurn).execute('web-1')).toEqual({
+    expect(await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1')).toEqual({
       entries: [entry],
       state: 'running',
       draft: 'Working on',

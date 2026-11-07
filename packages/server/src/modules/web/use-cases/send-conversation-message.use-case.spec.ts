@@ -4,6 +4,7 @@ import { vi } from 'vitest';
 
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { createWebHarness } from '../testing/web-harness.js';
@@ -27,6 +28,7 @@ function setup() {
     harness.promptHistory,
     new WebConversationUploadsService(harness.workspace, harness.uploads),
     harness.turns,
+    new ConversationEntryService(),
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];
   const types = () => entries().map(entry => entry.type);

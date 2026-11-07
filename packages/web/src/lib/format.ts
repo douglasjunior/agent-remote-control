@@ -6,7 +6,7 @@ const UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
 
 const formatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
 
-export function formatRelativeTime(iso: string, now: number = Date.now()): string {
+export function formatRelativeTime(iso: string, now: number): string {
   const seconds = Math.round((Date.parse(iso) - now) / 1000);
   for (const [unit, size] of UNITS) {
     if (Math.abs(seconds) >= size) {

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 
 import { createWebHarness } from '../testing/web-harness.js';
 
+import { ConversationEntryService } from './conversation-entry.service.js';
 import { WebConversationTurnsService } from './web-conversation-turns.service.js';
 
 
@@ -122,7 +123,7 @@ describe('WebConversationTurnsService', () => {
   it('is built from the events service and the store', () => {
     const { events, store, questions, agentTurn } = setup();
 
-    expect(new WebConversationTurnsService(events, store, questions, agentTurn)).toBeInstanceOf(WebConversationTurnsService);
+    expect(new WebConversationTurnsService(events, store, questions, agentTurn, new ConversationEntryService())).toBeInstanceOf(WebConversationTurnsService);
   });
 
   it('leaves a restored question open when the conversation becomes idle', async () => {

@@ -8,7 +8,7 @@ import type {
   ConversationSettingsStatus,
 } from '../models/configure-profiles.model.js';
 import type { IAgentConfigurationPort } from '../ports/agent-configuration.port.js';
-import { resolveProfile, withProfiles } from '../utils/agent-profile.util.js';
+import { resolveProfile, profileForAllRoles } from '../utils/agent-profile.util.js';
 import { normalizeUserLanguage } from '../utils/user-language.util.js';
 
 import { StubAgentSettingsStore } from './stub-agent-settings-store.js';
@@ -93,7 +93,11 @@ export class StubAgentConfigurationPort implements IAgentConfigurationPort {
     roles: readonly string[] | undefined,
     profile: AgentProfileSettings,
   ): Promise<AgentSettings> {
-    const settings = withProfiles((await this.current(conversationId)) ?? EMPTY_SETTINGS, roles ?? this.registry.listRoles(), profile);
+    const current = (await this.current(conversationId)) ?? EMPTY_SETTINGS;
+    const settings: AgentSettings = {
+      profiles: { ...current.profiles, ...profileForAllRoles(roles ?? this.registry.listRoles(), profile) },
+      updatedAt: new Date().toISOString(),
+    };
     await this.store.save(conversationId, settings);
     return settings;
   }

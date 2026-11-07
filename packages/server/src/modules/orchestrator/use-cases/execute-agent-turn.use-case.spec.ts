@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
-import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
+import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
@@ -97,6 +97,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
   let questionTimeoutMs = 0;
+  const logContext = new ConversationLogContextService();
   let questionQueue: UserQuestionQueueService;
   let openWork: OpenWorkService;
   let openWorkStore: InMemoryOpenWorkStoreFake;
@@ -145,6 +146,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem),
       openWork,
       fileSystem,
+      logContext,
     );
   };
 
@@ -808,10 +810,10 @@ describe('ExecuteAgentTurnUseCase', () => {
     delegateStubPort.mockResponses = ['Done.'];
     const seen: (string | undefined)[] = [];
 
-    await useCase.execute(turnRequest({ conversationId: 'conv-tagged', onDelegation: () => seen.push(currentLogConversation()) }));
+    await useCase.execute(turnRequest({ conversationId: 'conv-tagged', onDelegation: () => seen.push(logContext.current()) }));
 
     expect(seen).toEqual(['conv-tagged', 'conv-tagged']);
-    expect(currentLogConversation()).toBeUndefined();
+    expect(logContext.current()).toBeUndefined();
   });
 
   it('should pass the summary of a delegation to both of its events', async () => {

@@ -9,7 +9,7 @@ import {
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
-import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
+import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
 import { PLANS_DIRECTORY_NAME, PLANS_NO_PROJECT_FOLDER } from '../constants/plans-directory.constant.js';
@@ -136,10 +136,11 @@ export class ExecuteAgentTurnUseCase {
     private readonly openWork: OpenWorkService,
     @Inject(IFileSystemPort)
     private readonly fileSystem: IFileSystemPort,
+    private readonly logContext: ConversationLogContextService,
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
-    return runInLogConversation(request.conversationId, () => this.executeTurn(request));
+    return this.logContext.run(request.conversationId, () => this.executeTurn(request));
   }
 
   /** Claims the work before anything else runs, so a second request for it finds it taken. */
@@ -154,7 +155,7 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private executeResumption(request: TurnRequest, resumption: Resumption): Promise<TurnResult> {
-    return runInLogConversation(request.conversationId, () => this.executeTurn({ ...request, prompt: '', resumable: true }, resumption));
+    return this.logContext.run(request.conversationId, () => this.executeTurn({ ...request, prompt: '', resumable: true }, resumption));
   }
 
   private noWork(workId: string): Promise<TurnResult> {

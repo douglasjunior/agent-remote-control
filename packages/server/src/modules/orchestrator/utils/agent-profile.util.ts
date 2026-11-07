@@ -16,14 +16,3 @@ export function profileForAllRoles(
 ): Record<string, AgentProfileSettings> {
   return Object.fromEntries(roles.map(role => [role, profile]));
 }
-
-export function withProfiles(
-  settings: AgentSettings,
-  roles: readonly string[],
-  profile: AgentProfileSettings,
-): AgentSettings {
-  return {
-    profiles: { ...settings.profiles, ...profileForAllRoles(roles, profile) },
-    updatedAt: new Date().toISOString(),
-  };
-}

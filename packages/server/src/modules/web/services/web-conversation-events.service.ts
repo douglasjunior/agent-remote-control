@@ -5,8 +5,8 @@ import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common
 
 import type { InterruptedWork } from '../../orchestrator/models/open-work.model.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
-import { abandonedQuestionNotice } from '../utils/conversation-entry.util.js';
 
+import { ConversationEntryService } from './conversation-entry.service.js';
 import { WebConnectionRegistryService } from './web-connection-registry.service.js';
 
 
@@ -23,6 +23,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
   constructor(
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
     private readonly registry: WebConnectionRegistryService,
+    private readonly entries: ConversationEntryService,
   ) {}
 
   /** Shutting down stops the turns: what they report on the way out is not what happened to the conversation. */
@@ -130,7 +131,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
       return;
     }
     await Promise.all(abandoned.map(question => this.publishEntry(conversationId, { ...question, closed: true })));
-    await this.publishEntry(conversationId, abandonedQuestionNotice(last.id));
+    await this.publishEntry(conversationId, this.entries.abandonedQuestionNotice(last.id));
   }
 
   private trackQuestion(conversationId: string, entry: ConversationEntry): void {

@@ -1,4 +1,3 @@
-import { entryAgent } from '../../conversations/entry-agent.js';
 import type { EntryItem } from '../../conversations/group-entries.js';
 import { cn } from '../../lib/utils.js';
 import { AttachmentChip } from '../prompt-input/attachment-chip.js';
@@ -68,6 +67,20 @@ function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded
       return <QuestionCard entry={entry} active={entry.id === openQuestionId} onAnswer={onAnswer} />;
     case 'notice':
       return <p className={cn('text-xs', NOTICE_STYLES[entry.level])}>{entry.text}</p>;
+  }
+}
+
+/** The role a feed item belongs to, which decides whether a focus on another agent dims it. User messages and notices belong to nobody. */
+function entryAgent(item: Exclude<EntryItem, { kind: 'squad' }>): string | undefined {
+  switch (item.kind) {
+    case 'activity': return item.steps[0]!.role;
+    case 'entry':
+      switch (item.entry.type) {
+        case 'agent_response':
+        case 'interim': return 'CEO';
+        case 'question': return item.entry.askerRole;
+        default: return undefined;
+      }
   }
 }
 

@@ -9,15 +9,8 @@ import type { TurnResult } from '../../orchestrator/models/turn-result.model.js'
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
-import {
-  activityEntry,
-  agentResponseEntry,
-  delegationEntry,
-  interimEntry,
-  noticeEntry,
-  questionEntry,
-} from '../utils/conversation-entry.util.js';
 
+import { ConversationEntryService } from './conversation-entry.service.js';
 import { WebConversationEventsService } from './web-conversation-events.service.js';
 
 
@@ -42,6 +35,7 @@ export class WebConversationTurnsService {
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
     @Inject(IUserQuestionPort) private readonly userQuestions: IUserQuestionPort,
     @Inject(IAgentTurnPort) private readonly agentTurn: IAgentTurnPort,
+    private readonly entries: ConversationEntryService,
   ) {}
 
   /** Turns what the agents report into entries, ending with the result of the turn. */
@@ -54,7 +48,7 @@ export class WebConversationTurnsService {
 
     const result = await execute({
       onActivity: (activity, role) => {
-        const entry = activityEntry(activity, role, turnId);
+        const entry = this.entries.activity(activity, role, turnId);
         if (entry) {
           publish(entry);
         }
@@ -64,25 +58,25 @@ export class WebConversationTurnsService {
         this.events.publishDraft(conversationId, text);
       },
       onDelegation: (event) => {
-        publish(delegationEntry(event));
+        publish(this.entries.delegation(event));
         this.publishInterrupted(conversationId);
       },
-      onInterimMessage: message => publish(interimEntry(message)),
+      onInterimMessage: message => publish(this.entries.interim(message)),
       onQuestion: (event) => {
         if (event.kind === 'asked') {
-          publish(questionEntry(event.prompt));
+          publish(this.entries.question(event.prompt));
         } else {
           void this.publishQuestionTimedOut(conversationId, turnId, event);
         }
       },
       onTranscription: ({ transcripts, warnings }) => {
-        warnings.forEach(warning => publish(noticeEntry('warning', warning)));
-        transcripts.forEach(({ name, text }) => publish(noticeEntry('info', `🎙️ ${name}: ${text}`)));
+        warnings.forEach(warning => publish(this.entries.notice('warning', warning)));
+        transcripts.forEach(({ name, text }) => publish(this.entries.notice('info', `🎙️ ${name}: ${text}`)));
       },
       onQueued: () => this.markQueued(conversationId, turnId),
     });
 
-    await this.events.publishEntry(conversationId, agentResponseEntry(result));
+    await this.events.publishEntry(conversationId, this.entries.agentResponse(result));
     this.end(conversationId, turnId);
     this.publishInterrupted(conversationId);
   }
@@ -128,8 +122,8 @@ export class WebConversationTurnsService {
       ? `assumed the recommended answer: ${answered.answer}`
       : 'no answer assumed, the agent decides how to proceed';
     return [
-      noticeEntry('warning', `No reply in ${minutes} min, ${asker.roleName}${project}: ${outcome}.`),
-      ...(next ? [questionEntry(next)] : []),
+      this.entries.notice('warning', `No reply in ${minutes} min, ${asker.roleName}${project}: ${outcome}.`),
+      ...(next ? [this.entries.question(next)] : []),
     ];
   }
 

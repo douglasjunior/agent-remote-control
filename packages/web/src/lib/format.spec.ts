@@ -26,10 +26,6 @@ describe('formatRelativeTime', () => {
   ])('formats %s', (iso, expected) => {
     expect(formatRelativeTime(iso, now)).toBe(expected);
   });
-
-  it('defaults to the current time', () => {
-    expect(formatRelativeTime(new Date().toISOString())).toBe('just now');
-  });
 });
 
 describe('formatDuration', () => {

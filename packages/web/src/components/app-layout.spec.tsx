@@ -76,6 +76,28 @@ describe('AppLayout', () => {
     expect(within(dialog).getAllByLabelText('Running')).toHaveLength(1);
   });
 
+  it('shows when each conversation last changed and keeps the label current', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      vi.setSystemTime(new Date(AT));
+      const { connection } = renderApp();
+      act(() => connection.emitEvent({
+        type: 'conversation.list',
+        conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+      }));
+      await user.click(screen.getByRole('button', { name: 'Show conversations' }));
+      const dialog = within(screen.getByRole('dialog'));
+      expect(dialog.getByText('just now')).toBeInTheDocument();
+
+      act(() => vi.advanceTimersByTime(5 * 60_000));
+
+      expect(dialog.getByText('5 minutes ago')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps the drawer closed on narrow screens until the toggle opens it', async () => {
     const user = userEvent.setup();
     renderApp();

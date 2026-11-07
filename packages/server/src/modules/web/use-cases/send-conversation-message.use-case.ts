@@ -7,10 +7,10 @@ import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { IPromptHistoryPort } from '../ports/prompt-history.port.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
-import { noticeEntry, userMessageEntry } from '../utils/conversation-entry.util.js';
 
 
 const TITLE_MAX_LENGTH = 60;
@@ -31,6 +31,7 @@ export class SendConversationMessageUseCase {
     @Inject(IPromptHistoryPort) private readonly promptHistory: IPromptHistoryPort,
     private readonly uploads: WebConversationUploadsService,
     private readonly turns: WebConversationTurnsService,
+    private readonly entries: ConversationEntryService,
   ) {}
 
   /**
@@ -41,12 +42,12 @@ export class SendConversationMessageUseCase {
     let turnId: string | undefined;
     try {
       if (!await this.isConfigured(conversationId)) {
-        await this.events.publishEntry(conversationId, noticeEntry('warning', NOT_CONFIGURED_NOTICE));
+        await this.events.publishEntry(conversationId, this.entries.notice('warning', NOT_CONFIGURED_NOTICE));
         return;
       }
       const files = await this.uploads.resolve(conversationId, attachments);
       if (!files) {
-        await this.events.publishEntry(conversationId, noticeEntry('error', INVALID_ATTACHMENT_NOTICE));
+        await this.events.publishEntry(conversationId, this.entries.notice('error', INVALID_ATTACHMENT_NOTICE));
         return;
       }
       await this.recordUserMessage(conversationId, text, attachments);
@@ -55,7 +56,7 @@ export class SendConversationMessageUseCase {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error processing web message for ${conversationId}: ${message}`);
-      await this.events.publishEntry(conversationId, noticeEntry('error', `An error occurred while processing your request: ${message}`));
+      await this.events.publishEntry(conversationId, this.entries.notice('error', `An error occurred while processing your request: ${message}`));
       if (turnId !== undefined) {
         this.turns.end(conversationId, turnId);
       }
@@ -69,7 +70,7 @@ export class SendConversationMessageUseCase {
 
   private async recordUserMessage(conversationId: string, text: string, attachments: readonly Attachment[]): Promise<void> {
     const isFirstMessage = !(await this.store.history(conversationId)).some(entry => entry.type === 'user_message');
-    await this.events.publishEntry(conversationId, userMessageEntry(text, attachments));
+    await this.events.publishEntry(conversationId, this.entries.userMessage(text, attachments));
     if (text !== '') {
       await this.promptHistory.append(text);
     }

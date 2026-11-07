@@ -2,7 +2,7 @@ import { ConsoleLogger, type LogLevel } from '@nestjs/common';
 import { appendFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { currentLogConversation } from '../utils/log-conversation.util.js';
+import type { ConversationLogContextService } from '../services/conversation-log-context.service.js';
 
 
 const FILE_PATTERN = /^server-(\d{4}-\d{2}-\d{2})\.jsonl$/;
@@ -24,6 +24,7 @@ export class FileConsoleLoggerAdapter extends ConsoleLogger {
   constructor(
     private readonly directory: string,
     private readonly retentionDays: number,
+    private readonly logContext: ConversationLogContextService,
   ) {
     super();
   }
@@ -44,7 +45,7 @@ export class FileConsoleLoggerAdapter extends ConsoleLogger {
 
   private record(messages: unknown[], context: string, level: LogLevel, stack: unknown): void {
     const now = new Date();
-    const conversationId = currentLogConversation();
+    const conversationId = this.logContext.current();
     const lines = messages.map(message => `${JSON.stringify({
       at: now.toISOString(),
       level,

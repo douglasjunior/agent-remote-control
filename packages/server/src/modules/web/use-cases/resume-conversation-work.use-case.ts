@@ -5,9 +5,9 @@ import type { TurnResult } from '../../orchestrator/models/turn-result.model.js'
 import type { RestoredWorkAnswers } from '../../orchestrator/models/user-question.model.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
-import { noticeEntry } from '../utils/conversation-entry.util.js';
 
 
 const WEB_USER_ID = 'web-local';
@@ -21,6 +21,7 @@ export class ResumeConversationWorkUseCase {
     @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
     private readonly events: WebConversationEventsService,
     private readonly turns: WebConversationTurnsService,
+    private readonly entries: ConversationEntryService,
   ) {}
 
   /** A repeated request finds the work taken and does nothing. */
@@ -51,7 +52,7 @@ export class ResumeConversationWorkUseCase {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error resuming work for ${conversationId}: ${message}`);
-      await this.events.publishEntry(conversationId, noticeEntry('error', `An error occurred while resuming the work: ${message}`));
+      await this.events.publishEntry(conversationId, this.entries.notice('error', `An error occurred while resuming the work: ${message}`));
       this.turns.end(conversationId, turnId);
     }
   }

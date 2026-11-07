@@ -6,8 +6,8 @@ import type { InterruptedWork } from '../../orchestrator/models/open-work.model.
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
-import { questionEntry } from '../utils/conversation-entry.util.js';
 
 
 @Injectable()
@@ -17,6 +17,7 @@ export class GetConversationHistoryUseCase {
     private readonly events: WebConversationEventsService,
     @Inject(IUserQuestionPort) private readonly userQuestions: IUserQuestionPort,
     @Inject(IAgentTurnPort) private readonly agentTurn: IAgentTurnPort,
+    private readonly entries: ConversationEntryService,
   ) {}
 
   async execute(conversationId: string): Promise<{
@@ -40,7 +41,7 @@ export class GetConversationHistoryUseCase {
     await this.events.settleOrphanedQuestions(conversationId, entry =>
       entry.text === waiting?.question.text && entry.askerRole === waiting.asker.role);
     if (waiting && !this.events.hasOpenQuestion(conversationId)) {
-      await this.events.publishEntry(conversationId, questionEntry(waiting));
+      await this.events.publishEntry(conversationId, this.entries.question(waiting));
     }
   }
 }

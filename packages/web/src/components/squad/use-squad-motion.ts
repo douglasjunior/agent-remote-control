@@ -3,8 +3,12 @@ import { useEffect, useRef, type RefObject } from 'react';
 import type { TeamMember } from '../../conversations/team-state.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 
-import { lensCenter } from './lens-center.js';
 
+/** The vertical center of an element, in pixels from the top of the container. */
+function lensCenter(container: Element, lens: Element): number {
+  const box = lens.getBoundingClientRect();
+  return box.top + box.height / 2 - container.getBoundingClientRect().top;
+}
 
 const COORDINATOR = 'CEO';
 const PULSE_INTERVAL_MS = 1150;

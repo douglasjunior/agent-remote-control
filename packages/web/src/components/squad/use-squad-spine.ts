@@ -1,7 +1,10 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 
-import { lensCenter } from './lens-center.js';
-
+/** The vertical center of an element, in pixels from the top of the container. */
+function lensCenter(container: Element, lens: Element): number {
+  const box = lens.getBoundingClientRect();
+  return box.top + box.height / 2 - container.getBoundingClientRect().top;
+}
 
 /**
  * Draws the neutral vertical spine through the centers of the lenses, from the first to the last. The spine implies no

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
@@ -106,6 +106,19 @@ describe('AgentProfilesService', () => {
 
       expect(Object.keys(settings.profiles)).toEqual(registry.listRoles());
       await expect(store.load('conv')).resolves.toEqual(settings);
+    });
+
+    it('should stamp the settings with the current time', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-03-04T05:06:07.000Z'));
+
+      try {
+        const settings = await service.save('conv', undefined, profile);
+
+        expect(settings.updatedAt).toBe('2026-03-04T05:06:07.000Z');
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('should change only the given roles and keep the others from the current settings', async () => {

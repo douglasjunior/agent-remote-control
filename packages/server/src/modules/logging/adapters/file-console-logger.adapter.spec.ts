@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { runInLogConversation } from '../utils/log-conversation.util.js';
+import { ConversationLogContextService } from '../services/conversation-log-context.service.js';
 
 import { FileConsoleLoggerAdapter } from './file-console-logger.adapter.js';
 
@@ -11,6 +11,7 @@ import { FileConsoleLoggerAdapter } from './file-console-logger.adapter.js';
 describe('FileConsoleLoggerAdapter', () => {
   let directory: string;
   let logger: FileConsoleLoggerAdapter;
+  const logContext = new ConversationLogContextService();
   const file = () => join(directory, 'server-2026-03-10.jsonl');
   const records = () => readFileSync(file(), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
 
@@ -20,7 +21,7 @@ describe('FileConsoleLoggerAdapter', () => {
     vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     vi.spyOn(process.stderr, 'write').mockReturnValue(true);
     directory = join(mkdtempSync(join(tmpdir(), 'arc-logs-')), 'logs');
-    logger = new FileConsoleLoggerAdapter(directory, 14);
+    logger = new FileConsoleLoggerAdapter(directory, 14, logContext);
   });
 
   afterEach(() => {
@@ -39,7 +40,7 @@ describe('FileConsoleLoggerAdapter', () => {
   });
 
   it('records the conversation the message was logged in', () => {
-    runInLogConversation('web-1', () => logger.warn('careful', 'Context'));
+    logContext.run('web-1', () => logger.warn('careful', 'Context'));
 
     expect(records()[0]).toMatchObject({ level: 'warn', conversationId: 'web-1', message: 'careful' });
   });
@@ -90,7 +91,7 @@ describe('FileConsoleLoggerAdapter', () => {
 
   it('keeps working when the file cannot be written', () => {
     writeFileSync(join(directory, '..', 'blocked'), '');
-    const blocked = new FileConsoleLoggerAdapter(join(directory, '..', 'blocked'), 14);
+    const blocked = new FileConsoleLoggerAdapter(join(directory, '..', 'blocked'), 14, logContext);
 
     expect(() => blocked.log('hello', 'Context')).not.toThrow();
     expect(process.stderr.write).toHaveBeenCalledWith(expect.stringContaining('log_file_write_failed'));

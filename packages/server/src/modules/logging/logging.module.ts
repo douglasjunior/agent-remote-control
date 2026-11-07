@@ -6,6 +6,7 @@ import { DataDirectoryService } from '../paths/services/data-directory.service.j
 
 import { FileConsoleLoggerAdapter } from './adapters/file-console-logger.adapter.js';
 import { IAppLoggerPort } from './ports/app-logger.port.js';
+import { ConversationLogContextService } from './services/conversation-log-context.service.js';
 
 
 const DEFAULT_RETENTION_DAYS = 14;
@@ -18,12 +19,14 @@ function retentionDays(): number {
 @Module({
   imports: [PathsModule],
   providers: [
+    ConversationLogContextService,
     {
       provide: IAppLoggerPort,
-      inject: [DataDirectoryService],
-      useFactory: (dataDirectory: DataDirectoryService) => new FileConsoleLoggerAdapter(join(dataDirectory.resolve(), 'logs'), retentionDays()),
+      inject: [DataDirectoryService, ConversationLogContextService],
+      useFactory: (dataDirectory: DataDirectoryService, logContext: ConversationLogContextService) =>
+        new FileConsoleLoggerAdapter(join(dataDirectory.resolve(), 'logs'), retentionDays(), logContext),
     },
   ],
-  exports: [IAppLoggerPort],
+  exports: [IAppLoggerPort, ConversationLogContextService],
 })
 export class LoggingModule {}

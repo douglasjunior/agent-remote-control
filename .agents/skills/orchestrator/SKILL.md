@@ -95,10 +95,9 @@ Configuration of a conversation: `profiles` (role → `AgentProfileSettings`) an
 `effortId` and `effortName`. `modelId === null` indicates an agent without published models;
 `effortId === null`, a model without effort levels.
 
-`utils/agent-profile.util.ts` is the single access point to the profiles: `resolveProfile(settings, role)`
-returns the role's profile, falling back to the `CEO` profile; `withProfiles(settings, roles, profile)`
-returns settings with the profile applied to those roles and a renewed `updatedAt`;
-`profileForAllRoles(roles, profile)` builds the role → profile record.
+`utils/agent-profile.util.ts` holds the pure rules on profiles: `resolveProfile(settings, role)`
+returns the role's profile, falling back to the `CEO` profile, and `profileForAllRoles(roles, profile)` builds the
+role → profile record. Stamping `updatedAt` belongs to `AgentProfilesService.save`, which reads the clock.
 
 ### `AgentOption` and `AgentRoleProfile`
 
@@ -468,7 +467,7 @@ they return an empty list. `resolveAgent(settings)` returns the CEO profile's ag
 - `current(conversationId)`: the conversation's settings, else `loadMostRecent()`, else `null`;
 - `ensure(conversationId)`: `'configured'` when the conversation has settings, `'inherited'` after copying the most recent settings into it (renewed `updatedAt`), `'missing'` when nothing was ever saved;
 - `list(conversationId)`: one `AgentRoleProfile` per role from `IAgentRegistryPort.listRoles()`, with the profile of `current` and `agentAvailable`. A profile whose agent is not installed stays untouched and execution keeps using it, so its turns fail at `connect()` with the agent's CLI-not-found error;
-- `listRoles()` and `save(conversationId, roles | undefined, profile)`: `withProfiles` applies the profile to the roles (every role when `undefined`) over `current`, saves and returns the settings.
+- `listRoles()` and `save(conversationId, roles | undefined, profile)`: applies the profile to the roles (every role when `undefined`) over `current`, stamps `updatedAt` with the current time, saves and returns the settings.
 
 `TranscribeAudioAttachmentsUseCase` `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`: with the port disabled or without audio it returns the input untouched. Each audio attachment (`audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned. It is internal to the orchestrator and no channel calls it: `ExecuteAgentTurnUseCase` runs it on every turn before any agent sees the message, so a message reaches the CEO (or steers it) with the transcript in the prompt and without the audio file, whichever channel sent it. The same happens to the attachments of each answer to an agent's question, when the answer is consumed. `TurnRequest.onTranscription({ transcripts, warnings })` tells the channel what was transcribed and what could not be, before the agents run. A message that is left with attachments and no text gets `ATTACHMENTS_ONLY_PROMPT` as its prompt.
 

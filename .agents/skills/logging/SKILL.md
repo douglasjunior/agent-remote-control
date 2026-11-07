@@ -16,7 +16,7 @@ description: >
 
 - Log with Nest's `new Logger(ClassName.name)`. Do not use `console.*` or a logging library directly: `main.ts` installs the provider bound to `IAppLoggerPort` with `app.useLogger`, and every `Logger` follows it.
 - To change the provider, bind another `LoggerService` to `IAppLoggerPort` in `logging.module.ts`. Nothing else changes.
-- `runInLogConversation(conversationId, work)` tags everything logged inside `work`, across awaits, through `AsyncLocalStorage`. It wraps `ExecuteAgentTurnUseCase.execute` for every channel and each web command with a `conversationId`. A provider reads the tag with `currentLogConversation()`. Do not repeat the id by hand in new log messages.
+- `ConversationLogContextService.run(conversationId, work)` (`logging/services/conversation-log-context.service.ts`, exported by `LoggingModule`) tags everything logged inside `work`, across awaits, through `AsyncLocalStorage`. It wraps `ExecuteAgentTurnUseCase.execute` for every channel and each web command with a `conversationId`. A provider reads the tag with `current()`. Do not repeat the id by hand in new log messages.
 - What the user wrote stays out of log messages: log the command type or a short preview at most. Commands are logged by type.
 - A message that carries a secret goes through a context in `CONSOLE_ONLY_CONTEXTS`, because log files get shared. The startup access token does.
 

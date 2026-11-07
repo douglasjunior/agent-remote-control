@@ -1,7 +1,7 @@
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
-import { questionEntry } from '../utils/conversation-entry.util.js';
 
 import { AnswerConversationQuestionUseCase } from './answer-conversation-question.use-case.js';
 import { ResumeConversationWorkUseCase } from './resume-conversation-work.use-case.js';
@@ -13,12 +13,13 @@ const prompt: QuestionPrompt = { asker, question: { text: 'Which?', options: ['a
 function setup() {
   const harness = createWebHarness();
   harness.store.seed('web-1');
-  const resumeWork = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns);
+  const resumeWork = new ResumeConversationWorkUseCase(harness.agentTurn, harness.workspace, harness.events, harness.turns, new ConversationEntryService());
   const useCase = new AnswerConversationQuestionUseCase(
     harness.questions,
     harness.events,
     resumeWork,
     new WebConversationUploadsService(harness.workspace, harness.uploads),
+    new ConversationEntryService(),
   );
   return { ...harness, useCase, types: () => (harness.store.histories.get('web-1') ?? []).map(entry => entry.type) };
 }
@@ -113,7 +114,7 @@ describe('AnswerConversationQuestionUseCase', () => {
 
   describe('closing the open question', () => {
     const openQuestion = async (harness: ReturnType<typeof setup>) => {
-      const entry = questionEntry(prompt);
+      const entry = new ConversationEntryService().question(prompt);
       await harness.events.publishEntry('web-1', entry);
       return entry;
     };

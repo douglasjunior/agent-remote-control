@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 
-import { profileForAllRoles, resolveProfile, withProfiles } from './agent-profile.util.js';
+import { profileForAllRoles, resolveProfile } from './agent-profile.util.js';
 
 
 const profile = (agentId: string): AgentProfileSettings => ({
@@ -40,20 +40,6 @@ describe('agent-profile.util', () => {
         CEO: profile('copilot'),
         GIT_OPS: profile('copilot'),
       });
-    });
-  });
-
-  describe('withProfiles', () => {
-    it('should apply the profile only to the given roles and refresh updatedAt', () => {
-      const updated = withProfiles(settings, ['CEO', 'GIT_OPS'], profile('copilot'));
-
-      expect(updated.profiles).toEqual({
-        CEO: profile('copilot'),
-        GIT_OPS: profile('copilot'),
-        DEVELOPER: profile('agy'),
-      });
-      expect(updated.updatedAt).not.toBe(settings.updatedAt);
-      expect(settings.profiles.CEO).toEqual(profile('claude'));
     });
   });
 });

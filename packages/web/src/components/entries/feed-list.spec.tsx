@@ -175,6 +175,30 @@ describe('FeedList', () => {
     expect(screen.getByRole('button', { name: /Developer/ }).closest('[data-dimmed]')).toHaveAttribute('data-dimmed', 'false');
   });
 
+  it('dims an interim message and the question of another agent, and keeps the question of the focused one', () => {
+    renderFeed([
+      { id: 'i1', at: AT, type: 'interim', text: 'working on it' },
+      { id: 'q1', at: AT, type: 'question', askerRole: 'PRODUCT_OWNER', askerRoleName: 'Product Owner', text: 'Which scope?', options: [], number: 1, total: 1, closed: true },
+      { id: 'q2', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which branch?', options: [], number: 1, total: 1, closed: true },
+    ], '', 'DEVELOPER');
+
+    const dimmed = (text: string) => screen.getByText(text).closest('[data-dimmed]')!.getAttribute('data-dimmed');
+    expect(dimmed('working on it')).toBe('true');
+    expect(dimmed('Which scope?')).toBe('true');
+    expect(dimmed('Which branch?')).toBe('false');
+  });
+
+  it('attributes an activity group to the role of its first step', () => {
+    renderFeed([
+      { id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'Read file', status: 'completed' },
+      { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'a notice' },
+      { id: 'x2', at: AT, type: 'tool', role: 'DEVELOPER', title: 'Run tests', status: 'completed' },
+    ], '', 'DEVELOPER');
+
+    const flags = Array.from(document.querySelectorAll('[data-dimmed]'), element => element.getAttribute('data-dimmed'));
+    expect(flags).toEqual(['true', 'false', 'false']);
+  });
+
   it('dims nothing without a focus', () => {
     renderFeed([{ id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'plain' }]);
 

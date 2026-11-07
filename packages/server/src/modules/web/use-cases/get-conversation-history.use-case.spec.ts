@@ -1,5 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 
+import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
 import { GetConversationHistoryUseCase } from './get-conversation-history.use-case.js';
@@ -33,7 +34,7 @@ describe('GetConversationHistoryUseCase', () => {
     store.seed('web-1');
     await store.upsertEntry('web-1', question);
 
-    const { entries, state } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn).execute('web-1');
+    const { entries, state } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1');
 
     expect(entries).toEqual([
       { ...question, closed: true },
@@ -49,7 +50,7 @@ describe('GetConversationHistoryUseCase', () => {
     questions.prompt = prompt;
     agentTurn.interruptedWork = [work];
 
-    const result = await new GetConversationHistoryUseCase(store, events, questions, agentTurn).execute('web-1');
+    const result = await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1');
 
     expect(result.entries).toEqual([question]);
     expect(result.interrupted).toEqual([work]);
@@ -61,7 +62,7 @@ describe('GetConversationHistoryUseCase', () => {
     await store.upsertEntry('web-1', { ...question, closed: true });
     questions.prompt = { ...prompt, question: { text: 'Next?', options: [] }, number: 2, total: 2 };
 
-    const { entries } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn).execute('web-1');
+    const { entries } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1');
 
     expect(entries).toEqual([{ ...question, closed: true }, expect.objectContaining({ type: 'question', text: 'Next?', closed: false })]);
   });
