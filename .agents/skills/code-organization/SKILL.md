@@ -98,7 +98,7 @@ clock, no randomness, no injected state), that **two or more classes share** and
 Justified, because several classes need the same non-trivial rule and it must not drift:
 
 - `protocol-tag.util.ts` (`parseTagAttributes`, `readTagBody`, `findCodeSpans`): the tag grammar read by
-  `QuestionParserService`, `DelegationDetectorService` and the visible-reply reader.
+  `QuestionParserService`, `DelegationDetectorService` and `AgentProtocolService`.
 - `agent-profile.util.ts` (`resolveProfile`, `withProfiles`): the single fallback rule from a role to its
   profile, used by the orchestrator, the settings store and the Discord formatter.
 - `conversation-entry.util.ts` (`questionEntry`, `submissionEntries`, `noticeEntry`): the mapping from

@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { extname } from 'node:path';
 
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { ISpeechToTextPort } from '../../speech-to-text/ports/speech-to-text.port.js';
 import type { AudioTranscript, AudioTranscriptionResult } from '../models/audio-transcription.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
-import { isAudioAttachment } from '../utils/audio-attachment.util.js';
 
+
+const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.ogg', '.oga', '.opus', '.flac', '.m4a', '.aac']);
 
 export type TranscribeAudioAttachmentsInput = {
   readonly prompt: string;
@@ -21,7 +23,7 @@ export class TranscribeAudioAttachmentsUseCase {
 
   async execute(input: TranscribeAudioAttachmentsInput): Promise<AudioTranscriptionResult> {
     const attachments = input.attachments ?? [];
-    if (!this.speechToText.isEnabled() || !attachments.some(isAudioAttachment)) {
+    if (!this.speechToText.isEnabled() || !attachments.some(attachment => this.isAudio(attachment))) {
       return { prompt: input.prompt, attachments, transcripts: [], warnings: [] };
     }
 
@@ -30,7 +32,7 @@ export class TranscribeAudioAttachmentsUseCase {
     const remaining: TurnAttachment[] = [];
 
     for (const attachment of attachments) {
-      if (!isAudioAttachment(attachment)) {
+      if (!this.isAudio(attachment)) {
         remaining.push(attachment);
         continue;
       }
@@ -51,6 +53,11 @@ export class TranscribeAudioAttachmentsUseCase {
     }
 
     return { prompt: this.composePrompt(input.prompt, transcripts), attachments: remaining, transcripts, warnings };
+  }
+
+  private isAudio(attachment: TurnAttachment): boolean {
+    const contentType = attachment.contentType.toLowerCase();
+    return contentType.startsWith('audio/') || AUDIO_EXTENSIONS.has(extname(attachment.name).toLowerCase());
   }
 
   private composePrompt(typedText: string, transcripts: readonly AudioTranscript[]): string {

@@ -1,12 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import {
   PromptCancelledError,
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
+import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { runInLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
@@ -57,15 +59,14 @@ import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { resolveProfile } from '../utils/agent-profile.util.js';
-import { resolveAttachmentPaths } from '../utils/attachment-path.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
-import { visibleReply } from '../utils/visible-reply.util.js';
 
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
 const UNSET_LABEL = 'default';
+const FILE_URL_PREFIX = 'file://';
 const TIMED_OUT_NOTE = '<note>The user was absent and did not reply in time. Answers with status="timed_out" are not the user\'s own: the recommended option was assumed for now, and an answer with no option had no recommendation, so decide how to proceed yourself.</note>';
 const LOG_PREVIEW_LENGTH = 100;
 
@@ -133,6 +134,8 @@ export class ExecuteAgentTurnUseCase {
     private readonly questionQueue: UserQuestionQueueService,
     private readonly audioTranscription: TranscribeAudioAttachmentsUseCase,
     private readonly openWork: OpenWorkService,
+    @Inject(IFileSystemPort)
+    private readonly fileSystem: IFileSystemPort,
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
@@ -1109,7 +1112,7 @@ export class ExecuteAgentTurnUseCase {
       const stream = this.agentProtocol.stream({
         onActivity: activity => request.onActivity?.(activity, role),
         // Only the CEO talks to the user, so the answers other agents write stay out of the draft.
-        ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(visibleReply(answer)) }),
+        ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(this.agentProtocol.visibleReply(answer)) }),
       });
       unsubscribeActivity = agentPort.onActivity(activity => stream.read(activity));
 
@@ -1223,7 +1226,7 @@ export class ExecuteAgentTurnUseCase {
     workspacePath: string;
     conversationId: string;
   }): Promise<TurnResult> {
-    const attachments = resolveAttachmentPaths(input.attachments, input.workspacePath);
+    const attachments = this.resolveAttachmentPaths(input.attachments, input.workspacePath);
     return {
       response: input.response,
       status: input.status,
@@ -1234,6 +1237,31 @@ export class ExecuteAgentTurnUseCase {
       usage: await input.ceoPort?.getLastRoundUsage().catch(() => undefined),
       ...(attachments.length > 0 ? { attachments } : {}),
     };
+  }
+
+  /** Resolves the attachment paths the CEO wrote, keeping only the regular files that exist, without duplicates. */
+  private resolveAttachmentPaths(paths: readonly string[], baseDir: string): string[] {
+    const resolved = new Set<string>();
+    for (const rawPath of paths) {
+      const path = this.toFilePath(rawPath.trim());
+      const absolutePath = isAbsolute(path) ? path : resolve(baseDir, path);
+      if (this.fileSystem.isReadableFile(absolutePath)) {
+        resolved.add(absolutePath);
+      }
+    }
+    return [...resolved];
+  }
+
+  /** A file URL percent-encodes characters such as spaces, which the file name on disk does not have. */
+  private toFilePath(path: string): string {
+    if (!path.startsWith(FILE_URL_PREFIX)) {
+      return path;
+    }
+    try {
+      return fileURLToPath(path);
+    } catch {
+      return path.slice(FILE_URL_PREFIX.length);
+    }
   }
 
   private async buildAgentInfo(agentPort: IAgentPort, role: string, conversationId: string): Promise<TurnAgentInfo> {

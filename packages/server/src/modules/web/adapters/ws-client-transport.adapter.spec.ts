@@ -63,6 +63,35 @@ describe('WsClientTransportAdapter', () => {
     expect(connections).toHaveLength(0);
   });
 
+  it('rejects the same hostname on another port and a malformed origin', async () => {
+    expect(await outcome(open('/ws', `http://127.0.0.1:${port + 1}`))).toBe('http-403');
+    expect(await outcome(open('/ws', 'not a url'))).toBe('http-403');
+  });
+
+  describe('the list in WEB_ALLOWED_ORIGINS', () => {
+    const restartWith = async (raw: string | undefined) => {
+      await adapter.onModuleDestroy();
+      vi.stubEnv('WEB_ALLOWED_ORIGINS', raw);
+      adapter = new WsClientTransportAdapter({ httpAdapter: { getHttpServer: () => httpServer } } as HttpAdapterHost);
+      adapter.onModuleInit();
+    };
+
+    it('ignores spaces, empty entries and trailing slashes', async () => {
+      await restartWith(' http://localhost:5173/ , ,http://other.test ');
+
+      expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('open');
+      expect(await outcome(open('/ws', 'http://other.test'))).toBe('open');
+      expect(await outcome(open('/ws', 'http://evil.test'))).toBe('http-403');
+    });
+
+    it('lets only the same origin in when it is unset', async () => {
+      await restartWith(undefined);
+
+      expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('http-403');
+      expect(await outcome(open('/ws', `http://127.0.0.1:${port}`))).toBe('open');
+    });
+  });
+
   it('rejects an upgrade without an origin', async () => {
     expect(await outcome(open('/ws'))).toBe('http-403');
   });

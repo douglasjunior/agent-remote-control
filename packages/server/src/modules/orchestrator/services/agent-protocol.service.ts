@@ -3,7 +3,11 @@ import { Injectable } from '@nestjs/common';
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import { FINAL_RESPONSE_CLOSE, FINAL_RESPONSE_OPEN } from '../constants/final-response.constant.js';
 import type { TurnActivity } from '../models/turn-activity.model.js';
+import { findCodeSpans, isInCode } from '../utils/protocol-tag.util.js';
 
+
+const PROTOCOL_TAGS = ['delegate', 'question', 'attachment', 'user_language'] as const;
+const OPENING_TAG = new RegExp(String.raw`<(${PROTOCOL_TAGS.join('|')})\b[^>]*>`, 'gi');
 
 type ThoughtActivity = AgentActivity & { kind: 'thought' };
 
@@ -53,6 +57,41 @@ export class AgentProtocolService {
   /** The answer in what the agent wrote during a prompt. */
   finalResponse(written: string): string {
     return this.answerOf([written], false);
+  }
+
+  /**
+   * The text of a CEO response that the user reads, from a response that may still be streaming: the protocol
+   * tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and their bodies are left out, and so is
+   * a tag still being typed, which stays out until it is complete. Tags inside Markdown code are quoted markup
+   * and stay.
+   */
+  visibleReply(response: string): string {
+    const codeSpans = findCodeSpans(response);
+    const tags = new RegExp(OPENING_TAG.source, OPENING_TAG.flags);
+    let visible = '';
+    let cursor = 0;
+
+    for (let tag = tags.exec(response); tag; tag = tags.exec(response)) {
+      if (isInCode(tag.index, codeSpans)) {
+        continue;
+      }
+      visible += response.slice(cursor, tag.index);
+      const opening = tag.index + tag[0].length;
+      if (tag[0].endsWith('/>')) {
+        cursor = opening;
+        continue;
+      }
+      const closing = `</${tag[1]!.toLowerCase()}>`;
+      const close = response.toLowerCase().indexOf(closing, opening);
+      if (close < 0) {
+        return this.tidy(visible);
+      }
+      cursor = close + closing.length;
+      tags.lastIndex = cursor;
+    }
+
+    visible += response.slice(cursor);
+    return this.tidy(this.withoutTagBeingTyped(visible, findCodeSpans(visible)));
   }
 
   /**
@@ -142,5 +181,25 @@ export class AgentProtocolService {
       }
     }
     return text;
+  }
+
+  private withoutTagBeingTyped(text: string, codeSpans: ReturnType<typeof findCodeSpans>): string {
+    const start = text.lastIndexOf('<');
+    if (start < 0 || isInCode(start, codeSpans)) {
+      return text;
+    }
+    const typed = text.slice(start + 1);
+    if (typed.includes('>')) {
+      return text;
+    }
+    const name = /^[A-Za-z_]*/.exec(typed)![0].toLowerCase();
+    const rest = typed.slice(name.length);
+    const stillTypingName = rest === '' && PROTOCOL_TAGS.some(tag => tag.startsWith(name));
+    const typingAttributes = PROTOCOL_TAGS.some(tag => tag === name) && /^[\s/]/.test(rest);
+    return stillTypingName || typingAttributes ? text.slice(0, start) : text;
+  }
+
+  private tidy(text: string): string {
+    return text.replace(/\n{3,}/g, '\n\n').trim();
   }
 }

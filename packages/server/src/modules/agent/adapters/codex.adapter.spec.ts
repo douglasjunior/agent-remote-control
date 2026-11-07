@@ -227,6 +227,72 @@ describe('CodexAdapter', () => {
       expect(proc.kill).toHaveBeenCalled();
     });
 
+    describe('rate limits', () => {
+      const quotaOf = async (result: unknown) => {
+        const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
+        spawn.mockReturnValueOnce(fakeAppServer(respond({ result })) as never);
+        return adapter.getQuota();
+      };
+
+      it('should map the primary and secondary windows', async () => {
+        const quota = await quotaOf({
+          rateLimits: {
+            primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1_793_413_800 },
+            secondary: { usedPercent: 60.5, windowDurationMins: 10_080, resetsAt: 1_793_916_000 },
+          },
+        });
+
+        expect(quota?.groups).toEqual([
+          {
+            name: 'Codex',
+            buckets: [
+              {
+                id: 'primary',
+                name: '5h limit',
+                window: '5h',
+                remainingFraction: 0.75,
+                resetTime: '2026-10-31T02:30:00.000Z',
+              },
+              {
+                id: 'secondary',
+                name: '7d limit',
+                window: '7d',
+                remainingFraction: 0.395,
+                resetTime: '2026-11-05T22:00:00.000Z',
+              },
+            ],
+          },
+        ]);
+      });
+
+      it('should name windows by minutes and clamp the fraction', async () => {
+        const quota = await quotaOf({ rateLimits: { primary: { usedPercent: 130, windowDurationMins: 45 } } });
+
+        expect(quota?.groups[0]?.buckets[0]).toEqual({
+          id: 'primary',
+          name: '45m limit',
+          window: '45m',
+          remainingFraction: 0,
+          resetTime: undefined,
+        });
+      });
+
+      it('should fall back to the window key without a duration', async () => {
+        const quota = await quotaOf({ rateLimits: { secondary: { usedPercent: 10, windowDurationMins: null } } });
+
+        expect(quota?.groups[0]?.buckets[0]).toMatchObject({ name: 'secondary limit', window: 'secondary' });
+      });
+
+      it.each([
+        ['null windows', { rateLimits: { primary: null, secondary: null } }],
+        ['a window without a numeric usedPercent', { rateLimits: { primary: { usedPercent: 'x' } } }],
+        ['rateLimits that is not an object', { rateLimits: [] }],
+        ['no rateLimits', {}],
+      ])('should return undefined for %s', async (_case, result) => {
+        expect(await quotaOf(result)).toBeUndefined();
+      });
+    });
+
     it('should prefer CODEX_PATH over the PATH lookup', async () => {
       vi.stubEnv('CODEX_PATH', '/opt/codex');
       const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));

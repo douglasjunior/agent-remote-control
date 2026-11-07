@@ -5,10 +5,11 @@ import { extname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import type { IWorkspaceUploadPort, UploadWriter } from '../ports/workspace-upload.port.js';
 import { IWorkspacePort } from '../ports/workspace.port.js';
-import { sanitizeUploadFileName } from '../utils/upload-file-name.util.js';
 
 
 const MAX_NAME_ATTEMPTS = 1_000;
+const MAX_NAME_LENGTH = 120;
+const FALLBACK_NAME = 'file';
 
 /**
  * Writes uploads to a hidden temporary file in the target directory and publishes it with a hard link,
@@ -24,7 +25,7 @@ export class LocalWorkspaceUploadAdapter implements IWorkspaceUploadPort {
     await mkdir(target, { recursive: true });
     const temporaryPath = join(target, `.${randomUUID()}.part`);
     const handle = await open(temporaryPath, 'wx');
-    const fileName = sanitizeUploadFileName(name);
+    const fileName = this.sanitizeFileName(name);
 
     return {
       append: async (bytes) => {
@@ -52,6 +53,25 @@ export class LocalWorkspaceUploadAdapter implements IWorkspaceUploadPort {
     } catch {
       return null;
     }
+  }
+
+  /** Keeps the last path segment, drops control and reserved characters and leading dots, and bounds the length keeping the extension. */
+  private sanitizeFileName(name: string): string {
+    const lastSegment = name.split(/[\\/]/).at(-1) ?? '';
+    const cleaned = lastSegment
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, '_')
+      .trim()
+      .replace(/^\.+/, '');
+    if (cleaned === '') {
+      return FALLBACK_NAME;
+    }
+    if (cleaned.length <= MAX_NAME_LENGTH) {
+      return cleaned;
+    }
+    const extensionStart = cleaned.lastIndexOf('.');
+    const extension = extensionStart > 0 && cleaned.length - extensionStart <= 16 ? cleaned.slice(extensionStart) : '';
+    return cleaned.slice(0, MAX_NAME_LENGTH - extension.length) + extension;
   }
 
   private async publish(temporaryPath: string, directory: string, fileName: string): Promise<string> {

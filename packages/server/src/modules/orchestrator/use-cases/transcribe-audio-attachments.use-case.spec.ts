@@ -72,6 +72,30 @@ describe('TranscribeAudioAttachmentsUseCase', () => {
     expect(deleted).toEqual(['/tmp/voice.ogg']);
   });
 
+  it.each([
+    ['an audio content type', 'voice-message', 'audio/ogg'],
+    ['an audio content type in capitals', 'note', 'AUDIO/MPEG'],
+    ['an audio extension with a generic content type', 'Memo.M4A', 'application/octet-stream'],
+  ])('should treat a file with %s as audio', async (_case, name, contentType) => {
+    speechToText.transcripts[`/tmp/${name}`] = 'spoken';
+
+    const result = await useCase.execute({ prompt: '', attachments: [attachment(name, contentType)] });
+
+    expect(result).toMatchObject({ prompt: 'spoken', attachments: [] });
+  });
+
+  it.each([
+    ['an image', 'diagram.png', 'image/png'],
+    ['a video', 'clip.mp4', 'video/mp4'],
+  ])('should leave %s untouched', async (_case, name, contentType) => {
+    const file = attachment(name, contentType);
+
+    const result = await useCase.execute({ prompt: 'look', attachments: [file] });
+
+    expect(result.attachments).toEqual([file]);
+    expect(speechToText.calls).toEqual([]);
+  });
+
   it('should append the transcript to the typed text and keep non-audio attachments', async () => {
     speechToText.transcripts['/tmp/voice.ogg'] = 'fix the bug';
     const image = attachment('shot.png', 'image/png');

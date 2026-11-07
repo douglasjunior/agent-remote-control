@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -56,6 +57,42 @@ describe('LocalWorkspaceUploadAdapter', () => {
 
     expect(await writer.commit()).toBe('up/outside.txt');
     expect(existsSync(join(baseDirectory, '..', 'outside.txt'))).toBe(false);
+  });
+
+  describe('the stored file name', () => {
+    const storedName = async (name: string): Promise<string> => {
+      const writer = await uploads.begin(`names/${randomUUID()}`, name);
+      await writer.append(bytes('x'));
+      return (await writer.commit()).split('/').at(-1)!;
+    };
+
+    it.each([
+      ['report.pdf', 'report.pdf'],
+      ['my photo (1).png', 'my photo (1).png'],
+      ['../../etc/passwd', 'passwd'],
+      ['C:\\Users\\me\\a.txt', 'a.txt'],
+      ['.env', 'env'],
+      ['..hidden.txt', 'hidden.txt'],
+      ['a<b>:"c|d?e*.txt', 'a_b___c_d_e_.txt'],
+      ['tab\there.txt', 'tab_here.txt'],
+      ['   ', 'file'],
+      ['', 'file'],
+      ['folder/', 'file'],
+    ])('turns %j into %j', async (name, expected) => {
+      expect(await storedName(name)).toBe(expected);
+    });
+
+    it('shortens a long name and keeps the extension', async () => {
+      const stored = await storedName(`${'a'.repeat(200)}.png`);
+
+      expect(stored).toHaveLength(120);
+      expect(stored.endsWith('.png')).toBe(true);
+    });
+
+    it('shortens a long name that has no usable extension', async () => {
+      expect(await storedName('a'.repeat(200))).toHaveLength(120);
+      expect(await storedName(`${'a'.repeat(200)}.${'b'.repeat(30)}`)).toHaveLength(120);
+    });
   });
 
   it('leaves nothing behind when the upload is aborted', async () => {

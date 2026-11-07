@@ -264,6 +264,80 @@ describe('AntigravityAdapter', () => {
       });
     });
 
+    describe('usage output', () => {
+      const sample = {
+        conversation_id: '',
+        status: 'SUCCESS',
+        response: 'text',
+        command: {
+          name: 'usage',
+          data: {
+            description: 'Shared limits',
+            groups: [
+              {
+                name: 'Gemini Models',
+                description: 'Gemini Flash, Gemini Pro',
+                buckets: [
+                  {
+                    id: 'gemini-weekly',
+                    name: 'Weekly Limit Remaining',
+                    description: 'resets soon',
+                    window: 'weekly',
+                    remaining_fraction: 0.94,
+                    reset_time: '2026-10-12T23:32:42Z',
+                  },
+                  { id: 'bad', name: 'Missing fields' },
+                ],
+              },
+              { description: 'no name' },
+              { name: 'No buckets' },
+            ],
+          },
+        },
+      };
+
+      const quotaOf = async (output: string) => {
+        const { adapter, runner } = buildAdapter();
+        vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
+        return adapter.getQuota();
+      };
+
+      it('should map groups and buckets into the standard quota shape', async () => {
+        expect(await quotaOf(JSON.stringify(sample))).toEqual({
+          description: 'Shared limits',
+          groups: [
+            {
+              name: 'Gemini Models',
+              description: 'Gemini Flash, Gemini Pro',
+              buckets: [
+                {
+                  id: 'gemini-weekly',
+                  name: 'Weekly Limit Remaining',
+                  description: 'resets soon',
+                  window: 'weekly',
+                  remainingFraction: 0.94,
+                  resetTime: '2026-10-12T23:32:42Z',
+                },
+              ],
+            },
+          ],
+        });
+      });
+
+      it('should ignore log noise around the JSON document', async () => {
+        const quota = await quotaOf(`warn: x\n${JSON.stringify(sample)}\ntrailing`);
+
+        expect(quota?.groups).toHaveLength(1);
+      });
+
+      it('should return undefined for invalid or unsuccessful payloads', async () => {
+        expect(await quotaOf('no json')).toBeUndefined();
+        expect(await quotaOf('{ not json }')).toBeUndefined();
+        expect(await quotaOf(JSON.stringify({ ...sample, status: 'ERROR' }))).toBeUndefined();
+        expect(await quotaOf(JSON.stringify({ status: 'SUCCESS' }))).toBeUndefined();
+      });
+    });
+
     it('should return undefined on non-zero exit code', async () => {
       const { adapter, runner } = buildAdapter();
       vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });

@@ -3,13 +3,32 @@ import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
+import type {
+  AgentConfig,
+  AgentQuota,
+  AgentQuotaBucket,
+  AgentQuotaGroup,
+} from '../ports/agent.port.js';
 import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
-import { parseAgyUsageOutput } from '../utils/agy-usage.util.js';
 
 import { AbstractAcpAdapter } from './abstract-acp.adapter.js';
 
+
+type RawBucket = {
+  readonly id?: unknown;
+  readonly name?: unknown;
+  readonly description?: unknown;
+  readonly window?: unknown;
+  readonly remaining_fraction?: unknown;
+  readonly reset_time?: unknown;
+};
+
+type RawGroup = {
+  readonly name?: unknown;
+  readonly description?: unknown;
+  readonly buckets?: unknown;
+};
 
 @Injectable()
 export class AntigravityAdapter extends AbstractAcpAdapter {
@@ -32,13 +51,79 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
         '--print',
         '/usage',
       ]);
-      return exitCode === 0 ? parseAgyUsageOutput(output) : undefined;
+      return exitCode === 0 ? this.parseUsageOutput(output) : undefined;
     } catch (error) {
       this.logger.debug(
         `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
       return undefined;
     }
+  }
+
+  /**
+   * Parses the stdout of `agy --output-format json --print /usage`. Tolerates log noise around the JSON
+   * document; returns `undefined` when the payload is not a successful `usage` command result.
+   */
+  private parseUsageOutput(output: string): AgentQuota | undefined {
+    const start = output.indexOf('{');
+    const end = output.lastIndexOf('}');
+    if (start < 0 || end < start) {
+      return undefined;
+    }
+    let parsed: {
+      status?: unknown;
+      command?: { name?: unknown; data?: { description?: unknown; groups?: unknown } };
+    };
+    try {
+      parsed = JSON.parse(output.slice(start, end + 1));
+    } catch {
+      return undefined;
+    }
+    const data = parsed.command?.data;
+    if (
+      parsed.status !== 'SUCCESS'
+      || parsed.command?.name !== 'usage'
+      || !data
+      || !Array.isArray(data.groups)
+    ) {
+      return undefined;
+    }
+    const groups = (data.groups as RawGroup[])
+      .map(group => this.parseQuotaGroup(group))
+      .filter((group): group is AgentQuotaGroup => group !== undefined);
+    return { description: this.asString(data.description), groups };
+  }
+
+  private parseQuotaGroup(raw: RawGroup): AgentQuotaGroup | undefined {
+    const name = this.asString(raw.name);
+    if (!name || !Array.isArray(raw.buckets)) {
+      return undefined;
+    }
+    const buckets = (raw.buckets as RawBucket[])
+      .map(bucket => this.parseQuotaBucket(bucket))
+      .filter((bucket): bucket is AgentQuotaBucket => bucket !== undefined);
+    return { name, description: this.asString(raw.description), buckets };
+  }
+
+  private parseQuotaBucket(raw: RawBucket): AgentQuotaBucket | undefined {
+    const id = this.asString(raw.id);
+    const name = this.asString(raw.name);
+    const window = this.asString(raw.window);
+    if (!id || !name || !window || typeof raw.remaining_fraction !== 'number') {
+      return undefined;
+    }
+    return {
+      id,
+      name,
+      window,
+      remainingFraction: raw.remaining_fraction,
+      resetTime: this.asString(raw.reset_time),
+      description: this.asString(raw.description),
+    };
+  }
+
+  private asString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
   }
 
   protected spawnAgentProcess(): ChildProcess {

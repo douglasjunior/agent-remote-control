@@ -3,10 +3,9 @@ import type { ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 
-import type { AgentConfig, AgentQuota } from '../ports/agent.port.js';
+import type { AgentConfig, AgentQuota, AgentQuotaBucket } from '../ports/agent.port.js';
 import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
-import { parseCodexRateLimits } from '../utils/codex-usage.util.js';
 
 import {
   AbstractAcpAdapter,
@@ -30,6 +29,14 @@ const SESSION_PRESETS: readonly SessionConfigPreset[] = [{ category: 'mode', val
 const SKILL_LISTING_TOKEN_BUDGET = 10_000;
 
 const QUOTA_TIMEOUT_MS = 10_000;
+
+const RATE_LIMIT_WINDOW_KEYS = ['primary', 'secondary'] as const;
+
+type RawWindow = {
+  readonly usedPercent?: unknown;
+  readonly windowDurationMins?: unknown;
+  readonly resetsAt?: unknown;
+};
 
 @Injectable()
 export class CodexAdapter extends AbstractAcpAdapter {
@@ -62,7 +69,7 @@ export class CodexAdapter extends AbstractAcpAdapter {
         stdio: ['pipe', 'pipe', 'pipe'],
         env,
       });
-      return parseCodexRateLimits(await this.readRateLimits(server));
+      return this.parseRateLimits(await this.readRateLimits(server));
     } catch (error) {
       this.logger.debug(
         `quota_failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -71,6 +78,48 @@ export class CodexAdapter extends AbstractAcpAdapter {
     } finally {
       server?.kill();
     }
+  }
+
+  /**
+   * Converts the `result` of the `account/rateLimits/read` request (`{ rateLimits: { primary, secondary } }`).
+   * Returns `undefined` when the account reports no rate-limit window, which is the case for API-key logins.
+   */
+  private parseRateLimits(result: unknown): AgentQuota | undefined {
+    const rateLimits = this.asObject(this.asObject(result)?.rateLimits);
+    if (!rateLimits) return undefined;
+    const buckets = RATE_LIMIT_WINDOW_KEYS
+      .map(key => this.parseRateLimitWindow(key, rateLimits[key]))
+      .filter((bucket): bucket is AgentQuotaBucket => bucket !== undefined);
+    return buckets.length > 0 ? { groups: [{ name: 'Codex', buckets }] } : undefined;
+  }
+
+  private parseRateLimitWindow(key: string, raw: unknown): AgentQuotaBucket | undefined {
+    const window = this.asObject(raw) as RawWindow | undefined;
+    if (!window || typeof window.usedPercent !== 'number') return undefined;
+    const label = this.formatWindow(window.windowDurationMins);
+    return {
+      id: key,
+      name: label ? `${label} limit` : `${key} limit`,
+      window: label ?? key,
+      remainingFraction: Math.min(1, Math.max(0, 1 - window.usedPercent / 100)),
+      resetTime:
+        typeof window.resetsAt === 'number'
+          ? new Date(window.resetsAt * 1000).toISOString()
+          : undefined,
+    };
+  }
+
+  private formatWindow(minutes: unknown): string | undefined {
+    if (typeof minutes !== 'number' || !(minutes > 0)) return undefined;
+    if (minutes % 1440 === 0) return `${minutes / 1440}d`;
+    if (minutes % 60 === 0) return `${minutes / 60}h`;
+    return `${minutes}m`;
+  }
+
+  private asObject(value: unknown): Record<string, unknown> | undefined {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
   }
 
   private readRateLimits(server: ChildProcess): Promise<unknown> {

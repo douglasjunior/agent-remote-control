@@ -83,8 +83,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `message.send` may carry `attachments` (`{ path, name }`, at most `MAX_ATTACHMENTS`) and then `text` may be empty.
   Every path must be a file of `.arc-uploads/<conversationId>/` that exists (`isUploadPathOf` rejects any other
   or climbing path); otherwise an `error` notice is recorded and no turn runs. The `user_message` entry keeps the
-  attachments. The use case reads each file's size and derives its `contentType` from the extension
-  (`contentTypeOf`), and hands the files to `executeTurn` as `TurnRequest.attachments` (absolute path under the
+  attachments. The use case resolves the files through `WebConversationUploadsService`, which reads each file's size and derives its
+  `contentType` from the extension, and hands the files to `executeTurn` as `TurnRequest.attachments` (absolute path under the
   workspace base directory) next to the text exactly as typed: like every channel, it does not rewrite the prompt
   for them, and the orchestrator transcribes audio and lists the other files for the agent. What it transcribed, and
   what it could not, arrives through `onTranscription` and is recorded as `notice` entries (`🎙️ <name>: <text>` at
@@ -138,7 +138,7 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `MAX_CONCURRENT_UPLOADS` per connection, an out-of-order or oversized chunk, an incomplete file, an unknown
   id, or `UPLOAD_IDLE_TIMEOUT_MS` of silence. `upload.abort` and the connection closing discard it too.
   `LocalWorkspaceUploadAdapter` writes a hidden `.part` file and publishes it with a hard link, numbering a
-  taken name (`a (1).png`); `sanitizeUploadFileName` keeps only the last path segment.
+  taken name (`a (1).png`); the adapter keeps only the last path segment of the name.
 - `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`, written atomically
   after every append. A file that is not a list of strings is ignored.
 

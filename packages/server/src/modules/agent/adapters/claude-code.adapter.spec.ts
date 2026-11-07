@@ -219,6 +219,86 @@ describe('ClaudeCodeAdapter', () => {
       });
     });
 
+    describe('usage output', () => {
+      const OUTPUT = `You are currently using your subscription to power your Claude Code usage
+
+Current session: 9% used · resets Oct 30, 11:29pm (America/Sao_Paulo)
+Current week (all models): 16% used · resets Nov 5, 6:59pm (America/Sao_Paulo)
+
+What's contributing to your usage?
+  56%  Start fresh when you switch tasks · run /clear
+`;
+
+      beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-10-30T20:00:00Z'));
+      });
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      const bucketsOf = async (usage: string) => {
+        const { adapter, runner } = buildAdapter();
+        vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: usage });
+        return (await adapter.getQuota())?.groups[0]?.buckets;
+      };
+
+      it('should parse the session and weekly limits', async () => {
+        expect(await bucketsOf(OUTPUT)).toEqual([
+          {
+            id: 'current-session',
+            name: 'Current session',
+            window: '5h',
+            remainingFraction: 0.91,
+            resetTime: '2026-10-31T02:29:00.000Z',
+          },
+          {
+            id: 'current-week-all-models',
+            name: 'Current week (all models)',
+            window: '7d',
+            remainingFraction: 0.84,
+            resetTime: '2026-11-05T21:59:00.000Z',
+          },
+        ]);
+      });
+
+      it('should resolve a reset without a date to the next occurrence', async () => {
+        const buckets = await bucketsOf('Current session: 50% used · resets 1:05am (America/Sao_Paulo)');
+
+        expect(buckets?.[0]?.resetTime).toBe('2026-10-31T04:05:00.000Z');
+      });
+
+      it('should roll a past date over to the next year', async () => {
+        const buckets = await bucketsOf('Current week (Opus): 10% used · resets Jan 2, 12:00pm (UTC)');
+
+        expect(buckets?.[0]).toMatchObject({ window: '7d', resetTime: '2027-01-02T12:00:00.000Z' });
+      });
+
+      it('should use a generic window for unknown labels and clamp the fraction', async () => {
+        expect((await bucketsOf('Extra usage: 120% used'))?.[0]).toEqual({
+          id: 'extra-usage',
+          name: 'Extra usage',
+          window: 'limit',
+          remainingFraction: 0,
+          resetTime: undefined,
+        });
+      });
+
+      it.each([
+        'Current session: 5% used · resets sometime soon',
+        'Current session: 5% used · resets Foo 3, 1:00pm (UTC)',
+        'Current session: 5% used · resets Oct 30, 1:00pm (Not/AZone)',
+      ])('should omit resetTime when the reset text cannot be parsed: %s', async (usage) => {
+        expect((await bucketsOf(usage))?.[0]?.resetTime).toBeUndefined();
+      });
+
+      it('should return undefined when there is no limit line', async () => {
+        expect(await bucketsOf('Not logged in')).toBeUndefined();
+        expect(await bucketsOf('')).toBeUndefined();
+      });
+    });
+
     it('should return undefined on non-zero exit code', async () => {
       const { adapter, runner } = buildAdapter();
       vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output });

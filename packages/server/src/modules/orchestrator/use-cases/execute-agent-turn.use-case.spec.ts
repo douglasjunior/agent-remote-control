@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
-import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
@@ -32,18 +31,12 @@ import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
+import { StubFileSystem } from '../testing/stub-file-system.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 import { RestoreOpenWorkUseCase } from './restore-open-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
-
-
-vi.mock('node:fs', () => ({
-  statSync: vi.fn().mockReturnValue({ isFile: () => false }),
-}));
-
-const { statSync } = await import('node:fs');
 
 
 class StubAgentRegistryPort implements IAgentRegistryPort {
@@ -108,7 +101,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let openWork: OpenWorkService;
   let openWorkStore: InMemoryOpenWorkStoreFake;
   let speechToText: StubSpeechToText;
-  let deletedFiles: string[];
+  let fileSystem: StubFileSystem;
 
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
@@ -136,8 +129,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => questionTimeoutMs });
     openWork = new OpenWorkService(openWorkStore);
     speechToText = new StubSpeechToText();
-    deletedFiles = [];
-    const fileSystem = { deleteFile: async (path: string) => void deletedFiles.push(path) } as unknown as IFileSystemPort;
+    fileSystem = new StubFileSystem();
     useCase = new ExecuteAgentTurnUseCase(
       factory,
       sessionStore,
@@ -152,6 +144,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       questionQueue,
       new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem),
       openWork,
+      fileSystem,
     );
   };
 
@@ -1629,15 +1622,62 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   describe('attachments extraction', () => {
     it('should extract existing attachments from completed turn response', async () => {
-      vi.mocked(statSync).mockImplementation(path => ({
-        isFile: () => path === '/mock/workspace/screenshot.png',
-      } as any));
+      fileSystem.readableFiles.add('/mock/workspace/screenshot.png');
       stubAgentPort.mockResponses = ['Here is the screenshot:\n<attachment path="screenshot.png">Screen</attachment>'];
 
       const result = await useCase.execute(turnRequest({ workspacePath: '/mock/workspace' }));
 
       expect(result).toMatchObject({ status: 'completed', response: 'Here is the screenshot:' });
       expect(result.attachments).toEqual(['/mock/workspace/screenshot.png']);
+    });
+
+    describe('resolving the paths the CEO wrote', () => {
+      const attachmentsOf = async (...paths: string[]) => {
+        stubAgentPort.mockResponses = [`Done.\n${paths.map(path => `<attachment path="${path}" />`).join('\n')}`];
+        return (await useCase.execute(turnRequest({ workspacePath: '/workspace' }))).attachments;
+      };
+
+      it('should keep the absolute paths of existing files', async () => {
+        fileSystem.readableFiles.add('/app/shot.png').add('/app/report.pdf');
+
+        await expect(attachmentsOf('/app/shot.png', '/app/report.pdf')).resolves.toEqual(['/app/shot.png', '/app/report.pdf']);
+      });
+
+      it('should resolve relative paths against the workspace', async () => {
+        fileSystem.readableFiles.add('/workspace/my-app/docs/report.pdf');
+
+        await expect(attachmentsOf('my-app/docs/report.pdf')).resolves.toEqual(['/workspace/my-app/docs/report.pdf']);
+      });
+
+      it('should accept a file:// prefix', async () => {
+        fileSystem.readableFiles.add('/app/shot.png');
+
+        await expect(attachmentsOf('file:///app/shot.png')).resolves.toEqual(['/app/shot.png']);
+      });
+
+      it('should decode a percent-encoded file URL', async () => {
+        fileSystem.readableFiles.add('/app/My Report.pdf');
+
+        await expect(attachmentsOf('file:///app/My%20Report.pdf')).resolves.toEqual(['/app/My Report.pdf']);
+      });
+
+      it('should strip the prefix of a file URL that names a host', async () => {
+        fileSystem.readableFiles.add('/workspace/app/shot.png');
+
+        await expect(attachmentsOf('file://app/shot.png')).resolves.toEqual(['/workspace/app/shot.png']);
+      });
+
+      it('should drop paths that are not readable files', async () => {
+        fileSystem.readableFiles.add('/app/shot.png');
+
+        await expect(attachmentsOf('/app/missing.png', '/workspace/my-app', '/app/shot.png')).resolves.toEqual(['/app/shot.png']);
+      });
+
+      it('should list a file only once', async () => {
+        fileSystem.readableFiles.add('/workspace/shot.png');
+
+        await expect(attachmentsOf('/workspace/shot.png', 'shot.png')).resolves.toEqual(['/workspace/shot.png']);
+      });
     });
 
     it('should hand the text around the delegations to the channel before the agents start', async () => {
@@ -1737,7 +1777,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[0]).toContain('Build me a landing page');
       expect(stubAgentPort.promptCalls[0]).not.toContain('[ATTACHMENTS]');
       expect(stubAgentPort.promptCalls[0]).not.toContain('voice.ogg');
-      expect(deletedFiles).toEqual([voice.path]);
+      expect(fileSystem.deletedFiles).toEqual([voice.path]);
     });
 
     it('should put the transcript after the typed text and keep the other attachments listed', async () => {
@@ -1778,7 +1818,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
       expect(stubAgentPort.promptCalls[0]).toContain('Path: /tmp/attachments/voice.ogg');
       expect(stubAgentPort.promptCalls[0]).toContain('The user sent attachments. Analyze the attached files.');
-      expect(deletedFiles).toEqual([]);
+      expect(fileSystem.deletedFiles).toEqual([]);
     });
 
     it('should ask the agents to look at attachments when a message has no text and no audio', async () => {

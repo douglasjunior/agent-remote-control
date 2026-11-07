@@ -7,7 +7,6 @@ import type { Duplex } from 'node:stream';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 
 import type { IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
-import { isOriginAllowed, parseAllowedOrigins } from '../utils/web-origin.util.js';
 
 
 const WS_PATH = '/ws';
@@ -52,7 +51,7 @@ function parseJson(text: string): unknown {
 export class WsClientTransportAdapter implements IClientTransportPort, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WsClientTransportAdapter.name);
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-  private readonly allowedOrigins = parseAllowedOrigins(process.env.WEB_ALLOWED_ORIGINS);
+  private readonly allowedOrigins = this.parseAllowedOrigins(process.env.WEB_ALLOWED_ORIGINS);
   private readonly listeners = new Set<(connection: IClientConnection) => void>();
   private readonly onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     this.handleUpgrade(request, socket, head);
@@ -84,7 +83,7 @@ export class WsClientTransportAdapter implements IClientTransportPort, OnModuleI
       return;
     }
     const { origin, host } = request.headers;
-    if (!isOriginAllowed(origin, host, this.allowedOrigins)) {
+    if (!this.isOriginAllowed(origin, host)) {
       this.logger.warn(`ws_origin_rejected: origin=${origin ?? '(none)'}`);
       socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
       socket.destroy();
@@ -96,5 +95,28 @@ export class WsClientTransportAdapter implements IClientTransportPort, OnModuleI
         listener(connection);
       }
     });
+  }
+
+  private parseAllowedOrigins(raw: string | undefined): ReadonlySet<string> {
+    const origins = (raw ?? '')
+      .split(',')
+      .map(origin => origin.trim().replace(/\/+$/, ''))
+      .filter(origin => origin.length > 0);
+    return new Set(origins);
+  }
+
+  /** An absent or malformed `Origin` is rejected: browsers always send it on a WebSocket upgrade. */
+  private isOriginAllowed(origin: string | undefined, host: string | undefined): boolean {
+    if (!origin) {
+      return false;
+    }
+    if (this.allowedOrigins.has(origin)) {
+      return true;
+    }
+    try {
+      return host !== undefined && new URL(origin).host === host;
+    } catch {
+      return false;
+    }
   }
 }
