@@ -1,14 +1,11 @@
 ---
 name: orchestrator
 description: >
-  Channel-agnostic orchestration for AI agents: turns, CEO delegation with
-  the <delegate>/<attachment>/<agent_result> tags, parallel delegation, direct questions from any agent
-  to the user (<question>/<user_answers>, per-conversation question queue), persisted ACP session resumption by role and project (agentSessions,
-  and agent, DATA_DIR), per-conversation per-profile (role) agent/model/effort selection, switching the CEO agent,
-  footer with TurnResult.agentInfo, global user language preference (<user_language>,
-  IPreferencesStorePort, language change requests), cancellation, per-conversation queue and ISessionStorePort. Use when implementing turns,
-  delegation, cancellation, session and settings persistence, model selection
-  or new channel interfaces.
+  Channel-agnostic agent orchestration: turns, CEO delegation (<delegate>/<agent_result>),
+  questions agents ask the user, ACP session resumption by role and project, per-conversation
+  agent/model/effort settings, user language, cancellation and queueing. Agents only: menus and
+  typed input belong to each channel. Use when implementing turns, delegation, cancellation,
+  session or settings persistence, agent configuration or new channel interfaces.
 ---
 
 # Channel-Agnostic Agent Orchestrator
@@ -19,7 +16,7 @@ description: >
 > which rule — it is the nature of the change: an orchestrator guideline or convention
 > changed → update; technical refactor that preserves the described pattern → leave it alone.
 
-The `OrchestratorModule` module lives in `src/modules/orchestrator/` and centralizes
+The `OrchestratorModule` module lives in `packages/server/src/modules/orchestrator/` and centralizes
 all turn coordination between input clients (chat channels such as Discord,
 HTTP APIs or scheduled jobs) and the development agent adapters.
 
@@ -30,7 +27,7 @@ and relays activity and text streams on demand.
 
 ## Core Models
 
-The models live in `src/modules/orchestrator/models/`:
+The models live in `packages/server/src/modules/orchestrator/models/`:
 
 ### `SessionContext` (`session-context.model.ts`)
 
@@ -50,12 +47,12 @@ Encapsulates the parameters for running an interaction round:
 - `workspacePath`: local working directory associated with the turn;
 - `agentRole`: root role that receives the prompt (e.g. `'CEO'`);
 - `attachments`: optional list of `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) with files received and downloaded locally;
-- `onActivity`: optional callback `(activity: AgentActivity) => void` for reactive consumption of thoughts and tools;
-- `onTextChunk`: optional callback `(chunk: string) => void` for progressive response streaming;
+- `onActivity`: optional callback `(activity: TurnActivity, role: string) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts and tools, with the role of the agent that produced each one, with the response protocol already read (a `thought` may carry `removed`);
+- `onDraft`: optional callback `(text: string) => void` with the part of the CEO's response that the user reads, as far as it is written: whole at every call (replaced by the next one, so a channel keeps only the last), empty when discarded. The protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and a tag still being typed are left out (`AgentProtocolService.visibleReply`). The finished response reaches the channel through the result, `onInterimMessage` or `onQuestion`; the orchestrator discards the draft (`''`) before asking the CEO to repair a response. Answers written by delegated agents never reach it;
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
-- `onQuestion`: optional callback `(prompt: QuestionPrompt) => void`, called when an agent of this turn asks and the question reaches the front of the conversation queue on its own (see "Questions to the User").
-- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works and `phase: 'finished'` when it completes successfully; carries `round`, `role`, `roleName` and `projectName?`. `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
+- `onQuestion`: optional callback `(event: QuestionEvent) => void` (`question-event.model.ts`), called with `{ kind: 'asked', prompt }` when an agent of this turn asks and the question reaches the front of the conversation queue on its own, and with `{ kind: 'timedOut', asker, answered, timeoutMs, next? }` when the user did not answer in time (see "Questions to the User").
+- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?` and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
@@ -85,11 +82,11 @@ Represents a technical delegation currently running in the background:
 Immutable structure with the turn outcome:
 
 - `response`: consolidated final text response;
-- `status`: `'completed'` on success, `'cancelled'` if interrupted, `'failed'` if aborted by an error, or `'steered'` when the prompt was injected into the CEO round already in progress (its response comes in that turn's result, so `response` is empty and there is no `usage`);
+- `status`: `'completed'` on success, `'cancelled'` if interrupted, `'failed'` if aborted by an error, or `'steered'` when another turn carries on (a prompt injected into the CEO round already in progress, or a turn whose agents another turn replaced), with the response coming from that turn's result, so `response` is empty and there is no `usage`);
 - `usage`: token usage of the CEO's last round (`getLastRoundUsage()`); absent when the agent does not report it or collection fails;
 - `errorMessage`: error message present exclusively in failed outcomes;
 - `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), filled in all three statuses so the channel can show which agent, model and effort generated the response;
-- `attachments`: optional list of absolute paths of the final response's `<attachment>`s, resolved by `resolveAttachmentPaths` (`utils/attachment-path.util.ts`): relative paths start from `workspacePath`, the `file://` prefix is accepted, and only existing regular files are included, without duplicates.
+- `attachments`: optional list of absolute paths of the final response's `<attachment>`s, resolved by `ExecuteAgentTurnUseCase` through `IFileSystemPort.isReadableFile`: relative paths start from `workspacePath`, the `file://` prefix is accepted, and only existing regular files are included, without duplicates.
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
@@ -98,24 +95,17 @@ Configuration of a conversation: `profiles` (role → `AgentProfileSettings`) an
 `effortId` and `effortName`. `modelId === null` indicates an agent without published models;
 `effortId === null`, a model without effort levels.
 
-`utils/agent-profile.util.ts` is the single access point to the profiles: `resolveProfile(settings, role)`
-returns the role's profile, falling back to the `CEO` profile; `withProfiles(settings, roles, profile)`
-returns settings with the profile applied to those roles and a renewed `updatedAt`;
-`profileForAllRoles(roles, profile)` builds the role → profile record.
+`utils/agent-profile.util.ts` holds the pure rules on profiles: `resolveProfile(settings, role)`
+returns the role's profile, falling back to the `CEO` profile, and `profileForAllRoles(roles, profile)` builds the
+role → profile record. Stamping `updatedAt` belongs to `AgentProfilesService.save`, which reads the clock.
 
-### `AgentConfigSelection` (`agent-config-selection.model.ts`)
+### `AgentOption` and `AgentRoleProfile`
 
-State of the selection in progress in a conversation: `conversationId`, `step`
-(`'profile' | 'agent' | 'model' | 'effort'`), numbered `options` (`SelectionOption`: `index`, `id`, `label`,
-`description?`), `selectedAgent?` (present in the `model` and `effort` steps), `selectedModel?`
-(present in the `effort` step), `pendingPrompt?` and `targetRoles?` (roles chosen at the `profile` step;
-`undefined` means every role). In the `profile` step each option is a role and its description is
-`<agent> - <model> - <effort>`. The outcomes of the selection use cases
-are in `agent-config-outcome.model.ts`.
+`AgentOption` (`agent-option.model.ts`) is a neutral choice with `id`, `name` and `description?`: an agent, a model or an effort. It has no index; numbering is a menu concern of the channel. `AgentRoleProfile` (`agent-role-profile.model.ts`) is one role of a conversation: `role`, `roleName` and, when the conversation has settings, its `profile` and `agentAvailable`.
 
 ## Orchestrator Ports
 
-The orchestrator ports live in `src/modules/orchestrator/ports/`:
+The orchestrator ports live in `packages/server/src/modules/orchestrator/ports/`:
 
 ### 1. `ISessionStorePort` (`session-store.port.ts`)
 
@@ -136,14 +126,9 @@ use the `InMemorySessionStoreFake` from `testing/`.
 
 `load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` and
 `save(conversationId: string, settings: AgentSettings): Promise<void>`. Each conversation
-has its own configuration: `/agent`, `/model` and `/profiles` change only the conversation (`conversationId`) in which they run.
+has its own configuration: a channel that changes the configuration changes only the conversation (`conversationId`) it runs in.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
 Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map whose writes are serialized, so the last `save` call determines the file content. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
-
-### `IAgentConfigSelectionStorePort` (`agent-config-selection-store.port.ts`)
-
-`find(conversationId: string)`, `save(selection: AgentConfigSelection)` and `remove(conversationId: string): Promise<boolean>`. Implemented in memory by
-`InMemoryAgentConfigSelectionStoreAdapter`: a selection interrupted by a restart is discarded.
 
 ### `IPreferencesStorePort` (`preferences-store.port.ts`)
 
@@ -153,11 +138,14 @@ language of the text agents write for the user. Implemented by `JsonPreferencesS
 
 ### Persistence in `DATA_DIR`
 
-`resolveDataDirectory()` (`utils/data-directory.util.ts`) resolves, in this order, the directory
-passed to the constructor, `process.env.DATA_DIR` and `./data`. The JSON adapters load the file
+`DataDirectoryService.resolve()` (`PathsModule`, `paths/services/data-directory.service.ts`) resolves `process.env.DATA_DIR`,
+or `data/` at the repository root when it is unset or blank, and a relative value starts from the repository root.
+Every adapter that persists data receives the service through its constructor, and specs build the adapters with
+`dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`). `WorkspaceDirectoryService` does the same for
+`WORKSPACE_DIR` (default `workspaces/`) and feeds `LocalWorkspaceAdapter`. The JSON adapters load the file
 only once, keep the content in memory, treat a missing or invalid file as empty and
 serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
-Settings without any profile with an `agentId` are treated as absent, which reopens the selection on the next message, and
+Settings without any profile with an `agentId` are treated as absent, so the conversation counts as unconfigured, and
 `agentSessions` entries without `agentId` are discarded on read.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
@@ -192,10 +180,17 @@ inside the queue:
 - **CEO turn queue**: turns that arrive while the CEO is busy call `onQueued` and wait for the CEO port to be released, except when they enter the round through steering. New user messages are processed immediately by the CEO even with active delegations;
 - **CEO steering**: `steerCeo(conversationKey, agentId, text)` injects the text into the CEO round in progress with `sendSteeringPrompt` and returns whether it was delivered. It only tries when there is an active, non-cancelled turn, no other turn in the queue (`pendingTurns === 1`, so as not to jump ahead of an earlier message), the CEO port belongs to the requested `agentId` and advertises `supportsSteering` (read from the ACP `initialize`);
 - **Active delegations**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` and `findActiveDelegation(conversationKey, role)` keep the registry of specialists running in the background, indexed by role: a conversation runs one agent per role, in any project, and different roles run in parallel. `unregisterDelegation` ignores a delegation that has already been replaced by a newer one of the same role;
-- **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `OrchestratorService` exposes `isShellCommandEnabled()` and `runShellCommand()`;
+- **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `IAgentTurnPort` exposes `isShellCommandEnabled()` and `runShellCommand()`;
 - **Cancellation**: `cancel(conversationKey)` cancels the CEO's `ActiveTurn` and all active `activeDelegations` of the conversation. Returns `false` when there is no work in progress;
 - **Idle expiration**: with no turns and no delegations for `SESSION_IDLE_TIMEOUT_MS` (default 30 minutes), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
 - **Shutdown**: `onApplicationShutdown` disconnects all agents (CEO and delegates). Requires `app.enableShutdownHooks()` in the bootstrap.
+
+### 3b. `AgentProtocolService` (`services/agent-protocol.service.ts`)
+
+Reads the response protocol agents follow, the `<final_response>` envelope (`constants/final-response.constant.ts`),
+over the raw text the agent port hands over: `stream(handlers)` for the activities of a prompt as they arrive and
+`finalResponse(written)` for the finished text. Everything about the envelope lives here, so the agent module
+stays unaware of it.
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)
 
@@ -264,8 +259,8 @@ parent directories and it would leak to them.
 | Without `<delegate>` or `<question>` | Ends the loop and returns the `message` as `response`, with the resolved attachments |
 | *(invalid)* | Sends the repair prompt with the reason to the CEO |
 
-The classified response is the content of the `<final_response>` envelope, extracted by the demux, and
-that is why the tags go inside it. The repair prompt reinforces this rule.
+The classified response is the content of the `<final_response>` envelope, read by `AgentProtocolService`
+(`services/agent-protocol.service.ts`), and that is why the tags go inside it. The repair prompt reinforces this rule.
 
 The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder">\n<response>\n</agent_result>` (without `project` when there is no folder). In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
 
@@ -279,24 +274,24 @@ Running the `execute(request: TurnRequest): Promise<TurnResult>` method follows 
 
 1. **Turn lifecycle**: calls `ConversationRuntimeService.beginTurn(conversationKey)`, ensuring tracking in the active turns counter until the `finally`.
 2. **Turn agent**: each role resolves its agent from the conversation's `AgentSettings` through `resolveProfile`, falling back to `IAgentPortFactory.defaultAgentId`, which is read only when no profile exists because it scans PATH. The CEO port uses the CEO profile; each delegate uses its own role's profile, read when the delegation starts. The settings are read at every turn and delegation start, so a saved change applies to the next one without interrupting work in progress.
-   - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, preceded by the `[ACTIVE_DELEGATIONS]` block when agents are running and followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
+   - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, preceded by the `[TEAM_PROFILES]` block and followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
 3. **CEO mutual exclusion**: runs the CEO round via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. The CEO port is released as soon as the CEO decides to delegate, allowing new user messages to be handled while specialists work in the background.
-4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. If there are delegations in progress (`getActiveDelegations`), it injects the `[ACTIVE_DELEGATIONS]` block into the CEO's initial prompt: one line per agent with role, project, coding agent, model and effort (`ActiveDelegation.agentInfo`, resolved with `buildAgentInfo` when the delegation starts, so a settings change applies to the next delegation and not to the running one; `default` when none is set), `Running` time, `Waiting for user` (`UserQuestionQueueService.isWaiting`) and the full task, because a CEO session that was just created or switched has no memory of what was delegated. In later rounds of the same turn the block is sent again only when its signature (roles, projects, wait states and tasks, without elapsed time) changed since the last block of the turn.
-5. **Delegation loop**: runs one CEO round per prompt; `MAX_DELEGATION_ROUNDS` (10) bounds the rounds in which the CEO delegates:
+4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. It injects the `[TEAM_PROFILES]` block (`buildTeamProfilesBlock`) into the CEO's initial prompt: one line per role of `IAgentRegistryPort.listRoles()` except the CEO's, with the coding agent, model and effort, and `Status: idle` or `Status: working`. The profile comes from the conversation settings (`resolveProfile`, falling back to the CEO's profile, then to the default agent and `default` for model and effort); a working role shows the `agentInfo` it started with (`ActiveDelegation.agentInfo`, resolved with `buildAgentInfo` when the delegation starts, so a settings change applies to the next delegation and not to the running one) plus `Running` time, `Project`, `Waiting for user` (`UserQuestionQueueService.isWaiting`) and the `Summary` of the task (`ActiveDelegation.summary`, the `summary` attribute of the `<delegate>`). The block is always present, so the CEO reads a prompt without it as an unchanged team, and a CEO session that was just created or switched has no memory of who is on the team. In later rounds of the same turn the block is sent again only when its signature (profiles, states, projects, wait states and summaries, without elapsed time) changed since the last block of the turn. Notices pending from a turn that failed or was cancelled come before it in a `[PREVIOUS_TURN]` block (`buildPreviousTurnPrompt`): how the turn ended, each agent stopped before finishing (a delegation the CEO replaced is left out) and each delegation the round limit kept from starting. `ConversationRuntimeService` holds them in memory, outside the runtime that expires when idle, and they leave once a CEO round returns; a restart loses them.
+5. **Delegation loop**: runs one CEO round per prompt; `MAX_DELEGATION_ROUNDS` (100) bounds the rounds in which the CEO delegates:
    1. Runs the CEO turn with `cwd = request.workspacePath`.
    2. Classifies the response with `DelegationDetectorService.detect()` and validates the delegation: the role must exist (`hasRole`) and differ from the root role, the tag attributes must fit `getDelegationContract(role)` and the project must be accepted by `resolveRepositoryPath` and appear in `listProjectFolders()`. Validation failures become `invalid`, and project failures list the existing folders in the reason. With several delegations, it validates each one and then the set: the same role does not appear twice, whatever the project, and at most one agent that modifies files works in each `cwd`, counting active delegations from previous turns; agents with `readOnly` in the contract do not count, and neither does an active delegation of the same role, because the new one replaces it.
    3. **Repair**: on `invalid`, sends `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), starting with `[DELEGATION_ERROR]`, to the CEO and classifies the new response. There are up to `MAX_REPAIR_ATTEMPTS` (1) attempts per CEO response, outside the round count. If it remains `invalid`, returns `status: 'failed'` with `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `ask` does not leave the round: the CEO waits for the answers in the queue and receives `<user_answers>` on the same port, inside `runOnCeo`, with `isUserMessage` true (the system prompt accompanies it); the new response is classified and repaired like the first. `reply` ends with `status: 'completed'` once no delegation of the turn is running; while some still run, its text goes to `onInterimMessage` and the loop keeps waiting for their results.
    5. On `delegate` in the last allowed delegation round, it ends without running the delegate (item 6), because the result would not return to the CEO.
-   6. In the other rounds, on `delegate`, it hands the non-empty `message` to `onInterimMessage` and starts all delegations in parallel (`startDelegations`), each as below, tracked in `RunningDelegations` (`models/running-delegations.model.ts`). The next CEO prompt is built from the results as the agents finish: `nextResults()` waits for the first one and returns every result finished so far, so results that finish while the CEO is busy arrive together. If one was cancelled, the turn is cancelled. A delegation that failed with another error becomes the block `<agent_result role="ROLE" project="folder" status="failed">\n<message>\n</agent_result>` (logged as `[Delegation Failed]`), delivered like any other result so the CEO decides between retrying the task or notifying the user. When the turn ends with delegations still running (invalid CEO response, failure, cancellation), `stopRunningDelegations` cancels the ones still pending and waits for them to settle, so no agent keeps running unobserved:
+   6. In the other rounds, on `delegate`, it hands the non-empty `message` to `onInterimMessage` and starts all delegations in parallel (`startDelegations`), each as below, tracked in `RunningDelegations` (`models/running-delegations.model.ts`). The next CEO prompt is built from the results as the agents finish: `nextResults()` waits for the first one and returns every result finished so far, so results that finish while the CEO is busy arrive together. If one was cancelled, the turn is cancelled. A delegation that failed with another error becomes the block `<agent_result role="ROLE" project="folder" status="failed">\n<message>\n</agent_result>` (logged as `[Delegation Failed]`), delivered like any other result so the CEO decides between retrying the task or notifying the user. When the turn ends with delegations still running (invalid CEO response, failure, cancellation), `stopRunningDelegations` discards their questions from the queue, because a wait for an answer would hold the turn open until the user answered, cancels the ones still pending and waits for them to settle, so no agent keeps running unobserved. It touches only the delegations the turn itself started (`delegationOwners`): while a replaced agent closes, its role already points to another turn's agent:
       - When the role already has an active delegation, in any project (`findActiveDelegation`):
         - If it works in the same project, the agent is not waiting for answers in the queue, `existing.agentPort.supportsSteering === true` and `await existing.steer(taskSpec)` confirms delivery: immediately returns the `<agent_result>` with `Steering message sent to active agent.`. An agent waiting for answers has no round in progress to receive the steering.
-        - Without steering, with delivery refused, with the agent waiting for answers or with the active delegation in another project: discards its questions from the queue (`discard`, which rejects the wait with a cancellation), cancels the previous active round (`await existing.turn.cancel()`), closes the session and disconnects the transport with error-tolerant handling (`closeSession()`, `disconnect()`), removes it from the runtime and proceeds to initialize a new port in the requested directory, resuming the corresponding ACP session and waiting for the specialist's consolidated response.
+        - Without steering, with delivery refused, with the agent waiting for answers or with the active delegation in another project: marks it as replaced, discards its questions from the queue (`discard`, which rejects the wait with a cancellation), cancels the previous active round (`await existing.turn.cancel()`), closes the session and disconnects the transport with error-tolerant handling (`closeSession()`, `disconnect()`), removes it from the runtime and proceeds to initialize a new port in the requested directory, resuming the corresponding ACP session and waiting for the specialist's consolidated response. The replaced delegation emits `cancelled`, whatever error ended it, and its outcome is `replaced`: it gives the CEO no result and does not end the turn. A turn left with nothing to wait for, because another turn replaced its last agents, ends with `status: 'steered'` and no response, since that other turn answers the user.
       - Creates the delegate's port with `create(agentId)`, creates `ActiveDelegation` and registers it in the runtime. The `steer` method updates the `taskSpec` and, with `supportsSteering`, returns the result of `sendSteeringPrompt`; without steering, returns `false`.
-      - Logs `[Delegation Started]` and emits `onDelegation` `started`; on completion, logs `[Delegation Finished]` and emits `finished`.
+      - Logs `[Delegation Started]` and emits `onDelegation` `started`; on completion, logs `[Delegation Finished]` and emits `finished`; on a cancellation, emits `cancelled` before rethrowing it, and a pending notice reports the agent as stopped before finishing.
       - Between start and completion, each delegate response goes through `QuestionParserService`: with questions, it waits for the answers in the queue and returns them to the same agent, on the same port and session, until it responds without questions. Malformed markup receives one repair (`buildQuestionRepairPrompt`, starting with `[QUESTION_ERROR]`) per response; if it persists, the response goes on as the result. Only the final response becomes `<agent_result>`.
    7. In the delegation's `finally`, removes it from the active delegations registry and shuts down the delegated agent (`closeSession()` + `disconnect()`).
-   8. The CEO's next prompt is the `<agent_result>` blocks finished so far (each tagged `agent`, `model` and `effort` from the same `agentInfo`, `default` when unset), separated by a blank line, after the `[ACTIVE_DELEGATIONS]` block when the running agents changed.
+   8. The CEO's next prompt is the `<agent_result>` blocks finished so far (each tagged `agent`, `model` and `effort` from the same `agentInfo`, `default` when unset), separated by a blank line, after the `[TEAM_PROFILES]` block when the team changed.
 6. **Round limit**: when the delegation rounds are exhausted, returns `status: 'failed'` with `errorMessage: 'Max delegation rounds exceeded.'`.
 
 Each agent turn (CEO or delegate) internally runs:
@@ -309,15 +304,15 @@ Each agent turn (CEO or delegate) internally runs:
    2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
    3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
 4. Configuration: with the role's profile for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. A profile for another agent is ignored because model IDs are not valid across agents. Applies to the CEO and to delegates. Since sessions are keyed by role, agent and project, changing a role's agent starts a new session for it, while changing only its model or effort keeps the session.
-5. Registration of `request.onActivity` via `onActivity(...)`, undone in `finally`. Activities from all agents flow to the same callback.
-6. `turn.throwIfCancelled()` and draining of `prompt(text)`, dispatching `agent_message_chunk` blocks to `request.onTextChunk`.
-7. Response from `lastAgentMessage` or from the accumulated blocks, logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
+5. Registration of a listener via `onActivity(...)`, undone in `finally`, feeding an `AgentProtocolStream` (`AgentProtocolService.stream`) per prompt. The stream relays the activities of every agent to `request.onActivity`: a message with a `<final_response>` envelope settles its `thought` entry to the prose before the envelope (`final: true`) or takes it back (`removed: true`) when there is none. It also reports the answer as it stands, whole at every change (the content of the envelopes or, while no message has one, everything the agent said, reasoning excluded, a tag being typed held back): the CEO's becomes `request.onDraft` calls and those of delegated agents are not asked for.
+6. `turn.throwIfCancelled()` and draining of `prompt(text)`, accumulating the text blocks as the fallback response.
+7. Response: `AgentProtocolService.finalResponse` of `lastAgentMessage` or of the accumulated blocks (the content of the envelopes, accepting an unclosed one, or the whole text when there is none), logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
 
 **Cancellation and failure handling**: `PromptCancelledError` (or an error with the same
 name) thrown by any agent or by `ActiveTurn` returns `status: 'cancelled'`. Other
 errors return `status: 'failed'` with `errorMessage` and disconnect the CEO agent, so that the
 next turn starts a new transport and resumes the session. In both cases, `response` receives
-the `lastAgentMessage` of the CEO port used in the turn (empty when the turn fails before there is a port).
+the `lastAgentMessage` of the CEO port used in the turn, read by `AgentProtocolService.finalResponse` (empty when the turn fails before there is a port).
 
 **Turn metadata**: `agentInfo.roleName` comes from `getDisplayName(role)` and `agentName` from the
 CEO's `IAgentPort` (the turn's `agentId` when there is no port yet). `modelName` and `effortName`
@@ -339,32 +334,48 @@ My understanding is: ... (free text, shown before the first question)
 <question>Open question, without options</question>
 ```
 
+- Every channel shows the asker with its project, the free text (`message`) before the first question, the
+  question and its `rationale` as "Why it matters". The prompts require that text to carry the context (task,
+  findings, why the agent is blocked) and the rationale to state the impact of the answer, because the user may be
+  following several agents at once.
 - **`QuestionParserService`** (`services/question-parser.service.ts`) returns `none`, `questions`
-  (`message` and `UserQuestion[]` with `text`, `rationale?` and `options`) or `invalid`: `<option>` outside
+  (`message` and `UserQuestion[]` with `text`, `rationale?`, `options` and `recommendedIndex?`, the 1-based option
+  written as `<option recommended>`) or `invalid`: `<option>` outside
   `<question>`, a tag without closing or without opening, an unknown attribute (`<question>` accepts only
-  `rationale`; `<option>` none), a question without text or an empty option. Tags inside Markdown code
+  `rationale`; `<option>` only the bare flag `recommended`, on at most one option of a question), a question without text or an empty option. Tags inside Markdown code
   (a block fenced by triple backticks or a span between backticks) are quoted markup, like an HTML
   `<option>`, and stay in the text.
 - **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) keeps in memory a
   queue of requests per conversation, in the order the agents asked, and exposes one question at a time.
-  It stays in memory because the asking agent waits alive inside the turn, and a restart already brings down
-  turns and delegations. Operations:
-  - `ask(conversationKey, asker, message, questions, notify?)`: queues and resolves with
-    `AnsweredQuestion[]` when the user answers all of them; `notify` shows the first question when the
-    request reaches the front of the queue on its own (empty queue or front request discarded);
-  - `submit(conversationKey, { text, attachments? })`: an integer between 1 and N chooses the option of
-    a question with options; a number outside the range or empty input without attachments returns `invalid` and
-    repeats the question; any other text is a free answer (`kind="other"`); attachments accompany the
-    answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
+  The queue lives in memory because the asking agent waits alive inside the turn; for a `resumable` turn the
+  questions and answers are also kept on disk (see "Work Across a Restart"). Operations:
+  - `ask(conversationKey, asker, message, questions, listener)`: queues and resolves with
+    `AnsweredQuestion[]` when the user answers all of them. `listener` (`QuestionListener`) has `asked`, which shows
+    the first question when the request reaches the front of the queue on its own (empty queue or front request
+    discarded), `timedOut`, and `answersChanged`, present only on requests whose answers are kept on disk;
+  - `submit(conversationKey, answer)`: `answer` is structured, `{ kind: 'option', optionIndex }` (1-based, for a
+    question with options) or `{ kind: 'text', text }`, plus optional `attachments`; the queue never reads a number
+    from text, so the channel decides what a typed message means. An option outside the range, or empty text
+    without attachments, returns `invalid` and repeats the question; text is a free answer (`kind="other"`); attachments
+    accompany the answer and also answer on their own. Outcomes: `next` (next question of the request), `answered`
     (resolves the agent's wait and carries the question of the next request, if any) and `invalid`; with no
     pending question, `undefined`;
+  - `restore(conversationKey, workId, asker, questions, onAnswer)`: queues a request a restart left unanswered, with
+    the answers already given. It has no countdown. Nothing waits on it: its `answered` submission carries `restoredWork` (`workId` and
+    `answers`), and the channel hands it to `IAgentTurnPort.deliverAnswers`;
+  - **Timeout**: the question at the front has a countdown of `QUESTION_TIMEOUT_MS` (`QuestionTimeoutConfigService`,
+    default 300000 ms, `0` disables it), restarted for each question of a request and for the request that reaches
+    the front. When it ends, the question is answered with its recommended option, or with nothing when it has none
+    (`AnsweredQuestion.timedOut: true`, and no `optionNumber` or text when nothing was assumed), the request moves on
+    like after any answer and `listener.timedOut` receives a `QuestionTimedOut` (`asker`, `answered`, `timeoutMs`, and
+    the `next` prompt). Answering, `cancel` and `discard` stop the countdown;
   - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
   - `cancel(conversationKey)`: empties the queue and rejects all waits with `PromptCancelledError`;
   - `discard(conversationKey, role, projectName)`: removes the request of an agent that is being
     replaced, rejecting its wait.
 - `QuestionPrompt` (`models/user-question.model.ts`) is what the channel shows: `asker` (`role`,
-  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question) and
-  `waitingAskers`.
+  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question),
+  `waitingAskers` and `timeout?` (`expiresAt` in epoch milliseconds and `durationMs`; absent when the timeout is disabled).
 - **Answers to the agent**: a block that repeats the text of each question, to withstand context
   compaction while the user answers, with one `<attachment>` per attached file (downloaded by the
   channel into a temporary directory):
@@ -377,9 +388,43 @@ My understanding is: ... (free text, shown before the first question)
   </user_answers>
   ```
 
-- **Locked state**: while the conversation has pending questions, every user message is an
-  answer (`ResolveConversationInputUseCase` checks the queue before anything else) and nothing reaches the CEO, not even
+  An answer the user did not give in time carries `status="timed_out"`: with `option="N"` for the recommended
+  option assumed, and without `option` or text when the question had none. A single `<note>` closes the block,
+  telling the agent that the user was absent, that the assumed answers are provisional and that it decides how to
+  proceed where nothing was assumed.
+
+- **Locked state**: while the conversation has pending questions the agent is waiting, and a channel that offers a
+  free-form input treats the next message as the answer (`hasPendingQuestions`, `currentQuestion`, `answerQuestion`). `/cancel` unlocks the conversation (see below).
   through steering. `/cancel` unlocks the conversation (see below).
+
+### Work Across a Restart
+
+A turn with `TurnRequest.resumable` (the web channel sets it; Discord does not) keeps its work on disk through
+`OpenWorkService` over `IOpenWorkStorePort` (`JsonOpenWorkStoreAdapter`, `DATA_DIR/open-work.json`, written atomically).
+Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `summary`,
+`taskSpec`, `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
+never written. A resumed record keeps its questions until the prompt with the answers is sent: a restart before that asks
+the last question again, and from then on the agent has the answers and counts as working. The record is closed when that work
+ends, however it ends, and `CancelAgentTurnUseCase` closes every record of the conversation.
+
+- **Shutdown** freezes the service in `onModuleDestroy`, before the agents are disconnected, so the turns dying during a
+  graceful restart do not erase their records.
+- **Boot**: `RestoreOpenWorkUseCase` loads the records as interrupted and puts unanswered questions back in the queue.
+- **An agent that asked** was not interrupted: it was already waiting. `IAgentTurnPort.deliverAnswers` claims the record
+  (`claimAsked`) and the agent receives `<user_answers>` like any other answer. Only when its session cannot be resumed, the
+  answers are preceded by `buildLostSessionTaskPrompt`, since a new session does not know the task.
+- **An agent that stopped mid-round** has no question to set it going, so the user continues it: `IAgentTurnPort.resumeWork`
+  claims the record (`claimStopped`) and the agent receives `buildResumedWorkPrompt`. `listInterruptedWork`
+  (`OpenWorkService.continuable`) lists these records only. A root is listed only when no delegate stopped with it, because
+  the delegates' results start its next round.
+- **Either way** a delegate keeps its `delegationId`, runs on its stored ACP session (`session="resume"`), and its result goes
+  to a new CEO round like any other; a root record runs on the CEO.
+- **Replaced work**: a new turn discards interrupted roots that did not ask, and delegating a role again discards
+  what a restart left stopped for that role, its questions included.
+
+### Plans Directory
+
+Roles whose definition sets `plansDirectory` (PRODUCT_OWNER, TECH_LEAD) write their deliverable to a file outside their project folder. `runAgentTurn` appends a `[PLANS_DIRECTORY]` block (`buildPlansDirectoryPrompt`, `prompts/plans-directory.prompt.ts`) after the language block of each of their rounds. It names `<IWorkspacePort.getBaseDirectory()>/.plans/<project folder>`, or `.plans/general` when the delegation has no project (`PLANS_DIRECTORY_NAME` and `PLANS_NO_PROJECT_FOLDER`, `constants/plans-directory.constant.ts`), and authorizes writing there as an exception to the CWD boundary. Inside it each initiative has its own folder with `intent.md` and `plan.md` (`agent-definitions` skill). The folder starts with a dot, so the CEO does not list it as a project.
 
 ### User Language
 
@@ -397,8 +442,7 @@ language, or English without a valid tag. A stored language changes only through
 `normalizeUserLanguage()` collapses whitespace and rejects empty names, names over 64 characters and names with
 `<`, `>`, `[`, `]` or backticks, since the language goes into every prompt.
 
-`LanguageChangeRequestService` keeps in memory the conversations whose next message is the new language; the channel
-opens the request through `OrchestratorService.requestLanguageChange()`.
+`UserLanguageService` reads (`get()`, `English` when none is stored) and changes (`set(input)`, normalized; `undefined` for an invalid name) the stored language. Asking the user for the language is a channel dialog.
 
 ### Turn Cancellation (`CancelAgentTurnUseCase`)
 
@@ -410,33 +454,36 @@ progress or a pending question, including in a turn that has not yet saved the s
 `PromptCancelledError`, coming from the agent or from the rejected wait, interrupts the delegation
 loop, and the conversation returns to the default state.
 
-## Agent, Model and Effort Selection
+## Agent, Model and Effort Configuration
 
-The choice is per conversation and persisted. `AgentCapabilitiesService` builds the numbered options:
+The choice is per conversation and persisted; the orchestrator offers the lists and stores the result, and each channel decides how the user picks. `AgentCapabilitiesService` builds the lists as `AgentOption`s:
 `listAgentOptions()` from `IAgentPortFactory.listAvailableAgents()` (only agents whose CLI is in the `PATH`), `isAgentAvailable(agentId)` from the factory, and `listModelOptions(agentId)` /
 `listEffortOptions(agentId, modelId)` on a disposable port of the agent (`create(agentId)` →
 `connect()` → read → `disconnect()` in `finally`), isolated from the conversation's port. Without options,
-they return an empty list. `resolveAgent(settings)` returns the CEO profile's agent or the factory default. `AgentProfileListService.open(conversationId)` saves and returns a `profile` step with one option per role from `IAgentRegistryPort.listRoles()`, described by the profile of the conversation's settings (or of `loadMostRecent()`). A row whose saved profile agent is not available gets `(not installed)` after the agent name; the saved settings are untouched and execution keeps using the saved agent, so its turns fail at `connect()` with the agent's CLI-not-found error.
+they return an empty list. `resolveAgent(settings)` returns the CEO profile's agent or the factory default.
 
-- **`StartAgentConfigSelectionUseCase`** `({ conversationId, pendingPrompt?, step })`: with `step: 'agent'`, lists the agents and saves the `agent` step; with a single agent, skips straight to its `model` step; without agents, `{ kind: 'unavailable' }`. With `step: 'profile'`, returns `{ kind: 'profiles_menu', selection }` from `AgentProfileListService.open` (`unavailable` without agents). With `step: 'model'`, lists the models of the current agent (`resolveAgent`) and saves the `model` step with `selectedAgent`; without models, `unavailable`.
-- **`SubmitAgentConfigSelectionUseCase`** `({ conversationId, input })`: accepts only `^\d+$` between 1 and N; other input returns `invalid` without changing the state. In the `profile` step, accepts one or more numbers separated by commas or spaces (duplicates ignored), stores them as `targetRoles` and moves to the `agent` step (or straight to `model` with a single agent); `0` removes the selection and returns `{ kind: 'profiles_closed' }`. In a step with `targetRoles`, `0` goes back to the profile list (`profiles_menu`). In the `agent` step, advances to `model` with the chosen agent's models, or saves only the agent if it has no models. In the `model` step, advances to `effort` if the model has efforts, otherwise saves with `effortId: null`. In the `effort` step, saves. A `model`/`effort` step without `selectedAgent` throws an error. On saving, `withProfiles` applies the profile to `targetRoles` (every role from `listRoles()` when undefined, as in `/agent` and `/model`) over the conversation's current or most recent settings. Without `targetRoles` it removes the selection and returns `{ kind: 'configured', settings, pendingPrompt? }`; with them it keeps the loop open and returns `{ kind: 'profiles_updated', selection, updatedRoles, profile }` carrying a refreshed profile list.
-- **`TranscribeAudioAttachmentsUseCase`** `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`, called by `ResolveConversationInputUseCase` before anything else: with the port disabled or without audio it returns the input untouched. Each audio attachment (`isAudioAttachment`: `audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned.
-- **`ResolveConversationInputUseCase`** `({ conversationId, prompt, attachments? })` → `ResolvedConversationInput`: first transcribes the audio, so answers to questions, language changes and selections also work by voice; the rest of this paragraph applies to the transcribed prompt and the remaining attachments. The result adds `transcription: { transcripts, warnings }` only when audio was handled, and an `execute` result carries the remaining `attachments` (omitted when none) for the channel to pass to `executeTurn`. Resolution: with a pending question in the queue, the message is the answer (`submit` with the text and the attachments) and the outcome becomes `{ kind: 'question', prompt }` (next question), `{ kind: 'invalid_answer', prompt }` or `{ kind: 'answered', asker, next? }`. Next, with a pending language change request, the message is the language: a valid name is stored, ends the request and returns `{ kind: 'language_set', language }`; anything else returns `{ kind: 'invalid_language' }` and keeps the request. Otherwise, an empty `prompt` means an attachment-only message and receives a prompt asking for their analysis. With an active selection, delegates to `Submit`; without settings for the conversation, tries to inherit from `loadMostRecent()` (saving immediately for the conversation with a renewed `updatedAt`); if there is no history, delegates to `Start` with `step: 'agent'` and `pendingPrompt` (`unavailable` becomes `execute`); with settings, `execute`. A `configured` with `pendingPrompt` becomes `{ kind: 'execute', prompt: pendingPrompt, configured }`.
-- **`CancelAgentConfigSelectionUseCase`**: removes the selection and returns whether there was one.
+`AgentProfilesService` keeps the profiles of a conversation:
+
+- `current(conversationId)`: the conversation's settings, else `loadMostRecent()`, else `null`;
+- `ensure(conversationId)`: `'configured'` when the conversation has settings, `'inherited'` after copying the most recent settings into it (renewed `updatedAt`), `'missing'` when nothing was ever saved;
+- `list(conversationId)`: one `AgentRoleProfile` per role from `IAgentRegistryPort.listRoles()`, with the profile of `current` and `agentAvailable`. A profile whose agent is not installed stays untouched and execution keeps using it, so its turns fail at `connect()` with the agent's CLI-not-found error;
+- `listRoles()` and `save(conversationId, roles | undefined, profile)`: applies the profile to the roles (every role when `undefined`) over `current`, stamps `updatedAt` with the current time, saves and returns the settings.
+
+`TranscribeAudioAttachmentsUseCase` `({ prompt, attachments? })` → `AudioTranscriptionResult { prompt, attachments, transcripts, warnings }`: with the port disabled or without audio it returns the input untouched. Each audio attachment (`audio/*` or a known audio extension) is transcribed in order; a non-empty transcript replaces the file, which is deleted through `IFileSystemPort`. The resulting prompt is the typed text followed by the transcripts (a single transcript as is, several labeled `[Audio: <name>]`). Empty transcripts and failures never fail the turn: the audio stays in `attachments` and a user-facing warning is returned. It is internal to the orchestrator and no channel calls it: `ExecuteAgentTurnUseCase` runs it on every turn before any agent sees the message, so a message reaches the CEO (or steers it) with the transcript in the prompt and without the audio file, whichever channel sent it. The same happens to the attachments of each answer to an agent's question, when the answer is consumed. `TurnRequest.onTranscription({ transcripts, warnings })` tells the channel what was transcribed and what could not be, before the agents run. A message that is left with attachments and no text gets `ATTACHMENTS_ONLY_PROMPT` as its prompt.
+
 
 Switching agents does not interrupt turns in progress: the conversation's next turn switches the
 CEO port and the following delegates are born on the new agent.
 
-## Service Facade (`OrchestratorService`)
+## Public Ports
 
-The orchestrator's interface for the channels:
+`OrchestratorModule` exports only three ports (interface plus Symbol in `ports/`), each implemented by a small service. Channels depend on them and never on the services and use cases behind them; their specs use the stubs in `testing/` (`StubAgentTurnPort`, `StubAgentConfigurationPort`, `StubUserQuestionPort`), which implement the interfaces.
 
-- `executeTurn(request)` and `cancelTurn(conversationId: string)`;
-- `getQuota(): Promise<readonly AgentQuotaReport[]>`: `GetAgentQuotaUseCase` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: SelectedValue; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty;
-- `resolveInput({ conversationId, prompt, attachments? })`: transcribes audio first, then decides between answering the pending question, driving the selection or running the prompt;
-- `startConfigSelection(conversationId: string)` (`model` step of the current agent), `startAgentSelection(conversationId: string)` (`agent` step), `startProfilesSelection(conversationId: string)` (`profile` step) and `cancelConfigSelection(conversationId: string)`;
-- `hasActiveConfigSelection(conversationId: string)` and `hasPendingQuestions(conversationId: string)`;
-- `requestLanguageChange(conversationId: string)` (resolves to the current language, `English` when none is stored), `hasPendingLanguageChange(conversationId: string)` and `cancelLanguageChange(conversationId: string)`.
+- **Attachments are the channel's to fetch and the orchestrator's to interpret.** A channel obtains the files in its own way (Discord downloads them from its CDN, the web channel reads its uploads) and hands them over only as `TurnRequest.attachments` (`TurnAttachment`: `name`, absolute `path`, `contentType`, `size`) plus the text as typed; it never rewrites the prompt for them. Audio becomes text in the turn (see `TranscribeAudioAttachmentsUseCase`); other files are listed in an `[ATTACHMENTS]` block for the agent to inspect.
+- **`IAgentTurnPort`** (`AgentTurnService`): `executeTurn(request)`, `listInterruptedWork(conversationId)`, `resumeWork(workId, request)`, `deliverAnswers(answers, request)`, `cancelTurn(conversationId)`, `isShellCommandEnabled()`, `runShellCommand(conversationId, command)` and `getQuota()`. `getQuota` queries every available agent (`listAvailableAgents()`) in parallel with `Promise.allSettled`, each with a 15000 ms timeout, on a port that is never connected and is disconnected afterwards. Each `AgentQuotaReport` is `{ agent: { id, name }; status: 'ok' | 'unsupported' | 'failed'; quota?: AgentQuota }`: `ok` carries the quota, `unsupported` means the agent does not expose one and `failed` covers an error or a timeout, so a hung or failing agent never blocks the others. With no available agent the list is empty.
+- **`IAgentConfigurationPort`** (`AgentConfigurationService`): `listAgents()`, `getDefaultAgent()`, `currentAgent(conversationId)`, `listModels(agentId)`, `listEfforts(agentId, modelId)`, `listRoles()`, `listProfiles(conversationId)`, `hasSettings(conversationId)` (a pure query: own or inheritable settings exist), `ensureSettings(conversationId)`, `saveProfiles(conversationId, roles | undefined, profile)` (a profile the caller already resolved), `configureProfiles(input)` (`ConfigureAgentProfilesUseCase`: checks agent, roles, model and effort against the lists, takes the names from them, saves, and returns `{ ok: true }` or `{ ok: false, error }` with `Unknown agent`, `Unknown role`, `Unknown model`, `An effort needs a model` or `Unknown effort`), `getLanguage()` and `setLanguage(input)`.
+- **`IUserQuestionPort`** (`UserQuestionService`): `hasPendingQuestions(conversationId)`, `currentQuestion(conversationId)` and `answerQuestion(conversationId, answer)` (structured, see the question queue).
+
 
 ## Mandatory Prescriptive Rules
 

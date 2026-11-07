@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "customConditions": ["source"],
+    "noEmit": true,
+    "paths": { "@/*": ["./src/*"] },
+    "incremental": false,
+    "emitDecoratorMetadata": false,
+    "experimentalDecorators": false,
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+  },
+  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+}

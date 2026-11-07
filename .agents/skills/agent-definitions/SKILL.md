@@ -17,7 +17,7 @@ description: >
 > or persona structure changed → update; a technical refactor that preserves the described
 > pattern → leave it alone.
 
-The `AgentDefinitionsModule` lives in `src/modules/agent-definitions/` and centralizes
+The `AgentDefinitionsModule` lives in `packages/server/src/modules/agent-definitions/` and centralizes
 the catalog of personas, specialized system prompts and model parameters for the system's
 development agents.
 
@@ -57,7 +57,16 @@ Each agent is described by the `AgentDefinition` structure:
 - `delegation`: the agent's delegation contract (`AgentDelegationContract`), declaring which `<delegate>` attributes it accepts. `project` is `'required'` or `'optional'`; when absent, the agent receives no project folder. `sessionMode` is `'overridable'`; when absent, the mode is fixed to `defaultSessionMode` and passing the `session` attribute is rejected. `readOnly: true` declares that the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`. The set is specific to each agent, and a new parameter is added here;
 - `turnReminder`: optional turn reminder (`string`) appended to the prompt of each of the agent's rounds;
 - `systemPromptEveryTurn`: when `true`, the orchestrator prefixes the system prompt to every user message, including in a resumed session; delegation result rounds and repair prompts for the same message do not repeat it. It serves long-session agents, whose context is compacted and loses the prompt sent at session creation; such an agent does without `turnReminder`;
+- `plansDirectory`: when `true`, the orchestrator appends the `[PLANS_DIRECTORY]` block (`buildPlansDirectoryPrompt`, `orchestrator/prompts/plans-directory.prompt.ts`) to every round of the agent: the folder `<workspaces root>/.plans/<project folder>` (`general` when the delegation has no project) and the authorization to write there as an exception to the CWD boundary. PRODUCT_OWNER and TECH_LEAD set it;
 - `buildWorkspaceFiles(team, workspaceDir)`: optional, returns `WorkspaceFile[]` (`path` relative to the workspaces root and `content`) that the orchestrator writes to the workspaces root on every boot.
+
+### Plan documents (`plan-documents.prompt.ts`)
+
+`buildPlanDocumentInstructions(documentName)` and `buildPlanDocumentReminder(documentName)` give PRODUCT_OWNER (`intent.md`) and TECH_LEAD (`plan.md`) the same convention:
+
+- Each initiative has a folder `<YYYY-MM-DD>-<short-slug>` inside the folder named by `[PLANS_DIRECTORY]`, holding `intent.md` and `plan.md` side by side. A task that points to a document of an initiative reuses its folder; otherwise the agent creates one;
+- The only file the agent writes is its own document, and refinements update it in place;
+- The final response carries the absolute path of the document, a short summary and what the caller must decide or do next, never the document itself, so the CEO delegates by reference ("implement step 2 of the plan at <path>") and authorizes read access to that exact path.
 
 ### Executor agents' CWD boundary
 
@@ -69,7 +78,7 @@ response an access request with path, reason and mode. The CEO evaluates it, ask
 path leaves the workspace, and authorizes it by delegating again to the same role with `session="resume"`. The
 access request is the response to the caller, never a direct question to the user, so that the CEO can
 assess the risk first. GIT_OPS has `$HOME/.ssh` authorized in its own prompt for SSH key
-setup, and PRODUCT_OWNER has `INTENT_DOCUMENTS_DIR` authorized to write the intent document.
+setup, and PRODUCT_OWNER and TECH_LEAD (`plansDirectory: true`) receive the `[PLANS_DIRECTORY]` block of the orchestrator, which authorizes writing their plan document there.
 
 ### Project orientation
 
@@ -94,8 +103,8 @@ Any agent asks the user directly when it needs a decision from them to proceed, 
 in the `orchestrator` skill). The instructions live in `prompts/user-questions.prompt.ts`:
 
 - `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
-  in the batch, options without "Other", `rationale` with the impact, and the `<user_answers>` format, including
-  `<attachment path="…"/>` for files the user attaches to the answer;
+  in the batch, options without "Other", the recommended option first and marked `<option recommended>` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
+  `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
 - `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, included in the system prompt
   of the executor agents that depend on user decisions (DEVELOPER, GIT_OPS, TECH_LEAD and
   PRODUCT_OWNER);
@@ -113,7 +122,7 @@ carries only the tag's shape and the fact that the answer comes back in the same
 The CEO has no primer: with `systemPromptEveryTurn`, the core prompt accompanies every user
 message to survive session compaction. Every line of it costs on every turn and dilutes the
 rules that matter, so it carries only the hard rules whose loss breaks the protocol:
-pure orchestration, the three response outcomes (delegate, ask, answer) with the shape of
+pure orchestration, answering every request the user made (a newer message never replaces an earlier request and every `<agent_result>` is reported), the three response outcomes (delegate, ask, answer) with the shape of
 each tag, the team, project folder, `session`, access requests and attachments. Examples, explanations,
 edge cases and full guides go into the `AGENTS.md` and the skills that `buildCeoWorkspaceFiles`
 generates, which the CEO consults when it needs to go deeper.
@@ -137,12 +146,12 @@ editing the CEO's prompt.
 
 ## Specialized System Prompts
 
-The specialized prompts live in `src/modules/agent-definitions/prompts/`:
+The specialized prompts live in `packages/server/src/modules/agent-definitions/prompts/`:
 
 Every agent prompt ends with `FINAL_RESPONSE_INSTRUCTIONS` (`final-response.prompt.ts`): the
 turn's final response comes exactly once inside `<final_response>…</final_response>`
-(`agent/constants/final-response.constant.ts`), and text outside it is only progress narration.
-A new agent must include this block, because the demux uses the envelope to separate the response
+(`orchestrator/constants/final-response.constant.ts`), and text outside it is only progress narration.
+A new agent must include this block, because the orchestrator uses the envelope to separate the response
 from the narration.
 
 ### 1. Developer Agent (`developer.prompt.ts`)
@@ -163,11 +172,11 @@ from the narration.
 - Operates confined by default to `workspaces` and its subfolders; acting outside the workspace is dangerous and requires an explicit risk warning and mandatory prior confirmation from the user before proceeding;
 - Acts as a pure orchestrator: never performs technical tasks directly, does not create or change project files, does not run tests, builds or linters, and does not commit. All hands-on technical work must be delegated to the team's specialist agents. When no agent on the team can handle the request, it reports the limitation to the user without attempting the task;
 - Triages requests and turns ambiguous requirements into tasks with a self-contained specification and acceptance criteria;
-- Receives the core prompt (`buildCeoSystemPrompt(team)`, wrapped in `[ORCHESTRATOR_INSTRUCTIONS]`) with every user message via `systemPromptEveryTurn`, with the rules that cannot be lost in compaction (see "CEO's lean core prompt"): pure orchestration, the three response outcomes — `<delegate>`, `<question>` or a response without tags —, the `<delegate>` shapes per agent, text outside the tags as a message to the user, that agents ask the user directly and the CEO receives only the final result, the project folder as an existing direct subfolder, when to use `session="new"`, access requests outside the CWD and the `<attachment>` tag. The details live in the `AGENTS.md` and in the skills that `buildCeoWorkspaceFiles` generates at the workspaces root (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). The core prompt does not index the skills, which are discovered through their own `description`;
-- Knows its team through the core prompt's "Your Team" section (role, name and `<delegate>` shapes derived from `delegation`) and through the `agent-team` skill, which carries each agent's full `description`. The delegation section is agnostic to fixed roles: task routing and phase sequencing (such as planning before execution and review before completion) are driven exclusively by the specializations described dynamically in the "Your Team" catalog. A conversation runs one agent per role, so phases are ordered by dependency per item and different items overlap across roles in a pipeline (plan project 1; develop 1 while planning 2; review 1 while developing 2 while planning 3), with every independent task delegated in the same response (`delegation-protocol` skill). The CEO receives each result as its agent finishes and the `[ACTIVE_DELEGATIONS]` list (role, project, coding agent, model, effort, running time, wait state and full task) and `<agent_result>` tagged with the coding agent, model and effort that ran it with the user's messages and when the list changes. That is why each definition's `description` must say when to delegate to it;
+- Receives the core prompt (`buildCeoSystemPrompt(team)`, wrapped in `[ORCHESTRATOR_INSTRUCTIONS]`) with every user message via `systemPromptEveryTurn`, with the rules that cannot be lost in compaction (see "CEO's lean core prompt"): pure orchestration, the three response outcomes — `<delegate>`, `<question>` or a response without tags —, the `<delegate>` shapes per agent, text outside the tags as a message to the user, that agents ask the user directly and the CEO receives only the final result, answering every pending request, the project folder as an existing direct subfolder, when to use `session="new"`, access requests outside the CWD and the `<attachment>` tag. The details live in the `AGENTS.md` and in the skills that `buildCeoWorkspaceFiles` generates at the workspaces root (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). The core prompt does not index the skills, which are discovered through their own `description`;
+- Knows its team through the core prompt's "Your Team" section (role, name and `<delegate>` shapes derived from `delegation`) and through the `agent-team` skill, which carries each agent's full `description`. The delegation section is agnostic to fixed roles: task routing and phase sequencing (such as planning before execution and review before completion) are driven exclusively by the specializations described dynamically in the "Your Team" catalog. A conversation runs one agent per role, so phases are ordered by dependency per item and different items overlap across roles in a pipeline (plan project 1; develop 1 while planning 2; review 1 while developing 2 while planning 3), with every independent task delegated in the same response (`delegation-protocol` skill). The CEO receives each result as its agent finishes and the `[TEAM_PROFILES]` list (every role with coding agent, model, effort and idle or working state; a working role adds project, running time, wait state and the task summary) and `<agent_result>` tagged with the coding agent, model and effort that ran it with the user's messages and when the list changes. When the coding agent of a role differs from the last list, the skill tells the CEO to restate the goal, state of the work and decisions in the next specification, because the role starts a new session; a change of model or effort alone keeps the session. That is why each definition's `description` must say when to delegate to it;
 - Copies verbatim into the next specification the recommended commands and already verified facts that come in the agents' results, and asks for the command documented by the project rather than a manual reproduction of its steps;
 - Delegates with `<delegate>` tags inside the final response envelope, using a team role, and reviews each `<agent_result>` before answering; asks the user with `<question>` and continues the turn with `<user_answers>`; a response with neither tag ends the turn;
-- Does not interview the user about requirements: the `agent-team` skill puts discovery before technical planning and leaves it to the agent that runs it. A document an agent produces outside the workspace, such as the intent document, is attached to the response and gets read access authorized in the next agent's specification without user confirmation (`delegation-protocol` skill). Confirmation for access outside the workspace is requested with `<question>`;
+- Does not interview the user about requirements: the `agent-team` skill puts discovery before technical planning and leaves it to the agent that runs it. A plan or intent document under `.plans/` is attached to the response and referred to by path in the next agent's specification ("implement step 2 of the plan at <path>"), with read access to that exact path authorized and without user confirmation (`delegation-protocol` skill). The same applies to any other document an agent produces outside the workspaces root. Confirmation for access outside the workspace is requested with `<question>`;
 - Requires the project folder parameter (`project-folder`) to always be the project's top-level root directory, never nested paths or internal subfolders, ensuring the specialist starts its execution at the workspace root where the governance and documentation files live; details of narrow scopes or subdirectories belong in the task specification;
 - Reads `workspace-manifest.json` to locate repositories by URL, without writing it;
 - Converses naturally and in proportion to the message, following the confinement and protocol rules without mentioning them to the user;
@@ -194,12 +203,12 @@ from the narration.
 
 - Acts as software architect and technical lead responsible for in-depth requirements analysis, architecture exploration and up-front impact assessment in the repository;
 - Analytical, general-purpose persona: answers architectural queries, investigations, trade-off analysis of libraries/technologies and drafting of implementation plans;
-- Operates under strictly read-only discipline: does not change files, does not generate production code and does not commit or apply patches directly;
+- Operates under strictly read-only discipline: does not change project files, does not generate production code and does not commit or apply patches directly. The plan document is the only file it writes;
 - Decision discipline: ambiguities, architectural trade-offs and unconfirmed technologies are user decisions, asked with `<question>` before consolidating the plan — one option per viable approach, the justified recommendation as the first option and pros and cons in the `rationale`;
 - Does the project orientation, treats local skills and architectural guides as authoritative and asks which one prevails when documentation, code and request diverge;
-- Produces structured plans delivered directly in the chat (without generating files on disk), containing Overview and Goals, Technical Decisions and Architecture, Impact Analysis with real file paths, Sequential Task Breakdown for the DEVELOPER (with explicit dependencies and integrated tests in each task) and Acceptance/Verification Criteria with concrete commands;
+- Writes the plan to `plan.md` in the initiative folder of the plans directory (see "Plan documents" below), containing Overview and Goals, Technical Decisions and Architecture, Impact Analysis with real file paths, numbered `### Step N: <name>` steps for the DEVELOPER (with explicit dependencies and integrated tests in each step) and Acceptance/Verification Criteria with concrete commands. Refinements update the same file and keep the numbers of the steps that stay valid. The final response gives the absolute path, a summary and what the caller must decide or do next;
 - Operates by default in a persisted session (`defaultSessionMode: 'resume'`) to support iterative refinements and conversational alignment with the CEO or user;
-- Has the `TECH_LEAD_TURN_REMINDER` configured in its definition, reinforcing the planning role, read-only discipline, decisions asked to the user and tasks with verifiable criteria.
+- Has the `TECH_LEAD_TURN_REMINDER` configured in its definition, reinforcing the planning role, read-only discipline, decisions asked to the user, steps with verifiable criteria and the plan file.
 
 ### 5. Git Ops Agent (`git-ops.prompt.ts`)
 
@@ -219,18 +228,19 @@ from the narration.
 - Runs the interview only through `<question>`, with no round limit, starting with scope and actors;
 - Blocking guardrails: read-only except for the intent document; never invent a rule; a conflict with documentation becomes a question; a divergence between system and documentation becomes a question and is recorded in "Divergences to fix"; an unreadable cited document becomes a question;
 - Intent document with a default template (empty sections omitted, user's structure), "Open questions" only with what the user declared not to know, consolidation with pending items only if the user insists, and a checklist before writing;
-- Writes the document to `INTENT_DOCUMENTS_DIR` (`constants/intent-documents.constant.ts`, `os.tmpdir()/agent-remote-control/intents`), overwriting it on refinements, and returns to the caller the absolute path, a summary and the pending technical decisions;
+- Writes the document to `intent.md` in the initiative folder of the plans directory (see "Plan documents" below), overwriting it on refinements, and returns to the caller the absolute path, a summary and the pending technical decisions;
 - Contract `project: 'optional'` (with a folder it does the project orientation and reads the code; without a folder it discusses the idea from scratch), `readOnly`, `defaultSessionMode: 'resume'`, and the `PRODUCT_OWNER_TURN_REMINDER`.
 
 ## Registry Service (`AgentRegistryService`)
 
-The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `src/modules/orchestrator/ports/agent-registry.port.ts`:
+The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `packages/server/src/modules/orchestrator/ports/agent-registry.port.ts`:
 
 - `getSystemPrompt(agentRole: string)`: resolves the definition case-insensitively and calls `buildSystemPrompt` with all other registered definitions. Unregistered roles receive a generic prompt;
 - `getDefaultModel(agentRole: string)`: returns the identifier of the preferred model associated with the role;
 - `getDefaultSessionMode(agentRole: string)`: returns the role's default session mode (`'resume' | 'new'`), falling back to `'resume'` if not configured or unknown;
 - `getTurnReminder(agentRole: string)`: returns the turn reminder associated with the role (`turnReminder`), an empty string for a definition without a reminder, or a default fallback text for unregistered roles (always a string);
 - `isSystemPromptEveryTurn(agentRole: string)`: indicates whether the role receives the system prompt with every user message (`false` for an unknown role);
+- `usesPlansDirectory(agentRole: string)`: indicates whether the role receives the `[PLANS_DIRECTORY]` block (`plansDirectory`; `false` for an unknown role);
 - `getWorkspaceFiles(workspaceDir: string)`: aggregates the `buildWorkspaceFiles` of all definitions, each with its own team;
 - `hasRole(agentRole: string)`: indicates, case-insensitively, whether the role is registered;
 - `listRoles()`: returns the role of every registered definition, in registration order;

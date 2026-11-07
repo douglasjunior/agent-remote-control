@@ -26,7 +26,8 @@ the internal content of files, what is exposed and how classes and functions are
 ### Ban on barrel exports (`index.ts`)
 
 Using `index.ts` files to re-export multiple symbols from a folder or module is
-**forbidden across the whole repository**.
+**forbidden across the whole repository**. A package exposes files to other packages
+through subpath exports in its `package.json`, never through an `index.ts`.
 
 In the NestJS ecosystem, with dependency injection and metadata decorators, barrel files
 introduce hidden circular dependencies, hinder tree-shaking and improperly couple consumers
@@ -86,11 +87,31 @@ export class AgentTimeoutException extends Error { ... }
 A helper function used exclusively by a single class or component must not be extracted to a
 separate file with its own test suite. Keep it in the same file as its consumer.
 
-Extract it to its own file only when:
+Extract it to its own file only when it qualifies as a util (next section).
 
-1. There are **multiple real consumers** in different places; or
-2. Its algorithmic complexity is significant enough to justify a unit test suite isolated
-   from the consumer.
+### What belongs in `utils/`
+
+A file in `utils/` (`*.util.ts`) holds **pure functions**, with no side effects (no I/O, no
+clock, no randomness, no injected state), that **two or more classes share** and whose content
+**justifies the reuse**. All three conditions are required.
+
+Justified, because several classes need the same non-trivial rule and it must not drift:
+
+- `protocol-tag.util.ts` (`parseTagAttributes`, `readTagBody`, `findCodeSpans`): the tag grammar read by
+  `QuestionParserService`, `DelegationDetectorService` and `AgentProtocolService`.
+- `user-language.util.ts` (`normalizeUserLanguage`, `extractUserLanguage`): the rules for reading and validating the
+  language name the CEO writes, used by `UserLanguageService` and by the turn use case.
+
+Not justified, so the logic stays where it is used (a private method of its class, or inline):
+
+- A function that only `trim()`s, `split()`s, `join()`s, lowercases, clamps or otherwise wraps one standard
+  library call, even when two classes happen to call it: the name hides less than the call shows.
+- A function with one consumer, however complex: it is that class's private method. Its test exercises it
+  through the class.
+- A function that reads the environment, the clock or the file system: it is not pure, so it belongs to a
+  service or an adapter that can be replaced in tests (`DataDirectoryService` reads `DATA_DIR` this way).
+- A class that holds state or timers, such as `DiscordThrottler` or `DiscordTypingIndicator`: it is not a function,
+  so it lives in `services/` even when a handler creates it with `new` for each turn.
 
 ### In classes, the helper is a private method
 
@@ -187,5 +208,6 @@ async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
 - [ ] Every `import` points directly to the file that declares the symbol.
 - [ ] Only externally consumed classes, interfaces and functions have `export`.
 - [ ] Helper functions supporting classes are declared as `private` methods.
+- [ ] A `*.util.ts` function is pure, shared by two or more classes and more than a one-call wrapper.
 - [ ] Variables declared exclusively with `const`, except for deliberate reassignment.
 - [ ] Methods structured with guard clauses and early returns, without nested `if/else`.

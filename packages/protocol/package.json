@@ -1,0 +1,26 @@
+{
+  "name": "@agent-remote-control/protocol",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Message contract between the web interface and the server.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    "./*": {
+      "source": "./src/*.ts",
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "ts": "tsc --noEmit"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "files": [
+    "dist"
+  ]
+}

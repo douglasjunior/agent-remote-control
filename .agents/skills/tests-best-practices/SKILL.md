@@ -24,16 +24,16 @@ and integrated with the NestJS testing module (`@nestjs/testing`).
 - **Framework**: Vitest with `globals: true`.
 - **Environment**: plain Node.js (`environment: 'node'`).
 - **File location**: `*.spec.ts` placed **side by side** with the corresponding
-  production file in `src/`.
+  production file in `packages/server/src/`.
 - **E2E tests**: located in the `test/` directory and run with `vitest.config.e2e.ts`.
 - **Commands**:
-  - `yarn test`: Runs all unit tests once;
-  - `yarn test:cov`: Runs the tests and generates a code coverage report;
-  - `yarn test:e2e`: Runs the end-to-end tests.
+  - `pnpm test`: Runs all unit tests once;
+  - `pnpm test:cov`: Runs the tests and generates a code coverage report;
+  - `pnpm test:e2e`: Runs the end-to-end tests.
 
 ## Golden rule: `vi.mock` only for external boundaries
 
-**Internal project dependencies (any file located in `src/`) must never be
+**Internal project dependencies (any file located in `packages/server/src/`) must never be
 mocked using `vi.mock`.**
 
 - **Allowed with `vi.mock`**:
@@ -215,11 +215,11 @@ For each use case, adapter or service, ensure tests for:
 
 ## Checklist
 
-- [ ] No `vi.mock` pointing to files in `src/`.
+- [ ] No `vi.mock` pointing to files in `packages/server/src/`.
 - [ ] Stubs explicitly implement the port interfaces (`implements I...Port`).
 - [ ] Replacement in the NestJS container done through the port's `Symbol`.
 - [ ] Direct imports from source files, without barrel exports (`index.ts`).
 - [ ] Assertions check state and observable effects before checking method calls.
 - [ ] No real-time delays (`setTimeout`); exclusive use of `vi.waitFor` or fake timers.
 - [ ] All branches and error handling covered by the spec.
-- [ ] Mandatory validation run with `yarn lint` and `yarn test` (and `yarn test:e2e`).
+- [ ] Mandatory validation run with `pnpm lint` and `pnpm test` (and `pnpm test:e2e`).

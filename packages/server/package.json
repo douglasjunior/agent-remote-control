@@ -1,0 +1,43 @@
+{
+  "name": "@agent-remote-control/server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "NestJS server that orchestrates AI coding agents over the Agent Client Protocol (ACP).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "nest start",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main",
+    "ts": "tsc --noEmit",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts"
+  },
+  "dependencies": {
+    "@agent-remote-control/protocol": "workspace:*",
+    "@agentclientprotocol/claude-agent-acp": "^0.93.0",
+    "@agentclientprotocol/codex-acp": "^2.2.2",
+    "@agentclientprotocol/sdk": "^1.9.0",
+    "@nestjs/common": "^12.0.1",
+    "@nestjs/config": "^12.0.1",
+    "@nestjs/core": "^12.0.1",
+    "@nestjs/platform-express": "^12.0.1",
+    "discord.js": "^14.27.0",
+    "fuzzysort": "^3.1.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "ws": "^8.22.1",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/mau": "^0.2.6",
+    "@nestjs/schematics": "^12.0.0",
+    "@nestjs/testing": "^12.0.1",
+    "@types/express": "^5.0.0",
+    "@types/supertest": "^7.0.0",
+    "@types/ws": "^8.18.2",
+    "source-map-support": "^0.5.21",
+    "supertest": "^7.0.0"
+  }
+}

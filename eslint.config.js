@@ -2,15 +2,18 @@ import eslint from '@eslint/js';
 import stylistic from '@stylistic/eslint-plugin';
 import { defineConfig, globalIgnores } from 'eslint/config';
 import importPlugin from 'eslint-plugin-import';
+import react from 'eslint-plugin-react';
+import reactHooks from 'eslint-plugin-react-hooks';
+import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+
 
 export default defineConfig([
   globalIgnores([
     '**/node_modules/',
-    '**/dist/',
-    '**/coverage/',
-    '.yarn/',
+    'packages/*/dist/',
+    'packages/*/coverage/',
     '**/.eslintcache/',
     '**/.tsbuildinfo/',
     'scripts/',
@@ -19,7 +22,9 @@ export default defineConfig([
   {
     settings: {
       'import/resolver': {
-        typescript: {},
+        typescript: {
+          project: 'packages/*/tsconfig.json',
+        },
       },
     },
   },
@@ -67,7 +72,7 @@ export default defineConfig([
         },
       ],
       'object-shorthand': ['error'],
-      'indent': 'off',
+      indent: 'off',
       'array-bracket-newline': ['error', { multiline: true }],
       'comma-dangle': 'off',
       'no-multi-spaces': 'error',
@@ -113,6 +118,26 @@ export default defineConfig([
           tsx: 'never',
         },
       ],
+    },
+  },
+  {
+    files: ['packages/web/**/*.{ts,tsx}'],
+    extends: [react.configs.flat.recommended, react.configs.flat['jsx-runtime'], reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
+    settings: {
+      react: { version: 'detect' },
+    },
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': ['error'],
+    },
+  },
+  {
+    files: ['packages/web/src/components/ui/**/*.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
   {

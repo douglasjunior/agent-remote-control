@@ -20,12 +20,12 @@ description: >
 
 ## `IAgentPort` Contract
 
-The `IAgentPort` port lives in `src/modules/agent/ports/agent.port.ts` and decouples
+The `IAgentPort` port lives in `packages/server/src/modules/agent/ports/agent.port.ts` and decouples
 the application core from the technical details of communicating with AI agents.
 
 Each `IAgentPort` instance represents one agent subprocess with a single ACP
 session. Consumers obtain instances through the `IAgentPortFactory` factory
-(`src/modules/agent/ports/agent-port-factory.port.ts`), registered in `AgentModule` with
+(`packages/server/src/modules/agent/ports/agent-port-factory.port.ts`), registered in `AgentModule` with
 `AcpAgentPortFactoryAdapter`:
 
 ```ts
@@ -54,7 +54,7 @@ same ACP session and the same `cwd`.
 ### Properties
 
 - `agentName: string`: identifier of the concrete agent (`'agy'`, `'claude'`, `'copilot'`, `'codex'` or `'cursor'`), equal to the factory `agentId` and shown in the response footer.
-- `lastAgentMessage: string`: last consolidated text response of the turn.
+- `lastAgentMessage: string`: the last message of the turn as the agent wrote it, protocol tags included.
 - `currentSessionId?: string`: ID of the active ACP session. It is `undefined` without a session, including after a lost transport or a forced cancellation.
 - `supportsSteering: boolean`: whether the agent supports native steering while a turn is running.
 
@@ -72,15 +72,15 @@ same ACP session and the same `cwd`.
 - `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: the model's effort levels, read in an isolated probe session.
 - `setConfig(config: AgentConfig): Promise<void>`: applies model and/or effort to the active session and stores it as the preference for the next sessions.
 - `getLastRoundUsage(): Promise<AgentUsage | undefined>`: token usage of the last turn or via fallback.
-- `getQuota(): Promise<AgentQuota | undefined>`: the agent's usage limits (`groups` → `buckets` with `window`, `remainingFraction` from 0 to 1 and ISO `resetTime`). Resolves `undefined` when the agent does not expose a quota or the query fails; `AbstractAcpAdapter` returns `undefined` by default. `CopilotAdapter` runs `gh api /copilot_internal/user` (an undocumented internal endpoint, uses `gh` authentication) and converts it with `parseCopilotUserOutput` (`utils/copilot-usage.util.ts`): it ignores unlimited snapshots and maps the rest to `monthly` buckets. `AntigravityAdapter` runs `agy --output-format json --print /usage` via `IProcessRunnerPort.run` and converts the output with `parseAgyUsageOutput` (`utils/agy-usage.util.ts`). `ClaudeCodeAdapter` runs `claude -p /usage` via `IProcessRunnerPort.run` and converts the `<label>: <N>% used · resets <time> (<zone>)` lines with `parseClaudeUsageOutput` (`utils/claude-usage.util.ts`), mapping the session limit to `5h` and the weekly ones to `7d`. `CodexAdapter` spawns `codex app-server` (from `CODEX_PATH` or the PATH), performs the JSON-RPC `initialize`, `initialized` and `account/rateLimits/read` exchange within 10 s, kills the server and converts the `primary`/`secondary` windows with `parseCodexRateLimits` (`utils/codex-usage.util.ts`).
-- `onActivity(listener): () => void`: observes the live feed (thoughts, tools and cancellation).
+- `getQuota(): Promise<AgentQuota | undefined>`: the agent's usage limits (`groups` → `buckets` with `window`, `remainingFraction` from 0 to 1 and ISO `resetTime`). Resolves `undefined` when the agent does not expose a quota or the query fails; `AbstractAcpAdapter` returns `undefined` by default. `CopilotAdapter` runs `gh api /copilot_internal/user` (an undocumented internal endpoint, uses `gh` authentication) and converts it in a private method of the adapter: it ignores unlimited snapshots and maps the rest to `monthly` buckets. `AntigravityAdapter` runs `agy --output-format json --print /usage` via `IProcessRunnerPort.run` and converts the output in a private method of the adapter. `ClaudeCodeAdapter` runs `claude -p /usage` via `IProcessRunnerPort.run` and converts the `<label>: <N>% used · resets <time> (<zone>)` lines in a private method of the adapter, mapping the session limit to `5h` and the weekly ones to `7d`. `CodexAdapter` spawns `codex app-server` (from `CODEX_PATH` or the PATH), performs the JSON-RPC `initialize`, `initialized` and `account/rateLimits/read` exchange within 10 s, kills the server and converts the `primary`/`secondary` windows in a private method of the adapter.
+- `onActivity(listener): () => void`: observes the live feed (thoughts, tools, steering and cancellation).
 
 ### SDK-free Types
 
 `AgentUpdate` is `{ kind: 'text'; text: string }` and `AgentToolStatus` is
 `'pending' | 'in_progress' | 'completed' | 'failed'`. No type from
 `@agentclientprotocol/sdk` appears in the port; the SDK is only imported in
-`src/modules/agent/{adapters,bridges,demux,testing}`.
+`packages/server/src/modules/agent/{adapters,bridges,demux,testing}`.
 
 ## Session Lifecycle
 
@@ -115,27 +115,29 @@ next `connect()` starts a new process.
 2. **Escalation**: with steering, injects the abort prompt (`CANCEL_ABORT_PROMPT_TEXT`) via `_session/steering`; without steering, resends `session/cancel`, because a concurrent `session/prompt` would be rejected by the busy agent. Opens a 15-second window.
 3. **Forced cancellation**: rejects the turn locally with `PromptCancelledError` and discards the session and the transport. The next turn reconnects and resumes the session with `loadSession`.
 
+## Agent Notices
+
+`connect()` advertises `clientCapabilities.session.notices`, so agents send warnings as `session/update` records of type `notice` instead of message text. `AbstractAcpAdapter` logs them with `logger.warn` as `agent_notice (<severity>): <title>: <description>`; they stay out of activities and of `lastAgentMessage`.
+
 ## Streaming Demux and Activities
 
 `AgentStreamDemux` breaks raw ACP notifications down into typed events:
 
 - `agent_thought_chunk`: `{ kind: 'thought', id, text }` activities.
 - `tool_call` and `tool_call_update`: `{ kind: 'tool', toolCallId, title, status, details? }` activities. Tool details (arguments, execution parameters, output or errors) are extracted in full from the ACP payload without premature truncation.
-- `agent_message_chunk`: narrated as a `thought` activity and accumulated; when `prompt()` closes it becomes the final `AgentUpdate` block. Empty responses produce no block.
+- `agent_message_chunk`: narrated as a `thought` activity (`text` whole at every change, `final: true` when the block closes because the agent went on to something else) and accumulated; when `prompt()` closes, the messages joined, one paragraph each, become the final `AgentUpdate` block. Empty responses produce no block. Reasoning chunks are `thought` activities with `reasoning: true` and stay out of the final text.
 
-The final response is the message that contains `<final_response>` (`constants/final-response.constant.ts`,
-ignored in `agent_thought_chunk`). When this envelope appears, the message's feed entry is
-closed with the prose preceding it (`final: true`) or removed (`removed: true`) when there is no prose,
-and the message stops being narrated. `takeFinalText()` and `lastAgentMessage` return only the content of the
-envelopes (`splitFinalResponse`), which accepts an unclosed envelope. Without an envelope, the final text
-joins all non-thought messages, which covers sessions resumed from before the envelope.
+The demux tells thoughts from tool calls, keeps the messages in order and consolidates what the agent wrote. It
+knows nothing of the response protocol: the text it hands over, in activities, `takeFinalText()` and
+`lastAgentMessage`, is as the agent wrote it, `<final_response>` and other tags included. The orchestrator
+reads the protocol (`AgentProtocolService`, `orchestrator` skill).
 
 ## ACP Adapters
 
 The `AbstractAcpAdapter` base class implements the ACP protocol, sessions and the integration
 with the demux. It also provides `buildAgentEnv(cwd)`, the isolated environment of every agent
 subprocess: credentials and configuration of the host application (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
-`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), the variables that reveal the
+`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `QUESTION_TIMEOUT_MS`, `PORT`), the variables that reveal the
 application directory (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) and those with the `npm_` prefix are
 left out, and `PWD` is rewritten with the subprocess `cwd`. The rest of the environment is passed through, because the
 agent depends on it to operate (`PATH`, `HOME`, `SSH_AUTH_SOCK`, the agent's own credentials).
@@ -199,6 +201,7 @@ mode, with no bridge or extra dependency:
 - Sets `CODEX_PATH` to the `codex` on the `PATH` when the user has not set another; without it, the bridge uses the bundled `@openai/codex` binary, which may not match the host's architecture or libc. Authentication is the user's (`codex login`).
 - `CODEX_CONFIG` receives `skills.max_context_tokens: 10000`, the ceiling Codex accepts for the skill listing (default of 2% of the window), merged under any JSON configuration the user already has in `CODEX_CONFIG`.
 - Session preset `mode = agent-full-access`: the bridge applies approval and sandbox from the mode on each turn, so they do not come from the config. The `agent-full-access` mode never asks for approval and uses no sandbox.
+- **Known Codex behavior to recheck on every upgrade**: `session/load` resumes a thread on the model of the Codex config, not the one it recorded ([openai/codex#32061](https://github.com/openai/codex/issues/32061)), and Codex warns `This session was recorded with model X but is resuming with Y`. The warning arrives as a notice in the log. `applySessionConfig` restores the configured model before the first prompt, so no turn runs on the other model. With `codex-acp` 2.5.0, a CEO rollout had no model-switch instruction after its resumes and its prompt cache stayed intact. The Codex App Server documentation describes a one-time model-switch instruction for a resume on a different model, so compare `turn_context` and `token_count` in `~/.codex/sessions` after resuming: extra tokens there would justify starting Codex on the configured model through `CODEX_CONFIG`.
 
 ### `CursorAdapter`
 
@@ -210,7 +213,7 @@ mode, with no bridge or extra dependency:
 
 ### ACP Versions
 
-`@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `yarn why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
+`@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `pnpm why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
 
 ## Prescriptive Rules
 
