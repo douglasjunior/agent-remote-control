@@ -50,6 +50,8 @@ describe('conversationEntrySchema', () => {
       text: 'which?',
       rationale: 'why',
       options: ['a', 'b'],
+      recommendedIndex: 2,
+      timeout: { expiresAt: 1_700_000_000_000, durationMs: 300_000 },
       number: 1,
       total: 2,
       closed: false,

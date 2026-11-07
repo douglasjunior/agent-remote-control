@@ -51,7 +51,7 @@ Encapsulates the parameters for running an interaction round:
 - `onDraft`: optional callback `(text: string) => void` with the part of the CEO's response that the user reads, as far as it is written: whole at every call (replaced by the next one, so a channel keeps only the last), empty when discarded. The protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and a tag still being typed are left out (`visibleReply`, `visible-reply.util.ts`). The finished response reaches the channel through the result, `onInterimMessage` or `onQuestion`; the orchestrator discards the draft (`''`) before asking the CEO to repair a response. Answers written by delegated agents never reach it;
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
-- `onQuestion`: optional callback `(prompt: QuestionPrompt) => void`, called when an agent of this turn asks and the question reaches the front of the conversation queue on its own (see "Questions to the User").
+- `onQuestion`: optional callback `(event: QuestionEvent) => void` (`question-event.model.ts`), called with `{ kind: 'asked', prompt }` when an agent of this turn asks and the question reaches the front of the conversation queue on its own, and with `{ kind: 'timedOut', asker, answered, timeoutMs, next? }` when the user did not answer in time (see "Questions to the User").
 - `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?` and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
@@ -337,18 +337,20 @@ My understanding is: ... (free text, shown before the first question)
   findings, why the agent is blocked) and the rationale to state the impact of the answer, because the user may be
   following several agents at once.
 - **`QuestionParserService`** (`services/question-parser.service.ts`) returns `none`, `questions`
-  (`message` and `UserQuestion[]` with `text`, `rationale?` and `options`) or `invalid`: `<option>` outside
+  (`message` and `UserQuestion[]` with `text`, `rationale?`, `options` and `recommendedIndex?`, the 1-based option
+  written as `<option recommended>`) or `invalid`: `<option>` outside
   `<question>`, a tag without closing or without opening, an unknown attribute (`<question>` accepts only
-  `rationale`; `<option>` none), a question without text or an empty option. Tags inside Markdown code
+  `rationale`; `<option>` only the bare flag `recommended`, on at most one option of a question), a question without text or an empty option. Tags inside Markdown code
   (a block fenced by triple backticks or a span between backticks) are quoted markup, like an HTML
   `<option>`, and stay in the text.
 - **`UserQuestionQueueService`** (`services/user-question-queue.service.ts`) keeps in memory a
   queue of requests per conversation, in the order the agents asked, and exposes one question at a time.
   The queue lives in memory because the asking agent waits alive inside the turn; for a `resumable` turn the
   questions and answers are also kept on disk (see "Work Across a Restart"). Operations:
-  - `ask(conversationKey, asker, message, questions, notify?)`: queues and resolves with
-    `AnsweredQuestion[]` when the user answers all of them; `notify` shows the first question when the
-    request reaches the front of the queue on its own (empty queue or front request discarded);
+  - `ask(conversationKey, asker, message, questions, listener)`: queues and resolves with
+    `AnsweredQuestion[]` when the user answers all of them. `listener` (`QuestionListener`) has `asked`, which shows
+    the first question when the request reaches the front of the queue on its own (empty queue or front request
+    discarded), `timedOut`, and `answersChanged`, present only on requests whose answers are kept on disk;
   - `submit(conversationKey, answer)`: `answer` is structured, `{ kind: 'option', optionIndex }` (1-based, for a
     question with options) or `{ kind: 'text', text }`, plus optional `attachments`; the queue never reads a number
     from text, so the channel decides what a typed message means. An option outside the range, or empty text
@@ -357,15 +359,21 @@ My understanding is: ... (free text, shown before the first question)
     (resolves the agent's wait and carries the question of the next request, if any) and `invalid`; with no
     pending question, `undefined`;
   - `restore(conversationKey, workId, asker, questions, onAnswer)`: queues a request a restart left unanswered, with
-    the answers already given. Nothing waits on it: its `answered` submission carries `restoredWork` (`workId` and
+    the answers already given. It has no countdown. Nothing waits on it: its `answered` submission carries `restoredWork` (`workId` and
     `answers`), and the channel hands it to `IAgentTurnPort.deliverAnswers`;
+  - **Timeout**: the question at the front has a countdown of `QUESTION_TIMEOUT_MS` (`QuestionTimeoutConfigService`,
+    default 300000 ms, `0` disables it), restarted for each question of a request and for the request that reaches
+    the front. When it ends, the question is answered with its recommended option, or with nothing when it has none
+    (`AnsweredQuestion.timedOut: true`, and no `optionNumber` or text when nothing was assumed), the request moves on
+    like after any answer and `listener.timedOut` receives a `QuestionTimedOut` (`asker`, `answered`, `timeoutMs`, and
+    the `next` prompt). Answering, `cancel` and `discard` stop the countdown;
   - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
   - `cancel(conversationKey)`: empties the queue and rejects all waits with `PromptCancelledError`;
   - `discard(conversationKey, role, projectName)`: removes the request of an agent that is being
     replaced, rejecting its wait.
 - `QuestionPrompt` (`models/user-question.model.ts`) is what the channel shows: `asker` (`role`,
-  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question) and
-  `waitingAskers`.
+  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question),
+  `waitingAskers` and `timeout?` (`expiresAt` in epoch milliseconds and `durationMs`; absent when the timeout is disabled).
 - **Answers to the agent**: a block that repeats the text of each question, to withstand context
   compaction while the user answers, with one `<attachment>` per attached file (downloaded by the
   channel into a temporary directory):
@@ -377,6 +385,11 @@ My understanding is: ... (free text, shown before the first question)
   <attachment path="/tmp/.../screen.png" name="screen.png" type="image/png"/></answer>
   </user_answers>
   ```
+
+  An answer the user did not give in time carries `status="timed_out"`: with `option="N"` for the recommended
+  option assumed, and without `option` or text when the question had none. A single `<note>` closes the block,
+  telling the agent that the user was absent, that the assumed answers are provisional and that it decides how to
+  proceed where nothing was assumed.
 
 - **Locked state**: while the conversation has pending questions the agent is waiting, and a channel that offers a
   free-form input treats the next message as the answer (`hasPendingQuestions`, `currentQuestion`, `answerQuestion`). `/cancel` unlocks the conversation (see below).

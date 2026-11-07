@@ -12,6 +12,7 @@ export type ParsedQuestions =
 
 const QUESTION_TAG = /<(\/?)(question|option)\b([^>]*)>/gi;
 const OPTION_TAG = /<(\/?)option\b([^>]*)>/gi;
+const RECOMMENDED_FLAG = /(^|\s)recommended(?=\s|\/?$)/i;
 
 @Injectable()
 export class QuestionParserService {
@@ -61,6 +62,7 @@ export class QuestionParserService {
 
   private parseQuestion(content: string, rationale: string | undefined): UserQuestion | string {
     const options: string[] = [];
+    let recommendedIndex: number | undefined;
     const textParts: string[] = [];
     const tags = new RegExp(OPTION_TAG.source, OPTION_TAG.flags);
     let cursor = 0;
@@ -70,9 +72,13 @@ export class QuestionParserService {
       if (closing) {
         return `Found ${rawTag} without its opening <option> tag.`;
       }
-      const attributes = parseTagAttributes(rawTag, rawAttributes!, []);
+      const recommended = RECOMMENDED_FLAG.test(rawAttributes!);
+      const attributes = parseTagAttributes(rawTag, rawAttributes!.replace(RECOMMENDED_FLAG, ' '), []);
       if (typeof attributes === 'string') {
         return attributes;
+      }
+      if (recommended && recommendedIndex !== undefined) {
+        return 'More than one <option> is marked recommended. Mark only the one option you recommend.';
       }
       const body = readTagBody(content, 'option', tag.index + rawTag.length);
       if (typeof body === 'string') {
@@ -83,6 +89,9 @@ export class QuestionParserService {
         return 'An <option> is empty. Write the choice between <option> and </option>, or remove it.';
       }
       options.push(option);
+      if (recommended) {
+        recommendedIndex = options.length;
+      }
       textParts.push(content.slice(cursor, tag.index));
       tags.lastIndex = body.end;
       cursor = body.end;
@@ -93,7 +102,7 @@ export class QuestionParserService {
     if (!text) {
       return 'A <question> has no text. Write the question itself inside the tag, before its options.';
     }
-    return { text, ...(rationale ? { rationale } : {}), options };
+    return { text, ...(rationale ? { rationale } : {}), options, ...(recommendedIndex ? { recommendedIndex } : {}) };
   }
 
   /** Tags inside Markdown code are quoted markup, such as an HTML `<option>`, not questions. */

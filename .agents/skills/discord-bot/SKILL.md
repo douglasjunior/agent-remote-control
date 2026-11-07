@@ -127,11 +127,12 @@ Any agent can ask the user directly (see the `orchestrator` skill). While there 
 pending questions, the conversation is locked as in the selection: every message is an answer, with or without
 attachments, and nothing reaches the CEO.
 
-- **First question**: the turn's `onQuestion` callback posts `formatQuestion(prompt)` in the same
+- **First question**: the turn's `onQuestion` callback, on an `asked` event, posts `formatQuestion(prompt)` in the same
   queue as the delegation announcements and interim messages, so it appears after the notice that
   the agent took over the task. It calls `keepAlive()` like the other callbacks. If sending fails, the
   error is logged and the flow proceeds.
 - **Following questions**: arrive as the `resolveInput` outcome on the message that answered the previous one.
+- **Timeout**: a `timedOut` event posts `formatQuestionTimedOut(event)` (`⏱️ **No reply in <n> min** · <roleName> (\`<project>\`) — assumed the recommended answer **<n>. <option>**`, or `no answer assumed, the agent decides how to proceed`, plus the question in a `-#` line) and then `formatQuestion(next)` when another question follows. `formatQuestion` marks the recommended option with `_(recommended)_` and, while the timeout is enabled, adds `-# ⏱️ Without a reply <t:<unix>:R>, ...` with a Discord relative timestamp.
 - **`formatQuestion(prompt)`**: the agent's free text (only on the first question), followed by
   `❓ **Question <n>/<total>** · <roleName> (\`<project>\`)`, the question text in bold, the
   `rationale` in italics after "Why it matters:", the numbered options (`**1.** ...`) and a `-#` line explaining that one

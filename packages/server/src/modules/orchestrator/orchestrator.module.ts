@@ -25,6 +25,7 @@ import { ConversationRuntimeService } from './services/conversation-runtime.serv
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
 import { OpenWorkService } from './services/open-work.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
+import { QuestionTimeoutConfigService } from './services/question-timeout-config.service.js';
 import { ShellCommandConfigService } from './services/shell-command-config.service.js';
 import { UserLanguageService } from './services/user-language.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
@@ -66,6 +67,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     DelegationDetectorService,
     AgentProtocolService,
     QuestionParserService,
+    QuestionTimeoutConfigService,
     ShellCommandConfigService,
     UserLanguageService,
     UserQuestionQueueService,

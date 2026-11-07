@@ -5,6 +5,7 @@ import { ConversationRuntimeService } from '../services/conversation-runtime.ser
 import { OpenWorkService } from '../services/open-work.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
+import { questionListener } from '../testing/question-listener.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -24,7 +25,7 @@ describe('CancelAgentTurnUseCase', () => {
     agentPort = new StubAgentPort();
     const factory = new StubAgentPortFactory(() => agentPort);
     runtime = new ConversationRuntimeService(factory, 60_000);
-    questionQueue = new UserQuestionQueueService();
+    questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
     shellRunning = false;
     const runShellCommand = { cancel: () => shellRunning } as unknown as RunShellCommandUseCase;
     openWork = new OpenWorkService(new InMemoryOpenWorkStoreFake());
@@ -57,7 +58,7 @@ describe('CancelAgentTurnUseCase', () => {
 
   it('should discard the questions waiting for the user and reject the agents waiting on them', async () => {
     const asker = { role: 'PRODUCT_OWNER', roleName: 'Product Owner', projectName: null };
-    const waiting = questionQueue.ask('conv-th-1', asker, '', [{ text: 'Who approves?', options: [] }]);
+    const waiting = questionQueue.ask('conv-th-1', asker, '', [{ text: 'Who approves?', options: [] }], questionListener());
 
     await expect(useCase.execute('conv-th-1')).resolves.toBe(true);
 

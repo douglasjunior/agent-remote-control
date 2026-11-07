@@ -174,6 +174,17 @@ describe('conversation entry mapping', () => {
       expect(valid(entry)).toBe(true);
     });
 
+    it('carries the recommended option and the time the question expires', () => {
+      const entry = questionEntry({
+        ...prompt,
+        question: { ...prompt.question, recommendedIndex: 2 },
+        timeout: { expiresAt: 1_700_000_000_000, durationMs: 300_000 },
+      });
+
+      expect(entry).toMatchObject({ recommendedIndex: 2, timeout: { expiresAt: 1_700_000_000_000, durationMs: 300_000 } });
+      expect(valid(entry)).toBe(true);
+    });
+
     it('omits absent optional fields', () => {
       const entry = questionEntry({
         ...prompt,
@@ -185,6 +196,8 @@ describe('conversation entry mapping', () => {
       expect(entry).not.toHaveProperty('projectName');
       expect(entry).not.toHaveProperty('rationale');
       expect(entry).not.toHaveProperty('message');
+      expect(entry).not.toHaveProperty('recommendedIndex');
+      expect(entry).not.toHaveProperty('timeout');
     });
   });
 

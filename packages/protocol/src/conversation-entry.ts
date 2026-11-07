@@ -66,6 +66,10 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     text: z.string(),
     rationale: z.string().optional(),
     options: z.array(z.string()),
+    /** 1-based option the agent recommends, assumed when the user does not answer in time. */
+    recommendedIndex: z.number().int().optional(),
+    /** `expiresAt` is epoch milliseconds; absent when the timeout is disabled. */
+    timeout: z.object({ expiresAt: z.number(), durationMs: z.number() }).optional(),
     number: z.number().int(),
     total: z.number().int(),
     /** Whether the question can no longer be answered; the server closes it in place. */

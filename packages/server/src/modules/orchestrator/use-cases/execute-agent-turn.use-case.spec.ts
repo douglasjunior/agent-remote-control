@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
@@ -27,6 +27,7 @@ import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
+import { questionListener } from '../testing/question-listener.fixture.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
@@ -102,6 +103,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let delegationDetector: DelegationDetectorService;
   let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
+  let questionTimeoutMs = 0;
   let questionQueue: UserQuestionQueueService;
   let openWork: OpenWorkService;
   let openWorkStore: InMemoryOpenWorkStoreFake;
@@ -131,7 +133,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   const wire = (factory: StubAgentPortFactory) => {
     runtime = new ConversationRuntimeService(factory, 60_000);
-    questionQueue = new UserQuestionQueueService();
+    questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => questionTimeoutMs });
     openWork = new OpenWorkService(openWorkStore);
     speechToText = new StubSpeechToText();
     deletedFiles = [];
@@ -380,7 +382,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
     expect(stubAgentPort.promptCalls).toHaveLength(1000);
-    expect(delegateStubPort.promptCalls).toHaveLength(99);
+    expect(delegateStubPort.promptCalls).toHaveLength(999);
   });
 
   it('should tell the CEO of the next turn which delegations never started when the round limit stopped the turn', async () => {
@@ -2609,6 +2611,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         { role: 'DEVELOPER', roleName: 'Developer', projectName: 'project-a' },
         '',
         [{ text: 'Which one?', options: [] }],
+        questionListener(),
       );
       stubAgentPort.mockResponses = ['Understood.'];
 
@@ -3173,8 +3176,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       const answer = answerWith('2', 'R$ 500');
 
       const result = await useCase.execute(turnRequest({
-        onQuestion: (prompt) => {
-          prompts.push(prompt);
+        onQuestion: (event) => {
+          if (event.kind === 'asked') {
+            prompts.push(event.prompt);
+          }
           answer();
         },
       }));
@@ -3216,6 +3221,51 @@ describe('ExecuteAgentTurnUseCase', () => {
       ].join('\n')));
     });
 
+    describe('when the user does not answer in time', () => {
+      beforeEach(() => {
+        questionTimeoutMs = 60_000;
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      });
+
+      afterEach(() => {
+        questionTimeoutMs = 0;
+        vi.useRealTimers();
+      });
+
+      it('should tell the agent the recommended answer was assumed because the user was absent', async () => {
+        stubAgentPort.mockResponses = [
+          '<question>Which database?<option>Postgres</option><option recommended>SQLite</option></question>',
+          'Using SQLite.',
+        ];
+        const onQuestion = vi.fn();
+
+        const turn = useCase.execute(turnRequest({ onQuestion }));
+        await vi.waitFor(() => expect(onQuestion).toHaveBeenCalledWith(expect.objectContaining({ kind: 'asked' })));
+        vi.advanceTimersByTime(60_000);
+        const result = await turn;
+
+        expect(result).toMatchObject({ status: 'completed', response: 'Using SQLite.' });
+        expect(onQuestion).toHaveBeenCalledWith(expect.objectContaining({ kind: 'timedOut', timeoutMs: 60_000 }));
+        const answers = stubAgentPort.promptCalls[1]!;
+        expect(answers).toContain('<answer question="Which database?" option="2" status="timed_out">SQLite</answer>');
+        expect(answers).toContain('<note>The user was absent and did not reply in time.');
+      });
+
+      it('should tell the agent nothing was assumed when the question had no recommended option', async () => {
+        stubAgentPort.mockResponses = ['<question>What is the limit?</question>', 'I will pick one.'];
+        const onQuestion = vi.fn();
+
+        const turn = useCase.execute(turnRequest({ onQuestion }));
+        await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+        vi.advanceTimersByTime(60_000);
+        await turn;
+
+        const answers = stubAgentPort.promptCalls[1]!;
+        expect(answers).toContain('<answer question="What is the limit?" status="timed_out"></answer>');
+        expect(answers).toContain('an answer with no option had no recommendation');
+      });
+    });
+
     it('should hand the user answers to the CEO with its system prompt and finish with its next answer', async () => {
       agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
       stubAgentPort.mockResponses = ['Before I start:\n<question>Which project?<option>Backend</option></question>', 'Starting on the backend.'];
@@ -3253,8 +3303,11 @@ describe('ExecuteAgentTurnUseCase', () => {
       const answers = answerWith('one', 'two');
 
       const result = await useCase.execute(turnRequest({
-        onQuestion: (prompt) => {
-          shown.push(`${prompt.question.text} (${prompt.waitingAskers} waiting)`);
+        onQuestion: (event) => {
+          if (event.kind !== 'asked') {
+            return;
+          }
+          shown.push(`${event.prompt.question.text} (${event.prompt.waitingAskers} waiting)`);
           if (shown.length === 1) {
             releaseSecond();
             setTimeout(answers, 0);
@@ -3328,7 +3381,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         turn: { cancel } as any,
         steer,
       });
-      const waiting = questionQueue.ask('conv-1', { role: 'DEVELOPER', roleName: 'Developer', projectName: 'my-app' }, '', [{ text: 'Q?', options: [] }]);
+      const waiting = questionQueue.ask('conv-1', { role: 'DEVELOPER', roleName: 'Developer', projectName: 'my-app' }, '', [{ text: 'Q?', options: [] }], questionListener());
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">New task.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
 

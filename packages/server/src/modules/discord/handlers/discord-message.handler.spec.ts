@@ -2092,7 +2092,7 @@ describe('DiscordMessageHandler', () => {
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', taskSpec: 'Do the work', summary: 'Doing the work', phase: 'started' });
-        request.onQuestion?.(prompt);
+        request.onQuestion?.({ kind: 'asked', prompt });
         return { response: 'Done.', status: 'completed' };
       };
 
@@ -2105,6 +2105,55 @@ describe('DiscordMessageHandler', () => {
       expect(question).toBeGreaterThan(delegated);
     });
 
+    it('should report a question answered after the timeout, followed by the next question', async () => {
+      const contents: string[] = [];
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        contents.push(content);
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      agentTurn.executeTurn = async (request: TurnRequest) => {
+        request.onQuestion?.({
+          kind: 'timedOut',
+          asker: prompt.asker,
+          answered: { question: prompt.question, answer: 'Finance', optionNumber: 2, timedOut: true },
+          timeoutMs: 300_000,
+          next: { ...prompt, number: 2 },
+        });
+        return { response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+      await vi.runAllTimersAsync();
+
+      const timedOut = contents.findIndex(content => content.includes('No reply in 5 min'));
+      const next = contents.findIndex(content => content.includes('❓ **Question 2/2**'));
+      expect(timedOut).toBeGreaterThanOrEqual(0);
+      expect(next).toBeGreaterThan(timedOut);
+    });
+
+    it('should report a question answered after the timeout when no question follows it', async () => {
+      const contents: string[] = [];
+      const send = vi.fn().mockImplementation(async (content: string) => {
+        contents.push(content);
+        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+      });
+      agentTurn.executeTurn = async (request: TurnRequest) => {
+        request.onQuestion?.({
+          kind: 'timedOut',
+          asker: prompt.asker,
+          answered: { question: prompt.question, answer: '', timedOut: true },
+          timeoutMs: 300_000,
+        });
+        return { response: 'Done.', status: 'completed' };
+      };
+
+      await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+      await vi.runAllTimersAsync();
+
+      expect(contents.some(content => content.includes('No reply in 5 min'))).toBe(true);
+      expect(contents.some(content => content.includes('❓'))).toBe(false);
+    });
+
     it('should proceed gracefully when the question cannot be sent', async () => {
       const send = vi.fn().mockImplementation(async (content: string) => {
         if (content.includes('❓')) {
@@ -2113,7 +2162,7 @@ describe('DiscordMessageHandler', () => {
         return { content, edit: vi.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        request.onQuestion?.(prompt);
+        request.onQuestion?.({ kind: 'asked', prompt });
         return { response: 'Done.', status: 'completed' };
       };
 

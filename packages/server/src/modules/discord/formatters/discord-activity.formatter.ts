@@ -5,6 +5,7 @@ import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-rep
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { AudioTranscript } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { QuestionTimedOut } from '../../orchestrator/models/question-event.model.js';
 import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
@@ -115,15 +116,30 @@ export class DiscordActivityFormatter {
     if (question.rationale) {
       lines.push(`_Why it matters: ${question.rationale}_`);
     }
-    lines.push(...question.options.map((option, index) => `**${index + 1}.** ${option}`));
+    lines.push(...question.options.map((option, index) =>
+      `**${index + 1}.** ${option}${question.recommendedIndex === index + 1 ? ' _(recommended)_' : ''}`));
     lines.push(question.options.length > 0
       ? '-# Reply with the option number or type another answer. /cancel stops everything.'
       : '-# Type your answer. /cancel stops everything.');
+    if (prompt.timeout) {
+      const unixSeconds = Math.round(prompt.timeout.expiresAt / 1000);
+      lines.push(question.recommendedIndex
+        ? `-# ⏱️ Without a reply <t:${unixSeconds}:R>, the recommended answer is assumed.`
+        : `-# ⏱️ Without a reply <t:${unixSeconds}:R>, the agent carries on without an answer.`);
+    }
     if (prompt.waitingAskers > 0) {
       lines.push(`-# ⏳ ${prompt.waitingAskers} more agent(s) waiting for answers after this one.`);
     }
     const formatted = lines.join('\n');
     return prompt.message ? `${prompt.message}\n\n${formatted}` : formatted;
+  }
+
+  formatQuestionTimedOut({ asker, answered, timeoutMs }: QuestionTimedOut): string {
+    const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+    const outcome = answered.optionNumber
+      ? `assumed the recommended answer **${answered.optionNumber}. ${answered.answer}**`
+      : 'no answer assumed, the agent decides how to proceed';
+    return `⏱️ **No reply in ${minutes} min** · ${asker.roleName}${this.formatAskerProject(asker)} — ${outcome}\n-# Question: ${answered.question.text}`;
   }
 
   formatInvalidAnswer(prompt: QuestionPrompt): string {

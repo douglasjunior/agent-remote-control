@@ -103,8 +103,8 @@ Any agent asks the user directly when it needs a decision from them to proceed, 
 in the `orchestrator` skill). The instructions live in `prompts/user-questions.prompt.ts`:
 
 - `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
-  in the batch, options without "Other", the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
-  `<attachment path="…"/>` for files the user attaches to the answer;
+  in the batch, options without "Other", the recommended option first and marked `<option recommended>` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
+  `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
 - `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, included in the system prompt
   of the executor agents that depend on user decisions (DEVELOPER, GIT_OPS, TECH_LEAD and
   PRODUCT_OWNER);

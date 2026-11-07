@@ -3,10 +3,10 @@ import { type ClientUser, Events, type Message } from 'discord.js';
 
 import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
+import type { QuestionEvent } from '../../orchestrator/models/question-event.model.js';
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
-import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
@@ -344,14 +344,19 @@ export class DiscordMessageHandler implements OnModuleInit {
         });
       };
 
-      const onQuestion = (prompt: QuestionPrompt): void => {
+      const onQuestion = (event: QuestionEvent): void => {
         typing.keepAlive();
         void cleanInitialProgress();
 
+        const messages = event.kind === 'asked'
+          ? [this.activityFormatter.formatQuestion(event.prompt)]
+          : [this.activityFormatter.formatQuestionTimedOut(event), ...(event.next ? [this.activityFormatter.formatQuestion(event.next)] : [])];
         delegationChain = delegationChain.then(async () => {
           await throttler.flush();
           try {
-            await this.sendChunks(targetChannel!, this.activityFormatter.formatQuestion(prompt));
+            for (const message of messages) {
+              await this.sendChunks(targetChannel!, message);
+            }
           } catch (error) {
             this.logger.warn(`Failed to send the question: ${this.describeError(error)}`);
           }

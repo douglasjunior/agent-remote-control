@@ -51,6 +51,19 @@ describe('QuestionParserService', () => {
     });
   });
 
+  it('should read the option marked recommended', () => {
+    const parsed = parser.parse('<question>Which?<option>A</option><option RECOMMENDED>B</option><option>C</option></question>');
+
+    expect(parsed).toMatchObject({ kind: 'questions', questions: [{ options: ['A', 'B', 'C'], recommendedIndex: 2 }] });
+  });
+
+  it('should leave recommendedIndex out when no option is marked', () => {
+    const parsed = parser.parse('<question>Which?<option>A</option></question>');
+
+    expect(parsed).toMatchObject({ kind: 'questions', questions: [{ options: ['A'] }] });
+    expect(parsed).not.toMatchObject({ questions: [{ recommendedIndex: expect.anything() }] });
+  });
+
   it.each([
     ['an option outside a question', '<option>A</option>', 'outside a <question>'],
     ['a closing question tag without its opening', 'Text </question>', 'without its opening <question>'],
@@ -59,6 +72,7 @@ describe('QuestionParserService', () => {
     ['a question without text', '<question><option>A</option></question>', 'has no text'],
     ['a closing option tag without its opening', '<question>Q? A</option></question>', 'without its opening <option>'],
     ['an option with attributes', '<question>Q?<option value="1">A</option></question>', 'takes no attributes'],
+    ['two recommended options', '<question>Q?<option recommended>A</option><option recommended>B</option></question>', 'More than one <option> is marked recommended'],
     ['an unclosed option', '<question>Q?<option>A</question>', 'must be closed with </option>'],
     ['an empty option', '<question>Q?<option> </option></question>', 'is empty'],
   ])('should reject %s', (_case, response, reason) => {

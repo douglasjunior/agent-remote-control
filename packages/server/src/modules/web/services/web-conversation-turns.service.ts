@@ -3,6 +3,7 @@ import type { ConversationEntry } from '@agent-remote-control/protocol/conversat
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
+import type { QuestionTimedOut } from '../../orchestrator/models/question-event.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
@@ -67,7 +68,13 @@ export class WebConversationTurnsService {
         this.publishInterrupted(conversationId);
       },
       onInterimMessage: message => publish(interimEntry(message)),
-      onQuestion: question => publish(questionEntry(question)),
+      onQuestion: (event) => {
+        if (event.kind === 'asked') {
+          publish(questionEntry(event.prompt));
+        } else {
+          void this.publishQuestionTimedOut(conversationId, turnId, event);
+        }
+      },
       onTranscription: ({ transcripts, warnings }) => {
         warnings.forEach(warning => publish(noticeEntry('warning', warning)));
         transcripts.forEach(({ name, text }) => publish(noticeEntry('info', `🎙️ ${name}: ${text}`)));
@@ -103,6 +110,27 @@ export class WebConversationTurnsService {
   end(conversationId: string, turnId: string): void {
     this.turnsOf(conversationId).delete(turnId);
     this.reconcile(conversationId);
+  }
+
+  private async publishQuestionTimedOut(conversationId: string, turnId: string, timedOut: QuestionTimedOut): Promise<void> {
+    this.markRunning(conversationId, turnId);
+    await this.events.closeOpenQuestions(conversationId);
+    for (const entry of this.timedOutEntries(timedOut)) {
+      await this.events.publishEntry(conversationId, entry);
+    }
+  }
+
+  /** What was assumed on the user's behalf, then the question that follows. */
+  private timedOutEntries({ asker, answered, timeoutMs, next }: QuestionTimedOut): ConversationEntry[] {
+    const project = asker.projectName ? ` (${asker.projectName})` : '';
+    const minutes = Math.max(1, Math.round(timeoutMs / 60_000));
+    const outcome = answered.optionNumber
+      ? `assumed the recommended answer: ${answered.answer}`
+      : 'no answer assumed, the agent decides how to proceed';
+    return [
+      noticeEntry('warning', `No reply in ${minutes} min, ${asker.roleName}${project}: ${outcome}.`),
+      ...(next ? [questionEntry(next)] : []),
+    ];
   }
 
   private mark(conversationId: string, turnId: string, state: TurnState): void {

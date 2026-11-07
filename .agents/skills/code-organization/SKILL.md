@@ -87,11 +87,31 @@ export class AgentTimeoutException extends Error { ... }
 A helper function used exclusively by a single class or component must not be extracted to a
 separate file with its own test suite. Keep it in the same file as its consumer.
 
-Extract it to its own file only when:
+Extract it to its own file only when it qualifies as a util (next section).
 
-1. There are **multiple real consumers** in different places; or
-2. Its algorithmic complexity is significant enough to justify a unit test suite isolated
-   from the consumer.
+### What belongs in `utils/`
+
+A file in `utils/` (`*.util.ts`) holds **pure functions**, with no side effects (no I/O, no
+clock, no randomness, no injected state), that **two or more classes share** and whose content
+**justifies the reuse**. All three conditions are required.
+
+Justified, because several classes need the same non-trivial rule and it must not drift:
+
+- `protocol-tag.util.ts` (`parseTagAttributes`, `readTagBody`, `findCodeSpans`): the tag grammar read by
+  `QuestionParserService`, `DelegationDetectorService` and the visible-reply reader.
+- `agent-profile.util.ts` (`resolveProfile`, `withProfiles`): the single fallback rule from a role to its
+  profile, used by the orchestrator, the settings store and the Discord formatter.
+- `conversation-entry.util.ts` (`questionEntry`, `submissionEntries`, `noticeEntry`): the mapping from
+  orchestrator models to protocol entries, used by every web use case and service that publishes entries.
+
+Not justified, so the logic stays where it is used (a private method of its class, or inline):
+
+- A function that only `trim()`s, `split()`s, `join()`s, lowercases, clamps or otherwise wraps one standard
+  library call, even when two classes happen to call it: the name hides less than the call shows.
+- A function with one consumer, however complex: it is that class's private method. Its test exercises it
+  through the class.
+- A function that reads the environment, the clock or the file system: it is not pure, so it belongs to a
+  service or an adapter that can be replaced in tests.
 
 ### In classes, the helper is a private method
 
@@ -188,5 +208,6 @@ async execute(input: ConnectAgentInput): Promise<ConnectAgentOutput> {
 - [ ] Every `import` points directly to the file that declares the symbol.
 - [ ] Only externally consumed classes, interfaces and functions have `export`.
 - [ ] Helper functions supporting classes are declared as `private` methods.
+- [ ] A `*.util.ts` function is pure, shared by two or more classes and more than a one-call wrapper.
 - [ ] Variables declared exclusively with `const`, except for deliberate reassignment.
 - [ ] Methods structured with guard clauses and early returns, without nested `if/else`.

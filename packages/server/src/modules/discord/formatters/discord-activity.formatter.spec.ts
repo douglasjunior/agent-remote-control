@@ -715,6 +715,47 @@ describe('DiscordActivityFormatter', () => {
       ].join('\n'));
     });
 
+    it('should mark the recommended option and tell when the question times out', () => {
+      const formatted = formatter.formatQuestion({
+        ...prompt,
+        question: { ...prompt.question, recommendedIndex: 2 },
+        timeout: { expiresAt: 1_700_000_000_400, durationMs: 300_000 },
+      });
+
+      expect(formatted).toContain('**2.** Finance _(recommended)_');
+      expect(formatted).toContain('-# ⏱️ Without a reply <t:1700000000:R>, the recommended answer is assumed.');
+      expect(formatted).not.toContain('**1.** Manager _(recommended)_');
+    });
+
+    it('should warn that the agent carries on without an answer when no option is recommended', () => {
+      const formatted = formatter.formatQuestion({ ...prompt, timeout: { expiresAt: 1_700_000_000_000, durationMs: 300_000 } });
+
+      expect(formatted).toContain('-# ⏱️ Without a reply <t:1700000000:R>, the agent carries on without an answer.');
+    });
+
+    it('should report the recommended answer assumed after the timeout', () => {
+      const formatted = formatter.formatQuestionTimedOut({
+        asker: prompt.asker,
+        answered: { question: prompt.question, answer: 'Finance', optionNumber: 2, timedOut: true },
+        timeoutMs: 300_000,
+      });
+
+      expect(formatted).toBe([
+        '⏱️ **No reply in 5 min** · Product Owner Agent (`my-app`) — assumed the recommended answer **2. Finance**',
+        '-# Question: Who approves?',
+      ].join('\n'));
+    });
+
+    it('should report that nothing was assumed when the question had no recommendation', () => {
+      const formatted = formatter.formatQuestionTimedOut({
+        asker: { ...prompt.asker, projectName: null },
+        answered: { question: prompt.question, answer: '', timedOut: true },
+        timeoutMs: 10_000,
+      });
+
+      expect(formatted).toContain('**No reply in 1 min** · Product Owner Agent — no answer assumed, the agent decides how to proceed');
+    });
+
     it('should repeat the question without the agent message on an invalid option', () => {
       const formatted = formatter.formatInvalidAnswer({ ...prompt, message: 'I understood X.' });
 

@@ -237,6 +237,7 @@ cp .env.example .env
 | `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
 | `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
+| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
 | `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` |
 | `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` |
 | `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` |

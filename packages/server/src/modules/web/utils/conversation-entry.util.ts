@@ -114,6 +114,8 @@ export function questionEntry(prompt: QuestionPrompt): ConversationEntry {
     text: question.text,
     ...(question.rationale ? { rationale: question.rationale } : {}),
     options: [...question.options],
+    ...(question.recommendedIndex ? { recommendedIndex: question.recommendedIndex } : {}),
+    ...(prompt.timeout ? { timeout: { ...prompt.timeout } } : {}),
     number: prompt.number,
     total: prompt.total,
     closed: false,

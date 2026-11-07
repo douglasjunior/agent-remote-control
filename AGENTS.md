@@ -41,7 +41,7 @@ agent-remote-control/
 │       │   │       ├── services/           # Concrete supporting services (*.service.ts)
 │       │   │       ├── testing/            # Stubs, fakes and fixtures shared by tests
 │       │   │       ├── use-cases/          # Business rules and orchestration (*.use-case.ts)
-│       │   │       ├── utils/              # Utilities without domain state (*.util.ts)
+│       │   │       ├── utils/              # Pure functions shared by two or more classes (*.util.ts)
 │       │   │       └── <name>.module.ts    # Module configuration and NestJS DI wiring
 │       │   ├── app.controller.ts           # Root diagnostics/healthcheck controller
 │       │   ├── app.module.ts               # Application root module

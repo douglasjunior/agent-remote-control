@@ -2,14 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import type { OpenWorkQuestions } from '../models/open-work.model.js';
+import type { QuestionListener } from '../models/question-event.model.js';
 import type {
   AnsweredQuestion,
   QuestionAnswerInput,
   QuestionAsker,
+  QuestionDeadline,
   QuestionPrompt,
   QuestionSubmission,
   UserQuestion,
 } from '../models/user-question.model.js';
+
+import { QuestionTimeoutConfigService } from './question-timeout-config.service.js';
 
 
 type QuestionRequest = {
@@ -17,13 +21,13 @@ type QuestionRequest = {
   readonly message: string;
   readonly questions: readonly UserQuestion[];
   readonly answers: AnsweredQuestion[];
-  readonly notify?: (prompt: QuestionPrompt) => void;
-  /** Called with the answers so far while questions remain; the last answer leaves with the request. */
-  readonly onAnswer?: (answers: readonly AnsweredQuestion[]) => void;
+  readonly listener: QuestionListener;
   /** Present on a request restored after a restart, which has no turn waiting for its answers. */
   readonly restoredWorkId?: string;
   readonly resolve: (answers: readonly AnsweredQuestion[]) => void;
   readonly reject: (error: Error) => void;
+  deadline?: QuestionDeadline;
+  timer?: NodeJS.Timeout;
 };
 
 /**
@@ -35,27 +39,30 @@ export class UserQuestionQueueService {
   private readonly logger = new Logger(UserQuestionQueueService.name);
   private readonly queues = new Map<string, QuestionRequest[]>();
 
+  constructor(private readonly timeoutConfig: QuestionTimeoutConfigService) {}
+
   /**
-   * Resolves once the user has answered every question of this request. `notify` shows the first question when the
-   * request reaches the head of the queue on its own; one reached by answering the previous request is shown with
-   * that answer instead.
+   * Resolves once the user has answered every question of this request. `listener.asked` shows the first question
+   * when the request reaches the head of the queue on its own; one reached by answering the previous request is
+   * shown with that answer instead. A question the user leaves unanswered for `QUESTION_TIMEOUT_MS` is answered on
+   * their behalf and reported to `listener.timedOut`.
    */
   ask(
     conversationKey: string,
     asker: QuestionAsker,
     message: string,
     questions: readonly UserQuestion[],
-    notify?: (prompt: QuestionPrompt) => void,
-    onAnswer?: (answers: readonly AnsweredQuestion[]) => void,
+    listener: QuestionListener,
   ): Promise<readonly AnsweredQuestion[]> {
     return new Promise((resolve, reject) => {
       const queue = this.queues.get(conversationKey) ?? [];
-      queue.push({ asker, message, questions, answers: [], notify, onAnswer, resolve, reject });
+      queue.push({ asker, message, questions, answers: [], listener, resolve, reject });
       this.queues.set(conversationKey, queue);
       this.logger.log(
         `[Questions Queued] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Position=${queue.length}`,
       );
       if (queue.length === 1) {
+        this.startTimer(conversationKey);
         this.notifyHead(conversationKey);
       }
     });
@@ -67,10 +74,10 @@ export class UserQuestionQueueService {
     workId: string,
     asker: QuestionAsker,
     { message, questions, answers }: OpenWorkQuestions,
-    onAnswer: (answers: readonly AnsweredQuestion[]) => void,
+    answersChanged: (answers: readonly AnsweredQuestion[]) => void,
   ): void {
     const queue = this.queues.get(conversationKey) ?? [];
-    queue.push({ asker, message, questions, answers: [...answers], onAnswer, restoredWorkId: workId, resolve: () => undefined, reject: () => undefined });
+    queue.push({ asker, message, questions, answers: [...answers], listener: { asked: () => undefined, timedOut: () => undefined, answersChanged }, restoredWorkId: workId, resolve: () => undefined, reject: () => undefined });
     this.queues.set(conversationKey, queue);
     this.logger.log(`[Questions Restored] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Answered=${answers.length}`);
   }
@@ -104,24 +111,7 @@ export class UserQuestionQueueService {
     if (!answer) {
       return { kind: 'invalid', prompt: this.buildPrompt(request, queue.length - 1) };
     }
-    request.answers.push(answer);
-
-    if (request.answers.length < request.questions.length) {
-      request.onAnswer?.([...request.answers]);
-      return { kind: 'next', prompt: this.buildPrompt(request, queue.length - 1) };
-    }
-
-    queue.shift();
-    this.cleanUp(conversationKey, queue);
-    this.logger.log(`[Questions Answered] Conversation=${conversationKey}, Role=${request.asker.role}`);
-    request.resolve(request.answers);
-    const next = queue[0] && this.buildPrompt(queue[0], queue.length - 1);
-    return {
-      kind: 'answered',
-      asker: request.asker,
-      ...(next ? { next } : {}),
-      ...(request.restoredWorkId ? { restoredWork: { workId: request.restoredWorkId, answers: request.answers } } : {}),
-    };
+    return this.advance(conversationKey, queue, request, answer);
   }
 
   /** Rejects every waiting agent with a cancellation, so the turns waiting on them end as cancelled. */
@@ -132,6 +122,7 @@ export class UserQuestionQueueService {
     }
     this.queues.delete(conversationKey);
     for (const request of queue) {
+      this.stopTimer(request);
       request.reject(new PromptCancelledError());
     }
     this.logger.log(`[Questions Cancelled] Conversation=${conversationKey}, Requests=${queue.length}`);
@@ -146,19 +137,85 @@ export class UserQuestionQueueService {
       return;
     }
     const [request] = queue.splice(index, 1);
+    this.stopTimer(request!);
     this.cleanUp(conversationKey, queue);
     request!.reject(new PromptCancelledError());
     this.logger.log(`[Questions Discarded] Conversation=${conversationKey}, Role=${role}`);
     if (index === 0) {
+      this.startTimer(conversationKey);
       this.notifyHead(conversationKey);
     }
+  }
+
+  /** Records the answer, then moves to the request's next question or resolves it and promotes the next request. */
+  private advance(
+    conversationKey: string,
+    queue: QuestionRequest[],
+    request: QuestionRequest,
+    answer: AnsweredQuestion,
+  ): Extract<QuestionSubmission, { kind: 'next' | 'answered' }> {
+    this.stopTimer(request);
+    request.answers.push(answer);
+
+    if (request.answers.length < request.questions.length) {
+      request.listener.answersChanged?.([...request.answers]);
+      this.startTimer(conversationKey);
+      return { kind: 'next', prompt: this.buildPrompt(request, queue.length - 1) };
+    }
+
+    queue.shift();
+    this.cleanUp(conversationKey, queue);
+    this.logger.log(`[Questions Answered] Conversation=${conversationKey}, Role=${request.asker.role}`);
+    request.resolve(request.answers);
+    this.startTimer(conversationKey);
+    const next = queue[0] && this.buildPrompt(queue[0], queue.length - 1);
+    return {
+      kind: 'answered',
+      asker: request.asker,
+      ...(next ? { next } : {}),
+      ...(request.restoredWorkId ? { restoredWork: { workId: request.restoredWorkId, answers: request.answers } } : {}),
+    };
+  }
+
+  /** Starts the countdown of the question at the front, unless the timeout is disabled or nothing is waiting on it. */
+  private startTimer(conversationKey: string): void {
+    const request = this.queues.get(conversationKey)?.[0];
+    const timeoutMs = this.timeoutConfig.getTimeoutMs();
+    if (!request || request.restoredWorkId || timeoutMs <= 0) {
+      return;
+    }
+    request.deadline = { expiresAt: Date.now() + timeoutMs, durationMs: timeoutMs };
+    request.timer = setTimeout(() => this.expire(conversationKey, request, timeoutMs), timeoutMs);
+    request.timer.unref();
+  }
+
+  private stopTimer(request: QuestionRequest): void {
+    clearTimeout(request.timer);
+    request.timer = undefined;
+    request.deadline = undefined;
+  }
+
+  /** The recommended option stands in for the user's answer; a question without one is answered with nothing. */
+  private expire(conversationKey: string, request: QuestionRequest, timeoutMs: number): void {
+    const queue = this.queues.get(conversationKey)!;
+    const question = request.questions[request.answers.length]!;
+    const recommended = question.recommendedIndex;
+    const answered: AnsweredQuestion = recommended
+      ? { question, answer: question.options[recommended - 1]!, optionNumber: recommended, timedOut: true }
+      : { question, answer: '', timedOut: true };
+    this.logger.log(
+      `[Questions Timed Out] Conversation=${conversationKey}, Role=${request.asker.role}, Recommended=${recommended ?? 'none'}`,
+    );
+    const submission = this.advance(conversationKey, queue, request, answered);
+    const next = submission.kind === 'next' ? submission.prompt : submission.next;
+    request.listener.timedOut({ asker: request.asker, answered, timeoutMs, ...(next && { next }) });
   }
 
   private notifyHead(conversationKey: string): void {
     const queue = this.queues.get(conversationKey);
     const head = queue?.[0];
     if (head) {
-      head.notify?.(this.buildPrompt(head, queue.length - 1));
+      head.listener.asked(this.buildPrompt(head, queue.length - 1));
     }
   }
 
@@ -181,6 +238,7 @@ export class UserQuestionQueueService {
       total: request.questions.length,
       ...(answered === 0 && request.message ? { message: request.message } : {}),
       waitingAskers,
+      ...(request.deadline ? { timeout: request.deadline } : {}),
     };
   }
 

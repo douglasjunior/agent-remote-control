@@ -16,7 +16,7 @@ async function restore(...records: OpenWork[]) {
   const store = new InMemoryOpenWorkStoreFake();
   store.saved = { 'web-1': records };
   const openWork = new OpenWorkService(store);
-  const queue = new UserQuestionQueueService();
+  const queue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
   await new RestoreOpenWorkUseCase(openWork, queue).onModuleInit();
   return { store, openWork, queue };
 }

@@ -1,5 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { Logger } from '@nestjs/common';
+import { vi } from 'vitest';
 
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -228,12 +229,53 @@ describe('SendConversationMessageUseCase', () => {
         request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' }, 'CEO');
         request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' });
         request.onInterimMessage?.('working');
-        request.onQuestion?.(prompt);
+        request.onQuestion?.({ kind: 'asked', prompt });
       };
 
       await useCase.execute('web-1', 'go');
 
       expect(types()).toEqual(['user_message', 'thought', 'tool', 'delegation', 'interim', 'question', 'agent_response']);
+    });
+
+    describe('when a question times out', () => {
+      const runTimedOut = async (timedOut: Parameters<NonNullable<TurnRequest['onQuestion']>>[0]) => {
+        const context = setup();
+        let whileRunning: ConversationEntry[] = [];
+        context.agentTurn.turnBehavior = async (request) => {
+          request.onQuestion?.({ kind: 'asked', prompt });
+          request.onQuestion?.(timedOut);
+          await vi.waitFor(() => expect(context.types()).toContain('notice'));
+          whileRunning = [...context.entries()];
+        };
+        await context.useCase.execute('web-1', 'go');
+        return whileRunning;
+      };
+
+      it('closes the open question, reports the recommended answer assumed and shows the next question', async () => {
+        const entries = await runTimedOut({
+          kind: 'timedOut',
+          asker,
+          answered: { question: prompt.question, answer: 'a', optionNumber: 1, timedOut: true },
+          timeoutMs: 300_000,
+          next: { ...prompt, number: 2 },
+        });
+
+        expect(entries.map(entry => entry.type)).toEqual(['user_message', 'question', 'notice', 'question']);
+        expect(entries.filter(entry => entry.type === 'question').map(entry => entry.closed)).toEqual([true, false]);
+        expect(entries[2]).toMatchObject({ level: 'warning', text: 'No reply in 5 min, Developer: assumed the recommended answer: a.' });
+      });
+
+      it('reports that nothing was assumed when the question had no recommendation', async () => {
+        const entries = await runTimedOut({
+          kind: 'timedOut',
+          asker: { ...asker, projectName: 'app' },
+          answered: { question: prompt.question, answer: '', timedOut: true },
+          timeoutMs: 1_000,
+        });
+
+        expect(entries.map(entry => entry.type)).toEqual(['user_message', 'question', 'notice']);
+        expect(entries[2]).toMatchObject({ text: 'No reply in 1 min, Developer (app): no answer assumed, the agent decides how to proceed.' });
+      });
     });
 
     it('publishes the response being written as a draft, replaced by the final response', async () => {
@@ -404,7 +446,7 @@ describe('SendConversationMessageUseCase', () => {
     it('closes the question still open when the conversation goes idle', async () => {
       const { useCase, agentTurn, entries } = setup();
       agentTurn.turnBehavior = async (request) => {
-        request.onQuestion?.(prompt);
+        request.onQuestion?.({ kind: 'asked', prompt });
       };
 
       await useCase.execute('web-1', 'go');

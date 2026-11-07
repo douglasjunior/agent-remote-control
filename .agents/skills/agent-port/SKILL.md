@@ -137,7 +137,7 @@ reads the protocol (`AgentProtocolService`, `orchestrator` skill).
 The `AbstractAcpAdapter` base class implements the ACP protocol, sessions and the integration
 with the demux. It also provides `buildAgentEnv(cwd)`, the isolated environment of every agent
 subprocess: credentials and configuration of the host application (`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`,
-`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `PORT`), the variables that reveal the
+`WORKSPACE_DIR`, `DATA_DIR`, `SESSION_IDLE_TIMEOUT_MS`, `QUESTION_TIMEOUT_MS`, `PORT`), the variables that reveal the
 application directory (`PWD`, `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`) and those with the `npm_` prefix are
 left out, and `PWD` is rewritten with the subprocess `cwd`. The rest of the environment is passed through, because the
 agent depends on it to operate (`PATH`, `HOME`, `SSH_AUTH_SOCK`, the agent's own credentials).

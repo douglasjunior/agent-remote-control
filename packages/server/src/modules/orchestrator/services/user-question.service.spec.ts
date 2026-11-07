@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { questionListener } from '../testing/question-listener.fixture.js';
+
 import { UserQuestionQueueService } from './user-question-queue.service.js';
 import { UserQuestionService } from './user-question.service.js';
 
@@ -11,20 +13,20 @@ describe('UserQuestionService', () => {
   let service: UserQuestionService;
 
   beforeEach(() => {
-    queue = new UserQuestionQueueService();
+    queue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
     service = new UserQuestionService(queue);
   });
 
   it('should report whether the conversation has questions waiting for the user', () => {
     expect(service.hasPendingQuestions('conv-1')).toBe(false);
 
-    void queue.ask('conv-1', ASKER, '', [{ text: 'Which?', options: [] }]);
+    void queue.ask('conv-1', ASKER, '', [{ text: 'Which?', options: [] }], questionListener());
 
     expect(service.hasPendingQuestions('conv-1')).toBe(true);
   });
 
   it('should expose the open question and take structured answers', async () => {
-    const answers = queue.ask('conv-1', ASKER, '', [{ text: 'Which?', options: ['A', 'B'] }]);
+    const answers = queue.ask('conv-1', ASKER, '', [{ text: 'Which?', options: ['A', 'B'] }], questionListener());
 
     expect(service.currentQuestion('conv-1')?.question.text).toBe('Which?');
     expect(service.answerQuestion('conv-1', { kind: 'option', optionIndex: 2 })).toMatchObject({ kind: 'answered' });

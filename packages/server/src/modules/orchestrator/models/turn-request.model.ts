@@ -1,8 +1,8 @@
 import type { TurnTranscription } from './audio-transcription.model.js';
 import type { DelegationEvent } from './delegation-event.model.js';
+import type { QuestionEvent } from './question-event.model.js';
 import type { TurnActivity } from './turn-activity.model.js';
 import type { TurnAttachment } from './turn-attachment.model.js';
-import type { QuestionPrompt } from './user-question.model.js';
 
 
 export type TurnRequest = {
@@ -24,7 +24,8 @@ export type TurnRequest = {
   onDraft?: (text: string) => void;
   onDelegation?: (event: DelegationEvent) => void;
   onInterimMessage?: (message: string) => void;
-  onQuestion?: (prompt: QuestionPrompt) => void;
+  /** A question of this turn reached the front of the queue, or was answered on the user's behalf after the timeout. */
+  onQuestion?: (event: QuestionEvent) => void;
   onQueued?: () => void;
   /** Called before the agents run, when audio attachments were transcribed or could not be. */
   onTranscription?: (transcription: TurnTranscription) => void;
