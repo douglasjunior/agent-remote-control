@@ -1,9 +1,11 @@
 import { Logger } from '@nestjs/common';
 
+import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
@@ -35,6 +37,7 @@ describe('WebConnectionHandler', () => {
   let handler: WebConnectionHandler;
   const logContext = new ConversationLogContextService();
   let connection: FakeClientConnection;
+  let agentAuth: StubAgentAuthPort;
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -46,6 +49,7 @@ describe('WebConnectionHandler', () => {
     const conversationUploads = new WebConversationUploadsService(workspace, uploads);
     const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
     const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
+    agentAuth = new StubAgentAuthPort();
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -66,6 +70,7 @@ describe('WebConnectionHandler', () => {
       new WebFileSearchSessionsService(fileSearch),
       new WebUploadSessionsService(uploads),
       new WebAgentQuotaService(agentTurn),
+      new WebAgentAuthService(agentAuth, harness.registry),
       logContext,
     );
     handler.onModuleInit();
@@ -181,6 +186,80 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'quota.failed' }]);
       expect(warn).toHaveBeenCalledWith('quota_failed: quota down');
       warn.mockRestore();
+    });
+
+    it('answers auth.status to the requester with the agents and their time', async () => {
+      const agents = [{ agentId: 'claude', displayName: 'Claude Code', status: 'unauthenticated' as const }];
+      agentAuth.infos = agents;
+
+      connection.receive({ type: 'auth.status' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'auth.status', agents, fetchedAt: new Date().toISOString() }]);
+    });
+
+    it('passes the refresh of auth.status on, ignoring the state it remembers', async () => {
+      connection.receive({ type: 'auth.status' });
+      await settle();
+      agentAuth.infos = [{ agentId: 'codex', displayName: 'OpenAI Codex', status: 'authenticated' }];
+
+      connection.receive({ type: 'auth.status', refresh: true });
+      await settle();
+
+      expect(sent().at(-1)).toMatchObject({ type: 'auth.status', agents: agentAuth.infos });
+    });
+
+    it('answers auth.status.failed, never an error event, when the state cannot be read', async () => {
+      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      agentAuth.statusError = new Error('probe down');
+
+      connection.receive({ type: 'auth.status' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'auth.status.failed' }]);
+      expect(warn).toHaveBeenCalledWith('auth_status_failed: probe down');
+      warn.mockRestore();
+    });
+
+    it('starts a login on auth.login and forwards its progress, logging the command type only', async () => {
+      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      connection.receive({ type: 'auth.login', agentId: 'claude' });
+      await settle();
+      agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth' });
+
+      expect(agentAuth.started).toEqual(['claude']);
+      expect(sent()).toEqual([{ type: 'auth.login', agentId: 'claude', event: { kind: 'url', url: 'https://claude.com/oauth' } }]);
+      expect(log).toHaveBeenCalledWith('[Command] auth.login');
+      log.mockRestore();
+    });
+
+    it('hands a pasted code to the login without logging it', async () => {
+      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      connection.receive({ type: 'auth.input', agentId: 'claude', text: 'abc#def' });
+      await settle();
+
+      expect(agentAuth.inputs).toEqual([{ agentId: 'claude', text: 'abc#def' }]);
+      expect(sent()).toEqual([]);
+      expect(log).not.toHaveBeenCalled();
+      log.mockRestore();
+    });
+
+    it('fails the login on screen when no login waits for the pasted code', async () => {
+      agentAuth.inputAccepted = false;
+
+      connection.receive({ type: 'auth.input', agentId: 'claude', text: 'abc#def' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'auth.login', agentId: 'claude', event: { kind: 'failed', reason: 'No login is waiting for a code.' } }]);
+    });
+
+    it('cancels a login on auth.cancel', async () => {
+      connection.receive({ type: 'auth.cancel', agentId: 'claude' });
+      await settle();
+
+      expect(agentAuth.cancelled).toEqual(['claude']);
     });
 
     it('answers conversation.list to the requester', async () => {

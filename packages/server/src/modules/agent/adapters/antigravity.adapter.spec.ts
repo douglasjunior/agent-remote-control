@@ -6,7 +6,6 @@ import {
   createProcessRunnerMock,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
-import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { AntigravityAdapter } from './antigravity.adapter.js';
 
@@ -16,13 +15,10 @@ vi.mock('node:stream', async () =>
 vi.mock('@agentclientprotocol/sdk', async () =>
   (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
-function buildAdapter(
-  fileSystem: StubFileSystem = new StubFileSystem(),
-  preferredConfig?: { modelId?: string },
-) {
+function buildAdapter(preferredConfig?: { modelId?: string }) {
   const { runner, spawn } = createProcessRunnerMock();
   return {
-    adapter: new AntigravityAdapter(fileSystem, runner, preferredConfig),
+    adapter: new AntigravityAdapter(runner, preferredConfig),
     spawn,
     runner,
   };
@@ -46,15 +42,15 @@ describe('AntigravityAdapter', () => {
   });
 
   describe('spawnAgentProcess', () => {
-    it('should spawn the source bridge via node when dist bridge is not readable', async () => {
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+    it('should run the native agy ACP server with a worker per session and permissions auto-approved', async () => {
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
       expect(acpHarness.spawnedProcs).toHaveLength(1);
       expect(spawn).toHaveBeenCalledWith(
-        process.execPath,
-        [expect.stringContaining('agy-acp-bridge.ts')],
+        'agy',
+        ['acp', '--process-per-session', '--dangerously-skip-permissions'],
         expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
       );
       expect(acpHarness.connectionInstance?.initialize).toHaveBeenCalledWith({
@@ -63,44 +59,14 @@ describe('AntigravityAdapter', () => {
       });
     });
 
-    it('should spawn the dist bridge via node when nested dist bridge is readable', async () => {
-      const fs = new StubFileSystem();
-      fs.isReadable = path => path.includes('bridges/agy-acp-bridge.js');
-      const { runner, spawn: distSpawn } = createProcessRunnerMock();
-      const distAdapter = new AntigravityAdapter(fs, runner);
-
-      await distAdapter.connect();
-
-      expect(distSpawn).toHaveBeenCalledWith(
-        process.execPath,
-        [expect.stringContaining('agy-acp-bridge.js')],
-        expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
-      );
-    });
-
-    it('should spawn the flat dist bridge when nested is not readable but flat is readable', async () => {
-      const fs = new StubFileSystem();
-      fs.isReadable = path => path.endsWith('adapters/agy-acp-bridge.js');
-      const { runner, spawn: distSpawn } = createProcessRunnerMock();
-      const distAdapter = new AntigravityAdapter(fs, runner);
-
-      await distAdapter.connect();
-
-      expect(distSpawn).toHaveBeenCalledWith(
-        process.execPath,
-        [expect.stringContaining('agy-acp-bridge.js')],
-        expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] }),
-      );
-    });
-
     it('should support preferredConfig when passed', async () => {
-      const { adapter } = buildAdapter(new StubFileSystem(), { modelId: 'gpt-5' });
-      await adapter.connect();
-      expect(acpHarness.spawnedProcs).toHaveLength(1);
+      const { adapter } = buildAdapter({ modelId: 'gemini-3.8-flash' });
+
+      await expect(adapter.connect()).resolves.toBeUndefined();
     });
 
-    it('should spawn the bridge outside the host application directory', async () => {
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+    it('should spawn agy outside the host application directory', async () => {
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
@@ -108,7 +74,7 @@ describe('AntigravityAdapter', () => {
     });
   });
 
-  describe('bridge environment isolation', () => {
+  describe('agent environment isolation', () => {
     const hostVariables = {
       DISCORD_BOT_TOKEN: 'bot-token',
       DISCORD_GUILD_ID: 'guild-id',
@@ -143,8 +109,8 @@ describe('AntigravityAdapter', () => {
       originals.clear();
     });
 
-    it('should withhold host credentials and configuration from the bridge', async () => {
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+    it('should withhold host credentials and configuration from the agent', async () => {
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
@@ -158,7 +124,7 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should withhold every variable that reveals the host application directory', async () => {
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
@@ -175,8 +141,8 @@ describe('AntigravityAdapter', () => {
       ).toEqual([]);
     });
 
-    it('should point PWD at the directory the bridge runs in', async () => {
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+    it('should point PWD at the directory the agent runs in', async () => {
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
@@ -187,7 +153,7 @@ describe('AntigravityAdapter', () => {
 
     it('should preserve unrelated variables the agent needs', async () => {
       process.env.SSH_AUTH_SOCK = '/tmp/ssh-agent.socket';
-      const { adapter, spawn } = buildAdapter(new StubFileSystem());
+      const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 

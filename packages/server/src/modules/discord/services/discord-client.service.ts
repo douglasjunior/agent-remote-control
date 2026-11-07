@@ -15,6 +15,7 @@ import {
   Partials,
 } from 'discord.js';
 
+import { IAgentAuthPort } from '../../agent/ports/agent-auth.port.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 
 
@@ -25,6 +26,7 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
 
   constructor(
     @Inject(IAgentTurnPort) private readonly agentTurn: IAgentTurnPort,
+    @Inject(IAgentAuthPort) private readonly agentAuth: IAgentAuthPort,
     @Optional() client?: Client,
   ) {
     this.client =
@@ -97,6 +99,15 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           name: 'language',
           description: 'Changes the language agents use to talk to you',
         },
+        ...(this.agentAuth.isEnabled()
+          ? [
+            {
+              name: 'agent-auth',
+              description: 'Log in to an agent CLI',
+              dmPermission: false,
+            },
+          ]
+          : []),
         ...(this.agentTurn.isShellCommandEnabled()
           ? [
             {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { agentAuthInfoSchema, agentLoginEventSchema } from './agent-auth.js';
 import { agentOptionSchema } from './agent-option.js';
 import { roleProfileSchema } from './agent-profile.js';
 import { agentQuotaReportSchema } from './agent-quota.js';
@@ -84,6 +85,13 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     fetchedAt: z.string(),
   }),
   z.object({ type: z.literal('quota.failed') }),
+  z.object({
+    type: z.literal('auth.status'),
+    agents: z.array(agentAuthInfoSchema).readonly(),
+    fetchedAt: z.string(),
+  }),
+  z.object({ type: z.literal('auth.status.failed') }),
+  z.object({ type: z.literal('auth.login'), agentId: z.string(), event: agentLoginEventSchema }),
   z.object({ type: z.literal('models.list'), agentId: z.string(), models: z.array(agentOptionSchema) }),
   z.object({
     type: z.literal('efforts.list'),

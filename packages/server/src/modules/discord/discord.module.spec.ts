@@ -5,6 +5,8 @@ import { DiscordModule } from './discord.module.js';
 import { DiscordActivityFormatter } from './formatters/discord-activity.formatter.js';
 import { DiscordInteractionHandler } from './handlers/discord-interaction.handler.js';
 import { DiscordMessageHandler } from './handlers/discord-message.handler.js';
+import { AgentAuthRequestService } from './services/agent-auth-request.service.js';
+import { DiscordAgentAuthNotifierService } from './services/discord-agent-auth-notifier.service.js';
 import { DiscordAttachmentService } from './services/discord-attachment.service.js';
 import { DiscordClientService } from './services/discord-client.service.js';
 
@@ -29,6 +31,8 @@ describe('DiscordModule', () => {
       DiscordInteractionHandler,
     );
 
+    expect(module.get(AgentAuthRequestService)).toBeInstanceOf(AgentAuthRequestService);
+    expect(module.get(DiscordAgentAuthNotifierService)).toBeInstanceOf(DiscordAgentAuthNotifierService);
     expect(clientService).toBeInstanceOf(DiscordClientService);
     expect(attachmentService).toBeInstanceOf(DiscordAttachmentService);
     expect(activityFormatter).toBeInstanceOf(DiscordActivityFormatter);

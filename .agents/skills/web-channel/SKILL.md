@@ -3,7 +3,7 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, /health and the WEB_* variables.
+  stateless agent configuration, structured question answers, agent CLI login (auth.* commands and events), /health and the WEB_* variables.
   Use when working with the web module, WebSocket connections, the access token or web conversations.
 ---
 
@@ -95,6 +95,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   or no agent is installed (the default agent runs). Otherwise the server publishes a warning `notice` and
   neither records the message nor runs a turn.
 - `quota.get { refresh? }` answers the requester with `quota.report { reports, fetchedAt }`, the `IAgentTurnPort.getQuota()` reports (`AgentQuotaReport`: `agent`, `status` `ok`, `unsupported` or `failed`, and `quota`). Every query starts the agents' CLIs, so `WebAgentQuotaService` reuses a result for `QUOTA_CACHE_TTL_MS` (4 minutes), and all connections share the query in progress; `refresh: true` skips the stored result, and a failure is never stored. A query that throws answers `quota.failed`, not `error`, because the settings sheet takes an `error` without a `conversationId` as its own and this query runs in the background. `remainingFraction` has no range in the schema, since an invalid frame is dropped whole; clients clamp it.
+- `auth.status { refresh? }` answers the requester with `auth.status { agents, fetchedAt }`, the `IAgentAuthPort.listAuthInfo()` entries (`AgentAuthInfo`: `agentId`, `displayName`, `status` `authenticated`, `unauthenticated` or `unknown`, and `detail`). Every query starts CLIs, so `WebAgentAuthService` reuses a result for `AUTH_STATUS_CACHE_TTL_MS` (2 minutes), below the client's 5-minute check, and all connections share the query in progress; `refresh: true` skips the stored result and a failure is never stored. A query that throws answers `auth.status.failed`, not `error`, for the same reason as `quota.failed`.
+- `auth.login { agentId }` starts the CLI login (`IAgentAuthPort.startLogin`); every `auth.login { agentId, event }` progress event (`url` with an optional device `code`, `prompt`, `completed`, `failed`, `cancelled`) goes to **every** open connection, so any tab shows the same link and result, and a `completed` login also broadcasts a fresh `auth.status`. A login that cannot start (disabled feature, no CLI login, CLI missing) answers the requester alone with a `failed` event. `auth.input { agentId, text }` writes a code pasted from the browser to the waiting login and answers a `failed` event when none waits; `auth.cancel { agentId }` stops the login. `auth.login` and `auth.cancel` are logged by type; the link, the code and `auth.input` never reach the log.
 - Questions are answered with `question.answer` (`answer` is `{ kind: 'option', optionIndex }` or
   `{ kind: 'text', text, attachments? }`, where text may be empty with attachments), passed to `IUserQuestionPort.answerQuestion` with the attachments resolved by `WebConversationUploadsService`, the same check `message.send` uses; a file that is not an upload of the conversation records an `error` notice and answers nothing. Without an open question the command closes the questions still shown as open and answers an
   `error` event. A valid answer is echoed as a `user_message` (the text typed, or the text of the chosen option, with its attachments). The confirmation, the next
@@ -152,4 +154,5 @@ WebSocket, so its origin must be listed in `WEB_ALLOWED_ORIGINS`.
 ## Environment
 
 `WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`), `WEB_ACCESS_TOKEN`
-and `WEB_ALLOWED_ORIGINS`.
+and `WEB_ALLOWED_ORIGINS`. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`AGENT_AUTH_STATUS_TIMEOUT_MS`: the login timeout stops a login nobody finished, the status timeout bounds each login-state probe.

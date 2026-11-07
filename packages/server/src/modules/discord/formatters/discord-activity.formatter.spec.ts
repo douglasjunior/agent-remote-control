@@ -939,4 +939,54 @@ describe('DiscordActivityFormatter', () => {
         .toContain('🛑 **Cancelled**');
     });
   });
+
+  describe('agent login', () => {
+    it('should number the agents with the state of their login', () => {
+      expect(formatter.formatAgentAuthMenu([
+        { index: 1, agentId: 'claude', displayName: 'Claude Code', status: 'authenticated', detail: 'me@example.com' },
+        { index: 2, agentId: 'cursor', displayName: 'Cursor', status: 'authenticated' },
+        { index: 3, agentId: 'codex', displayName: 'OpenAI Codex', status: 'unauthenticated' },
+        { index: 4, agentId: 'agy', displayName: 'Antigravity', status: 'unknown' },
+      ])).toBe([
+        '🔑 **Choose the agent to log in** by replying with the option number, or 0 to cancel:',
+        '**1.** Claude Code — ✅ logged in (me@example.com)',
+        '**2.** Cursor — ✅ logged in',
+        '**3.** OpenAI Codex — ⚠️ not logged in',
+        '**4.** Antigravity — ❔ status unknown',
+      ].join('\n'));
+    });
+
+    it('should explain the valid picks, the closing of the dialog and the lack of agents', () => {
+      expect(formatter.formatInvalidAgentAuthChoice(3)).toBe('⚠️ Invalid option. Reply only with a number from 1 to 3, or 0 to cancel.');
+      expect(formatter.formatAgentAuthClosed()).toBe('🛑 **Login cancelled.**');
+      expect(formatter.formatAgentAuthUnavailable()).toBe('ℹ️ No agents with a CLI login are available.');
+    });
+
+    it('should announce the start of a login', () => {
+      expect(formatter.formatAgentLoginStarting('Codex')).toBe('⏳ Starting the **Codex** login...');
+    });
+
+    it('should show the link, with the one-time code when there is one', () => {
+      const header = '🔗 **Codex login** — open this link in your browser and sign in with your subscription account:';
+      const waiting = '⏳ Waiting for you to finish in the browser. Use /cancel to stop.';
+
+      expect(formatter.formatAgentLoginLink('Codex', 'https://example.com/device')).toBe([header, 'https://example.com/device', waiting].join('\n'));
+      expect(formatter.formatAgentLoginLink('Codex', 'https://example.com/device', 'ABCD-1234')).toBe(
+        [header, 'https://example.com/device', 'Enter this one-time code: `ABCD-1234`', waiting].join('\n'),
+      );
+    });
+
+    it('should ask for the pasted code and acknowledge or refuse it', () => {
+      expect(formatter.formatAgentLoginPrompt()).toContain('reply in this thread with the code');
+      expect(formatter.formatAgentLoginCodeReceived()).toBe('🔑 Code received. Waiting for the login to finish...');
+      expect(formatter.formatAgentLoginCodeRejected()).toBe('⚠️ The login is no longer waiting for a code.');
+    });
+
+    it('should report how a login ended and nothing for the events in between', () => {
+      expect(formatter.formatAgentLoginResult('Codex', { kind: 'completed' })).toBe('✅ **Codex** is logged in.');
+      expect(formatter.formatAgentLoginResult('Codex', { kind: 'failed', reason: 'Timed out.' })).toBe('❌ **Codex login failed**: Timed out.');
+      expect(formatter.formatAgentLoginResult('Codex', { kind: 'cancelled' })).toBe('🛑 **Codex login cancelled.**');
+      expect(formatter.formatAgentLoginResult('Codex', { kind: 'url', url: 'https://example.com' })).toBeUndefined();
+    });
+  });
 });

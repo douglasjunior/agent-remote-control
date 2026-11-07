@@ -113,6 +113,9 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'efforts.list':
     case 'quota.report':
     case 'quota.failed':
+    case 'auth.status':
+    case 'auth.status.failed':
+    case 'auth.login':
     case 'error':
       return state;
   }

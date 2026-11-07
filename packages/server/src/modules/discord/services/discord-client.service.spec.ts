@@ -1,6 +1,7 @@
 import type { Client } from 'discord.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 
 import { DiscordClientService } from './discord-client.service.js';
@@ -13,6 +14,7 @@ const COMMANDS = [
   { name: 'agent', description: 'Switches the AI agent (Antigravity, Claude Code...)' },
   { name: 'profiles', description: 'Configure agent, model and effort for each profile' },
   { name: 'language', description: 'Changes the language agents use to talk to you' },
+  { name: 'agent-auth', description: 'Log in to an agent CLI', dmPermission: false },
 ];
 
 const SHELL_COMMAND = {
@@ -24,6 +26,7 @@ const SHELL_COMMAND = {
 
 describe('DiscordClientService', () => {
   const agentTurn = new StubAgentTurnPort();
+  const agentAuth = new StubAgentAuthPort();
   let loginMock: ReturnType<typeof vi.fn>;
   let destroyMock: ReturnType<typeof vi.fn>;
   let onMock: ReturnType<typeof vi.fn>;
@@ -33,6 +36,7 @@ describe('DiscordClientService', () => {
 
   beforeEach(() => {
     agentTurn.shellEnabled = false;
+    agentAuth.enabled = true;
     loginMock = vi.fn().mockResolvedValue('token');
     destroyMock = vi.fn().mockResolvedValue(undefined);
     onMock = vi.fn().mockReturnThis();
@@ -43,7 +47,7 @@ describe('DiscordClientService', () => {
       on: onMock,
     } as unknown as Client;
 
-    service = new DiscordClientService(agentTurn, mockClient);
+    service = new DiscordClientService(agentTurn, agentAuth, mockClient);
     delete process.env.DISCORD_BOT_TOKEN;
   });
 
@@ -57,7 +61,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should instantiate with default discord.js Client if none provided', () => {
-    const defaultService = new DiscordClientService(agentTurn);
+    const defaultService = new DiscordClientService(agentTurn, agentAuth);
     expect(defaultService.getClient()).toBeDefined();
   });
 
@@ -113,6 +117,17 @@ describe('DiscordClientService', () => {
     await service.onApplicationBootstrap();
 
     expect(setAppCommands).toHaveBeenCalledWith([...COMMANDS, SHELL_COMMAND]);
+  });
+
+  it('should leave the login command out when agent authentication is disabled', async () => {
+    agentAuth.enabled = false;
+    const setAppCommands = vi.fn().mockResolvedValue([]);
+    (mockClient as any).application = { commands: { set: setAppCommands } };
+    process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
+
+    await service.onApplicationBootstrap();
+
+    expect(setAppCommands).toHaveBeenCalledWith(COMMANDS.filter(command => command.name !== 'agent-auth'));
   });
 
   it('should register the guild commands even without an application', async () => {

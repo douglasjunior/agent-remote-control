@@ -88,6 +88,16 @@ export class PromptCancelledError extends Error {
   }
 }
 
+/** `session/new` was refused because the agent CLI has no valid login. */
+export class AgentAuthRequiredError extends Error {
+  constructor(readonly agentId: string, detail: string) {
+    super(
+      `The ${agentId} agent is not logged in. Authenticate it from the web interface or with /agent-auth in Discord.\n${detail}`,
+    );
+    this.name = 'AgentAuthRequiredError';
+  }
+}
+
 export interface IAgentPort {
   readonly agentName: string;
   readonly lastAgentMessage: string;
