@@ -23,6 +23,11 @@ describe('parseClientCommand', () => {
     { type: 'agents.list' },
     { type: 'quota.get' },
     { type: 'quota.get', refresh: true },
+    { type: 'auth.status' },
+    { type: 'auth.status', refresh: true },
+    { type: 'auth.login', agentId: 'claude' },
+    { type: 'auth.input', agentId: 'claude', text: 'abc#def' },
+    { type: 'auth.cancel', agentId: 'claude' },
     { type: 'models.list', agentId: 'claude' },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus' },
     { type: 'profiles.get', conversationId: 'c' },
@@ -44,6 +49,9 @@ describe('parseClientCommand', () => {
 
   it.each([
     ['unknown type', { type: 'nope' }],
+    ['a login without an agent', { type: 'auth.login' }],
+    ['a blank login code', { type: 'auth.input', agentId: 'claude', text: '   ' }],
+    ['an oversized login code', { type: 'auth.input', agentId: 'claude', text: 'x'.repeat(MAX_MESSAGE_LENGTH + 1) }],
     ['missing fields', { type: 'auth' }],
     ['blank text', { type: 'message.send', conversationId: 'c', text: '   ' }],
     ['blank text with an empty attachment list', { type: 'message.send', conversationId: 'c', text: ' ', attachments: [] }],

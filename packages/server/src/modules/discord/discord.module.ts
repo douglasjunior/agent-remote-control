@@ -9,7 +9,9 @@ import { DiscordActivityFormatter } from './formatters/discord-activity.formatte
 import { DiscordInteractionHandler } from './handlers/discord-interaction.handler.js';
 import { DiscordMessageHandler } from './handlers/discord-message.handler.js';
 import { IAgentConfigSelectionStorePort } from './ports/agent-config-selection-store.port.js';
+import { AgentAuthRequestService } from './services/agent-auth-request.service.js';
 import { AgentProfileListService } from './services/agent-profile-list.service.js';
+import { DiscordAgentAuthNotifierService } from './services/discord-agent-auth-notifier.service.js';
 import { DiscordAttachmentService } from './services/discord-attachment.service.js';
 import { DiscordClientService } from './services/discord-client.service.js';
 import { DiscordConversationService } from './services/discord-conversation.service.js';
@@ -26,6 +28,8 @@ import { SubmitAgentConfigSelectionUseCase } from './use-cases/submit-agent-conf
     { provide: IAgentConfigSelectionStorePort, useClass: InMemoryAgentConfigSelectionStoreAdapter },
     AgentProfileListService,
     LanguageChangeRequestService,
+    AgentAuthRequestService,
+    DiscordAgentAuthNotifierService,
     StartAgentConfigSelectionUseCase,
     SubmitAgentConfigSelectionUseCase,
     ResolveConversationInputUseCase,

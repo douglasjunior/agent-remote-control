@@ -9,12 +9,14 @@ import { useStoredFlag } from '../lib/use-stored-flag.js';
 import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { AmbientGlow } from './ambient-glow.js';
+import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { IconButton } from './icon-button.js';
 import { ThemeToggle } from './theme-toggle.js';
 import { Button } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
+import { Toaster } from './ui/sonner.js';
 import { UsageIndicator } from './usage/usage-indicator.js';
 
 
@@ -29,6 +31,7 @@ export function AppLayout() {
     <ConversationsProvider>
       <AmbientGlow />
       <AppShell />
+      <Toaster position="bottom-right" />
     </ConversationsProvider>
   );
 }
@@ -72,6 +75,7 @@ function AppShell() {
             <h1 className="min-w-0 truncate text-sm font-semibold">Agent Remote Control</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <AgentAuthController />
             <UsageIndicator />
             <ConnectionBadge status={status} />
             <ThemeToggle />

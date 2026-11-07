@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.po
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
+import type { AgentAuthChoice } from '../models/agent-auth-choice.model.js';
 import type { ConversationInputResolution } from '../models/agent-config-outcome.model.js';
 import {
   type AttachmentValidationResult,
@@ -91,8 +93,19 @@ class MockDiscordConversationService {
 
   public pendingLanguageChange = false;
 
+  public pendingAgentAuth = false;
+  public startedLogins: { conversationId: string; agent: AgentAuthChoice; channel: { send: (content: string) => Promise<unknown> } }[] = [];
+
   hasPendingLanguageChange(_conversationId: string): boolean {
     return this.pendingLanguageChange;
+  }
+
+  hasPendingAgentAuth(_conversationId: string): boolean {
+    return this.pendingAgentAuth;
+  }
+
+  async startAgentLogin(conversationId: string, agent: AgentAuthChoice, channel: { send: (content: string) => Promise<unknown> }): Promise<void> {
+    this.startedLogins.push({ conversationId, agent, channel });
   }
 
   async hasActiveConfigSelection(conversationId: string): Promise<boolean> {
@@ -1957,6 +1970,82 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(unmanagedThreadMessage(send));
 
       expect(send).toHaveBeenCalledWith('⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".');
+    });
+
+    describe('agent login dialog', () => {
+      it('should start the login of the picked agent in the thread the user answered in', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        const agent = { agentId: 'claude', displayName: 'Claude Code' };
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'agent_auth_selected', agent };
+
+        await handler.handleMessage(unmanagedThreadMessage(send));
+
+        expect(agentTurn.lastRequest).toBeUndefined();
+        expect(conversationService.startedLogins).toHaveLength(1);
+        expect(conversationService.startedLogins[0]).toMatchObject({ conversationId: 'channel-1:thread-9', agent });
+        await conversationService.startedLogins[0]?.channel.send('hello');
+        expect(send).toHaveBeenCalledWith('hello');
+      });
+
+      it('should ask again after an invalid pick', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'invalid_agent_auth_choice', count: 3 };
+
+        await handler.handleMessage(unmanagedThreadMessage(send));
+
+        expect(send).toHaveBeenCalledWith('⚠️ Invalid option. Reply only with a number from 1 to 3, or 0 to cancel.');
+      });
+
+      it('should announce the cancelled login dialog', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'agent_auth_closed' };
+
+        await handler.handleMessage(unmanagedThreadMessage(send));
+
+        expect(send).toHaveBeenCalledWith('🛑 **Login cancelled.**');
+      });
+
+      it('should delete the message that carried the code and confirm that it arrived', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        const deleteMessage = vi.fn().mockResolvedValue(undefined);
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'agent_auth_code', agentId: 'claude', delivered: true };
+
+        await handler.handleMessage({ ...unmanagedThreadMessage(send), delete: deleteMessage } as unknown as Message);
+
+        expect(deleteMessage).toHaveBeenCalledTimes(1);
+        expect(send).toHaveBeenCalledWith('🔑 Code received. Waiting for the login to finish...');
+      });
+
+      it('should say that the login no longer waits for a code, even when the message cannot be deleted', async () => {
+        const send = vi.fn().mockResolvedValue(undefined);
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'agent_auth_code', agentId: 'claude', delivered: false };
+
+        await handler.handleMessage({
+          ...unmanagedThreadMessage(send),
+          delete: vi.fn().mockRejectedValue(new Error('Missing Permissions')),
+        } as unknown as Message);
+
+        expect(send).toHaveBeenCalledWith('⚠️ The login is no longer waiting for a code.');
+      });
+
+      it('should keep what the user typed out of the log while a login dialog is open', async () => {
+        const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+        const send = vi.fn().mockResolvedValue(undefined);
+        conversationService.pendingAgentAuth = true;
+        conversationService.resolution = { kind: 'agent_auth_closed' };
+
+        await handler.handleMessage(unmanagedThreadMessage(send));
+
+        const received = log.mock.calls.map(([line]) => String(line)).find(line => line.includes('[Message Received]'));
+        expect(received).toContain('[hidden: answer to an agent login]');
+        expect(received).not.toContain('"1"');
+        log.mockRestore();
+      });
     });
 
     it('should ignore messages without mention in an unmanaged thread without a selection', async () => {

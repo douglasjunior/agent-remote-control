@@ -17,6 +17,7 @@ export interface IFileSystemPort {
   ): Promise<void>;
   readText(filePath: string): Promise<string | null>;
   writeText(filePath: string, content: string): Promise<void>;
+  writeExecutable(filePath: string, content: string): Promise<void>;
   deleteFile(filePath: string): Promise<void>;
   joinPath(...segments: string[]): string;
   resolvePath(path: string): string;

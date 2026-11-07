@@ -15,7 +15,7 @@ import { DiscordTypingIndicator, type TypingChannel } from '../services/discord-
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 
 
-const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.';
+const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.';
 
 type SelectionTarget = ConversationKey & {
   readonly publish: (content: string) => Promise<void>;
@@ -96,6 +96,18 @@ export class DiscordInteractionHandler implements OnModuleInit {
           'ℹ️ No profiles available to configure.',
         ),
       });
+    } else if (interaction.commandName === 'agent-auth') {
+      await this.handleSelectionCommand(interaction, {
+        subject: 'login',
+        notice: '🧵 Choose the agent to log in in the thread below.',
+        threadName: 'Agent login',
+        start: async (conversationId) => {
+          const result = await this.discordConversation.startAgentAuthSelection(conversationId);
+          return result.kind === 'menu'
+            ? this.activityFormatter.formatAgentAuthMenu(result.entries)
+            : this.activityFormatter.formatAgentAuthUnavailable();
+        },
+      });
     } else if (interaction.commandName === 'language') {
       await this.handleSelectionCommand(interaction, {
         subject: 'language',
@@ -117,7 +129,8 @@ export class DiscordInteractionHandler implements OnModuleInit {
 
       const conversationId = buildConversationId({ channelId, threadId });
       const configSelectionCancelled = await this.discordConversation.cancelConfigSelection(conversationId);
-      const selectionCancelled = this.discordConversation.cancelLanguageChange(conversationId) || configSelectionCancelled;
+      const authCancelled = this.discordConversation.cancelAgentAuth(conversationId);
+      const selectionCancelled = this.discordConversation.cancelLanguageChange(conversationId) || configSelectionCancelled || authCancelled;
       const turnCancelled = await this.agentTurn.cancelTurn(conversationId);
 
       this.logger.log(

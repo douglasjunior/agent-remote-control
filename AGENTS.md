@@ -21,7 +21,7 @@ agent-remote-control/
 │   └── server/                     # @agent-remote-control/server: the NestJS application
 │       ├── src/                    # NestJS application source code
 │       │   ├── modules/                    # Vertical modules segregated by domain
-│       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, bridges and demux
+│       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, demux and the CLI login (IAgentAuthPort)
 │       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
@@ -31,7 +31,6 @@ agent-remote-control/
 │       │   │
 │       │   │   Internal folders of a module (each module uses only the ones it needs):
 │       │   │       ├── adapters/           # Secondary/technology adapters (*.adapter.ts)
-│       │   │       ├── bridges/            # Bridge processes between protocols (e.g. ACP ↔ agy)
 │       │   │       ├── constants/          # Domain constants
 │       │   │       ├── demux/              # Decomposition of streams into typed events
 │       │   │       ├── formatters/         # Output formatting for the channel

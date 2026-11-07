@@ -9,6 +9,7 @@ import { ClaudeCodeAdapter } from './claude-code.adapter.js';
 import { CodexAdapter } from './codex.adapter.js';
 import { CopilotAdapter } from './copilot.adapter.js';
 import { CursorAdapter } from './cursor.adapter.js';
+import { OpenCodeAdapter } from './opencode.adapter.js';
 
 
 describe('AcpAgentPortFactoryAdapter', () => {
@@ -30,6 +31,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
       { agentId: 'copilot', displayName: 'GitHub Copilot' },
       { agentId: 'codex', displayName: 'OpenAI Codex' },
       { agentId: 'cursor', displayName: 'Cursor' },
+      { agentId: 'opencode', displayName: 'OpenCode' },
     ]);
   });
 
@@ -41,6 +43,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
       ['codex', 'codex'],
       ['cursor', 'cursor-agent'],
       ['cursor', 'agent'],
+      ['opencode', 'opencode'],
     ])('should offer %s when %s is in the PATH', (agentId, binary) => {
       fileSystem.addBinary(binary);
 
@@ -50,7 +53,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
 
     it('should offer no agent when no CLI is in the PATH', () => {
       expect(factory.listAvailableAgents()).toEqual([]);
-      expect(factory.listAgents()).toHaveLength(5);
+      expect(factory.listAgents()).toHaveLength(6);
       expect(factory.isAgentAvailable('claude')).toBe(false);
     });
 
@@ -108,6 +111,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
     ['copilot', CopilotAdapter],
     ['codex', CodexAdapter],
     ['cursor', CursorAdapter],
+    ['opencode', OpenCodeAdapter],
   ])('should create the %s adapter', (agentId, adapterClass) => {
     expect(factory.create(agentId)).toBeInstanceOf(adapterClass);
   });
@@ -123,6 +127,6 @@ describe('AcpAgentPortFactoryAdapter', () => {
   });
 
   it('should reject an unknown agent', () => {
-    expect(() => factory.create('gpt')).toThrow('Unknown agent "gpt". Available agents: agy, claude, copilot, codex, cursor.');
+    expect(() => factory.create('gpt')).toThrow('Unknown agent "gpt". Available agents: agy, claude, copilot, codex, cursor, opencode.');
   });
 });

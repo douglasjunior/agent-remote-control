@@ -1,6 +1,6 @@
 #!/bin/sh
 # Makes the agent CLIs listed in ARC_AGENTS (comma-separated: claude, copilot, cursor,
-# antigravity) available in ~/.local, then starts the application. An already available CLI is
+# antigravity, opencode) available in ~/.local, then starts the application. An already available CLI is
 # kept unless ARC_AGENTS_UPDATE=true. It also downloads the speech-to-text model when
 # STT_PROVIDER is whisper-cpp.
 
@@ -18,10 +18,11 @@ install_agent() {
 
 for agent in $(echo "$ARC_AGENTS" | tr ',' ' '); do
   case "$agent" in
-    claude) install_agent claude sh -c 'ln -sf /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude "$HOME/.local/bin/claude"' ;;
+    claude) install_agent claude sh -c 'for binary in /app/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude /app/node_modules/.pnpm/node_modules/@anthropic-ai/claude-agent-sdk-linux-*/claude; do [ -x "$binary" ] && ln -sf "$binary" "$HOME/.local/bin/claude" && exit 0; done; exit 1' ;;
     copilot) install_agent copilot npm install --global --prefix "$HOME/.local" @github/copilot ;;
     cursor) install_agent cursor-agent sh -c 'curl -fsSL https://cursor.com/install | bash' ;;
     antigravity) install_agent agy sh -c 'curl -fsSL https://antigravity.google/cli/install.sh | bash' ;;
+    opencode) install_agent opencode npm install --global --prefix "$HOME/.local" @opencode/cli ;;
     *) echo "[entrypoint] Unknown agent '$agent' in ARC_AGENTS" >&2 ;;
   esac
 done

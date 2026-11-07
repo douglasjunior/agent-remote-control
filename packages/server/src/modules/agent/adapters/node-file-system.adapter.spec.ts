@@ -22,6 +22,7 @@ vi.mock('node:fs', () => ({
 }));
 
 vi.mock('node:fs/promises', () => ({
+  chmod: vi.fn(),
   mkdir: vi.fn(),
   readFile: vi.fn(),
   writeFile: vi.fn(),
@@ -34,7 +35,7 @@ vi.mock('node:os', () => ({
 
 const { accessSync, existsSync, readdirSync, statSync, watch } =
   await import('node:fs');
-const { mkdir, readFile, rm, writeFile } = await import('node:fs/promises');
+const { chmod, mkdir, readFile, rm, writeFile } = await import('node:fs/promises');
 const { homedir } = await import('node:os');
 
 describe('NodeFileSystemAdapter', () => {
@@ -470,6 +471,19 @@ describe('NodeFileSystemAdapter', () => {
 
       expect(mkdir).toHaveBeenCalledWith('/repo', { recursive: true });
       expect(writeFile).toHaveBeenCalledWith('/repo/file.md', '# Content\n');
+    });
+  });
+
+  describe('writeExecutable', () => {
+    it('should write the file and mark it executable', async () => {
+      vi.mocked(mkdir).mockResolvedValueOnce(undefined);
+      vi.mocked(writeFile).mockResolvedValueOnce(undefined);
+      vi.mocked(chmod).mockResolvedValueOnce(undefined);
+
+      await new NodeFileSystemAdapter().writeExecutable('/tmp/openers/xdg-open', '#!/bin/sh\nexit 0\n');
+
+      expect(writeFile).toHaveBeenCalledWith('/tmp/openers/xdg-open', '#!/bin/sh\nexit 0\n');
+      expect(chmod).toHaveBeenCalledWith('/tmp/openers/xdg-open', 0o755);
     });
   });
 

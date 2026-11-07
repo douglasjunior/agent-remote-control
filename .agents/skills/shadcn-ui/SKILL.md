@@ -73,6 +73,10 @@ uses relative imports with the `.js` suffix (see `web-app`). The workaround has 
 2. `pnpm ui:relativize` (`scripts/relativize-imports.mjs`) rewrites every `@/x` import under `src/` to a
    relative path ending in `.js`. Run it after every `init`, `add` or `--overwrite`, then `pnpm lint:fix`.
 
+`ui/sonner.tsx` imports `useTheme` from the app's `theme/theme-context.ts` (`light`, `dark` or `system`),
+because the generated file reads it from `next-themes`, which the app does not use. Re-apply that import after
+`--overwrite` of `sonner`. `<Toaster />` is mounted once, in `AppLayout`.
+
 An `@/` import left in `src/` is a defect: it type-checks through `paths` but breaks the convention.
 Check with `grep -rn "from [\"']@/" packages/web/src`.
 
