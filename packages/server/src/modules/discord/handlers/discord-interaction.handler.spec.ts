@@ -6,11 +6,12 @@ import type {
 import { Events } from 'discord.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
-import type { StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
+import type { StartAgentAuthSelectionResult, StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import type { DiscordConversationService } from '../services/discord-conversation.service.js';
 
@@ -54,6 +55,16 @@ class StubDiscordConversationService implements Partial<DiscordConversationServi
   startedAgentSelections: string[] = [];
   startedProfilesSelections: string[] = [];
   languageRequests: string[] = [];
+  agentAuthSelectionResult: StartAgentAuthSelectionResult = {
+    kind: 'menu',
+    entries: [
+      { index: 1, agentId: 'claude', displayName: 'Claude Code', status: 'authenticated', detail: 'me@example.com' },
+      { index: 2, agentId: 'codex', displayName: 'OpenAI Codex', status: 'unauthenticated' },
+    ],
+  };
+
+  startedAgentAuthSelections: string[] = [];
+  pendingAgentAuth = false;
 
   async startConfigSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
     if (this.throwError) {
@@ -93,6 +104,18 @@ class StubDiscordConversationService implements Partial<DiscordConversationServi
 
   cancelLanguageChange(_conversationId: string): boolean {
     return this.pendingLanguageChange;
+  }
+
+  async startAgentAuthSelection(conversationId: string): Promise<StartAgentAuthSelectionResult> {
+    if (this.throwError) {
+      throw new Error('auth down');
+    }
+    this.startedAgentAuthSelections.push(conversationId);
+    return this.agentAuthSelectionResult;
+  }
+
+  cancelAgentAuth(_conversationId: string): boolean {
+    return this.pendingAgentAuth;
   }
 }
 
@@ -170,7 +193,7 @@ describe('DiscordInteractionHandler', () => {
       cancelled: false,
     };
     agentTurn.quotaReports = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
-    clientService = new DiscordClientService(agentTurn, mockClient);
+    clientService = new DiscordClientService(agentTurn, new StubAgentAuthPort(), mockClient);
     handler = new DiscordInteractionHandler(
       clientService,
       agentTurn,
@@ -732,7 +755,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(dialogs.languageRequests).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.',
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.',
         ephemeral: true,
       });
     });
@@ -746,6 +769,82 @@ describe('DiscordInteractionHandler', () => {
       expect(interaction.editReply).toHaveBeenCalledWith({
         content: '❌ **Failed to open language selection**: preferences down',
       });
+    });
+  });
+
+  describe('/agent-auth', () => {
+    const menuText = [
+      '🔑 **Choose the agent to log in** by replying with the option number, or 0 to cancel:',
+      '**1.** Claude Code — ✅ logged in (me@example.com)',
+      '**2.** OpenAI Codex — ⚠️ not logged in',
+    ].join('\n');
+
+    it('should list the agents in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'login-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const startThread = vi.fn().mockResolvedValue(thread);
+      const interaction = buildInteraction({
+        commandName: 'agent-auth',
+        editReply: vi.fn().mockResolvedValue({ startThread }),
+      });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the agent to log in in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Agent login', autoArchiveDuration: 60 });
+      expect(dialogs.startedAgentAuthSelections).toEqual(['channel-123:login-thread']);
+      expect(thread.send).toHaveBeenCalledWith(menuText);
+    });
+
+    it('should list the agents in a direct message', async () => {
+      const interaction = buildInteraction({ commandName: 'agent-auth', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(dialogs.startedAgentAuthSelections).toEqual(['dm-1']);
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: menuText });
+    });
+
+    it('should say so when no agent has a CLI login', async () => {
+      dialogs.agentAuthSelectionResult = { kind: 'unavailable' };
+      const interaction = buildInteraction({ commandName: 'agent-auth', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: 'ℹ️ No agents with a CLI login are available.' });
+    });
+
+    it('should refuse while questions wait for an answer', async () => {
+      questions.pending = true;
+      const interaction = buildInteraction({ commandName: 'agent-auth', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(dialogs.startedAgentAuthSelections).toEqual([]);
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.',
+        ephemeral: true,
+      });
+    });
+
+    it('should report failures listing the agents', async () => {
+      dialogs.throwError = true;
+      const interaction = buildInteraction({ commandName: 'agent-auth', inGuild: false, channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({
+        content: '❌ **Failed to open login selection**: auth down',
+      });
+    });
+
+    it('should confirm when only a login was cancelled by /cancel', async () => {
+      agentTurn.cancelResult = false;
+      dialogs.pendingAgentAuth = true;
+      const interaction = buildInteraction({ commandName: 'cancel' });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.reply).toHaveBeenCalledWith({ content: '🛑 **Selection cancelled.**', ephemeral: true });
     });
   });
 });

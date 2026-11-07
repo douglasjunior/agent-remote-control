@@ -19,6 +19,7 @@ import { Readable, Writable } from 'node:stream';
 
 import { AgentStreamDemux } from '../demux/agent-stream-demux.js';
 import {
+  AgentAuthRequiredError,
   PromptCancelledError,
   type AgentActivity,
   type AgentConfig,
@@ -30,6 +31,7 @@ import {
   type AgentUsage,
   type IAgentPort,
 } from '../ports/agent.port.js';
+import { buildAgentProcessEnv } from '../utils/agent-env.util.js';
 
 import { ResumedSession, type SessionHandle } from './resumed-session.js';
 
@@ -37,26 +39,12 @@ import { ResumedSession, type SessionHandle } from './resumed-session.js';
 type SessionConfigOptionSelect = SessionConfigOption & { type: 'select' };
 type ConfigCategory = 'model' | 'thought_level' | 'mode' | 'permissions';
 
+/** JSON-RPC code ACP agents answer `session/new` with while the CLI has no login. */
+const AUTH_REQUIRED_CODE = -32000;
 const CANCEL_ESCALATION_MS = 5_000;
 const CANCEL_FORCE_GRACE_MS = 15_000;
 const STEERING_METHOD = '_session/steering';
 const STEERING_INJECTED_OUTCOME = 'injected';
-
-const HOST_ONLY_ENV_VARS = new Set([
-  'DISCORD_BOT_TOKEN',
-  'DISCORD_GUILD_ID',
-  'WORKSPACE_DIR',
-  'DATA_DIR',
-  'SESSION_IDLE_TIMEOUT_MS',
-  'QUESTION_TIMEOUT_MS',
-  'PORT',
-  'PWD',
-  'OLDPWD',
-  'INIT_CWD',
-  'PROJECT_CWD',
-]);
-
-const HOST_ONLY_ENV_PREFIX = 'npm_';
 
 const PERMISSION_ALLOW_PREFERENCE: readonly PermissionOption['kind'][] = [
   'allow_always',
@@ -155,15 +143,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
    * directory, with `PWD` pointing at the subprocess `cwd`.
    */
   protected buildAgentEnv(cwd: string): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = {};
-    for (const [key, value] of Object.entries(process.env)) {
-      if (HOST_ONLY_ENV_VARS.has(key) || key.startsWith(HOST_ONLY_ENV_PREFIX)) {
-        continue;
-      }
-      env[key] = value;
-    }
-    env.PWD = cwd;
-    return env;
+    return buildAgentProcessEnv(cwd);
   }
 
   protected async collectFallbackUsage(
@@ -838,6 +818,11 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     return { kind: 'text', text: finalText };
   }
 
+  private isAuthRequired(rawError: unknown, rawMessage: string): boolean {
+    const code = (rawError as { code?: unknown } | null)?.code;
+    return code === AUTH_REQUIRED_CODE && /authentication required/i.test(rawMessage);
+  }
+
   protected buildTransportError(rawError: unknown, operation: string): Error {
     const rawMessage =
       rawError instanceof Error ? rawError.message : String(rawError);
@@ -854,7 +839,9 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
     this.logger.error(`transport_error (${operation}): ${rawMessage}`);
 
-    const error = new Error(lines.join('\n'));
+    const error = this.isAuthRequired(rawError, rawMessage)
+      ? new AgentAuthRequiredError(this.agentName, lines.join('\n'))
+      : new Error(lines.join('\n'));
     if (rawError instanceof Error) {
       error.cause = rawError;
     }

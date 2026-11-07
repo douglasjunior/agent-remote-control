@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AgentModule } from '../agent/agent.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
 import { PathsModule } from '../paths/paths.module.js';
@@ -14,6 +15,7 @@ import { IConversationStorePort } from './ports/conversation-store.port.js';
 import { IPromptHistoryPort } from './ports/prompt-history.port.js';
 import { ConversationEntryService } from './services/conversation-entry.service.js';
 import { WebAccessTokenService } from './services/web-access-token.service.js';
+import { WebAgentAuthService } from './services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from './services/web-agent-quota.service.js';
 import { WebConnectionRegistryService } from './services/web-connection-registry.service.js';
 import { WebConversationEventsService } from './services/web-conversation-events.service.js';
@@ -35,13 +37,14 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
 
 
 @Module({
-  imports: [LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
+  imports: [AgentModule, LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
   providers: [
     { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
     { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
     WebAccessTokenService,
     WebAgentQuotaService,
+    WebAgentAuthService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,

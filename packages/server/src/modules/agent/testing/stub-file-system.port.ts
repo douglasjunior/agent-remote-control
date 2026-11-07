@@ -32,6 +32,12 @@ export class StubFileSystem implements IFileSystemPort {
     return this.text;
   }
 
+  readonly executables = new Map<string, string>();
+
+  async writeExecutable(filePath: string, content: string): Promise<void> {
+    this.executables.set(filePath, content);
+  }
+
   async deleteFile(filePath: string): Promise<void> {
     this.deletedFiles.push(filePath);
   }

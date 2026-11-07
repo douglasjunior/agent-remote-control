@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { agentLoginInputSchema } from './agent-auth.js';
 import { attachmentSchema } from './attachment.js';
 import { MAX_ATTACHMENT_NAME_LENGTH, MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
 
@@ -39,6 +40,10 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('files.close'), requestId: z.string() }),
   z.object({ type: z.literal('agents.list') }),
   z.object({ type: z.literal('quota.get'), refresh: z.boolean().optional() }),
+  z.object({ type: z.literal('auth.status'), refresh: z.boolean().optional() }),
+  z.object({ type: z.literal('auth.login'), agentId: z.string() }),
+  z.object({ type: z.literal('auth.input'), agentId: z.string(), text: agentLoginInputSchema }),
+  z.object({ type: z.literal('auth.cancel'), agentId: z.string() }),
   z.object({ type: z.literal('models.list'), agentId: z.string() }),
   z.object({ type: z.literal('efforts.list'), agentId: z.string(), modelId: z.string() }),
   z.object({ type: z.literal('profiles.get'), conversationId: z.string() }),

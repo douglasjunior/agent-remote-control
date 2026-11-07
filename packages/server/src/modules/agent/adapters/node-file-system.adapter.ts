@@ -7,7 +7,7 @@ import {
   statSync,
   watch,
 } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 
@@ -124,6 +124,11 @@ export class NodeFileSystemAdapter implements IFileSystemPort {
   async writeText(filePath: string, content: string): Promise<void> {
     await mkdir(dirname(filePath), { recursive: true });
     await writeFile(filePath, content);
+  }
+
+  async writeExecutable(filePath: string, content: string): Promise<void> {
+    await this.writeText(filePath, content);
+    await chmod(filePath, 0o755);
   }
 
   async deleteFile(filePath: string): Promise<void> {

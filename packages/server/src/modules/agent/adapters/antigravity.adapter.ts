@@ -1,7 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { ChildProcess } from 'node:child_process';
 import { tmpdir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 
 import type {
   AgentConfig,
@@ -9,7 +8,6 @@ import type {
   AgentQuotaBucket,
   AgentQuotaGroup,
 } from '../ports/agent.port.js';
-import { IFileSystemPort } from '../ports/file-system.port.js';
 import { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
 import { AbstractAcpAdapter } from './abstract-acp.adapter.js';
@@ -30,12 +28,18 @@ type RawGroup = {
   readonly buckets?: unknown;
 };
 
+/**
+ * `--process-per-session` gives each session its own worker rooted in the session's `cwd`: without it
+ * the server keeps the `cwd` of the first session, which here is the discovery session in `tmpdir()`.
+ * `--dangerously-skip-permissions` approves every tool call, since nobody answers one in a remote session.
+ */
+const AGY_ARGS = ['acp', '--process-per-session', '--dangerously-skip-permissions'];
+
 @Injectable()
 export class AntigravityAdapter extends AbstractAcpAdapter {
   readonly agentName = 'agy';
 
   constructor(
-    @Inject(IFileSystemPort) private readonly fileSystem: IFileSystemPort,
     @Inject(IProcessRunnerPort)
     private readonly processRunner: IProcessRunnerPort,
     @Optional() preferredConfig?: AgentConfig,
@@ -127,30 +131,11 @@ export class AntigravityAdapter extends AbstractAcpAdapter {
   }
 
   protected spawnAgentProcess(): ChildProcess {
-    const bridgeBin = this.resolveBridgeBin();
     const cwd = tmpdir();
-    return this.processRunner.spawn(process.execPath, [bridgeBin], {
+    return this.processRunner.spawn('agy', AGY_ARGS, {
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       env: this.buildAgentEnv(cwd),
     });
-  }
-
-  private resolveBridgeBin(): string {
-    const distPath = fileURLToPath(
-      new URL('../bridges/agy-acp-bridge.js', import.meta.url),
-    );
-    if (this.fileSystem.isReadableFile(distPath)) {
-      return distPath;
-    }
-    const flatDistPath = fileURLToPath(
-      new URL('./agy-acp-bridge.js', import.meta.url),
-    );
-    if (this.fileSystem.isReadableFile(flatDistPath)) {
-      return flatDistPath;
-    }
-    return fileURLToPath(
-      new URL('../bridges/agy-acp-bridge.ts', import.meta.url),
-    );
   }
 }

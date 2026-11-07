@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import type { AgentLoginEvent } from '../../agent/models/agent-auth.model.js';
 import type { AgentUsage } from '../../agent/ports/agent.port.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
@@ -11,6 +12,7 @@ import type { TurnActivity } from '../../orchestrator/models/turn-activity.model
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
+import type { AgentAuthMenuEntry } from '../models/agent-auth-choice.model.js';
 import type { AgentConfigSelection, SelectedValue } from '../models/agent-config-selection.model.js';
 
 
@@ -181,6 +183,61 @@ export class DiscordActivityFormatter {
     return '⚠️ Invalid language. Reply with just the language name, up to 64 characters, such as "Spanish".';
   }
 
+  formatAgentAuthMenu(entries: readonly AgentAuthMenuEntry[]): string {
+    const lines = entries.map(entry => `**${entry.index}.** ${entry.displayName} — ${this.formatAgentAuthStatus(entry)}`);
+    return ['🔑 **Choose the agent to log in** by replying with the option number, or 0 to cancel:', ...lines].join('\n');
+  }
+
+  formatInvalidAgentAuthChoice(count: number): string {
+    return `⚠️ Invalid option. Reply only with a number from 1 to ${count}, or 0 to cancel.`;
+  }
+
+  formatAgentAuthClosed(): string {
+    return '🛑 **Login cancelled.**';
+  }
+
+  formatAgentAuthUnavailable(): string {
+    return 'ℹ️ No agents with a CLI login are available.';
+  }
+
+  formatAgentLoginStarting(displayName: string): string {
+    return `⏳ Starting the **${displayName}** login...`;
+  }
+
+  formatAgentLoginLink(displayName: string, url: string, code?: string): string {
+    const lines = [`🔗 **${displayName} login** — open this link in your browser and sign in with your subscription account:`, url];
+    if (code) {
+      lines.push(`Enter this one-time code: \`${code}\``);
+    }
+    lines.push('⏳ Waiting for you to finish in the browser. Use /cancel to stop.');
+    return lines.join('\n');
+  }
+
+  formatAgentLoginPrompt(): string {
+    return '🔑 After signing in, reply in this thread with the code (or the full address) the browser shows. The message is deleted as soon as it is read.';
+  }
+
+  formatAgentLoginCodeReceived(): string {
+    return '🔑 Code received. Waiting for the login to finish...';
+  }
+
+  formatAgentLoginCodeRejected(): string {
+    return '⚠️ The login is no longer waiting for a code.';
+  }
+
+  formatAgentLoginResult(displayName: string, event: AgentLoginEvent): string | undefined {
+    if (event.kind === 'completed') {
+      return `✅ **${displayName}** is logged in.`;
+    }
+    if (event.kind === 'failed') {
+      return `❌ **${displayName} login failed**: ${event.reason}`;
+    }
+    if (event.kind === 'cancelled') {
+      return `🛑 **${displayName} login cancelled.**`;
+    }
+    return undefined;
+  }
+
   formatShellResult(result: ShellCommandResult): string {
     const output = result.output.trimEnd().replaceAll('```', '`\u200b``');
     const lines = ['```', `$ ${result.command}`.replaceAll('```', '`\u200b``')];
@@ -269,6 +326,13 @@ export class DiscordActivityFormatter {
 
   formatProfilesClosed(): string {
     return '✅ **Profile configuration closed.**';
+  }
+
+  private formatAgentAuthStatus(entry: AgentAuthMenuEntry): string {
+    if (entry.status === 'authenticated') {
+      return entry.detail ? `✅ logged in (${entry.detail})` : '✅ logged in';
+    }
+    return entry.status === 'unauthenticated' ? '⚠️ not logged in' : '❔ status unknown';
   }
 
   private formatSelectionHeader(selection: AgentConfigSelection): string {

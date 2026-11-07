@@ -122,8 +122,11 @@ export class DiscordMessageHandler implements OnModuleInit {
         );
       }
 
+      const quoted = this.discordConversation.hasPendingAgentAuth(conversationId)
+        ? '[hidden: answer to an agent login]'
+        : `"${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"`;
       this.logger.log(
-        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: "${rawPrompt.slice(0, 100)}${rawPrompt.length > 100 ? '...' : ''}"${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
+        `[Message Received] From @${authorName} (${authorId}) in channel=${channelId}, thread=${threadId ?? 'none'}: ${quoted}${hasAttachments ? ` (${attachments.length} attachment(s))` : ''}`,
       );
 
       const resolution = await DiscordTypingIndicator.during(targetChannel, () =>
@@ -166,6 +169,25 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
       if (resolution.kind === 'invalid_language') {
         await targetChannel.send(this.activityFormatter.formatInvalidLanguage());
+        return;
+      }
+      if (resolution.kind === 'agent_auth_selected') {
+        await this.discordConversation.startAgentLogin(conversationId, resolution.agent, targetChannel);
+        return;
+      }
+      if (resolution.kind === 'invalid_agent_auth_choice') {
+        await targetChannel.send(this.activityFormatter.formatInvalidAgentAuthChoice(resolution.count));
+        return;
+      }
+      if (resolution.kind === 'agent_auth_closed') {
+        await targetChannel.send(this.activityFormatter.formatAgentAuthClosed());
+        return;
+      }
+      if (resolution.kind === 'agent_auth_code') {
+        await message.delete().catch(() => undefined);
+        await targetChannel.send(resolution.delivered
+          ? this.activityFormatter.formatAgentLoginCodeReceived()
+          : this.activityFormatter.formatAgentLoginCodeRejected());
         return;
       }
       if (resolution.kind === 'profiles_menu') {
@@ -480,6 +502,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
     return this.userQuestions.hasPendingQuestions(conversationId)
       || this.discordConversation.hasPendingLanguageChange(conversationId)
+      || this.discordConversation.hasPendingAgentAuth(conversationId)
       || await this.discordConversation.hasActiveConfigSelection(conversationId);
   }
 

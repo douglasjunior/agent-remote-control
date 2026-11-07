@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { AgentProviderInfo } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentEffortState, AgentModelState } from '../../agent/ports/agent.port.js';
+import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
@@ -12,6 +13,7 @@ import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-quest
 import { profileForAllRoles } from '../../orchestrator/utils/agent-profile.util.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
 import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
+import { AgentAuthRequestService } from '../services/agent-auth-request.service.js';
 import { AgentProfileListService } from '../services/agent-profile-list.service.js';
 import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
 
@@ -83,6 +85,8 @@ describe('agent configuration selection', () => {
   let resolve: ResolveConversationInputUseCase;
   let cancel: CancelAgentConfigSelectionUseCase;
   let languageChangeRequests: LanguageChangeRequestService;
+  let agentAuthRequests: AgentAuthRequestService;
+  let agentAuth: StubAgentAuthPort;
 
   const build = (
     modelsByAgent: Record<string, AgentModelState | null>,
@@ -110,6 +114,8 @@ describe('agent configuration selection', () => {
     start = new StartAgentConfigSelectionUseCase(config, selectionStore, profileList);
     submit = new SubmitAgentConfigSelectionUseCase(config, selectionStore, profileList);
     languageChangeRequests = new LanguageChangeRequestService();
+    agentAuthRequests = new AgentAuthRequestService();
+    agentAuth = new StubAgentAuthPort();
     resolve = new ResolveConversationInputUseCase(
       selectionStore,
       config,
@@ -117,6 +123,8 @@ describe('agent configuration selection', () => {
       submit,
       userQuestions,
       languageChangeRequests,
+      agentAuthRequests,
+      agentAuth,
     );
     cancel = new CancelAgentConfigSelectionUseCase(selectionStore);
   };
@@ -781,6 +789,77 @@ describe('agent configuration selection', () => {
 
       expect(config.languageUpdates).toEqual([]);
       expect(languageChangeRequests.isPending('conv-1')).toBe(true);
+    });
+
+    describe('agent login dialog', () => {
+      const choices = [
+        { agentId: 'claude', displayName: 'Claude Code' },
+        { agentId: 'codex', displayName: 'OpenAI Codex' },
+      ];
+
+      it('should pick the agent the number points at and stop waiting for a pick', async () => {
+        agentAuthRequests.requestPick('conv-1', choices);
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: ' 2 ' })).resolves.toEqual({
+          kind: 'agent_auth_selected',
+          agent: choices[1],
+        });
+
+        expect(agentAuthRequests.pendingPick('conv-1')).toBeUndefined();
+      });
+
+      it.each(['3', '9', 'codex', '-1', ''])('should keep waiting after the invalid pick %j', async (input) => {
+        agentAuthRequests.requestPick('conv-1', choices);
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: input })).resolves.toEqual({
+          kind: 'invalid_agent_auth_choice',
+          count: 2,
+        });
+
+        expect(agentAuthRequests.pendingPick('conv-1')).toEqual(choices);
+      });
+
+      it('should close the dialog on 0', async () => {
+        agentAuthRequests.requestPick('conv-1', choices);
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '0' })).resolves.toEqual({ kind: 'agent_auth_closed' });
+
+        expect(agentAuthRequests.pendingPick('conv-1')).toBeUndefined();
+      });
+
+      it('should hand the message to a login that waits for a code', async () => {
+        agentAuthRequests.startLogin('conv-1', 'claude');
+        agentAuthRequests.awaitCode('conv-1');
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'abc#def' })).resolves.toEqual({
+          kind: 'agent_auth_code',
+          agentId: 'claude',
+          delivered: true,
+        });
+
+        expect(agentAuth.inputs).toEqual([{ agentId: 'claude', text: 'abc#def' }]);
+      });
+
+      it('should report a code the login did not take', async () => {
+        agentAuth.inputAccepted = false;
+        agentAuthRequests.startLogin('conv-1', 'claude');
+        agentAuthRequests.awaitCode('conv-1');
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'abc' })).resolves.toEqual({
+          kind: 'agent_auth_code',
+          agentId: 'claude',
+          delivered: false,
+        });
+      });
+
+      it('should not treat messages as a code while the login does not wait for one', async () => {
+        agentAuthRequests.startLogin('conv-1', 'codex');
+        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'hello' })).resolves.toEqual({ kind: 'execute', prompt: 'hello' });
+
+        expect(agentAuth.inputs).toEqual([]);
+      });
     });
 
     it('should pass the attachments of a message on untouched, leaving what to do with them to the orchestrator', async () => {

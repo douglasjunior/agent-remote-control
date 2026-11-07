@@ -1,12 +1,11 @@
 ---
 name: agent-port
 description: >
-  Integration pattern for AI agents via the Agent Client Protocol (ACP) and Ports &
-  Adapters. Defines the IAgentPort contract, the session lifecycle (connect,
-  createSession, loadSession, prompt, cancel, closeSession), resumption via session/load,
-  lost-transport detection, the cancellation ladder with and without steering, the streaming
-  demux, the multi-agent factory and the AntigravityAdapter, ClaudeCodeAdapter, CopilotAdapter, CodexAdapter and CursorAdapter adapters.
-  Use when implementing, extending or consuming agents, ACP bridges, processes and streams.
+  Integrates AI coding agent CLIs over the Agent Client Protocol (ACP) behind the IAgentPort
+  port: session lifecycle and resumption, cancellation, streaming activities, the agent factory
+  and the per-CLI adapters (Antigravity, Claude Code, Copilot, Codex, Cursor, OpenCode), plus
+  the CLI login and login-state probes that authenticate them. Use when implementing, extending
+  or consuming agents, ACP subprocesses, session/load, cancellation, quotas or agent login.
 ---
 
 # Agent Port and ACP Integration
@@ -37,12 +36,12 @@ const agentPort = this.agentPortFactory.create('claude');
 The factory exposes:
 
 - `defaultAgentId: string` (a getter): agent used while no choice is saved — `'agy'` when available, otherwise the first available agent, otherwise `'agy'`;
-- `listAgents(): readonly AgentProviderInfo[]`: full catalog (`agentId`, `displayName`) in display order — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex) and `cursor` (Cursor);
+- `listAgents(): readonly AgentProviderInfo[]`: full catalog (`agentId`, `displayName`) in display order — `agy` (Antigravity), `claude` (Claude Code), `copilot` (GitHub Copilot), `codex` (OpenAI Codex), `cursor` (Cursor) and `opencode` (OpenCode);
 - `listAvailableAgents(): readonly AgentProviderInfo[]`: the catalog entries whose CLI is visible in the `PATH`, in catalog order;
 - `isAgentAvailable(agentId: string): boolean`: whether that agent's CLI is visible in the `PATH`; `false` for an unknown ID;
 - `create(agentId: string): IAgentPort`: new agent instance, built regardless of the `PATH`; throws `Unknown agent "<id>". Available agents: ...` for an ID outside the catalog.
 
-**PATH visibility**: each catalog entry declares the binaries that identify it — `agy` → `agy`, `claude` → `claude`, `copilot` → `copilot`, `codex` → `codex`, `cursor` → `cursor-agent` or `agent` (`CURSOR_BINARIES`). Claude Code and Codex also need their CLI in the `PATH`, although they run through bundled npm bridges. An agent is available when any of its binaries is found by `IFileSystemPort.isInPath`. Availability is evaluated on every call and never cached, so installing an agent while the application runs makes it appear.
+**PATH visibility**: each catalog entry declares the binaries that identify it — `agy` → `agy`, `claude` → `claude`, `copilot` → `copilot`, `codex` → `codex`, `cursor` → `cursor-agent` or `agent` (`CURSOR_BINARIES`), `opencode` → `opencode`. Claude Code and Codex also need their CLI in the `PATH`, although they run through bundled npm bridges. An agent is available when any of its binaries is found by `IFileSystemPort.isInPath`. Availability is evaluated on every call and never cached, so installing an agent while the application runs makes it appear.
 
 The catalog `agentId` equals the `agentName` of the created port, and it is what the orchestrator
 uses to compare the live port with the chosen agent.
@@ -53,7 +52,7 @@ same ACP session and the same `cwd`.
 
 ### Properties
 
-- `agentName: string`: identifier of the concrete agent (`'agy'`, `'claude'`, `'copilot'`, `'codex'` or `'cursor'`), equal to the factory `agentId` and shown in the response footer.
+- `agentName: string`: identifier of the concrete agent (`'agy'`, `'claude'`, `'copilot'`, `'codex'`, `'cursor'` or `'opencode'`), equal to the factory `agentId` and shown in the response footer.
 - `lastAgentMessage: string`: the last message of the turn as the agent wrote it, protocol tags included.
 - `currentSessionId?: string`: ID of the active ACP session. It is `undefined` without a session, including after a lost transport or a forced cancellation.
 - `supportsSteering: boolean`: whether the agent supports native steering while a turn is running.
@@ -80,7 +79,7 @@ same ACP session and the same `cwd`.
 `AgentUpdate` is `{ kind: 'text'; text: string }` and `AgentToolStatus` is
 `'pending' | 'in_progress' | 'completed' | 'failed'`. No type from
 `@agentclientprotocol/sdk` appears in the port; the SDK is only imported in
-`packages/server/src/modules/agent/{adapters,bridges,demux,testing}`.
+`packages/server/src/modules/agent/{adapters,demux,testing}`.
 
 ## Session Lifecycle
 
@@ -130,7 +129,7 @@ next `connect()` starts a new process.
 The demux tells thoughts from tool calls, keeps the messages in order and consolidates what the agent wrote. It
 knows nothing of the response protocol: the text it hands over, in activities, `takeFinalText()` and
 `lastAgentMessage`, is as the agent wrote it, `<final_response>` and other tags included. The orchestrator
-reads the protocol (`AgentProtocolService`, `orchestrator` skill).
+reads the protocol (`AgentProtocolService`).
 
 ## ACP Adapters
 
@@ -148,25 +147,12 @@ does not publish is logged and ignored.
 
 ### `AntigravityAdapter`
 
-`AntigravityAdapter` (`agentName = 'agy'`) extends `AbstractAcpAdapter` and provides:
+`AntigravityAdapter` (`agentName = 'agy'`) extends `AbstractAcpAdapter` and integrates the Antigravity CLI through its native ACP server:
 
-- Resolution of the bridge binary (compiled `agy-acp-bridge.js` or `agy-acp-bridge.ts` in development).
-- Execution of the bridge as a subprocess via `IProcessRunnerPort.spawn`, in `tmpdir()`, with `buildAgentEnv`. The bridge starts in `connect()`, before the session exists, so there is no session `cwd` to adopt.
-
-The directory where the agent works is the session `cwd`, not the bridge's: `createSession(cwd)` and `loadSession(cwd, id)` receive the path, and the bridge starts each `agy` process in it, with `PWD` aligned.
-
-The `agy-acp-bridge.ts` bridge advertises `loadSession: true`. `session/load` restarts `agy`
-with `--conversation <sessionId>` and adopts that ID; the history is stored in agy itself and
-is not replayed. If the `init` event carries a different `conversation_id`, agy opened a new
-conversation: the bridge terminates the process and rejects `session/load`, and the orchestrator creates and persists
-a new session. The bridge exposes only the `model` option (no `thought_level`).
-
-Each `agy` process is a run (`AgyRun`) that holds its own pending prompt. The
-`result`, `step_update` and `exit` events of a process only end that process's prompt. `session/cancel`
-sends `SIGINT` and marks the run as interrupted; the next prompt starts a new process
-with `--conversation`, even if the previous one has not exited yet, and the interrupted process
-receives `SIGTERM`. This way, a late `exit` from the old process neither cancels nor rejects the new
-prompt.
+- Runs `agy acp --process-per-session --dangerously-skip-permissions` from the `PATH` through `IProcessRunnerPort.spawn`, in `tmpdir()` and with `buildAgentEnv`; nobody answers a `session/request_permission` in a remote session. Without `--process-per-session` the server keeps the `cwd` of the first session, which is the discovery session in `tmpdir()`, so every later session would work there. The session directory is the `cwd` of `createSession(cwd)` and `loadSession(cwd, id)`.
+- The agent advertises `loadSession` and `sessionCapabilities` (`resume`, `close`, `load`, `list`), and publishes the options `model`, `thought_level` and `mode`. A turn ends with `usage` in the `session/prompt` response; a cancel answers `stopReason: cancelled` and the next prompt works on the same session.
+- `getQuota()` runs `agy --output-format json --print /usage` via `IProcessRunnerPort.run` and converts the output in a private method of the adapter.
+- Without a login, `session/new` fails with JSON-RPC `-32000` `Authentication required`, which `AbstractAcpAdapter.buildTransportError` raises as `AgentAuthRequiredError`.
 
 ### `ClaudeCodeAdapter`
 
@@ -211,14 +197,34 @@ mode, with no bridge or extra dependency:
 - Answers the blocking methods `cursor/ask_question` (`skipped`) and `cursor/create_plan` (`rejected`) with a message telling the agent to write the question (with the `<question>` tags of the question protocol) or the plan in the final response, so the turn is not left waiting.
 - Cursor encodes the model parameters in the ID itself (`claude-opus-5[thinking=true,effort=high,fast=false]`) and publishes no effort option; `mapModel` carries the reasoning level and `fast` into the display name and lists the parameters in the description.
 
+### `OpenCodeAdapter`
+
+`OpenCodeAdapter` (`agentName = 'opencode'`) integrates the OpenCode CLI through its native ACP mode:
+
+- Runs `opencode acp` from the `PATH`, in `tmpdir()` and with `buildAgentEnv`. It publishes the options `model` and `mode` and has no quota.
+- It works without a login, with the free `opencode/*` models and with local models, so `IAgentAuthPort` does not cover it.
+- The CLI starts a background service of its own (`opencode serve --service`, port `49374`) that outlives the ACP process. The adapter never stops it, and every `opencode` run must use the same `HOME`, because a service started under another `HOME` makes the next run fail with `Managed service port 49374 ... already in use`.
+
 ### ACP Versions
 
 `@agentclientprotocol/claude-agent-acp` and `@agentclientprotocol/codex-acp` always move in mutually compatible versions: each bridge's `@agentclientprotocol/sdk` dependency resolves to the same SDK version declared by the project, leaving a single copy in the lockfile. When updating any of the three, check with `pnpm why @agentclientprotocol/sdk`; if one bridge requires an SDK version outside the other's range, hold the update until both match.
+
+## CLI Login (`IAgentAuthPort`)
+
+`IAgentAuthPort` (`ports/agent-auth.port.ts`, implemented by `CliAgentAuthAdapter`, exported by `AgentModule`) logs the agent CLIs in and reports their login state for the channels. It covers the agents in `AGENT_AUTH_PROVIDERS` (`constants/agent-auth-providers.constant.ts`): `agy`, `claude`, `copilot`, `codex` and `cursor`.
+
+- `listAuthInfo()` / `getStatus(agentId)`: `AgentAuthInfo` with status `authenticated`, `unauthenticated` or `unknown` (a probe that failed or timed out). `claude` runs `claude auth status` (JSON; exit 1 when logged out), `codex` runs `codex login status` (exit 1 when logged out), `cursor` runs `cursor-agent status --format json` (read `isAuthenticated`, the exit code is 0 either way). `agy` and `copilot` have no status command: the probe opens an ACP session and reads `AgentAuthRequiredError` as logged out. Every probe is bounded by `AGENT_AUTH_STATUS_TIMEOUT_MS`.
+- `startLogin(agentId, listener)` spawns the login (`agy acp --login`, `claude auth login --claudeai`, `copilot login --device-code`, `codex login --device-auth`, `cursor-agent login`) with piped stdio. Copilot (`login.terminal`) runs under `script -qfec` (a pseudo-terminal), because without one it fails with `Login succeeded, but the token was not saved` on a machine without a system keychain, while with one it asks whether a plain file may hold the token; the login answers that question itself with `y` (`login.confirmAnswer`): without a system keychain, as in WSL and containers, the plain file under `~/.copilot/` (mode `600`) is the only place the token can go, and the user cannot be expected to know the answer. A yes or no question of a CLI without `confirmAnswer` reaches the user as a `prompt`. Without `script` in the `PATH` the CLI runs directly. `LoginOutputParser` reads stdout and stderr and emits `url` (with `code` for device flows), `prompt` (Claude and Antigravity wait for a code pasted on stdin, and the prompt is emitted again whenever the CLI rejects a code) and, at the end, `completed`, `failed` or `cancelled`. A clean exit completes only when the status probe does not report `unauthenticated`. A second `startLogin` for the same agent joins the running login and receives the last link and prompt first.
+- `submitInput(agentId, text)` writes a line to the login's stdin; Claude reports a wrong code and keeps waiting, while Antigravity ends the login with a `failed` event carrying its message. `cancelLogin(agentId)` sends `SIGTERM`, then `SIGKILL` after 3 s. A login stops by itself after `AGENT_AUTH_LOGIN_TIMEOUT_MS` (15 min) and when the module is destroyed.
+- The login runs with `BROWSER` and `NO_OPEN_BROWSER` set and with a directory of no-op opener stand-ins (`xdg-open`, `wslview`, `explorer.exe`, ...) first in `PATH`: setting the variables is not enough to stop `agy` from opening a browser on the host.
+- The link, the code and the pasted text are never logged; logs carry the agent id and the outcome only.
+- `AGENT_AUTH_ENABLED=false` makes `isEnabled()` false, `listAuthInfo()` empty and `startLogin` throw.
 
 ## Prescriptive Rules
 
 - **Do not instantiate adapters directly in use cases**: obtain instances via `@Inject(IAgentPortFactory)` and `create(agentId)`.
 - **A new agent enters through the factory**: a new adapter extends `AbstractAcpAdapter`, uses `buildAgentEnv` when spawning and is registered in the `AcpAgentPortFactoryAdapter` catalog with an `agentId` equal to its `agentName` and the `binaries` that identify it in the `PATH`.
+- **A new agent with a CLI login joins `AGENT_AUTH_PROVIDERS`** with its login arguments and a status probe verified against the installed CLI.
 - **Offer only available agents**: consumers that present choices use `listAvailableAgents()`; `listAgents()` is the full catalog for resolving names.
 - **Do not couple the core to the ACP SDK**: use cases handle only the types from `agent.port.ts`.
 - **I/O isolation in concrete adapters**: file system and processes go through `IFileSystemPort` and `IProcessRunnerPort`.

@@ -13,6 +13,7 @@ import { ClaudeCodeAdapter } from './claude-code.adapter.js';
 import { CodexAdapter } from './codex.adapter.js';
 import { CopilotAdapter } from './copilot.adapter.js';
 import { CURSOR_BINARIES, CursorAdapter } from './cursor.adapter.js';
+import { OpenCodeAdapter } from './opencode.adapter.js';
 
 
 type AgentProvider = AgentProviderInfo & {
@@ -37,7 +38,7 @@ export class AcpAgentPortFactoryAdapter implements IAgentPortFactory {
         agentId: 'agy',
         displayName: 'Antigravity',
         binaries: ['agy'],
-        build: () => new AntigravityAdapter(this.fileSystem, this.processRunner),
+        build: () => new AntigravityAdapter(this.processRunner),
       },
       {
         agentId: 'claude',
@@ -62,6 +63,12 @@ export class AcpAgentPortFactoryAdapter implements IAgentPortFactory {
         displayName: 'Cursor',
         binaries: CURSOR_BINARIES,
         build: () => new CursorAdapter(this.fileSystem, this.processRunner),
+      },
+      {
+        agentId: 'opencode',
+        displayName: 'OpenCode',
+        binaries: ['opencode'],
+        build: () => new OpenCodeAdapter(this.processRunner),
       },
     ];
   }

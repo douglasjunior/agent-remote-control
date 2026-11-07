@@ -32,13 +32,14 @@ packages/web/src/
 │   ├── agent/               # AgentMark: the round lens with an animated glyph per role
 │   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
 │   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
+│   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query
 ```
 
 ## App shell
 
-`AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then usage indicator, connection badge and theme toggle on the right) above the page. From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`). "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
+`AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`). "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
 
 ## Connection
 
@@ -165,6 +166,16 @@ or the composer unmounts.
 A click opens `UsagePanel` in a shadcn `Popover`, built to be read at a glance: one line per bucket in columns aligned across the agents under a "Limit, Used, Resets" header, with the label, a thin bar, the percent used and a compact time until the reset (`formatCountdown`; the full sentence is the `title` and the screen reader text), left out once it has passed. Color marks what needs attention: a percent stays in the foreground color while `good`, and a `critical` row is tinted. `bucketLabel` names a bucket by its window and adds the qualifier from its name when a sibling shares that window (`Week · Sonnet only`). A group is named only when the agent has more than one; an agent without numbers takes one line, with "No usage data" or "Could not read usage". A row never moves on refresh, because the order is the server's.
 
 `useAgentQuota` holds the numbers outside the conversations reducer, since only this indicator reads them. It sends `quota.get` when the status becomes `open`, every `QUOTA_REFRESH_MS` (5 minutes) while the tab is visible, and on returning to the tab when the numbers are that old; the panel's refresh button sends `refresh: true`. Each query starts the agents' CLIs, so keep this rate low. The last numbers stay on screen through a refresh, a `quota.failed` ("Could not refresh") or a lost connection.
+
+## Agent logins
+
+`AgentAuthController` (`components/auth/`) sits in the header and renders `AgentAuthPopover` (a key button, with a red dot while an agent needs a login, opening one row per agent: name, account detail, a "Logged in", "Not logged in" or "Unknown" badge and an "Authenticate" or "Re-authenticate" button). `AppLayout` also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
+
+`useAgentAuthStatus` holds the state outside the conversations reducer, which passes `auth.status`, `auth.status.failed` and `auth.login` through unchanged. It sends `auth.status` when the status becomes `open`, every `AUTH_REFRESH_MS` (5 minutes) while the tab is visible, and on returning to the tab when the answer is that old. It keeps the agents (`null` until the first answer; `auth.status.failed` keeps the last answer) and a login state per agent: `idle`, `starting`, `waiting` (link and optional one-time code), `prompt` (the CLI waits for a code pasted from the browser) or `failed` (reason). `completed` and `cancelled` return to `idle`; `completed` also calls the hook's `onCompleted` and sends `auth.status` with `refresh: true`. Actions: `login`, `submitCode` (`auth.input`) and `cancel`.
+
+After a code is sent the login state is `verifying`: the card shows a spinner with `Checking the code…` and the toast says the same, until `completed`, `failed` or a new `prompt`; a `prompt` that arrives while verifying means the code was not accepted, so the card shows an alert above the input. The controller keeps one toast per agent that is not logged in or has a login in progress, with the stable id `auth-<agentId>`, `duration: Infinity` and `dismissible: false`, so it only goes away when the agent is logged in, the login is cancelled or the agent disappears. Nothing is shown before the first answer, and an `unknown` agent never gets one. The toast text follows the login state: "is not logged in" with an Authenticate action; starting; the link ("Open login page", `target="_blank"`, `rel="noopener noreferrer"`, rendered only for `https:` URLs by `safeLoginUrl`) with the one-time code and its copy button and a Cancel action; for a pasted code, an "Enter code" action that opens the popover; failure with the reason and a Try again action. A completed login shows an auto-dismissing success toast.
+
+The code the browser shows is typed in the popover's `AgentLoginCard`, not in the toast: an input inside a toast that cannot be dismissed loses focus on every toast update. For the same reason a toast carries a single action button (sonner ignores `cancel` on a toast that is not dismissible), so Cancel on the code toast is a button in its description.
 
 ## Theme
 

@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  AgentAuthRequiredError,
   PromptCancelledError,
   type AgentActivity,
   type AgentUpdate,
@@ -309,6 +310,29 @@ describe('AbstractAcpAdapter', () => {
       await expect(adapter.createSession('/repo')).rejects.toThrow(
         'Not connected',
       );
+    });
+
+    it('should raise an authentication error when the CLI has no login', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      const refusal = Object.assign(new Error('Authentication required'), { code: -32000 });
+      acpHarness.connectionInstance?.newSession.mockRejectedValueOnce(refusal);
+
+      const failure = await adapter.createSession('/repo').catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(AgentAuthRequiredError);
+      expect(failure).toMatchObject({ agentId: 'test' });
+      expect((failure as Error).message).toContain('/agent-auth');
+    });
+
+    it('should keep a generic error for an authentication wording without the refusal code', async () => {
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      acpHarness.connectionInstance?.newSession.mockRejectedValueOnce(new Error('Authentication required'));
+
+      const failure = await adapter.createSession('/repo').catch((error: unknown) => error);
+
+      expect(failure).not.toBeInstanceOf(AgentAuthRequiredError);
     });
 
     it('should call connection.newSession with the provided cwd', async () => {

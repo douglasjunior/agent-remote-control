@@ -39,7 +39,7 @@ RUN git clone --depth 1 --branch "$WHISPER_CPP_VERSION" https://github.com/ggml-
   && cmake --build build --config Release -j --target whisper-cli
 
 # Final stage that runs the application. Codex comes with the application dependencies; Claude
-# Code (linked from the SDK binary), Copilot, Cursor and Antigravity are made available at startup
+# Code (linked from the SDK binary), Copilot, Cursor, Antigravity and OpenCode are made available at startup
 # by the entrypoint according to ARC_AGENTS. Cursor and Antigravity ship glibc binaries, hence
 # a Debian base.
 FROM base AS runner
@@ -51,7 +51,7 @@ ENV NODE_ENV=production \
   PORT=3000 \
   DATA_DIR=/app/data \
   WORKSPACE_DIR=/app/workspaces \
-  PATH=/home/node/.local/bin:/app/node_modules/.bin:$PATH
+  PATH=/home/node/.local/bin:/app/node_modules/.bin:/app/node_modules/.pnpm/node_modules/.bin:$PATH
 
 COPY --chown=node:node --from=prod-deps /deploy/node_modules ./node_modules
 COPY --chown=node:node --from=prod-deps /deploy/package.json ./packages/server/package.json

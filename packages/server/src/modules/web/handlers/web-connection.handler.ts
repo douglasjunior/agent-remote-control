@@ -6,6 +6,7 @@ import { ConversationLogContextService } from '../../logging/services/conversati
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
+import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
@@ -27,7 +28,7 @@ import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-pr
 export const AUTH_TIMEOUT_MS = 5_000;
 export const AUTH_FAILED_CLOSE_CODE = 4401;
 
-const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set(['message.send', 'question.answer', 'turn.cancel', 'work.resume']);
+const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set(['message.send', 'question.answer', 'turn.cancel', 'work.resume', 'auth.login', 'auth.cancel']);
 
 @Injectable()
 export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
@@ -54,6 +55,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
     private readonly quota: WebAgentQuotaService,
+    private readonly agentAuth: WebAgentAuthService,
     private readonly logContext: ConversationLogContextService,
   ) {}
 
@@ -147,6 +149,23 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);
+      case 'auth.status':
+        return this.answerAuthStatus(connection, command.refresh);
+      case 'auth.login':
+        this.agentAuth.login(connection, command.agentId);
+        return;
+      case 'auth.input':
+        if (!this.agentAuth.submitInput(command.agentId, command.text)) {
+          connection.send({
+            type: 'auth.login',
+            agentId: command.agentId,
+            event: { kind: 'failed', reason: 'No login is waiting for a code.' },
+          });
+        }
+        return;
+      case 'auth.cancel':
+        this.agentAuth.cancel(command.agentId);
+        return;
       case 'models.list': {
         const models = await this.agentOptions.models(command.agentId);
         connection.send(models
@@ -222,6 +241,17 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.warn(`quota_failed: ${error instanceof Error ? error.message : String(error)}`);
       connection.send({ type: 'quota.failed' });
+    }
+  }
+
+  /** Like `quota.failed`, a failed background check answers `auth.status.failed`, never `error`. */
+  private async answerAuthStatus(connection: IClientConnection, refresh: boolean | undefined): Promise<void> {
+    try {
+      const { agents, fetchedAt } = await this.agentAuth.read(refresh);
+      connection.send({ type: 'auth.status', agents, fetchedAt });
+    } catch (error) {
+      this.logger.warn(`auth_status_failed: ${error instanceof Error ? error.message : String(error)}`);
+      connection.send({ type: 'auth.status.failed' });
     }
   }
 

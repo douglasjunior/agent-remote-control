@@ -1,12 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import { IAgentAuthPort } from '../../agent/ports/agent-auth.port.js';
 import type { AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { QuestionAnswerInput, QuestionSubmission, UserQuestion } from '../../orchestrator/models/user-question.model.js';
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
+import type { AgentAuthChoice } from '../models/agent-auth-choice.model.js';
 import type { ConversationInputResolution } from '../models/agent-config-outcome.model.js';
 import { IAgentConfigSelectionStorePort } from '../ports/agent-config-selection-store.port.js';
+import { AgentAuthRequestService } from '../services/agent-auth-request.service.js';
 import { LanguageChangeRequestService } from '../services/language-change-request.service.js';
 
 import { StartAgentConfigSelectionUseCase } from './start-agent-config-selection.use-case.js';
@@ -40,6 +43,9 @@ export class ResolveConversationInputUseCase {
     @Inject(IUserQuestionPort)
     private readonly userQuestions: IUserQuestionPort,
     private readonly languageChangeRequests: LanguageChangeRequestService,
+    private readonly agentAuthRequests: AgentAuthRequestService,
+    @Inject(IAgentAuthPort)
+    private readonly agentAuth: IAgentAuthPort,
   ) {}
 
   async execute(input: ResolveConversationInputInput): Promise<ConversationInputResolution> {
@@ -54,6 +60,16 @@ export class ResolveConversationInputUseCase {
 
     if (this.languageChangeRequests.isPending(conversationId)) {
       return this.changeLanguage(conversationId, prompt);
+    }
+
+    const loginAgentId = this.agentAuthRequests.loginAwaitingCode(conversationId);
+    if (loginAgentId) {
+      return { kind: 'agent_auth_code', agentId: loginAgentId, delivered: this.agentAuth.submitInput(loginAgentId, prompt) };
+    }
+
+    const authChoices = this.agentAuthRequests.pendingPick(conversationId);
+    if (authChoices) {
+      return this.pickAgentToLogIn(conversationId, authChoices, prompt);
     }
 
     if (await this.selectionStore.find(conversationId)) {
@@ -104,6 +120,24 @@ export class ResolveConversationInputUseCase {
     }
     this.languageChangeRequests.cancel(conversationId);
     return { kind: 'language_set', language };
+  }
+
+  private pickAgentToLogIn(
+    conversationId: string,
+    choices: readonly AgentAuthChoice[],
+    input: string,
+  ): ConversationInputResolution {
+    const trimmed = input.trim();
+    if (trimmed === '0') {
+      this.agentAuthRequests.cancelPick(conversationId);
+      return { kind: 'agent_auth_closed' };
+    }
+    const agent = OPTION_NUMBER.test(trimmed) ? choices[Number(trimmed) - 1] : undefined;
+    if (!agent) {
+      return { kind: 'invalid_agent_auth_choice', count: choices.length };
+    }
+    this.agentAuthRequests.cancelPick(conversationId);
+    return { kind: 'agent_auth_selected', agent };
   }
 
   private describeSubmission(submission: QuestionSubmission): ConversationInputResolution {

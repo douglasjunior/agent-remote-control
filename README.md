@@ -30,7 +30,7 @@
 
 ## 💡 Why Agent Remote Control?
 
-AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor and Antigravity into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
+AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor, Antigravity and OpenCode into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
 
 - 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
 - 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
@@ -115,11 +115,12 @@ server {
 
 | Agent | Command on `PATH` | How it connects | Setup |
 |---|---|---|---|
-| **Claude Code** | `claude` | Official ACP adapter [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (bundled) | Install and log in to Claude Code |
-| **OpenAI Codex** | `codex` | ACP adapter [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (bundled) | `codex login` |
-| **GitHub Copilot** | `copilot` | Native ACP mode (`copilot --acp`) | `copilot login` |
-| **Cursor** | `cursor-agent` or `agent` | Native ACP mode (`cursor-agent acp`) | `cursor-agent login` |
-| **Google Antigravity** | `agy` | Built-in ACP ↔ `agy` bridge | Install and log in to the Antigravity CLI |
+| **Claude Code** | `claude` | Official ACP adapter [`@agentclientprotocol/claude-agent-acp`](https://www.npmjs.com/package/@agentclientprotocol/claude-agent-acp) (bundled) | Log in from the web interface or with `/agent-auth` |
+| **OpenAI Codex** | `codex` | ACP adapter [`@agentclientprotocol/codex-acp`](https://www.npmjs.com/package/@agentclientprotocol/codex-acp) (bundled) | Log in from the web interface or with `/agent-auth` |
+| **GitHub Copilot** | `copilot` | Native ACP mode (`copilot --acp`) | Log in from the web interface or with `/agent-auth` |
+| **Cursor** | `cursor-agent` or `agent` | Native ACP mode (`cursor-agent acp`) | Log in from the web interface or with `/agent-auth` |
+| **Google Antigravity** | `agy` | Native ACP mode (`agy acp`) | Log in from the web interface or with `/agent-auth` |
+| **OpenCode** | `opencode` | Native ACP mode (`opencode acp`) | Works with its free and local models without a login |
 
 You only need one of them. An agent is listed only when its command is on the `PATH` (including Claude Code and Codex, whose adapters ship with the dependencies). The bot lists the available agents on the first message and you can switch at any time with `/agent`; an agent installed while the bot runs shows up on the next listing.
 
@@ -148,7 +149,7 @@ flowchart LR
     CEO --> DEV["Developer"]
     CEO --> CR["Code Reviewer"]
     CEO --> GIT["Git Ops"]
-    PO & TL & DEV & CR & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity"]
+    PO & TL & DEV & CR & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
     CLI --> WS[("Workspace<br/>your repositories")]
     O -.->|live activity<br/>+ final answer| D
 ```
@@ -165,10 +166,10 @@ sequenceDiagram
     participant DiscordBot as Discord Bot Handler
     participant Orchestrator as ExecuteAgentTurnUseCase
     participant AgentRegistry as AgentRegistryService
-    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter / CopilotAdapter / CodexAdapter / CursorAdapter)
+    participant AgentPort as IAgentPort (AntigravityAdapter / ClaudeCodeAdapter / CopilotAdapter / CodexAdapter / CursorAdapter / OpenCodeAdapter)
     participant Demux as AgentStreamDemux
     participant Workspace as Workspace (Files / Git)
-    participant AgentBridge as AgyBridgeServer / claude-agent-acp
+    participant AgentBridge as agy acp / claude-agent-acp
 
     User->>DiscordBot: Sends message (@bot or command)
     DiscordBot->>DiscordBot: Creates / binds the session Thread in Discord
@@ -219,7 +220,8 @@ sequenceDiagram
   - **OpenAI Codex CLI** (`codex` on the `PATH`, authenticated with `codex login`). The ACP adapter `@agentclientprotocol/codex-acp` ships with the dependencies; sessions run in full-access mode, with no approval requests and no sandbox;
   - **GitHub Copilot CLI** (`copilot` on the `PATH`, authenticated with `copilot login`). Sessions run with tool autonomy (`allow_all`) enabled;
   - **Cursor CLI** (`cursor-agent` or `agent` on the `PATH`, authenticated with `cursor-agent login`). Sessions run without interactive approvals and without a sandbox;
-  - **Google Antigravity CLI** (`agy` on the `PATH`).
+  - **Google Antigravity CLI** (`agy` on the `PATH`);
+  - **OpenCode CLI** (`opencode` on the `PATH`). It starts a background service of its own (`opencode serve --service`, port `49374`) that outlives the CLI, so run it with a stable `HOME`.
 
 ## ⚙️ Environment Variables
 
@@ -238,6 +240,9 @@ cp .env.example .env
 | `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
+| `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` |
+| `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` |
+| `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` |
 | `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` |
 | `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` |
 | `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` |
@@ -258,7 +263,7 @@ Every release is published to Docker Hub as [`douglasjunior/agent-remote-control
 **Agent CLIs**
 
 - **OpenAI Codex** is always available: it comes with the application dependencies.
-- **Claude Code**, **GitHub Copilot**, **Cursor** and **Antigravity** are made available when the container starts, according to `ARC_AGENTS` (comma-separated: `claude`, `copilot`, `cursor`, `antigravity`). Claude Code uses the binary bundled with the dependencies; the others are downloaded by their installers, which fetch the latest version. An already installed CLI is kept; set `ARC_AGENTS_UPDATE=true` to install it again on startup.
+- **Claude Code**, **GitHub Copilot**, **Cursor**, **Antigravity** and **OpenCode** are made available when the container starts, according to `ARC_AGENTS` (comma-separated: `claude`, `copilot`, `cursor`, `antigravity`, `opencode`). Claude Code uses the binary bundled with the dependencies; the others are downloaded by their installers, which fetch the latest version. An already installed CLI is kept; set `ARC_AGENTS_UPDATE=true` to install it again on startup.
 - By default the installation is lost when the container is recreated. To install each CLI only once, mount a volume at `/home/node/.local` (optional; it also keeps the installed versions fixed until you update them).
 
 **Authentication**
@@ -272,8 +277,9 @@ Claude Code, Codex, Cursor and Antigravity keep their login in files, so mountin
 | GitHub Copilot | `~/.copilot` | `/home/node/.copilot` |
 | Cursor | `~/.cursor` | `/home/node/.cursor` |
 | Antigravity | `~/.gemini` | `/home/node/.gemini` |
+| OpenCode | `~/.config/opencode` and `~/.local/share/opencode` | `/home/node/.config/opencode` and `/home/node/.local/share/opencode` |
 
-GitHub Copilot may keep its login in the system keychain of the host, which the container cannot read. Pass a token instead: `COPILOT_GITHUB_TOKEN` for Copilot and `GH_TOKEN` for the `gh` and `git` of the agents, for example `-e COPILOT_GITHUB_TOKEN="$(gh auth token)"`. The variables are read when the container is created.
+GitHub Copilot may keep its login in the system keychain of the host, which the container cannot read. When you log Copilot in from the web interface or `/agent-auth` on a machine without a keychain (the container and WSL, for instance), the login keeps the token in a plain file under `~/.copilot/` (readable only by its owner), because Copilot has nowhere else to store it. Use `COPILOT_GITHUB_TOKEN` instead if you do not want a token on disk. Pass a token instead: `COPILOT_GITHUB_TOKEN` for Copilot and `GH_TOKEN` for the `gh` and `git` of the agents, for example `-e COPILOT_GITHUB_TOKEN="$(gh auth token)"`. The variables are read when the container is created.
 
 The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
 
@@ -433,7 +439,7 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
   - In any text channel the bot has access to, mention it: `@BotName Create a healthcheck route`.
   - The bot automatically opens an isolated **Thread** for that task, keeping the history organized and streaming progress with anti-rate-limit throttling.
 - **Choosing Agent, Model and Effort**:
-  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex and Cursor). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
+  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex, Cursor and OpenCode). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
   - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
   - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
   - Type `/usage` to see the usage limits of every available agent, one section per agent.
@@ -501,7 +507,7 @@ Create the feature/password-reset branch in the my-backend project, commit the c
 
 A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `packages/server/src/modules/`:
 
-- **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
+- **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (Google Antigravity CLI through its native ACP mode `agy acp`), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) `CursorAdapter` (Cursor CLI through its native ACP mode) and `OpenCodeAdapter` (OpenCode CLI through its native ACP mode `opencode acp`).
 - **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
 - **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
 - **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
