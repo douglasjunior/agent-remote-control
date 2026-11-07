@@ -1,10 +1,10 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import type { Dirent } from 'node:fs';
 import { lstat, mkdir, readdir, readlink, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { platform } from 'node:os';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
-import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
+import { WorkspaceDirectoryService } from '../../paths/services/workspace-directory.service.js';
 import type { IWorkspacePort } from '../ports/workspace.port.js';
 
 
@@ -12,14 +12,8 @@ import type { IWorkspacePort } from '../ports/workspace.port.js';
 export class LocalWorkspaceAdapter implements IWorkspacePort {
   private readonly baseDirectory: string;
 
-  constructor(@Optional() customBaseDir?: string) {
-    if (customBaseDir) {
-      this.baseDirectory = resolve(customBaseDir);
-    } else if (process.env.WORKSPACE_DIR && process.env.WORKSPACE_DIR.trim()) {
-      this.baseDirectory = resolveFromRepositoryRoot(process.env.WORKSPACE_DIR.trim());
-    } else {
-      this.baseDirectory = resolveFromRepositoryRoot('workspaces');
-    }
+  constructor(workspaceDirectory: WorkspaceDirectoryService) {
+    this.baseDirectory = workspaceDirectory.resolve();
   }
 
   getBaseDirectory(): string {

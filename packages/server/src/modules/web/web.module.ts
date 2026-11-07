@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
+import { PathsModule } from '../paths/paths.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { JsonConversationStoreAdapter } from './adapters/json-conversation-store.adapter.js';
@@ -32,7 +33,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
 
 
 @Module({
-  imports: [OrchestratorModule, WorkspaceModule],
+  imports: [OrchestratorModule, PathsModule, WorkspaceModule],
   providers: [
     { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },

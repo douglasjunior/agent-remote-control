@@ -3,11 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import type { IProcessRunnerPort, ProcessRunResult } from '../../agent/ports/process-runner.port.js';
+import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 
 import { WhisperCppAdapter } from './whisper-cpp.adapter.js';
 
 
-const ENV_KEYS = ['STT_FFMPEG_BIN', 'STT_WHISPER_BIN', 'STT_MODEL_PATH', 'STT_MODEL', 'STT_LANGUAGE', 'STT_THREADS', 'STT_TIMEOUT_MS', 'DATA_DIR'];
+const ENV_KEYS = ['STT_FFMPEG_BIN', 'STT_WHISPER_BIN', 'STT_MODEL_PATH', 'STT_MODEL', 'STT_LANGUAGE', 'STT_THREADS', 'STT_TIMEOUT_MS'];
 
 describe('WhisperCppAdapter', () => {
   let runs: { command: string; args: readonly string[]; signal?: AbortSignal }[];
@@ -37,7 +38,7 @@ describe('WhisperCppAdapter', () => {
       readText: async () => transcriptText,
       deleteFile: async (path: string) => { deleted.push(path); },
     } as unknown as IFileSystemPort;
-    adapter = new WhisperCppAdapter(runner, fileSystem);
+    adapter = new WhisperCppAdapter(runner, fileSystem, dataDirectoryAt('/data'));
   });
 
   afterEach(() => {
@@ -55,8 +56,6 @@ describe('WhisperCppAdapter', () => {
   });
 
   it('should convert with ffmpeg, run whisper-cli with defaults and clean the temporary files', async () => {
-    process.env.DATA_DIR = '/data';
-
     await expect(adapter.transcribe('/tmp/voice.ogg')).resolves.toBe('hello world');
 
     const [ffmpeg, whisper] = runs;
@@ -79,7 +78,6 @@ describe('WhisperCppAdapter', () => {
   });
 
   it('should derive the model file from STT_MODEL', async () => {
-    process.env.DATA_DIR = '/data';
     process.env.STT_MODEL = 'large-v3-turbo-q5_0';
 
     await adapter.transcribe('/tmp/a.mp3');

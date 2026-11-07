@@ -1,11 +1,11 @@
 import { MAX_PROMPT_HISTORY } from '@agent-remote-control/protocol/limits';
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
-import { resolveDataDirectory } from '../../orchestrator/utils/data-directory.util.js';
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { IPromptHistoryPort } from '../ports/prompt-history.port.js';
 
 
@@ -16,8 +16,8 @@ export class JsonPromptHistoryAdapter implements IPromptHistoryPort {
   private prompts: Promise<string[]> | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(@Optional() customDataDir?: string) {
-    this.filePath = join(resolveDataDirectory(customDataDir), 'web', 'prompt-history.json');
+  constructor(dataDirectoryService: DataDirectoryService) {
+    this.filePath = join(dataDirectoryService.resolve(), 'web', 'prompt-history.json');
   }
 
   async list(): Promise<readonly string[]> {

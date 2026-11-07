@@ -1,10 +1,10 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { Preferences } from '../models/preferences.model.js';
 import type { IPreferencesStorePort } from '../ports/preferences-store.port.js';
-import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 
 const PREFERENCES_FILENAME = 'preferences.json';
@@ -17,8 +17,8 @@ export class JsonPreferencesStoreAdapter implements IPreferencesStorePort {
   private preferences: Promise<Preferences> | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(@Optional() customDataDir?: string) {
-    this.dataDirectory = resolveDataDirectory(customDataDir);
+  constructor(dataDirectoryService: DataDirectoryService) {
+    this.dataDirectory = dataDirectoryService.resolve();
     this.filePath = join(this.dataDirectory, PREFERENCES_FILENAME);
   }
 

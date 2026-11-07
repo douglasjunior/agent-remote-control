@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
+import { PathsModule } from '../paths/paths.module.js';
 import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
@@ -41,7 +42,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
 
 
 @Module({
-  imports: [AgentModule, AgentDefinitionsModule, SpeechToTextModule, WorkspaceModule],
+  imports: [AgentModule, AgentDefinitionsModule, PathsModule, SpeechToTextModule, WorkspaceModule],
   providers: [
     {
       provide: ISessionStorePort,

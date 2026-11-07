@@ -1,12 +1,12 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import type { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { profileForAllRoles } from '../utils/agent-profile.util.js';
-import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 
 const SETTINGS_FILENAME = 'agent-settings.json';
@@ -27,9 +27,9 @@ export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
   constructor(
     @Inject(IAgentRegistryPort)
     private readonly agentRegistry: IAgentRegistryPort,
-    @Optional() customDataDir?: string,
+    dataDirectoryService: DataDirectoryService,
   ) {
-    this.dataDirectory = resolveDataDirectory(customDataDir);
+    this.dataDirectory = dataDirectoryService.resolve();
     this.filePath = join(this.dataDirectory, SETTINGS_FILENAME);
   }
 

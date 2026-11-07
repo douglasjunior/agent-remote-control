@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module.js';
+import { PathsModule } from '../paths/paths.module.js';
 
 import { NoopSpeechToTextAdapter } from './adapters/noop-speech-to-text.adapter.js';
 import { WhisperCppAdapter } from './adapters/whisper-cpp.adapter.js';
@@ -22,7 +23,7 @@ export function selectSpeechToTextProvider(
 }
 
 @Module({
-  imports: [AgentModule],
+  imports: [AgentModule, PathsModule],
   providers: [
     WhisperCppAdapter,
     NoopSpeechToTextAdapter,

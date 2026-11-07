@@ -26,6 +26,7 @@ agent-remote-control/
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
+│       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │
 │       │   │   Internal folders of a module (each module uses only the ones it needs):

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 
 import { currentLogConversation } from '../../logging/utils/log-conversation.util.js';
+import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
@@ -46,7 +47,7 @@ describe('WebConnectionHandler', () => {
     handler = new WebConnectionHandler(
       transport,
       store,
-      new WebAccessTokenService(),
+      new WebAccessTokenService(dataDirectoryAt('/unused')),
       harness.registry,
       events,
       new ListConversationsUseCase(store),

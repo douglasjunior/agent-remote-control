@@ -4,7 +4,7 @@ import { availableParallelism, tmpdir } from 'node:os';
 
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { IProcessRunnerPort } from '../../agent/ports/process-runner.port.js';
-import { resolveDataDirectory } from '../../orchestrator/utils/data-directory.util.js';
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { ISpeechToTextPort, TranscribeOptions } from '../ports/speech-to-text.port.js';
 
 
@@ -17,6 +17,7 @@ export class WhisperCppAdapter implements ISpeechToTextPort {
   constructor(
     @Inject(IProcessRunnerPort) private readonly processRunner: IProcessRunnerPort,
     @Inject(IFileSystemPort) private readonly fileSystem: IFileSystemPort,
+    private readonly dataDirectory: DataDirectoryService,
   ) {}
 
   isEnabled(): boolean {
@@ -62,7 +63,7 @@ export class WhisperCppAdapter implements ISpeechToTextPort {
   private modelPath(): string {
     const model = process.env.STT_MODEL?.trim() || DEFAULT_MODEL;
     return process.env.STT_MODEL_PATH?.trim()
-      || this.fileSystem.joinPath(resolveDataDirectory(), 'models', `ggml-${model}.bin`);
+      || this.fileSystem.joinPath(this.dataDirectory.resolve(), 'models', `ggml-${model}.bin`);
   }
 
   private threads(): number {

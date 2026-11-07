@@ -139,8 +139,11 @@ language of the text agents write for the user. Implemented by `JsonPreferencesS
 
 ### Persistence in `DATA_DIR`
 
-`resolveDataDirectory()` (`utils/data-directory.util.ts`) resolves, in this order, the directory
-passed to the constructor, `process.env.DATA_DIR` and `./data`. The JSON adapters load the file
+`DataDirectoryService.resolve()` (`PathsModule`, `paths/services/data-directory.service.ts`) resolves `process.env.DATA_DIR`,
+or `data/` at the repository root when it is unset or blank, and a relative value starts from the repository root.
+Every adapter that persists data receives the service through its constructor, and specs build the adapters with
+`dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`). `WorkspaceDirectoryService` does the same for
+`WORKSPACE_DIR` (default `workspaces/`) and feeds `LocalWorkspaceAdapter`. The JSON adapters load the file
 only once, keep the content in memory, treat a missing or invalid file as empty and
 serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
 Settings without any profile with an `agentId` are treated as absent, so the conversation counts as unconfigured, and

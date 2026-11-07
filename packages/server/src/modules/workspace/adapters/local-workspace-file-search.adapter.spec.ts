@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import type { WorkspaceFileMatch } from '../models/workspace-file-match.model.js';
 import type { FileSearchSession } from '../ports/workspace-file-search.port.js';
 
@@ -46,7 +47,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
 
   beforeEach(() => {
     baseDirectory = mkdtempSync(join(tmpdir(), 'arc-file-search-'));
-    search = new LocalWorkspaceFileSearchAdapter(new LocalWorkspaceAdapter(baseDirectory));
+    search = new LocalWorkspaceFileSearchAdapter(new LocalWorkspaceAdapter(workspaceDirectoryAt(baseDirectory)));
   });
 
   afterEach(() => {

@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';
+
 import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
 
@@ -13,7 +15,7 @@ describe('LocalWorkspaceAdapter on the real file system', () => {
 
   beforeEach(() => {
     baseDirectory = mkdtempSync(join(tmpdir(), 'arc-workspace-'));
-    adapter = new LocalWorkspaceAdapter(baseDirectory);
+    adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt(baseDirectory));
   });
 
   afterEach(() => {

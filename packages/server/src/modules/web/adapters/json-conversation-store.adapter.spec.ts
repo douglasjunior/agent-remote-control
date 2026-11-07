@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 
+import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+
 import { JsonConversationStoreAdapter } from './json-conversation-store.adapter.js';
 
 
@@ -17,7 +19,7 @@ describe('JsonConversationStoreAdapter', () => {
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'conversation-store-'));
-    store = new JsonConversationStoreAdapter(dataDir);
+    store = new JsonConversationStoreAdapter(dataDirectoryAt(dataDir));
   });
 
   afterEach(() => {
@@ -120,7 +122,7 @@ describe('JsonConversationStoreAdapter', () => {
     await store.upsertEntry(id, note('a'));
     await store.onModuleDestroy();
 
-    const reloaded = new JsonConversationStoreAdapter(dataDir);
+    const reloaded = new JsonConversationStoreAdapter(dataDirectoryAt(dataDir));
 
     expect((await reloaded.list()).map(summary => summary.id)).toEqual([id]);
     expect(await reloaded.history(id)).toEqual([note('a')]);
@@ -134,9 +136,9 @@ describe('JsonConversationStoreAdapter', () => {
 
     expect(await store.history('web-1')).toEqual([]);
     writeFileSync(join(webDir(), 'conversations.json'), JSON.stringify({ not: 'a list' }));
-    expect(await new JsonConversationStoreAdapter(dataDir).list()).toEqual([]);
+    expect(await new JsonConversationStoreAdapter(dataDirectoryAt(dataDir)).list()).toEqual([]);
     writeFileSync(join(webDir(), 'conversations.json'), '{ broken');
-    expect(await new JsonConversationStoreAdapter(dataDir).list()).toEqual([]);
+    expect(await new JsonConversationStoreAdapter(dataDirectoryAt(dataDir)).list()).toEqual([]);
   });
 
   it('keeps working when a write fails', async () => {

@@ -1,12 +1,12 @@
 import { conversationSummarySchema, type ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import { conversationEntrySchema, type ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { Injectable, Logger, type OnModuleDestroy, Optional } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 
-import { resolveDataDirectory } from '../../orchestrator/utils/data-directory.util.js';
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { IConversationStorePort } from '../ports/conversation-store.port.js';
 
 
@@ -23,8 +23,8 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
   private readonly pendingWrites = new Map<string, NodeJS.Timeout>();
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(@Optional() customDataDir?: string) {
-    this.webDirectory = join(resolveDataDirectory(customDataDir), 'web');
+  constructor(dataDirectoryService: DataDirectoryService) {
+    this.webDirectory = join(dataDirectoryService.resolve(), 'web');
   }
 
   async list(): Promise<readonly ConversationSummary[]> {

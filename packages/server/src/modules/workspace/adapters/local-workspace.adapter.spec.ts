@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
+import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';
 
 import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
@@ -41,41 +41,8 @@ describe('LocalWorkspaceAdapter', () => {
     vi.mocked(platform).mockReturnValue('linux');
   });
 
-  describe('constructor and base directory resolution', () => {
-    const originalEnv = process.env.WORKSPACE_DIR;
-
-    afterEach(() => {
-      process.env.WORKSPACE_DIR = originalEnv;
-    });
-
-    it('should use customBaseDir when explicitly provided', () => {
-      const adapter = new LocalWorkspaceAdapter('/custom/workspace/dir');
-      expect(adapter.getBaseDirectory()).toBe('/custom/workspace/dir');
-    });
-
-    it('should use WORKSPACE_DIR from environment when provided', () => {
-      process.env.WORKSPACE_DIR = '/env/workspaces';
-      const adapter = new LocalWorkspaceAdapter();
-      expect(adapter.getBaseDirectory()).toBe('/env/workspaces');
-    });
-
-    it('should use default workspaces folder when no custom dir or env is set', () => {
-      delete process.env.WORKSPACE_DIR;
-      const adapter = new LocalWorkspaceAdapter();
-      expect(adapter.getBaseDirectory()).toContain('workspaces');
-    });
-
-    it('should resolve a relative WORKSPACE_DIR from the repository root', () => {
-      process.env.WORKSPACE_DIR = './my-workspaces';
-      const adapter = new LocalWorkspaceAdapter();
-      expect(adapter.getBaseDirectory()).toBe(resolveFromRepositoryRoot('my-workspaces'));
-    });
-
-    it('should ignore empty or whitespace WORKSPACE_DIR and use default', () => {
-      process.env.WORKSPACE_DIR = '   ';
-      const adapter = new LocalWorkspaceAdapter();
-      expect(adapter.getBaseDirectory()).toContain('workspaces');
-    });
+  it('should report the directory the workspace directory service resolves', () => {
+    expect(new LocalWorkspaceAdapter(workspaceDirectoryAt('/custom/workspace/dir')).getBaseDirectory()).toBe('/custom/workspace/dir');
   });
 
   describe('project directories', () => {
@@ -83,7 +50,7 @@ describe('LocalWorkspaceAdapter', () => {
 
     beforeEach(() => {
       vi.mocked(mkdir).mockResolvedValue(undefined);
-      adapter = new LocalWorkspaceAdapter('/test/workspaces');
+      adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
     });
 
     it('should resolve repository path relative to base directory', () => {
@@ -126,7 +93,7 @@ describe('LocalWorkspaceAdapter', () => {
   });
 
   describe('listProjectFolders', () => {
-    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+    const adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
 
     it('should list the visible direct subfolders in alphabetical order', async () => {
       vi.mocked(readdir).mockResolvedValue([
@@ -170,7 +137,7 @@ describe('LocalWorkspaceAdapter', () => {
   });
 
   describe('writeFile', () => {
-    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+    const adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
 
     it('should create the parent directories and write the content', async () => {
       await adapter.writeFile('.agents/skills/x/SKILL.md', 'content');
@@ -188,7 +155,7 @@ describe('LocalWorkspaceAdapter', () => {
   });
 
   describe('ensureSymlink', () => {
-    const adapter = new LocalWorkspaceAdapter('/test/workspaces');
+    const adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
 
     describe.each(['linux', 'darwin'] as const)('on %s', (os) => {
       beforeEach(() => {

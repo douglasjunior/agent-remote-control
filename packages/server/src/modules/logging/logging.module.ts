@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
 import { join } from 'node:path';
 
-import { resolveDataDirectory } from '../orchestrator/utils/data-directory.util.js';
+import { PathsModule } from '../paths/paths.module.js';
+import { DataDirectoryService } from '../paths/services/data-directory.service.js';
 
 import { FileConsoleLoggerAdapter } from './adapters/file-console-logger.adapter.js';
 import { IAppLoggerPort } from './ports/app-logger.port.js';
@@ -15,10 +16,12 @@ function retentionDays(): number {
 }
 
 @Module({
+  imports: [PathsModule],
   providers: [
     {
       provide: IAppLoggerPort,
-      useFactory: () => new FileConsoleLoggerAdapter(join(resolveDataDirectory(), 'logs'), retentionDays()),
+      inject: [DataDirectoryService],
+      useFactory: (dataDirectory: DataDirectoryService) => new FileConsoleLoggerAdapter(join(dataDirectory.resolve(), 'logs'), retentionDays()),
     },
   ],
   exports: [IAppLoggerPort],

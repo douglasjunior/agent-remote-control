@@ -4,13 +4,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 
-import { resolveDataDirectory } from '../../orchestrator/utils/data-directory.util.js';
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 
 
 @Injectable()
 export class WebAccessTokenService implements OnApplicationBootstrap {
   private readonly logger = new Logger(WebAccessTokenService.name);
   private token?: string;
+
+  constructor(private readonly dataDirectory: DataDirectoryService) {}
 
   onApplicationBootstrap(): void {
     this.logger.log(`Web interface access token: ${this.getToken()}`);
@@ -28,7 +30,7 @@ export class WebAccessTokenService implements OnApplicationBootstrap {
   }
 
   private loadOrCreateToken(): string {
-    const file = join(resolveDataDirectory(), 'web', 'access-token');
+    const file = join(this.dataDirectory.resolve(), 'web', 'access-token');
     if (existsSync(file)) {
       const stored = readFileSync(file, 'utf8').trim();
       if (stored) {

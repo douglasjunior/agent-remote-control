@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 
+import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+
 import { WebAccessTokenService } from './web-access-token.service.js';
 
 
@@ -13,7 +15,6 @@ describe('WebAccessTokenService', () => {
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'web-token-'));
-    vi.stubEnv('DATA_DIR', dataDir);
     vi.stubEnv('WEB_ACCESS_TOKEN', '');
   });
 
@@ -25,14 +26,14 @@ describe('WebAccessTokenService', () => {
 
   it('prefers WEB_ACCESS_TOKEN over the stored file', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', ' from-env ');
-    const service = new WebAccessTokenService();
+    const service = new WebAccessTokenService(dataDirectoryAt(dataDir));
 
     expect(service.verify('from-env')).toBe(true);
     expect(() => readFileSync(tokenFile())).toThrow();
   });
 
   it('generates a token file with mode 0600 on first use and reuses it', () => {
-    const first = new WebAccessTokenService();
+    const first = new WebAccessTokenService(dataDirectoryAt(dataDir));
     const generated = ((): string => {
       first.verify('x');
       return readFileSync(tokenFile(), 'utf8');
@@ -40,21 +41,21 @@ describe('WebAccessTokenService', () => {
 
     expect(generated).toMatch(/^[A-Za-z0-9_-]{32}$/);
     expect(statSync(tokenFile()).mode & 0o777).toBe(0o600);
-    expect(new WebAccessTokenService().verify(generated)).toBe(true);
+    expect(new WebAccessTokenService(dataDirectoryAt(dataDir)).verify(generated)).toBe(true);
   });
 
   it('regenerates when the stored file is empty', () => {
     mkdirSync(join(dataDir, 'web'), { recursive: true });
     writeFileSync(tokenFile(), '\n');
 
-    new WebAccessTokenService().verify('x');
+    new WebAccessTokenService(dataDirectoryAt(dataDir)).verify('x');
 
     expect(readFileSync(tokenFile(), 'utf8')).toHaveLength(32);
   });
 
   it('verifies true for the token, false for a wrong one and false on length mismatch', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
-    const service = new WebAccessTokenService();
+    const service = new WebAccessTokenService(dataDirectoryAt(dataDir));
 
     expect(service.verify('secret')).toBe(true);
     expect(service.verify('secreT')).toBe(false);
@@ -66,7 +67,7 @@ describe('WebAccessTokenService', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-    new WebAccessTokenService().onApplicationBootstrap();
+    new WebAccessTokenService(dataDirectoryAt(dataDir)).onApplicationBootstrap();
 
     expect(log).toHaveBeenCalledWith('Web interface access token: secret');
   });

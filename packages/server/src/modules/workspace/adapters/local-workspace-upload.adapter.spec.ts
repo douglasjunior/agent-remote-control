@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';
+
 import { LocalWorkspaceUploadAdapter } from './local-workspace-upload.adapter.js';
 import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
@@ -15,7 +17,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
 
   beforeEach(() => {
     baseDirectory = mkdtempSync(join(tmpdir(), 'arc-upload-'));
-    uploads = new LocalWorkspaceUploadAdapter(new LocalWorkspaceAdapter(baseDirectory));
+    uploads = new LocalWorkspaceUploadAdapter(new LocalWorkspaceAdapter(workspaceDirectoryAt(baseDirectory)));
   });
 
   afterEach(() => {

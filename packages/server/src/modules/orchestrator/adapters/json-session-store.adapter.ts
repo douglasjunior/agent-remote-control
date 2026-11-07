@@ -1,11 +1,11 @@
-import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { ISessionStorePort } from '../ports/session-store.port.js';
-import { resolveDataDirectory } from '../utils/data-directory.util.js';
 
 
 const SESSIONS_FILENAME = 'sessions.json';
@@ -30,8 +30,8 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
   private sessions: Promise<Map<string, SessionContext>> | null = null;
   private writeChain: Promise<void> = Promise.resolve();
 
-  constructor(@Optional() customDataDir?: string) {
-    this.dataDirectory = resolveDataDirectory(customDataDir);
+  constructor(dataDirectoryService: DataDirectoryService) {
+    this.dataDirectory = dataDirectoryService.resolve();
     this.filePath = join(this.dataDirectory, SESSIONS_FILENAME);
   }
 
