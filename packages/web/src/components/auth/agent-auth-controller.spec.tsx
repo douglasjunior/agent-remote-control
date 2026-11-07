@@ -130,7 +130,7 @@ describe('AgentAuthController', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Checking the code…');
-    expect(await screen.findAllByText('Checking the code…')).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2));
     expect(screen.queryByLabelText('Paste the code the browser shows')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open login page/ })).toBeInTheDocument();
   });
