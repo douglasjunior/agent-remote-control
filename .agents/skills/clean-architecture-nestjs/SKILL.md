@@ -29,11 +29,11 @@ Behavior orchestration and business rule flow reside exclusively in independent,
 ## Vertical split into NestJS modules
 
 Business code is organized into domain-oriented vertical modules under
-`src/modules/<name>/`. Each module encapsulates its ports, adapters, use cases and
+`packages/server/src/modules/<name>/`. Each module encapsulates its ports, adapters, use cases and
 inbound handlers:
 
 ```text
-src/modules/<name>/
+packages/server/src/modules/<name>/
 ├── ports/              # Interfaces and Symbols of the technical ports (*.port.ts)
 ├── adapters/           # Concrete technology implementations (*.adapter.ts)
 ├── use-cases/          # Business rules and orchestration (*.use-case.ts)
@@ -60,7 +60,7 @@ export interface IAgentClientPort {
 export const IAgentClientPort = Symbol('IAgentClientPort');
 ```
 
-- Place in `src/modules/<name>/ports/<port-name>.port.ts`;
+- Place in `packages/server/src/modules/<name>/ports/<port-name>.port.ts`;
 - The interface name starts with a capital `I` and ends with `Port`;
 - The `Symbol` has the same identifier as the interface;
 - Port methods use pure domain types or primitive DTOs, never types from external
@@ -92,7 +92,7 @@ export class AcpAgentClientAdapter implements IAgentClientPort {
 }
 ```
 
-- Place in `src/modules/<name>/adapters/<adapter-name>.adapter.ts`;
+- Place in `packages/server/src/modules/<name>/adapters/<adapter-name>.adapter.ts`;
 - Must be decorated with `@Injectable()`;
 - Explicitly declares `implements I<Name>Port`.
 
@@ -131,7 +131,7 @@ export class SendAgentPromptUseCase {
 }
 ```
 
-- Place in `src/modules/<name>/use-cases/<action-name>.use-case.ts`;
+- Place in `packages/server/src/modules/<name>/use-cases/<action-name>.use-case.ts`;
 - Must be decorated with `@Injectable()`;
 - Injects ports using `@Inject(IMyPort)` bound to the port's `Symbol`;
 - Exposes a primary public method `execute(input)`;
@@ -153,7 +153,7 @@ export class MessageFormatterService {
 }
 ```
 
-- Place in `src/modules/<name>/services/<name>.service.ts`;
+- Place in `packages/server/src/modules/<name>/services/<name>.service.ts`;
 - Decorated with `@Injectable()`.
 
 ### 5. Controllers and Handlers (`*.controller.ts`, `*.handler.ts`)
@@ -181,7 +181,7 @@ export class DiscordCommandHandler {
 }
 ```
 
-- Place in `src/modules/<name>/handlers/` or `src/modules/<name>/controllers/`;
+- Place in `packages/server/src/modules/<name>/handlers/` or `packages/server/src/modules/<name>/controllers/`;
 - Receive and validate the surface input from the user or external protocol;
 - Delegate execution immediately to one or more Use Cases;
 - Format the response back to the client.
@@ -218,12 +218,13 @@ export class AgentModule {}
 2. **Use cases know no technology**: Use Cases never import anything from `adapters/`,
    `discord.js`, proprietary SDKs or infrastructure drivers.
 3. **No barrel exports**: Do not create `index.ts` files. Always import from the
-   original file.
+   original file. A package exposes files to other packages through subpath exports in
+   its `package.json`, never through an `index.ts`.
 4. **One use case per file**: Each Use Case class lives in its own `*.use-case.ts` file,
    with its corresponding test `*.use-case.spec.ts`.
 5. **Mandatory lint and test validation**: Every code change requires running
-   `yarn lint` and `yarn test` (and `yarn test:e2e` when it affects entry points). Code
-   formatting is done exclusively via ESLint (`yarn format`).
+   `pnpm lint` and `pnpm test` (and `pnpm test:e2e` when it affects entry points). Code
+   formatting is done exclusively via ESLint (`pnpm format`).
 
 ## Checklist
 
@@ -233,4 +234,4 @@ export class AgentModule {}
 - [ ] Use case free of imports of concrete technologies or third-party SDKs.
 - [ ] Wiring done in the NestJS module with `{ provide: IPort, useClass: MyAdapter }`.
 - [ ] No workflow concept introduced in the module.
-- [ ] Validation run with `yarn lint` and `yarn test` passing 100%.
+- [ ] Validation run with `pnpm lint` and `pnpm test` passing 100%.

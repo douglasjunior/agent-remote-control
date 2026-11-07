@@ -5,21 +5,25 @@ WORKDIR /app
 
 # Installs every dependency required for the build
 FROM base AS deps
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
-RUN yarn install --immutable --mode=skip-build
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/protocol/package.json ./packages/protocol/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/web/package.json ./packages/web/package.json
+RUN pnpm install --frozen-lockfile
 
-# Compiles the backend with the installed dependencies
+# Compiles the protocol and the server with the installed dependencies; the web app is not part of the image
 FROM base AS build
+RUN corepack enable
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
-RUN yarn build
+COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules
+COPY --from=deps /app/packages/server/node_modules ./packages/server/node_modules
+RUN pnpm --filter @agent-remote-control/server... build
 
-# Installs only the production dependencies
-FROM base AS prod-deps
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
-RUN yarn workspaces focus --production
+# Extracts the server with only its production dependencies into a self-contained directory
+FROM build AS prod-deps
+RUN pnpm --filter @agent-remote-control/server deploy --prod /deploy
 
 # Builds the whisper.cpp CLI (CPU speech-to-text) as a self-contained binary. GGML_NATIVE=OFF keeps
 # the build from targeting the CPU of the machine that builds the image, which would crash with
@@ -49,10 +53,9 @@ ENV NODE_ENV=production \
   WORKSPACE_DIR=/app/workspaces \
   PATH=/home/node/.local/bin:/app/node_modules/.bin:$PATH
 
-COPY --chown=node:node --from=prod-deps /app/package.json /app/yarn.lock /app/.yarnrc.yml ./
-COPY --chown=node:node --from=prod-deps /app/.yarn ./.yarn
-COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
-COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=prod-deps /deploy/node_modules ./node_modules
+COPY --chown=node:node --from=prod-deps /deploy/package.json ./packages/server/package.json
+COPY --chown=node:node --from=build /app/packages/server/dist ./packages/server/dist
 COPY --from=whisper /whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
@@ -66,4 +69,4 @@ VOLUME ["/app/data", "/app/workspaces"]
 EXPOSE 3000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["node", "dist/main"]
+CMD ["node", "packages/server/dist/main"]

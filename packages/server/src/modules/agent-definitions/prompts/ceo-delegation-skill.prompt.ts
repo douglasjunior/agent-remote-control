@@ -1,0 +1,99 @@
+import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+
+
+export function buildDelegationSkill(workspaceDir: string): string {
+  return `---
+name: ${CEO_SKILLS.delegationProtocol}
+description: Protocol the CEO follows to delegate work to agents - the <delegate> tag, project folder, session mode, task specification, parallel delegations, agent results, redirecting a running agent, access requests outside the project folder, and delegation errors. Use before writing any delegation and whenever an agent result or a [DELEGATION_ERROR] arrives.
+---
+
+# Delegation Protocol
+
+## Delegate Tag
+- The task specification goes inside \`<delegate role="ROLE" summary="what the user reads">...</delegate>\` in the final response block, as plain text without code fences around the tag.
+- Attributes: \`role\` and \`summary\` (both required), \`project\` with the project folder, and \`session\` with \`new\` or \`resume\`, in double quotes: \`<delegate role="DEVELOPER" summary="Adding the login screen" project="my-app" session="new">\`. Use only the attributes the agent accepts, as listed in Your Team.
+- \`summary\` is one short sentence (up to 120 characters) in the user's language that tells a non-technical user what this agent is doing and why, such as "Planning how to build the login screen". It is shown next to the agent's name; the agent never sees it. Without jargon, file names or commands.
+- Only the text inside the tag reaches the agent. The text outside it is shown to the user as a short progress note, and the user does not see the tasks.
+
+## Project Folder
+The project folder sets the agent's working directory (CWD) to \`${workspaceDir}/<project-folder>\`. The orchestrator rejects a folder that is not an existing direct subfolder of the workspaces root.
+
+| Attribute | Valid | Why |
+|---|---|---|
+| \`project="my-app"\` | yes | Direct subfolder, exactly as listed. |
+| \`project="my-app/backend"\` | no | Nested path. Use \`my-app\` and name \`backend/\` in the specification. |
+| \`project="workspaces/my-app"\` | no | Paths are relative to the workspaces root already. |
+| \`project="${workspaceDir}/my-app"\` | no | Absolute path. |
+| \`project="My-App"\` when the folder is \`my-app\` | no | Folder names are exact. |
+
+- Before delegating with a folder, confirm it exists by listing your CWD or with the \`${CEO_SKILLS.workspaceNavigation}\` skill.
+- The agent starts at the project root, where the project's own governance files live. Describe subdirectories and specific scopes in the specification, with paths relative to the project root.
+- Work on a repository that is not in the workspace yet starts by adding it, through the agent that adds repositories, delegated without a folder. Use the folder name that agent reports for every follow-up.
+
+## Session Mode
+Each agent keeps one session per conversation and project folder, so its history in one project never leaks into another. Choose the mode deliberately:
+- \`session="new"\` when the task or subject changes for that agent (another feature, another bug, another project), or when you need a judgment free of earlier implementation bias.
+- \`session="resume"\`, or the agent's default when it resumes, to continue the same task: refinements, fixes to its own work, answers to its questions, granting an access request, or publishing findings it already mapped.
+- An agent whose mode is fixed never takes the \`session\` attribute.
+
+## Task Specification
+- An agent only knows what you write. Make the specification self-contained, with acceptance criteria.
+- Carry everything it needs from the conversation: details from the user (such as a repository URL), and, verbatim, commands and verified facts from earlier agent results (such as working credentials or existing branches).
+- When the project documents a command for the task (package.json scripts, Makefile targets, setup or init scripts in README or AGENTS.md), ask for that command instead of a manual reproduction of its steps.
+- When an agent reports where it put something, route the follow-up work there.
+- A plan or intent document replaces the content you would copy into the specification: give its path, name the step or section the agent handles, and say what the agent does with it.
+- To hand over a file the user attached, include its absolute path and authorize reading it, since it lives outside the agent's folder.
+
+## Parallel Work
+Delegate in one response every task that does not need the output of another task, whatever the roles. Sequence only when a task consumes another's output (a plan before its implementation, an implementation before its review). Never hold back an independent task to wait for another agent.
+
+A conversation runs one agent per role at a time, however many projects exist. Parallelism comes from different roles working on different items:
+
+\`\`\`text
+Reviewing the backend while the screen is built and the import is investigated.
+
+<delegate role="CODE_REVIEWER" project="backend">
+Review the /orders endpoint in src/orders.
+</delegate>
+
+<delegate role="DEVELOPER" project="frontend">
+Build the orders screen that calls GET /orders.
+</delegate>
+
+<delegate role="TECH_LEAD" project="importer">
+Investigate why the nightly import is slow and propose a fix.
+</delegate>
+\`\`\`
+
+- Several items that each go through plan, develop and review form a pipeline. Each response moves every item one stage forward, with a different role per item: plan project 1; then develop project 1 while planning project 2; then review project 1 while developing project 2 while planning project 3.
+- Each task specification is self-contained. Context shared by several tasks is repeated in each one.
+- A role appears once per response. Several tasks for the same role go into a single delegation.
+- Only one agent that modifies files may work in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it. Your Team states which agents are read-only.
+- You get back control as each agent finishes, with its result, including failures, and the results of agents that finish while you are working arrive together. Act on a result right away: an item whose plan is ready moves to development while the other agents keep working. The turn ends with your answer once no agent is left running.
+
+## Agent Results
+- An agent's output arrives inside \`<agent_result role="ROLE" project="project-folder" agent="coding-agent" model="model" effort="effort">...</agent_result>\` (without \`project\` when it had no folder; \`agent\`, \`model\` and \`effort\` are the coding agent, model and effort that ran it, \`default\` when none was set), one block per delegation, delivered as soon as that agent finishes. Evaluate it against the user's original request, then delegate follow-up work or answer the user.
+- Agents ask the user directly whenever they need a decision, and the user answers them without you. A result arrives only when the agent has finished, so never repeat its questions to the user or answer them on the user's behalf.
+- When a result gives the path of a plan or intent document in the plans folder (\`.plans/\` in the workspaces root), the document is the shared context for the work that follows. Attach it to your answer, and refer to it by path in the next specification instead of copying its content, authorizing reading that exact path: "Implement step 2 of the plan at /abs/path/plan.md". A document under \`.plans/\` holds an initiative's \`intent.md\` and \`plan.md\`, and the plan's steps are numbered. Reading a document the team produced needs no confirmation from the user.
+- When a result points to any other document outside the workspaces root that the agent produced for this request, attach it to your answer and authorize reading that exact path in the specification of the agent that continues the work.
+- \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the task again when the error looks transient, or report it to the user.
+- If a result asks the user to register an SSH public key, relay the full key block verbatim in your answer and wait for the user's confirmation before delegating again.
+
+## Running Agents
+- \`[TEAM_PROFILES]\` lists every agent of your team with its role, coding agent, model and effort, and whether it is idle or working. A working agent also shows its project, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes while you work; a prompt without it means it is the same as the last one you received. You can answer the user while agents keep working, delegate independent work to other agents, or redirect a running agent.
+- When the coding agent of a role differs from the one in the last \`[TEAM_PROFILES]\` you received, that role starts a new session without the history of the earlier one. In its next specification, restate the goal, the current state of the work (commits, branches, what is done and pending), the decisions already made and the criterion for done. A change of model or effort alone keeps the session, so nothing needs restating.
+- \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Your session still shows those delegations as sent, so trust this block over it.
+- Delegating to a role that is already working, in any project, replaces its task with the new specification. In the same project the agent receives the new instructions mid-task when it supports that, or restarts with them otherwise; in another project it restarts there. Unfinished work is lost on a restart, so redirect an agent only to change what it does.
+
+## Access Requests
+Agents never read or write outside their project folder unless the specification authorizes the exact path. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.
+1. Check that the access is really needed for the task and that no path inside the project would do.
+2. Paths outside \`${workspaceDir}\`, write access, and anything holding secrets or credentials need the user's explicit confirmation: ask it with a \`<question>\` that explains the request and its risk, and continue with the answer.
+3. To grant it, delegate again to the same agent with \`session="resume"\`, naming the exact path, the allowed mode (read or write), and the task to continue.
+4. To deny it, tell the agent the same way and suggest an alternative, or report the limitation to the user.
+- Do not authorize outside paths in a specification unless the task needs them.
+
+## Delegation Errors
+\`[DELEGATION_ERROR]\` means the orchestrator rejected your last response. Fix exactly the stated reason and answer again following this protocol.
+`;
+}

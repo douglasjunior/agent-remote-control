@@ -1,0 +1,84 @@
+import { describe, expect, it } from 'vitest';
+
+import { QuestionParserService } from './question-parser.service.js';
+
+
+describe('QuestionParserService', () => {
+  const parser = new QuestionParserService();
+
+  it('should report no questions when the response has no question tag', () => {
+    expect(parser.parse('All done.')).toEqual({ kind: 'none' });
+  });
+
+  it('should read the questions, their options and rationale, keeping the text around them as the message', () => {
+    const response = [
+      'Here is what I understood.',
+      '',
+      '<question rationale="It decides who sees the request.">Who approves a refund?',
+      '<option>The manager</option>',
+      '<OPTION>Finance</OPTION>',
+      '</question>',
+      '',
+      '',
+      '',
+      '<question rationale=\'\'>What is the maximum amount?</question>',
+      'Answer when you can.',
+    ].join('\n');
+
+    expect(parser.parse(response)).toEqual({
+      kind: 'questions',
+      message: 'Here is what I understood.\n\nAnswer when you can.',
+      questions: [
+        { text: 'Who approves a refund?', rationale: 'It decides who sees the request.', options: ['The manager', 'Finance'] },
+        { text: 'What is the maximum amount?', options: [] },
+      ],
+    });
+  });
+
+  it.each([
+    ['inline code', 'Added `<option>` items to the `<select>`.'],
+    ['a fenced block', 'Done:\n```html\n<select><option value="a">A</option></select>\n```'],
+    ['an unclosed fenced block', 'Done:\n```html\n<option>A</option>'],
+  ])('should leave the tags inside %s as text', (_case, response) => {
+    expect(parser.parse(response)).toEqual({ kind: 'none' });
+  });
+
+  it('should read a question next to quoted markup', () => {
+    expect(parser.parse('The `<option>` list changed.\n<question>Keep it?<option>Yes</option></question>')).toEqual({
+      kind: 'questions',
+      message: 'The `<option>` list changed.',
+      questions: [{ text: 'Keep it?', options: ['Yes'] }],
+    });
+  });
+
+  it('should read the option marked recommended', () => {
+    const parsed = parser.parse('<question>Which?<option>A</option><option RECOMMENDED>B</option><option>C</option></question>');
+
+    expect(parsed).toMatchObject({ kind: 'questions', questions: [{ options: ['A', 'B', 'C'], recommendedIndex: 2 }] });
+  });
+
+  it('should leave recommendedIndex out when no option is marked', () => {
+    const parsed = parser.parse('<question>Which?<option>A</option></question>');
+
+    expect(parsed).toMatchObject({ kind: 'questions', questions: [{ options: ['A'] }] });
+    expect(parsed).not.toMatchObject({ questions: [{ recommendedIndex: expect.anything() }] });
+  });
+
+  it.each([
+    ['an option outside a question', '<option>A</option>', 'outside a <question>'],
+    ['a closing question tag without its opening', 'Text </question>', 'without its opening <question>'],
+    ['an unknown question attribute', '<question kind="x">Q?</question>', 'Unknown attribute "kind"'],
+    ['an unclosed question', '<question>Q?', 'must be closed with </question>'],
+    ['a question without text', '<question><option>A</option></question>', 'has no text'],
+    ['a closing option tag without its opening', '<question>Q? A</option></question>', 'without its opening <option>'],
+    ['an option with attributes', '<question>Q?<option value="1">A</option></question>', 'takes no attributes'],
+    ['two recommended options', '<question>Q?<option recommended>A</option><option recommended>B</option></question>', 'More than one <option> is marked recommended'],
+    ['an unclosed option', '<question>Q?<option>A</question>', 'must be closed with </option>'],
+    ['an empty option', '<question>Q?<option> </option></question>', 'is empty'],
+  ])('should reject %s', (_case, response, reason) => {
+    const parsed = parser.parse(response);
+
+    expect(parsed.kind).toBe('invalid');
+    expect(parsed).toMatchObject({ reason: expect.stringContaining(reason) });
+  });
+});

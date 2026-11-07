@@ -45,20 +45,71 @@ AI coding agents are incredible, as long as you are sitting in front of the term
 
 ## 🚀 Quick Start
 
-You need **Node.js 24+**, **Git**, at least one [supported agent CLI](#-supported-agents) installed and logged in, and a [Discord bot token](#-discord-setup).
+You need **Node.js 24+**, **Git** and at least one [supported agent CLI](#-supported-agents) installed and logged in. A [Discord bot token](#-discord-setup) is needed only for the Discord bot; the [web interface](#-web-interface) works without it.
 
 ```bash
 git clone https://github.com/douglasjunior/agent-remote-control.git
 cd agent-remote-control
-yarn install                 # Yarn 4 is pinned in the repository
-cp .env.example .env         # then set DISCORD_BOT_TOKEN
-yarn start:dev
+pnpm install                 # pnpm is pinned through the packageManager field
+cp .env.example .env         # then set DISCORD_BOT_TOKEN to use the Discord bot
+pnpm dev                     # server and web interface together
 ```
 
-Now invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run.
+To use Discord, invite the bot to your server ([step by step](#step-4-invite-the-bot-to-the-server)), send it a DM or mention it in a channel, pick the agent, model and effort from the numbered menu, and watch your task run. To use the browser instead, follow [Web interface](#-web-interface).
 
 > [!WARNING]
-> **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container.
+> **The agents run with full autonomy on the host machine.** Claude Code runs in `bypassPermissions` mode, Copilot with `allow_all`, and Codex and Cursor without approvals or sandbox. Anyone who can message the bot can execute commands with your credentials. Keep the bot in a **private server** with people you trust, and consider running it on a dedicated machine, VM or container. The same applies to the **web access token**: whoever has it can run agents on the host, so never share it or expose the server port to untrusted networks.
+
+## 🌐 Web interface
+
+A browser interface to chat with the agents without Discord. It is a separate app (`packages/web`) that talks to the server over a WebSocket at `/ws`.
+
+1. **Start the server** (`pnpm dev:server`, or `pnpm dev` to start the server and the web app together).
+2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
+3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
+
+| Mode | Command | URL |
+|---|---|---|
+| Development | `pnpm dev:web` | `http://localhost:5173` |
+| Production build | `pnpm build && pnpm preview:web` | `http://localhost:4173` |
+| Production | nginx serving `packages/web/dist` | your domain |
+
+Vite (`dev` and `preview`) proxies `/ws` and `/health` to the server, using the `PORT` from the root `.env` (default `3000`), so the browser sees a single origin and the server's origin check passes. If the web app reaches the server directly instead, list its origin in `WEB_ALLOWED_ORIGINS`.
+
+**nginx example**
+
+```nginx
+server {
+  listen 80;
+  server_name arc.example.com;
+
+  root /srv/agent-remote-control/web;   # a copy of packages/web/dist
+  index index.html;
+
+  location / {
+    try_files $uri /index.html;
+  }
+
+  location /ws {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+  }
+
+  location /health {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+  }
+}
+```
+
+| Variable | Description | Default |
+|---|---|---|
+| `WEB_ENABLED` | Set to `false` to leave the web channel out of the server | `true` |
+| `WEB_ACCESS_TOKEN` | Access token; generated into `DATA_DIR/web/access-token` when empty | *(generated)* |
+| `WEB_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open the WebSocket | *(same origin only)* |
 
 ## 🤖 Supported Agents
 
@@ -161,7 +212,7 @@ sequenceDiagram
 ## 📋 Prerequisites
 
 - **Node.js** `>=24`
-- **Yarn**: the repository pins Yarn 4 in `.yarn/releases`, so any globally installed Yarn (or `corepack enable`) works.
+- **pnpm**: the repository pins its version in the `packageManager` field, so `corepack enable` is enough.
 - **Git** installed and configured
 - At least one agent installed and authenticated, with its command on the `PATH` (an agent without it is not offered):
   - **Claude Code CLI** (`claude` on the `PATH`, installed and authenticated by the user). The official ACP adapter `@agentclientprotocol/claude-agent-acp` ships with the dependencies and uses the `claude` from the `PATH`; when it is missing, it falls back to the binary bundled in the Claude Agent SDK. Claude Code sessions load the user's settings (`~/.claude/settings.json`, `CLAUDE.md`, hooks and skills) and run in `bypassPermissions` mode, which Claude Code refuses when the process runs as `root` without `IS_SANDBOX=1`;
@@ -180,11 +231,13 @@ cp .env.example .env
 
 | Variable | Description | Where to Get It in Discord | Default |
 |---|---|---|---|
-| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required)* |
+| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
 | `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
 | `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
+| `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
+| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
 | `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` |
 | `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` |
 | `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` |
@@ -196,6 +249,7 @@ cp .env.example .env
 | `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) |
 | `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
+| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
 
 ## 🐳 Docker
 
@@ -246,6 +300,8 @@ docker run -d --name agent-remote-control \
 ```
 
 Create `~/.claude.json` beforehand if it does not exist; otherwise Docker creates a directory with that name.
+
+**Web interface in Docker.** The image contains the server only. Publish the port (`-p 3000:3000`) and read the access token with `docker logs agent-remote-control`; the published port is protected by that token and by the origin check, but anyone who obtains the token can run agents on the container, so bind it to `127.0.0.1` (`-p 127.0.0.1:3000:3000`) unless a reverse proxy sits in front. Serve `packages/web/dist` with [nginx](#-web-interface) or run `pnpm preview:web` on the host.
 
 **Rootless Docker**
 
@@ -443,38 +499,39 @@ Create the feature/password-reset branch in the my-backend project, commit the c
 
 ## 🏗️ Architecture
 
-A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `src/modules/`:
+A NestJS application built on **Clean Architecture with Ports & Adapters** and **Use Cases**. Business rules are fully decoupled from technology details (Discord.js, the ACP SDK, the file system and command execution), and the code is structured as autonomous vertical modules in `packages/server/src/modules/`:
 
-- **`agent`** (`src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
-- **`orchestrator`** (`src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
-- **`workspace`** (`src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
-- **`discord`** (`src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
+- **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (`AgyBridgeServer` bridge to the Google Antigravity CLI), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) and `CursorAdapter` (Cursor CLI through its native ACP mode).
+- **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
+- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
+- **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
+- **`discord`** (`packages/server/src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
 
 ## 🧪 Development
 
 Start the NestJS application in watch mode:
 
 ```bash
-yarn start:dev
+pnpm dev:server
 ```
 
 To build and run the production bundle:
 
 ```bash
-yarn build
-yarn start:prod
+pnpm build
+pnpm start:prod
 ```
 
 The project targets **100% unit test coverage** of executable production code lines, with end-to-end (e2e) tests for the entry points:
 
 ```bash
-yarn test        # unit tests
-yarn test:cov    # unit tests with a coverage report
-yarn test:e2e    # end-to-end tests
-yarn ts          # TypeScript static type checking
-yarn lint        # static analysis with ESLint
-yarn format      # formatting and autofix via ESLint
+# All commands run from the repository root and apply to every package in `packages/`
+pnpm test        # unit tests
+pnpm test:cov    # unit tests with a coverage report
+pnpm test:e2e    # end-to-end tests
+pnpm ts          # TypeScript static type checking
+pnpm lint        # static analysis with ESLint
+pnpm format      # formatting and autofix via ESLint
 ```
 
 ## 🤝 Contributing
@@ -483,7 +540,7 @@ Contributions are very welcome, from bug reports and ideas to new agents and new
 
 1. Read [`AGENTS.md`](AGENTS.md) for the architecture, conventions and mandatory rules, and the [skills catalog](.agents/skills/) for the rules of the module you are touching.
 2. Fork the repository and create a topic branch.
-3. Make sure `yarn ts`, `yarn lint` and `yarn test` pass.
+3. Make sure `pnpm ts`, `pnpm lint` and `pnpm test` pass.
 4. Write commit messages following [Conventional Commits](https://www.conventionalcommits.org/) in English and open a pull request.
 
 Found a bug or have an idea? [Open an issue](https://github.com/douglasjunior/agent-remote-control/issues).

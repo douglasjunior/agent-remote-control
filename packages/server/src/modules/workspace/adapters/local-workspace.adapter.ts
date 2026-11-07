@@ -1,0 +1,121 @@
+import { Injectable } from '@nestjs/common';
+import type { Dirent } from 'node:fs';
+import { lstat, mkdir, readdir, readlink, stat, symlink, unlink, writeFile } from 'node:fs/promises';
+import { platform } from 'node:os';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
+
+import { WorkspaceDirectoryService } from '../../paths/services/workspace-directory.service.js';
+import type { IWorkspacePort } from '../ports/workspace.port.js';
+
+
+@Injectable()
+export class LocalWorkspaceAdapter implements IWorkspacePort {
+  private readonly baseDirectory: string;
+
+  constructor(workspaceDirectory: WorkspaceDirectoryService) {
+    this.baseDirectory = workspaceDirectory.resolve();
+  }
+
+  getBaseDirectory(): string {
+    return this.baseDirectory;
+  }
+
+  resolveRepositoryPath(repositoryName: string): string {
+    const path = resolve(this.baseDirectory, repositoryName);
+    if (path === this.baseDirectory) {
+      throw new Error(`Invalid repository name: "${repositoryName}"`);
+    }
+    this.assertInsideBaseDirectory(path);
+    if (dirname(path) !== this.baseDirectory) {
+      throw new Error(`Repository name must be a direct subfolder of the workspace, not a nested path: "${repositoryName}"`);
+    }
+    return path;
+  }
+
+  async ensureDirectory(path: string): Promise<void> {
+    const target = resolve(path);
+    this.assertInsideBaseDirectory(target);
+    await mkdir(target, { recursive: true });
+  }
+
+  async listProjectFolders(): Promise<readonly string[]> {
+    try {
+      const entries = await readdir(this.baseDirectory, { withFileTypes: true });
+      const folders = await Promise.all(entries
+        .filter(entry => !entry.name.startsWith('.'))
+        .map(async entry => (await this.isDirectoryEntry(entry) ? [entry.name] : [])));
+      return folders.flat().sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async writeFile(relativePath: string, content: string): Promise<void> {
+    const target = this.resolveInside(relativePath);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content, 'utf8');
+  }
+
+  async ensureSymlink(relativeLinkPath: string, target: string): Promise<void> {
+    const linkPath = this.resolveInside(relativeLinkPath);
+    const linkDirectory = dirname(linkPath);
+    const targetPath = resolve(linkDirectory, target);
+    this.assertInsideBaseDirectory(targetPath);
+
+    const existing = await lstat(linkPath).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') {
+        return undefined;
+      }
+      throw error;
+    });
+
+    if (existing && !existing.isSymbolicLink()) {
+      throw new Error(`Cannot create symlink, a file or directory already exists: ${linkPath}`);
+    }
+    if (existing) {
+      if (this.pointsTo(linkDirectory, await readlink(linkPath), targetPath)) {
+        return;
+      }
+      await unlink(linkPath);
+    }
+
+    await mkdir(linkDirectory, { recursive: true });
+    // Windows only creates directory symlinks with admin rights or Developer Mode; a junction needs neither but takes an absolute target.
+    if (platform() === 'win32') {
+      await symlink(targetPath, linkPath, 'junction');
+    } else {
+      await symlink(target, linkPath, 'dir');
+    }
+  }
+
+  /** Windows reports a junction target as an absolute path, possibly with the `\\?\` prefix, and compares paths case-insensitively. */
+  private pointsTo(linkDirectory: string, linkTarget: string, targetPath: string): boolean {
+    const current = resolve(linkDirectory, linkTarget.replace(/^\\\\\?\\/, ''));
+    return platform() === 'win32'
+      ? current.toLowerCase() === targetPath.toLowerCase()
+      : current === targetPath;
+  }
+
+  private async isDirectoryEntry(entry: Dirent): Promise<boolean> {
+    if (!entry.isSymbolicLink()) {
+      return entry.isDirectory();
+    }
+    return stat(resolve(this.baseDirectory, entry.name)).then(stats => stats.isDirectory(), () => false);
+  }
+
+  private resolveInside(relativePath: string): string {
+    const target = resolve(this.baseDirectory, relativePath);
+    this.assertInsideBaseDirectory(target);
+    return target;
+  }
+
+  private assertInsideBaseDirectory(path: string): void {
+    const relativePath = relative(this.baseDirectory, path);
+    if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+      throw new Error(`Path is outside the workspace directory: ${path}`);
+    }
+  }
+}
