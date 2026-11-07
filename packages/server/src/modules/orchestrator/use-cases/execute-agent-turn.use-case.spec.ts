@@ -379,7 +379,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('Max delegation rounds exceeded.');
-    expect(stubAgentPort.promptCalls).toHaveLength(100);
+    expect(stubAgentPort.promptCalls).toHaveLength(1000);
     expect(delegateStubPort.promptCalls).toHaveLength(99);
   });
 
@@ -391,7 +391,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     await useCase.execute(turnRequest({ prompt: 'What happened?' }));
 
-    const next = stubAgentPort.promptCalls[100]!;
+    const next = stubAgentPort.promptCalls[1000]!;
     expect(next).toContain('- DEVELOPER (Project: my-app, Task: "Delegating...") never started.');
     expect(next).toContain('- Your previous turn failed: Max delegation rounds exceeded.');
     expect(next).not.toContain('was stopped before finishing');
