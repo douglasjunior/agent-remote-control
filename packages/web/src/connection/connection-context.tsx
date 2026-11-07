@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { loadAccessToken, storeAccessToken } from './access-token.js';
 import type { ConnectionStatus, IServerConnection } from './server-connection.js';
 
 
@@ -18,7 +17,7 @@ export function ConnectionProvider({ connection, children }: {
   readonly children: ReactNode;
 }) {
   const [status, setStatus] = useState<ConnectionStatus>('closed');
-  const [hasToken, setHasToken] = useState(() => loadAccessToken() !== null);
+  const [hasToken, setHasToken] = useState(() => connection.hasAccessToken());
 
   useEffect(() => {
     const unsubscribe = connection.onStatus((next) => {
@@ -37,9 +36,9 @@ export function ConnectionProvider({ connection, children }: {
   }, [connection, hasToken]);
 
   const submitToken = useCallback((token: string) => {
-    storeAccessToken(token.trim());
+    connection.setAccessToken(token.trim());
     setHasToken(true);
-  }, []);
+  }, [connection]);
 
   const value = useMemo(
     () => ({ connection, status, hasToken, submitToken }),

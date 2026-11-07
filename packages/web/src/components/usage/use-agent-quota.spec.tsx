@@ -1,7 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import { storeAccessToken } from '../../connection/access-token.js';
 import { ConnectionProvider } from '../../connection/connection-context.js';
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
 
@@ -34,7 +33,6 @@ describe('useAgentQuota', () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: NOW });
     localStorage.clear();
-    storeAccessToken('token');
     connection = new FakeServerConnection();
     visibility = 'visible';
     vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);

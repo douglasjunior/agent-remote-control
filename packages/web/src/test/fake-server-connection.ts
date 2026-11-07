@@ -8,6 +8,8 @@ export class FakeServerConnection implements IServerConnection {
   readonly sent: ClientCommand[] = [];
   connectCalls = 0;
   disconnectCalls = 0;
+  /** Starts with a token, so a spec mounts signed in unless it clears it. */
+  accessToken: string | null = 'token';
   private readonly eventListeners = new Set<(event: ServerEvent) => void>();
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
 
@@ -17,6 +19,14 @@ export class FakeServerConnection implements IServerConnection {
 
   disconnect(): void {
     this.disconnectCalls += 1;
+  }
+
+  hasAccessToken(): boolean {
+    return this.accessToken !== null;
+  }
+
+  setAccessToken(token: string): void {
+    this.accessToken = token;
   }
 
   send(command: ClientCommand): void {

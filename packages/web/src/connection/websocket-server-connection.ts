@@ -1,7 +1,7 @@
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import { parseServerEvent, type ServerEvent } from '@agent-remote-control/protocol/server-event';
 
-import { clearAccessToken, readAccessToken } from './access-token.js';
+import type { AccessTokenStore } from './access-token-store.js';
 import type { ConnectionStatus, IServerConnection } from './server-connection.js';
 
 
@@ -19,6 +19,8 @@ export class WebSocketServerConnection implements IServerConnection {
   private readonly eventListeners = new Set<(event: ServerEvent) => void>();
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
 
+  constructor(private readonly tokens: AccessTokenStore) {}
+
   connect(): void {
     this.stopped = false;
     this.clearRetry();
@@ -32,6 +34,14 @@ export class WebSocketServerConnection implements IServerConnection {
     this.socket = null;
     socket?.close();
     this.setStatus('closed');
+  }
+
+  hasAccessToken(): boolean {
+    return this.tokens.load() !== null;
+  }
+
+  setAccessToken(token: string): void {
+    this.tokens.store(token);
   }
 
   send(command: ClientCommand): void {
@@ -53,7 +63,7 @@ export class WebSocketServerConnection implements IServerConnection {
   }
 
   private open(): void {
-    const token = readAccessToken();
+    const token = this.tokens.read();
     if (!token) {
       this.rejectCredentials();
       return;
@@ -118,7 +128,7 @@ export class WebSocketServerConnection implements IServerConnection {
   private rejectCredentials(): void {
     this.stopped = true;
     this.queue = [];
-    clearAccessToken();
+    this.tokens.clear();
     const socket = this.socket;
     this.socket = null;
     socket?.close();

@@ -24,7 +24,7 @@ app. It talks to the server only through `@agent-remote-control/protocol`, over 
 packages/web/src/
 ├── main.tsx                 # bootstrap: ConnectionProvider + RouterProvider
 ├── router.tsx               # route table (`routes`) and the browser router
-├── connection/              # IServerConnection, WebSocket implementation, access token, context
+├── connection/              # IServerConnection, WebSocket implementation, AccessTokenStore, context
 ├── conversations/           # reducer, context and entry grouping
 ├── theme/                   # ThemeProvider and useTheme (light, dark, system)
 ├── pages/                   # route-level screens
@@ -42,18 +42,21 @@ packages/web/src/
 
 ## Connection
 
-- Components depend on `IServerConnection` (`connect`, `disconnect`, `send`, `onEvent`, `onStatus`), never
+- Components depend on `IServerConnection` (`connect`, `disconnect`, `send`, `onEvent`, `onStatus`, `hasAccessToken`, `setAccessToken`), never
   on `WebSocket`, so another transport can replace `WebSocketServerConnection`. Status is
   `'connecting' | 'open' | 'unauthorized' | 'closed'`; `onEvent` and `onStatus` return an unsubscribe function.
-- `WebSocketServerConnection` always connects to the relative `/ws` (`wss` on https), sends `auth` first and
+  `hasAccessToken()` says whether a token is at hand (in storage or in a `#token=` link the page was opened with)
+  and `setAccessToken(token)` keeps the one the user typed.
+- `WebSocketServerConnection` receives an `AccessTokenStore` through its constructor (`main.tsx` creates it) and always connects to the relative `/ws` (`wss` on https), sends `auth` first and
   reports `open` on `auth.ok`. `auth.failed` or close code `4401` clears the stored token, reports
   `unauthorized` and stops. Other closes reconnect with exponential backoff from 500 ms to a 10 s cap, reset
   after a successful auth. Commands sent while not `open` are queued and flushed after `auth.ok`. Every frame
   goes through `parseServerEvent`; invalid frames are dropped with `console.warn`.
-- `ConnectionProvider` owns the token state and the connection lifecycle: it connects when a token exists and
+- `ConnectionProvider` owns the token state and the connection lifecycle: it asks the connection for the token
+  (`hasAccessToken`, `setAccessToken`), connects when one exists and
   exposes `status`, `hasToken` and `submitToken` through `useConnection()`. Without a token (or after
   `unauthorized`) `AppLayout` renders `MissingTokenPage`.
-- The token lives in `localStorage` (`arc.accessToken`). A `#token=` URL fragment replaces it and is removed
+- `AccessTokenStore` (`connection/access-token-store.ts`) keeps the token in `localStorage` (`arc.accessToken`) with `read`, `store`, `clear` and `load`. `load` first takes a `#token=` URL fragment into storage and removes it
   with `history.replaceState`. Every storage access is wrapped in `try/catch`.
 - The app always connects to the relative `/ws` (`wss` on https pages). Vite proxies `/ws` and `/health` to the server in `dev` and `preview` without `changeOrigin`, so the server's origin check sees a same-origin request; the target port is the `PORT` of the root `.env` (default `3000`). nginx proxies the same path in production.
 
@@ -70,7 +73,8 @@ packages/web/src/
 - Specs sit next to the file under test (`*.spec.ts`, `*.spec.tsx`) and run in the Vitest project `web`
   (jsdom, globals, `@testing-library/jest-dom`).
 - Use `FakeServerConnection` from `src/test/fake-server-connection.ts` for components; it records sent
-  commands and lets the test emit events and statuses.
+  commands, lets the test emit events and statuses, and keeps the token in memory (`accessToken`, a token at the start;
+  set it to `null` for a signed-out spec).
 - The browser `WebSocket` is an external I/O boundary: stub it with `vi.stubGlobal` and fake timers.
 - Target 100% coverage outside `components/ui`.
 

@@ -1,6 +1,6 @@
 import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
 
-import { readAccessToken, storeAccessToken } from './access-token.js';
+import { AccessTokenStore } from './access-token-store.js';
 import type { ConnectionStatus } from './server-connection.js';
 import { WebSocketServerConnection } from './websocket-server-connection.js';
 
@@ -44,6 +44,7 @@ function latest() {
 
 describe('WebSocketServerConnection', () => {
   let connection: WebSocketServerConnection;
+  let tokens: AccessTokenStore;
   let statuses: ConnectionStatus[];
   let events: ServerEvent[];
 
@@ -52,8 +53,9 @@ describe('WebSocketServerConnection', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     FakeWebSocket.instances = [];
     localStorage.clear();
-    storeAccessToken('secret');
-    connection = new WebSocketServerConnection();
+    tokens = new AccessTokenStore();
+    tokens.store('secret');
+    connection = new WebSocketServerConnection(tokens);
     statuses = [];
     events = [];
     connection.onStatus(status => statuses.push(status));
@@ -90,8 +92,26 @@ describe('WebSocketServerConnection', () => {
     expect(latest().url).toBe('wss://example.com/ws');
   });
 
+  it('has a token when one is stored or comes in the link, and none once it is cleared', () => {
+    expect(connection.hasAccessToken()).toBe(true);
+
+    tokens.clear();
+    expect(connection.hasAccessToken()).toBe(false);
+
+    history.replaceState(null, '', '/#token=from-link');
+    expect(connection.hasAccessToken()).toBe(true);
+    expect(tokens.read()).toBe('from-link');
+    history.replaceState(null, '', '/');
+  });
+
+  it('stores the token it is given', () => {
+    connection.setAccessToken('given');
+
+    expect(tokens.read()).toBe('given');
+  });
+
   it('reports unauthorized without connecting when there is no token', () => {
-    localStorage.clear();
+    tokens.clear();
     connection.connect();
     expect(FakeWebSocket.instances).toHaveLength(0);
     expect(statuses).toEqual(['unauthorized']);
@@ -148,7 +168,7 @@ describe('WebSocketServerConnection', () => {
     latest().receive({ type: 'auth.failed' });
 
     expect(statuses.at(-1)).toBe('unauthorized');
-    expect(readAccessToken()).toBeNull();
+    expect(tokens.read()).toBeNull();
     expect(latest().closed).toBe(true);
 
     latest().serverClose(4401);
@@ -161,7 +181,7 @@ describe('WebSocketServerConnection', () => {
     latest().serverClose(4401);
 
     expect(statuses.at(-1)).toBe('unauthorized');
-    expect(readAccessToken()).toBeNull();
+    expect(tokens.read()).toBeNull();
     vi.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });

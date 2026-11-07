@@ -1,7 +1,9 @@
-import { clearAccessToken, loadAccessToken, readAccessToken, storeAccessToken } from './access-token.js';
+import { AccessTokenStore } from './access-token-store.js';
 
 
-describe('access token', () => {
+describe('AccessTokenStore', () => {
+  const tokens = new AccessTokenStore();
+
   beforeEach(() => {
     localStorage.clear();
     history.replaceState(null, '', '/');
@@ -12,35 +14,35 @@ describe('access token', () => {
   });
 
   it('stores, reads and clears the token', () => {
-    storeAccessToken('abc');
-    expect(readAccessToken()).toBe('abc');
-    clearAccessToken();
-    expect(readAccessToken()).toBeNull();
+    tokens.store('abc');
+    expect(tokens.read()).toBe('abc');
+    tokens.clear();
+    expect(tokens.read()).toBeNull();
   });
 
   it('replaces the stored token with the fragment token and strips the fragment', () => {
-    storeAccessToken('old');
+    tokens.store('old');
     history.replaceState(null, '', '/c/1?x=1#token=new%2Ftoken');
 
-    expect(loadAccessToken()).toBe('new/token');
+    expect(tokens.load()).toBe('new/token');
     expect(location.hash).toBe('');
     expect(location.pathname + location.search).toBe('/c/1?x=1');
   });
 
   it('keeps the stored token when the fragment has no token', () => {
-    storeAccessToken('old');
+    tokens.store('old');
     history.replaceState(null, '', '/#other');
-    expect(loadAccessToken()).toBe('old');
+    expect(tokens.load()).toBe('old');
   });
 
   it('strips an empty fragment token without storing it', () => {
     history.replaceState(null, '', '/#token=');
-    expect(loadAccessToken()).toBeNull();
+    expect(tokens.load()).toBeNull();
     expect(location.hash).toBe('');
   });
 
   it('returns null without a token', () => {
-    expect(loadAccessToken()).toBeNull();
+    expect(tokens.load()).toBeNull();
   });
 
   it('survives storage that throws', () => {
@@ -54,8 +56,8 @@ describe('access token', () => {
       throw new Error('blocked');
     });
 
-    expect(readAccessToken()).toBeNull();
-    expect(() => storeAccessToken('x')).not.toThrow();
-    expect(() => clearAccessToken()).not.toThrow();
+    expect(tokens.read()).toBeNull();
+    expect(() => tokens.store('x')).not.toThrow();
+    expect(() => tokens.clear()).not.toThrow();
   });
 });

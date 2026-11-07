@@ -2,7 +2,6 @@ import { act, render, screen } from '@testing-library/react';
 
 import { FakeServerConnection } from '../test/fake-server-connection.js';
 
-import { storeAccessToken } from './access-token.js';
 import { ConnectionProvider, useConnection } from './connection-context.js';
 
 
@@ -18,13 +17,7 @@ function Probe() {
 }
 
 describe('ConnectionProvider', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    history.replaceState(null, '', '/');
-  });
-
   it('connects when a token is stored and disconnects on unmount', () => {
-    storeAccessToken('t');
     const connection = new FakeServerConnection();
     const { unmount } = render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
 
@@ -38,18 +31,18 @@ describe('ConnectionProvider', () => {
 
   it('waits for a token, stores the submitted one and connects', () => {
     const connection = new FakeServerConnection();
+    connection.accessToken = null;
     render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
     expect(connection.connectCalls).toBe(0);
     expect(screen.getByTestId('token')).toHaveTextContent('false');
 
     act(() => screen.getByText('submit').click());
-    expect(localStorage.getItem('arc.accessToken')).toBe('new');
+    expect(connection.accessToken).toBe('new');
     expect(connection.connectCalls).toBe(1);
     expect(screen.getByTestId('token')).toHaveTextContent('true');
   });
 
   it('drops the token flag when the connection is unauthorized', () => {
-    storeAccessToken('t');
     const connection = new FakeServerConnection();
     render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
 

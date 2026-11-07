@@ -3,7 +3,6 @@ import { act, render } from '@testing-library/react';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { VirtuosoMockContext } from 'react-virtuoso';
 
-import { storeAccessToken } from '../connection/access-token.js';
 import { ConnectionProvider } from '../connection/connection-context.js';
 import { routes } from '../router.js';
 import { ThemeProvider } from '../theme/theme-provider.js';
@@ -29,7 +28,6 @@ export function userEntry(id: string, text = id): ConversationEntry {
 
 export function renderApp(path = '/'): AppHarness {
   localStorage.clear();
-  storeAccessToken('token');
   const connection = new FakeServerConnection();
   const router = createMemoryRouter(routes, { initialEntries: [path] });
   render(
