@@ -3,12 +3,12 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { IFileSystemPort } from '../ports/file-system.port.js';
 import {
   acpHarness,
   createProcessRunnerMock,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
+import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { CodexAdapter } from './codex.adapter.js';
 
@@ -18,13 +18,15 @@ vi.mock('node:stream', async () =>
 vi.mock('@agentclientprotocol/sdk', async () =>
   (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
-function fileSystemStub(resolvedInPath: string | null = null): IFileSystemPort {
-  return {
-    resolveInPath: vi.fn().mockReturnValue(resolvedInPath),
-  } as unknown as IFileSystemPort;
+function fileSystemStub(binaryPath: string | null = null): StubFileSystem {
+  const fileSystem = new StubFileSystem();
+  if (binaryPath) {
+    fileSystem.addBinary('codex', binaryPath);
+  }
+  return fileSystem;
 }
 
-function buildAdapter(fileSystem: IFileSystemPort = fileSystemStub()) {
+function buildAdapter(fileSystem: StubFileSystem = fileSystemStub()) {
   const { runner, spawn } = createProcessRunnerMock();
   return { adapter: new CodexAdapter(fileSystem, runner), spawn, runner };
 }

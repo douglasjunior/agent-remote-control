@@ -14,9 +14,9 @@ import { DiscordActivityFormatter } from '../formatters/discord-activity.formatt
 import { DiscordAttachmentService } from '../services/discord-attachment.service.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { DiscordConversationService } from '../services/discord-conversation.service.js';
+import { DiscordThrottler } from '../services/discord-throttler.service.js';
+import { DiscordTypingIndicator } from '../services/discord-typing-indicator.service.js';
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
-import { DiscordThrottler } from '../utils/discord-throttler.util.js';
-import { DiscordTypingIndicator } from '../utils/discord-typing-indicator.util.js';
 
 
 const DISCORD_MESSAGE_LIMIT = 2000;

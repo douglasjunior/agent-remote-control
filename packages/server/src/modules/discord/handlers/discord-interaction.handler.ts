@@ -11,8 +11,8 @@ import { DiscordActivityFormatter } from '../formatters/discord-activity.formatt
 import type { StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
 import { DiscordConversationService } from '../services/discord-conversation.service.js';
+import { DiscordTypingIndicator, type TypingChannel } from '../services/discord-typing-indicator.service.js';
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
-import { DiscordTypingIndicator, type TypingChannel } from '../utils/discord-typing-indicator.util.js';
 
 
 const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model or language.';

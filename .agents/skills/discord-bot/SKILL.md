@@ -195,7 +195,7 @@ and formatted by `DiscordActivityFormatter`:
 
 ## Typing Indicator and Inactivity Watchdog
 
-While a turn runs in `DiscordMessageHandler`, the visual typing feedback ("typing...") is managed by `DiscordTypingIndicator` (`utils/discord-typing-indicator.util.ts`):
+While a turn runs in `DiscordMessageHandler`, the visual typing feedback ("typing...") is managed by `DiscordTypingIndicator` (`services/discord-typing-indicator.service.ts`, a plain class the handler creates per turn):
 
 - **Initial trigger and periodic repetition**: when processing of a turn starts, `start()` fires `sendTyping()` immediately in the channel and schedules repetitions every `8000ms` (`intervalMs` default). Rejections and exceptions in `sendTyping()` are silently suppressed.
 - **Inactivity watchdog and keepalive**: an inactivity timer set to 5 minutes (`idleTimeoutMs` default) stops the triggers if no activity is recorded. The `onActivity`, `onDelegation`, `onInterimMessage` and `onQuestion` callbacks call `keepAlive()`, restarting the watchdog countdown on each new activity.
@@ -207,7 +207,7 @@ While a turn runs in `DiscordMessageHandler`, the visual typing feedback ("typin
 The Discord API imposes strict rate limits on message edits (approximately
 1 edit per second per channel). Direct updates on every generating event would lead to 429 errors:
 
-- Use `DiscordThrottler` with a minimum interval of 1000ms to 1500ms between edit requests.
+- Use `DiscordThrottler` (`services/discord-throttler.service.ts`) with a minimum interval of 1000ms to 1500ms between edit requests.
 - Intermediate calls while a request is in flight are *coalesced*,
   keeping only the most recent state.
 - When the turn ends, you must run `await throttler.flush()` to ensure

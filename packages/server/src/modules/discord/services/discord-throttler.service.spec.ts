@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DiscordThrottler } from './discord-throttler.util.js';
+import { DiscordThrottler } from './discord-throttler.service.js';
 
 
 describe('DiscordThrottler', () => {

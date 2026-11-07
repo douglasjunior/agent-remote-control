@@ -99,10 +99,8 @@ Justified, because several classes need the same non-trivial rule and it must no
 
 - `protocol-tag.util.ts` (`parseTagAttributes`, `readTagBody`, `findCodeSpans`): the tag grammar read by
   `QuestionParserService`, `DelegationDetectorService` and `AgentProtocolService`.
-- `agent-profile.util.ts` (`resolveProfile`, `withProfiles`): the single fallback rule from a role to its
-  profile, used by the orchestrator, the settings store and the Discord formatter.
-- `conversation-entry.util.ts` (`questionEntry`, `submissionEntries`, `noticeEntry`): the mapping from
-  orchestrator models to protocol entries, used by every web use case and service that publishes entries.
+- `user-language.util.ts` (`normalizeUserLanguage`, `extractUserLanguage`): the rules for reading and validating the
+  language name the CEO writes, used by `UserLanguageService` and by the turn use case.
 
 Not justified, so the logic stays where it is used (a private method of its class, or inline):
 
@@ -111,7 +109,9 @@ Not justified, so the logic stays where it is used (a private method of its clas
 - A function with one consumer, however complex: it is that class's private method. Its test exercises it
   through the class.
 - A function that reads the environment, the clock or the file system: it is not pure, so it belongs to a
-  service or an adapter that can be replaced in tests.
+  service or an adapter that can be replaced in tests (`DataDirectoryService` reads `DATA_DIR` this way).
+- A class that holds state or timers, such as `DiscordThrottler` or `DiscordTypingIndicator`: it is not a function,
+  so it lives in `services/` even when a handler creates it with `new` for each turn.
 
 ### In classes, the helper is a private method
 

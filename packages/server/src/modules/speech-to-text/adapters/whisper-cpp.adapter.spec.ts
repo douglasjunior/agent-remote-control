@@ -1,8 +1,8 @@
 import { availableParallelism } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import type { IProcessRunnerPort, ProcessRunResult } from '../../agent/ports/process-runner.port.js';
+import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 
 import { WhisperCppAdapter } from './whisper-cpp.adapter.js';
@@ -13,8 +13,7 @@ const ENV_KEYS = ['STT_FFMPEG_BIN', 'STT_WHISPER_BIN', 'STT_MODEL_PATH', 'STT_MO
 describe('WhisperCppAdapter', () => {
   let runs: { command: string; args: readonly string[]; signal?: AbortSignal }[];
   let results: ProcessRunResult[];
-  let deleted: string[];
-  let transcriptText: string | null;
+  let fileSystem: StubFileSystem;
   let adapter: WhisperCppAdapter;
   const saved: Record<string, string | undefined> = {};
 
@@ -25,19 +24,14 @@ describe('WhisperCppAdapter', () => {
     }
     runs = [];
     results = [];
-    deleted = [];
-    transcriptText = '  hello world \n';
+    fileSystem = new StubFileSystem();
+    fileSystem.text = '  hello world \n';
     const runner = {
       run: async (command: string, args: readonly string[], options?: { signal?: AbortSignal }) => {
         runs.push({ command, args, signal: options?.signal });
         return results.shift() ?? { exitCode: 0, output: '' };
       },
     } as unknown as IProcessRunnerPort;
-    const fileSystem = {
-      joinPath: (...segments: string[]) => segments.join('/'),
-      readText: async () => transcriptText,
-      deleteFile: async (path: string) => { deleted.push(path); },
-    } as unknown as IFileSystemPort;
     adapter = new WhisperCppAdapter(runner, fileSystem, dataDirectoryAt('/data'));
   });
 
@@ -74,7 +68,7 @@ describe('WhisperCppAdapter', () => {
       '-otxt', '-of', base,
     ]);
     expect(ffmpeg!.signal).toBeInstanceOf(AbortSignal);
-    expect(deleted).toEqual([wavPath, `${base}.txt`]);
+    expect(fileSystem.deletedFiles).toEqual([wavPath, `${base}.txt`]);
   });
 
   it('should derive the model file from STT_MODEL', async () => {
@@ -112,7 +106,7 @@ describe('WhisperCppAdapter', () => {
   });
 
   it('should return an empty text when whisper writes no transcript', async () => {
-    transcriptText = null;
+    fileSystem.text = null;
 
     await expect(adapter.transcribe('/tmp/a.mp3')).resolves.toBe('');
   });
@@ -125,6 +119,6 @@ describe('WhisperCppAdapter', () => {
     expect((error as Error).message).toMatch(/^ffmpeg failed \(exit 1\): x+Invalid data$/);
     expect((error as Error).message.length).toBeLessThan(560);
     expect(runs).toHaveLength(1);
-    expect(deleted).toHaveLength(2);
+    expect(fileSystem.deletedFiles).toHaveLength(2);
   });
 });

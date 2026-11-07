@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DiscordTypingIndicator,
   type TypingChannel,
-} from './discord-typing-indicator.util.js';
+} from './discord-typing-indicator.service.js';
 
 
 describe('DiscordTypingIndicator', () => {

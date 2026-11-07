@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { IFileSystemPort } from '../../agent/ports/file-system.port.js';
+import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 
@@ -16,17 +16,12 @@ const attachment = (name: string, contentType: string): TurnAttachment => ({
 
 describe('TranscribeAudioAttachmentsUseCase', () => {
   let speechToText: StubSpeechToText;
-  let deleted: string[];
+  let fileSystem: StubFileSystem;
   let useCase: TranscribeAudioAttachmentsUseCase;
 
   beforeEach(() => {
     speechToText = new StubSpeechToText();
-    deleted = [];
-    const fileSystem = {
-      deleteFile: async (path: string) => {
-        deleted.push(path);
-      },
-    } as unknown as IFileSystemPort;
+    fileSystem = new StubFileSystem();
     useCase = new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem);
   });
 
@@ -69,7 +64,7 @@ describe('TranscribeAudioAttachmentsUseCase', () => {
       transcripts: [{ name: 'voice.ogg', text: 'run the tests' }],
       warnings: [],
     });
-    expect(deleted).toEqual(['/tmp/voice.ogg']);
+    expect(fileSystem.deletedFiles).toEqual(['/tmp/voice.ogg']);
   });
 
   it.each([
@@ -130,7 +125,7 @@ describe('TranscribeAudioAttachmentsUseCase', () => {
     expect(result.attachments).toEqual([audio]);
     expect(result.transcripts).toEqual([]);
     expect(result.warnings).toEqual(['⚠️ No speech was detected in "silence.ogg"; it was sent to the agent as an attachment.']);
-    expect(deleted).toEqual([]);
+    expect(fileSystem.deletedFiles).toEqual([]);
   });
 
   it('should keep the audio and warn when the transcription fails', async () => {

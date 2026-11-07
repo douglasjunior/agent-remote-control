@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { IFileSystemPort } from '../ports/file-system.port.js';
 import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
+import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { AcpAgentPortFactoryAdapter } from './acp-agent-port-factory.adapter.js';
 import { AntigravityAdapter } from './antigravity.adapter.js';
@@ -11,22 +11,14 @@ import { CopilotAdapter } from './copilot.adapter.js';
 import { CursorAdapter } from './cursor.adapter.js';
 
 
-class FakeFileSystem {
-  readonly binariesInPath = new Set<string>();
-
-  isInPath(binary: string): boolean {
-    return this.binariesInPath.has(binary);
-  }
-}
-
 describe('AcpAgentPortFactoryAdapter', () => {
-  let fileSystem: FakeFileSystem;
+  let fileSystem: StubFileSystem;
   let factory: AcpAgentPortFactoryAdapter;
 
   beforeEach(() => {
-    fileSystem = new FakeFileSystem();
+    fileSystem = new StubFileSystem();
     factory = new AcpAgentPortFactoryAdapter(
-      fileSystem as unknown as IFileSystemPort,
+      fileSystem,
       {} as IProcessRunnerPort,
     );
   });
@@ -50,7 +42,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
       ['cursor', 'cursor-agent'],
       ['cursor', 'agent'],
     ])('should offer %s when %s is in the PATH', (agentId, binary) => {
-      fileSystem.binariesInPath.add(binary);
+      fileSystem.addBinary(binary);
 
       expect(factory.isAgentAvailable(agentId)).toBe(true);
       expect(factory.listAvailableAgents().map(agent => agent.agentId)).toEqual([agentId]);
@@ -63,8 +55,8 @@ describe('AcpAgentPortFactoryAdapter', () => {
     });
 
     it('should keep the catalog order when listing the available agents', () => {
-      fileSystem.binariesInPath.add('codex');
-      fileSystem.binariesInPath.add('claude');
+      fileSystem.addBinary('codex');
+      fileSystem.addBinary('claude');
 
       expect(factory.listAvailableAgents()).toEqual([
         { agentId: 'claude', displayName: 'Claude Code' },
@@ -79,7 +71,7 @@ describe('AcpAgentPortFactoryAdapter', () => {
     it('should see an agent installed after the factory was created', () => {
       expect(factory.isAgentAvailable('copilot')).toBe(false);
 
-      fileSystem.binariesInPath.add('copilot');
+      fileSystem.addBinary('copilot');
 
       expect(factory.isAgentAvailable('copilot')).toBe(true);
     });
@@ -92,15 +84,15 @@ describe('AcpAgentPortFactoryAdapter', () => {
 
   describe('defaultAgentId', () => {
     it('should be agy when it is available', () => {
-      fileSystem.binariesInPath.add('claude');
-      fileSystem.binariesInPath.add('agy');
+      fileSystem.addBinary('claude');
+      fileSystem.addBinary('agy');
 
       expect(factory.defaultAgentId).toBe('agy');
     });
 
     it('should be the first available agent when agy is not installed', () => {
-      fileSystem.binariesInPath.add('codex');
-      fileSystem.binariesInPath.add('cursor-agent');
+      fileSystem.addBinary('codex');
+      fileSystem.addBinary('cursor-agent');
 
       expect(factory.defaultAgentId).toBe('codex');
     });

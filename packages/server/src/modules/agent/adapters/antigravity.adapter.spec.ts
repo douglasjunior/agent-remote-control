@@ -1,12 +1,12 @@
 import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { IFileSystemPort } from '../ports/file-system.port.js';
 import {
   acpHarness,
   createProcessRunnerMock,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
+import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { AntigravityAdapter } from './antigravity.adapter.js';
 
@@ -16,28 +16,8 @@ vi.mock('node:stream', async () =>
 vi.mock('@agentclientprotocol/sdk', async () =>
   (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
-function fileSystemStub(
-  overrides: {
-    resolvedInPath?: string | null;
-    readableFiles?: readonly string[];
-  } = {},
-): IFileSystemPort {
-  const readableSet = new Set(overrides.readableFiles ?? []);
-  return {
-    resolveInPath: vi.fn().mockReturnValue(overrides.resolvedInPath ?? null),
-    isReadableFile: vi
-      .fn()
-      .mockImplementation((path: string) => readableSet.has(path)),
-    readFile: vi.fn(),
-    writeFile: vi.fn(),
-    deleteFile: vi.fn(),
-    exists: vi.fn(),
-    createDirectory: vi.fn(),
-  } as unknown as IFileSystemPort;
-}
-
 function buildAdapter(
-  fileSystem: IFileSystemPort = fileSystemStub(),
+  fileSystem: StubFileSystem = new StubFileSystem(),
   preferredConfig?: { modelId?: string },
 ) {
   const { runner, spawn } = createProcessRunnerMock();
@@ -67,7 +47,7 @@ describe('AntigravityAdapter', () => {
 
   describe('spawnAgentProcess', () => {
     it('should spawn the source bridge via node when dist bridge is not readable', async () => {
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 
@@ -84,9 +64,8 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should spawn the dist bridge via node when nested dist bridge is readable', async () => {
-      const fs = fileSystemStub();
-      vi.mocked(fs.isReadableFile).mockImplementation((path: string) =>
-        path.includes('bridges/agy-acp-bridge.js'));
+      const fs = new StubFileSystem();
+      fs.isReadable = path => path.includes('bridges/agy-acp-bridge.js');
       const { runner, spawn: distSpawn } = createProcessRunnerMock();
       const distAdapter = new AntigravityAdapter(fs, runner);
 
@@ -100,9 +79,8 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should spawn the flat dist bridge when nested is not readable but flat is readable', async () => {
-      const fs = fileSystemStub();
-      vi.mocked(fs.isReadableFile).mockImplementation((path: string) =>
-        path.endsWith('adapters/agy-acp-bridge.js'));
+      const fs = new StubFileSystem();
+      fs.isReadable = path => path.endsWith('adapters/agy-acp-bridge.js');
       const { runner, spawn: distSpawn } = createProcessRunnerMock();
       const distAdapter = new AntigravityAdapter(fs, runner);
 
@@ -116,13 +94,13 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should support preferredConfig when passed', async () => {
-      const { adapter } = buildAdapter(fileSystemStub(), { modelId: 'gpt-5' });
+      const { adapter } = buildAdapter(new StubFileSystem(), { modelId: 'gpt-5' });
       await adapter.connect();
       expect(acpHarness.spawnedProcs).toHaveLength(1);
     });
 
     it('should spawn the bridge outside the host application directory', async () => {
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 
@@ -166,7 +144,7 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should withhold host credentials and configuration from the bridge', async () => {
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 
@@ -180,7 +158,7 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should withhold every variable that reveals the host application directory', async () => {
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 
@@ -198,7 +176,7 @@ describe('AntigravityAdapter', () => {
     });
 
     it('should point PWD at the directory the bridge runs in', async () => {
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 
@@ -209,7 +187,7 @@ describe('AntigravityAdapter', () => {
 
     it('should preserve unrelated variables the agent needs', async () => {
       process.env.SSH_AUTH_SOCK = '/tmp/ssh-agent.socket';
-      const { adapter, spawn } = buildAdapter(fileSystemStub());
+      const { adapter, spawn } = buildAdapter(new StubFileSystem());
 
       await adapter.connect();
 

@@ -1,13 +1,13 @@
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { IFileSystemPort } from '../ports/file-system.port.js';
 import {
   acpHarness,
   createProcessRunnerMock,
   modelConfigOption,
   resetAcpHarness,
 } from '../testing/acp-adapter-test-harness.js';
+import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { CursorAdapter } from './cursor.adapter.js';
 
@@ -17,13 +17,13 @@ vi.mock('node:stream', async () =>
 vi.mock('@agentclientprotocol/sdk', async () =>
   (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
 
-function fileSystemStub(binariesInPath: readonly string[] = []): IFileSystemPort {
-  return {
-    resolveInPath: vi.fn((binary: string) => (binariesInPath.includes(binary) ? `/usr/bin/${binary}` : null)),
-  } as unknown as IFileSystemPort;
+function fileSystemStub(binariesInPath: readonly string[] = []): StubFileSystem {
+  const fileSystem = new StubFileSystem();
+  binariesInPath.forEach(binary => fileSystem.addBinary(binary));
+  return fileSystem;
 }
 
-function buildAdapter(fileSystem: IFileSystemPort = fileSystemStub(['cursor-agent'])) {
+function buildAdapter(fileSystem: StubFileSystem = fileSystemStub(['cursor-agent'])) {
   const { runner, spawn } = createProcessRunnerMock();
   return { adapter: new CursorAdapter(fileSystem, runner), spawn };
 }
