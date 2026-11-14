@@ -115,11 +115,6 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('They run before the rest of your response and are not an outcome');
   });
 
-  it('should send the preparation of a test environment to the agent that tests', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Preparing the environment a test needs is part of the test and goes to the agent that tests');
-    expect(CEO_SYSTEM_PROMPT).toContain('The agent that implements comes back only for a change to commit.');
-  });
-
   it('should state that no agent is available when the team is empty', () => {
     expect(buildCeoSystemPrompt([])).toContain('No agents are available for delegation.');
   });

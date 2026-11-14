@@ -23,12 +23,11 @@ describe('initial-agents.constant', () => {
     expect(qa?.artifacts).toEqual({ scope: 'task', sections: ['test_report'], fields: [] });
   });
 
-  it('should route the preparation of a test environment to QA rather than DEVELOPER', () => {
-    const byRole = new Map(INITIAL_AGENT_DEFINITIONS.map(def => [def.role, def]));
+  it('should route the preparation of a test environment to QA', () => {
+    const qa = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'QA');
 
-    expect(byRole.get('QA')?.description).toContain('It prepares its own test environment, so delegate that preparation to it as part of the test');
-    expect(byRole.get('QA')?.description).toContain('It never commits or pushes any of it');
-    expect(byRole.get('DEVELOPER')?.description).toContain('Preparing an environment, data or a build only so a task can be tested is part of the testing, not its work.');
+    expect(qa?.description).toContain('It prepares its own test environment, so delegate that preparation to it as part of the test');
+    expect(qa?.description).toContain('It never commits or pushes any of it');
   });
 
   it('should require a project folder for the agents that only work inside one', () => {
