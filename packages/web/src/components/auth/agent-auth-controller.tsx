@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { type MouseEvent, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
 import { Button } from '../ui/button.js';
@@ -12,6 +12,17 @@ import { useAgentAuthStatus } from './use-agent-auth-status.js';
 const SUCCESS_TOAST_MS = 5_000;
 
 const toastId = (agentId: string) => `auth-${agentId}`;
+
+/**
+ * A toast action that keeps its toast: sonner removes a toast after any action click that does not prevent the
+ * default, and here the login state, not the click, decides what the toast shows next.
+ */
+function keepToast(onClick: () => void) {
+  return (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    onClick();
+  };
+}
 
 /**
  * Owns the login state of the agents: the header popover, and one toast per agent that cannot run
@@ -52,7 +63,7 @@ export function AgentAuthController() {
         case 'idle':
           toast.warning(`${name} is not logged in`, {
             ...base,
-            action: { label: 'Authenticate', onClick: () => login(agent.agentId) },
+            action: { label: 'Authenticate', onClick: keepToast(() => login(agent.agentId)) },
           });
           break;
         case 'starting':
@@ -67,14 +78,14 @@ export function AgentAuthController() {
                 {state.code && <LoginCode code={state.code} />}
               </span>
             ),
-            action: { label: 'Cancel', onClick: () => cancel(agent.agentId) },
+            action: { label: 'Cancel', onClick: keepToast(() => cancel(agent.agentId)) },
           });
           break;
         case 'verifying':
           toast.loading('Checking the code…', {
             ...base,
             description: `Finishing the ${name} login.`,
-            action: { label: 'Cancel', onClick: () => cancel(agent.agentId) },
+            action: { label: 'Cancel', onClick: keepToast(() => cancel(agent.agentId)) },
           });
           break;
         case 'prompt':
@@ -89,14 +100,14 @@ export function AgentAuthController() {
                 </Button>
               </span>
             ),
-            action: { label: 'Enter code', onClick: () => setOpen(true) },
+            action: { label: 'Enter code', onClick: keepToast(() => setOpen(true)) },
           });
           break;
         case 'failed':
           toast.error(`${name} login failed`, {
             ...base,
             description: state.reason,
-            action: { label: 'Try again', onClick: () => login(agent.agentId) },
+            action: { label: 'Try again', onClick: keepToast(() => login(agent.agentId)) },
           });
           break;
       }

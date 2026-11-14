@@ -20,4 +20,5 @@
 - Nothing is shown before the first answer, and an `unknown` agent never gets one.
 - The toast text follows the login state: "is not logged in" with an Authenticate action; starting; the link ("Open login page", `target="_blank"`, `rel="noopener noreferrer"`, rendered only for `https:` URLs by `safeLoginUrl`) with the one-time code and its copy button and a Cancel action; for a pasted code, an "Enter code" action that opens the popover; failure with the reason and a Try again action.
 - A completed login shows an auto-dismissing success toast.
+- Every toast action goes through `keepToast`, which prevents the click's default: sonner removes a toast 200 ms after an action click otherwise, and the login state, not the click, decides what the toast shows next.
 - The code the browser shows is typed in the popover's `AgentLoginCard`, not in the toast: an input inside a toast that cannot be dismissed loses focus on every toast update. For the same reason a toast carries a single action button (sonner ignores `cancel` on a toast that is not dismissible), so Cancel on the code toast is a button in its description.

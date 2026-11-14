@@ -118,6 +118,21 @@ describe('AgentAuthController', () => {
     expect(input).not.toBeInTheDocument();
   });
 
+  it('should keep the login toast after its action opens the code input', async () => {
+    const { connection } = renderApp();
+    const user = userEvent.setup();
+    emitStatus(connection, ['claude', 'unauthenticated']);
+    emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
+
+    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await user.keyboard('{Escape}');
+    // Sonner removes a toast 200 ms after an action click that does not prevent the default.
+    await act(() => new Promise(resolve => setTimeout(resolve, 400)));
+
+    expect(screen.getByText('Log in to Claude Code')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enter code' })).toBeInTheDocument();
+  });
+
   it('should tell the user the code is being checked, in the dialog and in the toast', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
