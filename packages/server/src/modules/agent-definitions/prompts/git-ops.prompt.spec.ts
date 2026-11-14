@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from './git-ops.prompt.js';
-import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('git-ops.prompt', () => {
@@ -70,8 +69,9 @@ describe('git-ops.prompt', () => {
     expect(GIT_OPS_TURN_REMINDER).toContain('<final_response>');
   });
 
-  it('should explain to the git ops agent how to ask the user, in the prompt and in every turn', () => {
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
-    expect(GIT_OPS_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
+  it('should bring the decisions the user must make back to the caller instead of asking', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).not.toContain('<question');
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('name it in your final answer for the caller to decide with the user');
+    expect(GIT_OPS_TURN_REMINDER).toContain('You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.');
   });
 });

@@ -73,6 +73,7 @@ describe('delegation-protocol skill', () => {
 
   it('should leave the agents questions to the user and hand their documents to the next agent', () => {
     expect(skill).toContain('never repeat its questions to the user or answer them on the user\'s behalf');
+    expect(skill).toContain('The other agents never ask the user: a decision they need comes back in their result');
     expect(skill).toContain('authorize reading that exact path in the specification of the agent that continues the work');
   });
 

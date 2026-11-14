@@ -23,7 +23,7 @@ describe('response-protocol skill', () => {
   it('should list questions to the user as an outcome that continues the turn', () => {
     expect(skill).toContain('- **Questions**: one or more `<question>` tags');
     expect(skill).toContain('Never combine questions with delegations or attachments.');
-    expect(skill).toContain('## Questions to the User\nWhen the work cannot go on without a decision only the user can make');
+    expect(skill).toContain('## Questions to the User\nThe `asking-the-user` skill has the guide: read it before asking.');
   });
 
   it('should cover every pending request and report each agent result', () => {

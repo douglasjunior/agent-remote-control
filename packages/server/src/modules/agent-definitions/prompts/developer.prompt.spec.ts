@@ -7,7 +7,6 @@ import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from './developer.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('developer.prompt', () => {
@@ -75,8 +74,9 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_TURN_REMINDER).toContain('<final_response>');
   });
 
-  it('should explain to the developer how to ask the user, in the prompt and in every turn', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
-    expect(DEVELOPER_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
+  it('should bring the decisions the user must make back to the caller instead of asking', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('<question');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('stop and report the conflict and the options in your final answer instead of choosing silently');
+    expect(DEVELOPER_TURN_REMINDER).toContain('You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.');
   });
 });

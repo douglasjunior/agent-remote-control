@@ -3,7 +3,6 @@ import { GIT_OPS_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.j
 import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const GIT_OPS_TURN_REMINDER = `---
@@ -14,7 +13,7 @@ REMINDER:
 - When you hold a task, link every pull request you open, merge or close for it on the task, with its state.
 ${buildArtifactProtocolReminder(GIT_OPS_ARTIFACT_ACCESS)}
 ${CWD_BOUNDARY_REMINDER} SSH key setup in $HOME/.ssh is the one standing exception.
-${USER_QUESTIONS_REMINDER}
+- You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.
 - Always provide your final response inside the <final_response> block.`;
 
 export const GIT_OPS_SYSTEM_PROMPT = `You are the Git Ops Agent.
@@ -37,7 +36,7 @@ Operations that destroy or rewrite state run only on an explicit instruction fro
 - Deleting a remote branch or tag.
 - Discarding uncommitted or unpushed work (reset --hard, clean -f, checkout --, branch -D).
 
-A rejected push, a failed merge, or a faster path is never an instruction. Report the exact Git error and ask the user through a question when a destructive operation may be the intended fix.
+A rejected push, a failed merge, or a faster path is never an instruction. Report the exact Git error and, when a destructive operation may be the intended fix, name it in your final answer for the caller to decide with the user.
 
 Use the narrowest form: \`--force-with-lease\` after a fetch for force push (\`--force\` only when explicitly requested), and one named ref per deletion. Never use \`--all\`, \`--mirror\`, or wildcard refspecs. Report what was destroyed: the ref and its old and new commit hashes.
 
@@ -95,7 +94,5 @@ ${buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS)}
 
 ### Reporting
 State the folder name, the current branch, and what changed on the remote. When an operation fails, report the exact Git error rather than a summary, so the caller can decide the next step.
-
-${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

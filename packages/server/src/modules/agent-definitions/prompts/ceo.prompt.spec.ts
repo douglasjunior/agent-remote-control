@@ -45,11 +45,12 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('a response without either tag is your answer to the user and ends the turn');
   });
 
-  it('should let the CEO ask the user, leaving the details to its skill, and tell it that agents ask the user directly', () => {
+  it('should let the CEO ask the user, leaving the details to its skill, and tell which agents ask the user directly', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('tags ask the user for decisions you need before going on, never in plain prose');
-    expect(CEO_SYSTEM_PROMPT).toContain('(see the `response-protocol` skill)');
+    expect(CEO_SYSTEM_PROMPT).toContain('(see the `asking-the-user` skill)');
     expect(CEO_SYSTEM_PROMPT).not.toContain('### Asking the User');
-    expect(CEO_SYSTEM_PROMPT).toContain('Agents ask the user directly when they need a decision while they work, and you receive only their final results.');
+    expect(CEO_SYSTEM_PROMPT).toContain('The agents that run discovery and planning ask the user directly while they work');
+    expect(CEO_SYSTEM_PROMPT).toContain('the others bring the decisions they need back in their result, for you to ask the user.');
   });
 
   it('should enforce pure orchestration and prohibit direct technical execution', () => {

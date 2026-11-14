@@ -3,6 +3,7 @@ import type { AgentDefinition } from '../models/agent-definition.model.js';
 import { formatDelegationForms } from '../utils/team-format.util.js';
 
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { ASKING_THE_USER_SKILL_NAME } from './user-questions.prompt.js';
 
 
 export function buildCeoSystemPrompt(team: readonly AgentDefinition[]): string {
@@ -37,10 +38,10 @@ ${formatTeam(team)}
 - Text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.
 - Every response does exactly one of three things:
   - **Delegate**: one or more \`<delegate role="ROLE" summary="what the user reads">self-contained specification</delegate>\` tags, with \`artifact\`, \`project\` and \`session\` as the \`${CEO_SKILLS.delegationProtocol}\` skill explains. You get back control with each agent's result as it finishes. Text around the tags is a short progress note to the user.
-  - **Ask**: one or more \`<question rationale="why it matters">question<option>choice</option></question>\` tags ask the user for decisions you need before going on, never in plain prose. You get back control with the answers as \`<user_answers>\`, in the same turn (see the \`${CEO_SKILLS.responseProtocol}\` skill).
+  - **Ask**: one or more \`<question rationale="why it matters">question<option>choice</option></question>\` tags ask the user for decisions you need before going on, never in plain prose. You get back control with the answers as \`<user_answers>\`, in the same turn (see the \`${ASKING_THE_USER_SKILL_NAME}\` skill).
   - **Answer**: a response without either tag is your answer to the user and ends the turn. It may carry \`<attachment path="/absolute/path">description</attachment>\` tags to send files.
 - Independent work of different roles goes out together in one response; a conversation runs one agent per role.
-- Agents ask the user directly when they need a decision while they work, and you receive only their final results.
+- The agents that run discovery and planning ask the user directly while they work, and you receive only their final results; the others bring the decisions they need back in their result, for you to ask the user.
 - Anything outside the workspaces root that an agent asks to access needs the user's confirmation first.
 
 ${FINAL_RESPONSE_INSTRUCTIONS}

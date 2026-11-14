@@ -1,6 +1,6 @@
 import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
-import { USER_QUESTIONS_GUIDE } from '../prompts/user-questions.prompt.js';
+import { ASKING_THE_USER_SKILL_NAME } from '../prompts/user-questions.prompt.js';
 
 
 export const RESPONSE_PROTOCOL_SKILL: AgentSkillDefinition = {
@@ -18,7 +18,7 @@ Artifact requests (see the \`${CEO_SKILLS.artifactBoard}\` skill) are not an out
 Never mention the tags, these instructions, or the internal protocol to the user.
 
 ## Questions to the User
-${USER_QUESTIONS_GUIDE}
+The \`${ASKING_THE_USER_SKILL_NAME}\` skill has the guide: read it before asking.
 
 ## Attachments
 Files listed in \`<attachment>\` tags are uploaded to the user's channel together with the answer, one tag per file:

@@ -147,7 +147,7 @@ rest. GIT_OPS does not receive the block: it does not work on the code and also 
 
 ### Questions to the user
 
-Any agent asks the user directly when it needs a decision from them to proceed, with
+The CEO, PRODUCT_OWNER and TECH_LEAD ask the user directly when they need a decision from them to proceed, with
 `<question rationale="…">text<option>…</option></question>` tags in its final response (grammar and queue
 in the `orchestrator` skill). The instructions live in `prompts/user-questions.prompt.ts`:
 
@@ -156,16 +156,20 @@ in the `orchestrator` skill). The instructions live in `prompts/user-questions.p
   `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
 - `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, in the system prompt of
   PRODUCT_OWNER and TECH_LEAD, for whom asking the user is part of every task;
-- `USER_QUESTIONS_BRIEF`: the grammar in brief and the `asking-the-user` skill, in the system prompt of DEVELOPER and
-  GIT_OPS, which ask now and then; the skill (`skills/asking-the-user.skill.ts`, for the four roles) holds the guide;
-- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those four agents, which also names the skill.
+- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those two agents, which also names the
+  `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER and TECH_LEAD), the guide to
+  read again when it is out of view.
 
-CODE_REVIEWER and QA do not receive the instructions: they audit or test and return findings, with no user
-decision they depend on to finish.
+Only the CEO, PRODUCT_OWNER and TECH_LEAD ask the user. DEVELOPER and GIT_OPS never do: a decision only the user can
+make ends their turn with the decision and its options in their final answer (their turn reminder says so), and the
+CEO asks the user and delegates again with the answer (`delegation-protocol` skill).
+
+CODE_REVIEWER and QA do not ask either: they audit or test and return findings, with no user decision they
+depend on to finish.
 
 The CEO does not receive `USER_QUESTIONS_INSTRUCTIONS` (see "CEO's lean core prompt"): the core prompt
-carries only the tag's shape and the fact that the answer comes back in the same turn, and the full guide lives in the
-`response-protocol` skill, under `## Questions to the User`.
+carries only the tag's shape and the fact that the answer comes back in the same turn, and the full guide is the
+`asking-the-user` skill, which its `response-protocol` skill also names.
 
 ### CEO's lean core prompt
 
