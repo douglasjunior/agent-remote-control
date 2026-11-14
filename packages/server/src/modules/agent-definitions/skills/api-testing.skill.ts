@@ -1,8 +1,9 @@
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const API_TESTING_SKILL: AgentSkillDefinition = {
-  name: 'api-testing',
+  name: SKILL_NAMES.apiTesting,
   description: 'Testing an HTTP API or backend service in practice - calling its endpoints with Playwright request contexts or curl, checking status codes, bodies, validation, authorization and persisted effects. Read before testing any backend, API or service.',
   roles: ['QA'],
   buildContent: () => `# Testing an HTTP API

@@ -1,8 +1,9 @@
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const WEB_UI_TESTING_SKILL: AgentSkillDefinition = {
-  name: 'web-ui-testing',
+  name: SKILL_NAMES.webUiTesting,
   description: 'Testing a web interface in a real browser with Playwright - navigating, filling forms, asserting what the user sees, responsive and accessibility checks, and capturing screenshots as evidence. Read before testing any web front end.',
   roles: ['QA'],
   buildContent: () => `# Testing a Web Interface With Playwright

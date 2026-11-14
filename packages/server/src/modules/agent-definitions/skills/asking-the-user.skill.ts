@@ -1,9 +1,9 @@
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
-import { ASKING_THE_USER_SKILL_NAME } from '../prompts/user-questions.prompt.js';
 
 
 export const ASKING_THE_USER_SKILL: AgentSkillDefinition = {
-  name: ASKING_THE_USER_SKILL_NAME,
+  name: SKILL_NAMES.askingTheUser,
   description: 'How to ask the user for a decision - the <question> grammar, making each question stand on its own, recommending an option, several questions at once, attachments in the answers, and answers that time out. Read it before your first question in a session.',
   roles: ['CEO', 'PRODUCT_OWNER', 'TECH_LEAD'],
   buildContent: () => `# Asking the User

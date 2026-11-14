@@ -1,8 +1,9 @@
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const MOBILE_TESTING_SKILL: AgentSkillDefinition = {
-  name: 'mobile-testing',
+  name: SKILL_NAMES.mobileTesting,
   description: 'Testing a mobile app on an iOS simulator or Android emulator with the mobile-mcp tools - building and installing it, driving it through its accessibility tree, and capturing screenshots. Read before testing any mobile app (React Native, Flutter, native iOS or Android).',
   roles: ['QA'],
   buildContent: () => `# Testing a Mobile App With mobile-mcp

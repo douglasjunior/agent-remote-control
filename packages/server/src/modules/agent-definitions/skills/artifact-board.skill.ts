@@ -1,11 +1,11 @@
 import { CEO_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
-import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
-import { buildArtifactProtocolInstructions } from '../prompts/artifact-protocol.prompt.js';
+import { buildArtifactProtocolBody } from '../prompts/artifact-protocol.prompt.js';
 
 
 export const ARTIFACT_BOARD_SKILL: AgentSkillDefinition = {
-  name: CEO_SKILLS.artifactBoard,
+  name: SKILL_NAMES.artifactBoard,
   description: `How the CEO runs the board of artifacts of a conversation - the request grammar, turning a new request into tasks or adding it to existing ones, the status of each task and who works on it next, dependencies, and delegating with artifact="...". Use whenever a request arrives, an agent result comes back, or you need to know what is left to do.`,
   roles: ['CEO'],
   buildContent: () => `# Artifact Board
@@ -51,6 +51,7 @@ Each conversation is a mission with its own board. Features group the tasks of a
 - The agents that refine work on a feature too (\`artifact="F-1"\`), reading and writing every task under it; the others work on one task.
 - \`<agent_result>\` carries \`artifact="T-3"\` and \`artifact_status\` for the work done on it. Your answer to the user never leaves a task in a status its results contradict: a finished implementation is not left \`in_progress\`, nor an approved review \`in_review\`, nor a passed test \`in_testing\`.
 
-${buildArtifactProtocolInstructions(CEO_ARTIFACT_ACCESS).replace('### The Board', '## Request Grammar')}
+## Request Grammar
+${buildArtifactProtocolBody(CEO_ARTIFACT_ACCESS)}
 `,
 };

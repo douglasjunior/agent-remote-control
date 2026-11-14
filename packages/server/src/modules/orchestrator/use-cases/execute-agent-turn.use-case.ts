@@ -45,7 +45,7 @@ import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
 import { buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
-import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
+import { buildQuestionNotAllowedPrompt, buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
 import { buildLostSessionTaskPrompt, buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
 import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
@@ -866,18 +866,20 @@ export class ExecuteAgentTurnUseCase {
   ): Promise<string> {
     let response = firstResponse;
     let repairs = 0;
+    const asksUser = this.agentRegistry.getDelegationContract(asker.role).asksUser === true;
     for (;;) {
       const parsed = this.questionParser.parse(response);
       if (parsed.kind === 'none') {
         return response;
       }
-      if (parsed.kind === 'invalid') {
+      if (parsed.kind === 'invalid' || !asksUser) {
         if (repairs === this.MAX_REPAIR_ATTEMPTS) {
           return response;
         }
         repairs++;
-        this.logger.warn(`[Question Repair] Role=${asker.role}, Attempt=${repairs}: ${parsed.reason}`);
-        response = await runAgent(buildQuestionRepairPrompt(parsed.reason));
+        const reason = parsed.kind === 'invalid' ? parsed.reason : 'the role does not ask the user';
+        this.logger.warn(`[Question Repair] Role=${asker.role}, Attempt=${repairs}: ${reason}`);
+        response = await runAgent(parsed.kind === 'invalid' ? buildQuestionRepairPrompt(parsed.reason) : buildQuestionNotAllowedPrompt());
         continue;
       }
       repairs = 0;

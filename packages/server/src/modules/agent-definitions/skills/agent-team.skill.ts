@@ -1,18 +1,18 @@
-import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
-import { formatArtifactUse, formatDelegationForms, formatProjectAccess, formatSessionMode } from '../utils/team-format.util.js';
+import { formatArtifactUse, formatDelegationForms, formatProjectAccess, formatSessionMode, formatUserQuestions } from '../utils/team-format.util.js';
 
 
 export const AGENT_TEAM_SKILL: AgentSkillDefinition = {
-  name: CEO_SKILLS.agentTeam,
+  name: SKILL_NAMES.agentTeam,
   description: `Catalog of the agents the CEO can delegate to, with what each one does, its <delegate> tag forms, and its session mode. Use when choosing which agent handles a task or planning a request that spans several phases.`,
   roles: ['CEO'],
   buildContent: ({ team }) => `# Agent Team
 
 ## Choosing an Agent
 - Delegate each technical task to the agent whose description below best fits it.
-- Order the phases of one item by dependency: discovery of what to build before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${CEO_SKILLS.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${CEO_SKILLS.delegationProtocol}\` skill).
+- Order the phases of one item by dependency: discovery of what to build before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${SKILL_NAMES.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${SKILL_NAMES.delegationProtocol}\` skill).
 - Do not interview the user about requirements yourself: discovery belongs to the agent that runs it, which asks the user directly.
 - A repository that is not in the workspace yet has to be added before any agent that requires a project folder can work on it.
 
@@ -32,6 +32,7 @@ ${agent.description}
 - Delegate as ${formatDelegationForms(agent)}.
 - ${formatSessionMode(agent)}
 - ${formatProjectAccess(agent)}
-- ${formatArtifactUse(agent)}`)
+- ${formatArtifactUse(agent)}
+- ${formatUserQuestions(agent)}`)
     .join('\n\n');
 }

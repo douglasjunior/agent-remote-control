@@ -19,6 +19,7 @@ import {
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
 import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
+import { buildQuestionNotAllowedPrompt } from '../prompts/question-repair.prompt.js';
 import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
   buildAgentLanguagePrompt,
@@ -57,7 +58,7 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
   hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD'].includes(role));
   getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
   getDelegationContract = vi.fn(
-    (_role: string) => ({ project: 'optional', sessionMode: 'overridable' }) as DelegationContract,
+    (_role: string) => ({ project: 'optional', sessionMode: 'overridable', asksUser: true }) as DelegationContract,
   );
 
   getArtifactAccess = vi.fn((_role: string): ArtifactAccess => ({ scope: 'task', sections: [], fields: [] }));
@@ -3369,7 +3370,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       let created = 0;
       workspacePort.resolveRepositoryPath.mockImplementation((project: string) => `/mock/workspace/${project}`);
       wire(new StubAgentPortFactory(() => (created++ === 0 ? stubAgentPort : ports.shift()!)));
-      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable', readOnly: true });
+      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable', readOnly: true, asksUser: true });
       stubAgentPort.mockResponses = [
         '<delegate role="DEVELOPER" summary="Working on it" project="project-a">A.</delegate>\n<delegate role="CODE_REVIEWER" summary="Working on it" project="project-b">B.</delegate>',
         'Both done.',
@@ -3424,6 +3425,30 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(delegateStubPort.promptCalls[2]).toContain('kind="other">yes</answer>');
       expect(stubAgentPort.promptCalls[1]).toBe(toCeo('<agent_result role="DEVELOPER" agent="stub" model="default" effort="default">\nDone.\n</agent_result>'));
+    });
+
+    it('should send back the questions of a delegate that does not ask the user, for its result to carry the decision', async () => {
+      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it">Go.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['<question>Q?</question>', 'I need the user to choose between A and B.'];
+      const onQuestion = vi.fn();
+
+      await useCase.execute(turnRequest({ onQuestion }));
+
+      expect(onQuestion).not.toHaveBeenCalled();
+      expect(delegateStubPort.promptCalls[1]).toContain(buildQuestionNotAllowedPrompt());
+      expect(stubAgentPort.promptCalls[1]).toContain('I need the user to choose between A and B.');
+    });
+
+    it('should stop sending back the questions of a delegate that keeps asking, handing its response over', async () => {
+      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it">Go.</delegate>', 'Ok.'];
+      delegateStubPort.mockResponses = ['<question>Q1?</question>', '<question>Q2?</question>', '<question>Q3?</question>', '<question>Q4?</question>'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls.filter(prompt => prompt.includes(buildQuestionNotAllowedPrompt()))).toHaveLength(1);
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER"');
     });
 
     it('should end the turn as cancelled when the questions are cancelled while the delegate waits', async () => {
@@ -3707,7 +3732,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const contracts: Record<string, DelegationContract> = {
       DEVELOPER: { project: 'required', sessionMode: 'overridable', artifact: 'required' },
       CODE_REVIEWER: { project: 'required', readOnly: true, artifact: 'required', needsReviewableWork: true },
-      TECH_LEAD: { project: 'optional', readOnly: true, artifact: 'optional' },
+      TECH_LEAD: { project: 'optional', readOnly: true, artifact: 'optional', asksUser: true },
       GIT_OPS: { project: 'optional' },
     };
     const accesses: Record<string, ArtifactAccess> = {
@@ -3763,8 +3788,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('hands a delegate the results of requests that go with its questions over with the answers', async () => {
       seed({ id: 'T-1' });
-      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
-      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Starting.</artifact_comment><question>Which name?</question>', 'Built.'];
+      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="T-1">Plan T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Starting.</artifact_comment><question>Which name?</question>', 'Planned.'];
       const onQuestion = vi.fn();
 
       const turn = useCase.execute(turnRequest({ onQuestion }));

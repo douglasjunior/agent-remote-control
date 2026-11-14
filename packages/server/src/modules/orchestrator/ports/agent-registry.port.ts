@@ -9,6 +9,8 @@ export interface DelegationContract {
   readonly artifact?: 'required' | 'optional';
   /** The delegated artifact must already have work to inspect: a linked pull request or a recorded branch. */
   readonly needsReviewableWork?: true;
+  /** The agent asks the user directly; without it, a decision it needs comes back in its result. */
+  readonly asksUser?: true;
 }
 
 /** The artifact fields besides the sections; `pull_requests` adds or updates the links of the artifact. */

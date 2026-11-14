@@ -1,8 +1,9 @@
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const RUNNING_THE_APP_SKILL: AgentSkillDefinition = {
-  name: 'running-the-app',
+  name: SKILL_NAMES.runningTheApp,
   description: 'Starting the application of a project to test it - finding the documented commands, environment, services and ports, waiting until it is ready, and shutting everything down afterwards. Read before starting any application.',
   roles: ['QA'],
   buildContent: () => `# Running the Application

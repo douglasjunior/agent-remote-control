@@ -31,6 +31,13 @@ describe('agent-team skill', () => {
     expect(skill).toContain('- Delegate as <delegate role="GIT_OPS" summary="<summary>"> or <delegate role="GIT_OPS" summary="<summary>" project="<project-folder>">.');
     expect(skill).toContain('- Runs in "resume" session mode unless you set session="new" or session="resume".');
     expect(skill).toContain('- Modifies files, so no other agent that modifies files');
+    expect(skill).toContain('- Never asks the user: a decision it needs comes back in its result, for you to take to the user.');
+  });
+
+  it('should tell which agents ask the user directly', () => {
+    const owner = { ...gitOps, role: 'PRODUCT_OWNER' as const, delegation: { ...gitOps.delegation, asksUser: true as const } };
+
+    expect(AGENT_TEAM_SKILL.buildContent(skillContext({ team: [owner] }))).toContain('- Asks the user directly for the decisions it needs while it works.');
   });
 
   it('should put discovery before technical planning and keep requirement interviews with the agents', () => {

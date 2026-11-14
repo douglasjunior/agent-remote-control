@@ -1,9 +1,9 @@
-import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const SKILL_AUTHORING_SKILL: AgentSkillDefinition = {
-  name: CEO_SKILLS.skillAuthoring,
+  name: SKILL_NAMES.skillAuthoring,
   description: 'How the CEO creates and changes the skills agents read on demand - finding the existing skills, writing the name, description, roles and content in the expected shape, and the <skill_list> and <skill_write> requests. Use when the user asks to create, change or review a skill, or to teach an agent how to do something.',
   roles: ['CEO'],
   buildContent: () => `# Skill Authoring

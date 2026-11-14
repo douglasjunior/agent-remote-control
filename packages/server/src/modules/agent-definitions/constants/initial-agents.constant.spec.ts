@@ -60,6 +60,10 @@ describe('initial-agents.constant', () => {
     }
   });
 
+  it('should let only the agents that run discovery and planning ask the user', () => {
+    expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.asksUser).map(def => def.role)).toEqual(['PRODUCT_OWNER', 'TECH_LEAD']);
+  });
+
   it('should send the CEO prompt with every turn and let only the CEO write skills', () => {
     const ceo = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'CEO');
 
@@ -80,7 +84,7 @@ describe('initial-agents.constant', () => {
   it('should run product discovery read-only, in or out of a project, before technical planning', () => {
     const owner = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'PRODUCT_OWNER');
 
-    expect(owner?.delegation).toEqual({ project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional' });
+    expect(owner?.delegation).toEqual({ project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional', asksUser: true });
     expect(owner?.defaultSessionMode).toBe('resume');
     expect(owner?.description).toContain('before the Tech Lead');
     expect(owner?.description).toContain('interviews the user directly');

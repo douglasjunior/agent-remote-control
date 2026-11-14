@@ -5,6 +5,7 @@ import { skillContext } from '../testing/skill-context.fixture.js';
 
 
 import { BUILT_IN_SKILLS } from './built-in-skills.constant.js';
+import { SKILL_NAMES } from './skill-names.constant.js';
 
 
 describe('built-in-skills.constant', () => {
@@ -18,6 +19,10 @@ describe('built-in-skills.constant', () => {
       expect(skill.roles.length).toBeGreaterThan(0);
       expect(skill.roles.every(role => (AGENT_ROLES as readonly string[]).includes(role))).toBe(true);
     }
+  });
+
+  it('should name each built-in skill from the catalog of names, and give each name a skill', () => {
+    expect(BUILT_IN_SKILLS.map(skill => skill.name).sort()).toEqual(Object.values(SKILL_NAMES).sort());
   });
 
   it('should keep the orchestration skills with the CEO and the testing skills with QA', () => {

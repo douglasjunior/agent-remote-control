@@ -40,3 +40,9 @@ export function formatSessionMode(agent: AgentDefinition): string {
     ? `Runs in "${mode}" session mode unless you set session="new" or session="resume".`
     : `Always runs in "${mode}" session mode, so never set the session attribute.`;
 }
+
+export function formatUserQuestions(agent: AgentDefinition): string {
+  return agent.delegation.asksUser
+    ? 'Asks the user directly for the decisions it needs while it works.'
+    : 'Never asks the user: a decision it needs comes back in its result, for you to take to the user.';
+}

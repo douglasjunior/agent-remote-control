@@ -1,11 +1,11 @@
-import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 const WORKSPACE_MANIFEST_FILE = 'workspace-manifest.json';
 
 export const WORKSPACE_NAVIGATION_SKILL: AgentSkillDefinition = {
-  name: CEO_SKILLS.workspaceNavigation,
+  name: SKILL_NAMES.workspaceNavigation,
   description: `How the CEO finds its way around the workspaces root - listing projects, reading ${WORKSPACE_MANIFEST_FILE} to map repository URLs to project folders, and what to do when the manifest and the disk disagree. Use when locating a project, checking whether a repository is already in the workspace, or choosing a project folder for a delegation.`,
   roles: ['CEO'],
   buildContent: ({ workspaceDir }) => `# Workspace Navigation

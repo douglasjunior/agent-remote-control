@@ -6,6 +6,7 @@ import {
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { ArtifactAccess, ArtifactField } from '../../orchestrator/ports/agent-registry.port.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
 
 const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
@@ -19,16 +20,18 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
   pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request',
 };
 
-/** The skill that holds this grammar for every executor role, to read again when the system prompt is out of view. */
-export const BOARD_REQUESTS_SKILL_NAME = 'board-requests';
 
 /**
  * The board and its request grammar, written for one role from what it may do. Requests go inside the final
  * response; the backend answers them with `<request_results>` in the agent's next prompt.
  */
 export function buildArtifactProtocolInstructions(access: ArtifactAccess): string {
-  return `### The Board
-The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the business and technical refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
+  return `### The Board\n${buildArtifactProtocolBody(access)}`;
+}
+
+/** The protocol without a heading, for a skill that gives it its own. */
+export function buildArtifactProtocolBody(access: ArtifactAccess): string {
+  return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the business and technical refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
 ${ARTIFACT_SECTIONS.map(section => `- \`${section}\`: ${ARTIFACT_SECTION_TITLES[section]}`).join('\n')}
 
 You read and change the board with requests written inside your final response. The orchestrator carries them out in order, before anything else in the response, and answers with an \`<request_results>\` block, one \`<request_result>\` per request with \`status="ok"\` or \`status="error"\` and the reason. When the response also ${access.scope === 'board' ? 'delegates or asks the user questions' : 'asks the user questions'}, it goes on as usual and the results open your next prompt. Otherwise the results come back right away and the response is not taken as your final answer: give your final answer in a later response without requests. Write the tags as plain text, never inside code fences.
@@ -65,7 +68,7 @@ export function buildArtifactProtocolBrief(access: ArtifactAccess): string {
     access.scope === 'task'
       ? '- You read tasks only and change only the task you were delegated, whose content opens your prompt in a `[DELEGATED_ARTIFACT]` block.'
       : '- An artifact another agent holds is not changed under you; comment on it instead.',
-    `- Every other request and attribute (listing, dependencies, statuses, refinements, creating several artifacts at once) is in the \`${BOARD_REQUESTS_SKILL_NAME}\` skill, written for your role: read it before a request you are not sure of.`,
+    `- Every other request and attribute (listing, dependencies, statuses, refinements, creating several artifacts at once) is in the \`${SKILL_NAMES.boardRequests}\` skill, written for your role: read it before a request you are not sure of.`,
   ];
   return lines.join('\n');
 }
@@ -74,7 +77,7 @@ export function buildArtifactProtocolReminder(access: ArtifactAccess): string {
   const scope = access.scope === 'task'
     ? 'You read tasks and change only the task you were delegated.'
     : 'An artifact another agent holds is not changed under you; comment on it instead.';
-  return `- Read and change the board only with artifact requests; a response with nothing but requests gets their results right away, and your final answer comes in a response without them. ${scope} When the request grammar is no longer in front of you, read the \`${BOARD_REQUESTS_SKILL_NAME}\` skill before writing a request.`;
+  return `- Read and change the board only with artifact requests; a response with nothing but requests gets their results right away, and your final answer comes in a response without them. ${scope} When the request grammar is no longer in front of you, read the \`${SKILL_NAMES.boardRequests}\` skill before writing a request.`;
 }
 
 function buildRequests(access: ArtifactAccess): string {

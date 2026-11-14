@@ -1,9 +1,9 @@
-import { CEO_SKILLS } from '../constants/ceo-skills.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
 export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
-  name: CEO_SKILLS.delegationProtocol,
+  name: SKILL_NAMES.delegationProtocol,
   description: `Protocol the CEO follows to delegate work to agents - the <delegate> tag, the artifact and project folder, session mode, task specification, parallel delegations, agent results, redirecting a running agent, access requests outside the project folder, and delegation errors. Use before writing any delegation and whenever an agent result or a [DELEGATION_ERROR] arrives.`,
   roles: ['CEO'],
   buildContent: ({ workspaceDir }) => `# Delegation Protocol
@@ -11,7 +11,7 @@ export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
 ## Delegate Tag
 - The task specification goes inside \`<delegate role="ROLE" summary="what the user reads">...</delegate>\` in the final response block, as plain text without code fences around the tag.
 - Attributes: \`role\` and \`summary\` (both required), \`artifact\` with the id of the artifact the agent works on, \`project\` with the project folder, and \`session\` with \`new\` or \`resume\`, in double quotes: \`<delegate role="DEVELOPER" summary="Adding the login screen" artifact="T-3" session="new">\`. Use only the attributes the agent accepts, as listed in Your Team.
-- With \`artifact\`, the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out. See the \`${CEO_SKILLS.artifactBoard}\` skill.
+- With \`artifact\`, the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out. See the \`${SKILL_NAMES.artifactBoard}\` skill.
 - \`summary\` is one short sentence (up to 120 characters) in the user's language that tells a non-technical user what this agent is doing and why, such as "Planning how to build the login screen". It is shown next to the agent's name; the agent never sees it. Without jargon, file names or commands.
 - Only the text inside the tag reaches the agent. The text outside it is shown to the user as a short progress note, and the user does not see the tasks.
 
@@ -26,7 +26,7 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 | \`project="${workspaceDir}/my-app"\` | no | Absolute path. |
 | \`project="My-App"\` when the folder is \`my-app\` | no | Folder names are exact. |
 
-- Before delegating with a folder, confirm it exists by listing your CWD or with the \`${CEO_SKILLS.workspaceNavigation}\` skill.
+- Before delegating with a folder, confirm it exists by listing your CWD or with the \`${SKILL_NAMES.workspaceNavigation}\` skill.
 - The agent starts at the project root, where the project's own governance files live. Describe subdirectories and specific scopes in the specification, with paths relative to the project root.
 - Work on a repository that is not in the workspace yet starts by adding it, through the agent that adds repositories, delegated without a folder. Use the folder name that agent reports for every follow-up.
 

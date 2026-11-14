@@ -11,6 +11,7 @@ export interface AgentDelegationContract {
   readonly readOnly?: true;
   readonly artifact?: 'required' | 'optional';
   readonly needsReviewableWork?: true;
+  readonly asksUser?: true;
 }
 
 export interface AgentDefinition {
