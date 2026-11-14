@@ -101,7 +101,7 @@ workspaces root.
   description or roles is skipped with a warning. `write` creates or replaces one, atomically.
 - `AgentSkillsService` (bound to `IAgentSkillsPort`) merges both, a user skill replacing a built-in one of the same
   name (case-insensitive), roles included, and keeps for each role the skills whose `roles` name it. A role with
-  `writesSkills` (the CEO) also reads any skill, lists them all with their roles (`listAll`) and writes user skills
+  `writesSkills` (the CEO) also reads any skill, lists them all with their roles (`listAll`, also used by the web, with `readAny`, to browse them) and writes user skills
   (`write`), which the service validates: lowercase kebab-case name up to 64 characters, not a built-in name,
   description up to 1024 characters, content up to 30000, and known roles, stored in their canonical form. The CEO
   learns how in its `skill-authoring` skill.

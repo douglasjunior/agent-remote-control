@@ -40,24 +40,21 @@ export class AgentSkillsService implements IAgentSkillsPort {
 
   async read(role: string, name: string): Promise<AgentSkill | undefined> {
     const readable = (await this.allSkills()).filter(skill => this.writesSkills(role) || this.isFor(skill, role));
-    const skill = readable.find(candidate => candidate.name.toLowerCase() === name.toLowerCase());
-    if (!skill) {
-      return undefined;
-    }
-    const content = skill.buildContent({ team: this.registry.getTeam(role), workspaceDir: this.workspaceDirectory.resolve() });
-    return { name: skill.name, description: skill.description, content };
+    const skill = this.find(readable, name);
+    return skill && { name: skill.name, description: skill.description, content: this.contentOf(skill, role) };
   }
 
-  async listAll(role: string): Promise<readonly AgentSkillListing[] | undefined> {
-    if (!this.writesSkills(role)) {
-      return undefined;
-    }
-    return (await this.allSkills()).map(skill => ({
-      name: skill.name,
-      description: skill.description,
-      roles: skill.roles,
-      builtIn: BUILT_IN_SKILLS.includes(skill),
-    }));
+  async listAll(): Promise<readonly AgentSkillListing[]> {
+    return (await this.allSkills()).map(skill => this.listingOf(skill));
+  }
+
+  async readAny(name: string): Promise<(AgentSkill & AgentSkillListing) | undefined> {
+    const skill = this.find(await this.allSkills(), name);
+    return skill && { ...this.listingOf(skill), content: this.contentOf(skill, skill.roles[0] ?? '') };
+  }
+
+  writesSkills(role: string): boolean {
+    return this.registry.getDefinition(role)?.writesSkills === true;
   }
 
   async write(role: string, skill: AgentSkillInput): Promise<AgentSkillWriteResult> {
@@ -97,11 +94,19 @@ export class AgentSkillsService implements IAgentSkillsPort {
     return [...BUILT_IN_SKILLS.filter(skill => !names.has(skill.name.toLowerCase())), ...own];
   }
 
-  private isFor(skill: AgentSkillDefinition, role: string): boolean {
-    return skill.roles.some(allowed => allowed.toUpperCase() === role.toUpperCase());
+  private find(skills: readonly AgentSkillDefinition[], name: string): AgentSkillDefinition | undefined {
+    return skills.find(candidate => candidate.name.toLowerCase() === name.toLowerCase());
   }
 
-  private writesSkills(role: string): boolean {
-    return this.registry.getDefinition(role)?.writesSkills === true;
+  private contentOf(skill: AgentSkillDefinition, role: string): string {
+    return skill.buildContent({ team: this.registry.getTeam(role), workspaceDir: this.workspaceDirectory.resolve() });
+  }
+
+  private listingOf(skill: AgentSkillDefinition): AgentSkillListing {
+    return { name: skill.name, description: skill.description, roles: skill.roles, builtIn: BUILT_IN_SKILLS.includes(skill) };
+  }
+
+  private isFor(skill: AgentSkillDefinition, role: string): boolean {
+    return skill.roles.some(allowed => allowed.toUpperCase() === role.toUpperCase());
   }
 }

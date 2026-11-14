@@ -281,7 +281,7 @@ describe('RunAgentRequestsUseCase', () => {
       const listed = await useCase.execute([{ kind: 'skill_list' }], as('CEO'));
       skills.listing = [];
       const empty = await useCase.execute([{ kind: 'skill_list' }], as('CEO'));
-      skills.listing = undefined;
+      skills.writers = [];
       const refused = await useCase.execute([{ kind: 'skill_list' }], as('QA'));
 
       expect(listed).toContain('<request_result request="skill_list" status="ok">\n- api-testing (built-in; roles: QA): API.\n- electron-testing (user; roles: QA, DEVELOPER): Electron.\n</request_result>');

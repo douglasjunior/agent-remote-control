@@ -25,6 +25,8 @@ describe('parseClientCommand', () => {
     { type: 'files.close', requestId: 'r' },
     { type: 'agents.list' },
     { type: 'projects.list' },
+    { type: 'skills.list' },
+    { type: 'skill.get', name: 'api-testing' },
     { type: 'artifacts.list', conversationId: 'c' },
     { type: 'artifact.get', conversationId: 'c', id: 'T-1' },
     {
@@ -67,6 +69,7 @@ describe('parseClientCommand', () => {
     ['a blank conversation title', { type: 'conversation.rename', conversationId: 'c', title: '   ' }],
     ['an oversized conversation title', { type: 'conversation.rename', conversationId: 'c', title: 'x'.repeat(121) }],
     ['an archive without the flag', { type: 'conversation.archive', conversationId: 'c' }],
+    ['a skill without a name', { type: 'skill.get', name: '' }],
     ['an artifact without a title', { type: 'artifact.create', conversationId: 'c', requestId: 'r', artifact: { type: 'task', title: ' ', businessRefinement: false, technicalRefinement: false } }],
     ['an unknown artifact type', { type: 'artifact.create', requestId: 'r', artifact: { type: 'milestone', title: 'x', businessRefinement: false, technicalRefinement: false } }],
     ['an unknown artifact status', { type: 'artifact.update', conversationId: 'c', requestId: 'r', id: 'T-1', changes: { status: 'wip' } }],

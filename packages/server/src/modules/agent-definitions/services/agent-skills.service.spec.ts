@@ -75,10 +75,21 @@ describe('AgentSkillsService', () => {
 
     expect(await service.read('CEO', 'cypress')).toMatchObject({ content: 'Run it.' });
     expect(await service.read('QA', 'agent-team')).toBeUndefined();
-    expect(await service.listAll('QA')).toBeUndefined();
-    const listing = await service.listAll('CEO');
+    expect(service.writesSkills('QA')).toBe(false);
+    expect(service.writesSkills('CEO')).toBe(true);
+    const listing = await service.listAll();
     expect(listing).toContainEqual({ name: 'cypress', description: 'cypress skill.', roles: ['QA'], builtIn: false });
     expect(listing).toContainEqual(expect.objectContaining({ name: 'api-testing', roles: ['QA'], builtIn: true }));
+  });
+
+  it('should read any skill for a channel, built for the first role that reads it', async () => {
+    const { service, userSkills } = setup();
+    userSkills.skills = [userSkill('cypress', ['QA'])];
+
+    expect(await service.readAny('Agent-Team')).toMatchObject({ name: 'agent-team', roles: ['CEO'], builtIn: true });
+    expect((await service.readAny('agent-team'))?.content).not.toContain('### CEO');
+    expect(await service.readAny('cypress')).toEqual({ name: 'cypress', description: 'cypress skill.', roles: ['QA'], builtIn: false, content: 'Run it.' });
+    expect(await service.readAny('missing')).toBeUndefined();
   });
 
   it('should write a skill for known roles, in their canonical form', async () => {

@@ -87,7 +87,7 @@ describe('AgentAuthController', () => {
     emitLogin(connection, 'claude', { kind: 'url', url: 'javascript:alert(1)' });
 
     await screen.findByText('Log in to Claude Code');
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/skills']);
   });
 
   it('cancels a login from the toast', async () => {

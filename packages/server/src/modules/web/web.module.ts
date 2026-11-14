@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module.js';
+import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
@@ -24,6 +25,7 @@ import { WebConversationEventsService } from './services/web-conversation-events
 import { WebConversationTurnsService } from './services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
+import { WebSkillsService } from './services/web-skills.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
 import { ArchiveConversationUseCase } from './use-cases/archive-conversation.use-case.js';
@@ -41,7 +43,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
 
 
 @Module({
-  imports: [AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
+  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
   providers: [
     { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
@@ -50,6 +52,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     WebAgentQuotaService,
     WebAgentAuthService,
     WebArtifactsService,
+    WebSkillsService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,

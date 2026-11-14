@@ -3,7 +3,7 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, agent CLI login
+  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, agent CLI login
   (auth.* commands and events), /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
   access token or web conversations.
 ---
@@ -80,6 +80,10 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `IArtifactsPort.onChange` and broadcasts `artifact.updated { conversationId, artifact }` (a summary; a client showing the detail asks
   for it again) and `artifact.deleted` to every connection, whoever made the change, for web conversations only (`IConversationStorePort.exists`).
   `projects.list` answers the project folders of the workspace (`IWorkspacePort.listProjectFolders`), the values an artifact's project takes.
+- **Skills** (`WebSkillsService` over `IAgentSkillsPort`, from `AgentDefinitionsModule`): `skills.list` answers every skill with its roles
+  and whether it is built-in (`listAll`); `skill.get { name }` answers `skill.detail { name, skill }`, the skill with its content built for
+  the first role that reads it (`readAny`), or `skill: null` for an unknown name. The web only reads skills: the user changes a custom one
+  by asking the CEO, which writes it with `<skill_write>`.
   The artifact mutations are logged by type. A `delegation` entry carries `artifactId` when the agent held one.
 - Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`),
   `onInterimMessage` → `interim`, `onQuestion` → `question` (with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply), and, when a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`; the `TurnResult` becomes `agent_response`.

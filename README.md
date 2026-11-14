@@ -69,7 +69,7 @@ A browser interface to chat with the agents without Discord. It is a separate ap
 2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
 3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
 
-Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open.
+Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open. The book icon in the header opens the **skills** the agents read, with the roles that read each one and its full content; a custom skill has an "Ask the Coordinator" button that opens a conversation asking for a change to it.
 
 | Mode | Command | URL |
 |---|---|---|

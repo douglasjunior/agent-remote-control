@@ -8,6 +8,7 @@ import { artifactDetailSchema, artifactSummarySchema } from './artifact.js';
 import { attachmentSchema } from './attachment.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
+import { skillDetailSchema, skillSummarySchema } from './skill.js';
 
 
 export const interruptedWorkSchema = z.object({
@@ -82,6 +83,10 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
   /** The project folders of the workspace, the values an artifact's project takes. */
   z.object({ type: z.literal('projects.list'), projects: z.array(z.string()) }),
+  /** Every skill the agents read, built-in and the user's own. */
+  z.object({ type: z.literal('skills.list'), skills: z.array(skillSummarySchema) }),
+  /** Answers `skill.get`; `skill` is `null` when no skill has that name. */
+  z.object({ type: z.literal('skill.detail'), name: z.string(), skill: skillDetailSchema.nullable() }),
   /** The artifacts of a conversation: each conversation keeps the board of its own mission. */
   z.object({ type: z.literal('artifacts.list'), conversationId: z.string(), artifacts: z.array(artifactSummarySchema) }),
   z.object({ type: z.literal('artifact.detail'), conversationId: z.string(), artifact: artifactDetailSchema }),

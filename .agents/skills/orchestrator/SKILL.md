@@ -175,7 +175,9 @@ The skills each role reads on demand (`models/agent-skill.model.ts`: `AgentSkill
 
 - `list(role): Promise<readonly AgentSkillSummary[]>`: the catalog sent with the system prompt
 - `read(role, name): Promise<AgentSkill | undefined>`: the full skill, name matched case-insensitively
-- `listAll(role): Promise<readonly AgentSkillListing[] | undefined>`: every skill with its roles and whether it is built-in, for a role that writes skills
+- `listAll(): Promise<readonly AgentSkillListing[]>`: every skill with its roles and whether it is built-in, for a role that writes skills (checked with `writesSkills`) and for a channel acting for the user
+- `readAny(name)`: any skill with its listing, built for the first role that reads it, for a channel
+- `writesSkills(role): boolean`: whether the role lists every skill, reads any of them and writes user skills
 - `write(role, skill: AgentSkillInput): Promise<AgentSkillWriteResult>`: creates or replaces a user skill, `{ ok: false, error }` when refused
 
 The implementation is `AgentSkillsService` from `AgentDefinitionsModule` (built-in skills plus the user's own; see the
@@ -429,7 +431,7 @@ Every CEO and delegate response goes through `resolveAgentRequests` before it is
 reads the agent requests and the response without them, and `RunAgentRequestsUseCase` runs them in order: artifact requests on the board of the conversation
 under the access of the role (`IAgentRegistryPort.getArtifactAccess`), and the skill requests through `IAgentSkillsPort`:
 `<skill_read name="a,b"/>` (`read(role, name)`, the content returned as `<request_result request="skill_read" name="a,b">` with one `# Skill: <name>` block per skill; an unknown
-name fails the request and lists the skills of the role), and, for a role that writes skills, `<skill_list/>` (`listAll`, one line per skill with whether it is built-in, its roles and description)
+name fails the request and lists the skills of the role), and, for a role that writes skills (`writesSkills`), `<skill_list/>` (`listAll`, one line per skill with whether it is built-in, its roles and description)
 and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
 for the CEO, questions for a delegate) is classified from that rest and its `<request_results>` open the agent's next prompt
 (`PendingRequestResults`); any other one gets the results right away, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). A delegation with `artifact="T-1"` is validated against the board (`applyArtifact`): known, of a type the

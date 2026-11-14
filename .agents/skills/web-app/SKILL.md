@@ -35,13 +35,14 @@ packages/web/src/
 │   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
 │   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
 │   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
+│   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query
 ```
 
 ## App shell
 
-`AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`). "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
+`AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills link (an icon link with a tooltip, to `/skills`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`). "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
 
 ## Connection
 
@@ -97,6 +98,24 @@ packages/web/src/
 ## Conversation list
 
 `ConversationList` shows the conversations most recent first. Each row has an actions menu (an `IconButton` "Actions for <title>" over the row's right edge, shown on hover, on keyboard focus, while its menu is open and always on coarse pointers) with Rename and Archive or Unarchive, which send `conversation.rename` and `conversation.archive`; the list changes only with the `conversation.updated` the server broadcasts, upserted by the reducer like any other. Archived conversations (`archivedAt` set) leave the main list for an "Archived (n)" group at the bottom, collapsed unless the viewer opened it (`useStoredFlag`, `arc.archivedConversationsOpen`); they stay openable, and archiving the open conversation keeps it open. Renaming happens in place through `TitleInput` (Enter or leaving the field saves, Escape cancels without closing the drawer around it, an empty or unchanged title sends nothing), in the row and from the pencil next to the conversation title in the chat header. The row keeps its menu mounted while renaming, with `finalFocus` off, so closing the menu does not take the focus from the field.
+
+## Skills
+
+`/skills` and `/skills/:skillName` render `SkillsPage`, which sends `skills.list` on every `open` and `skill.get` for the
+skill in the route, keeping each `skill.detail` it receives (`null` for an unknown name). From 768 px the list and the
+skill sit side by side; below, the route shows one of them and the skill links back to the list.
+
+- `SkillList` filters by text (name or description) and by role (`ChoiceSelect` over the roles that read some skill),
+  and groups the skills in "Custom" (the user's, first) and "Built-in". Each row is a `NavLink` with the name, the
+  description clamped to two lines and `SkillRoles` (the agent color dot and label of each role).
+- `SkillDetail` shows the name, a Custom or Built-in badge, the description, the roles with their `AgentMark` and the
+  content as Markdown. A built-in skill is read-only. A custom one offers "Ask the Coordinator", which calls
+  `startConversation(changeSkillPrompt(name))`: the conversation is created and opened with `Change the skill "<name>": `
+  in its composer for the user to finish. The page lays out through a container query, since its width depends on the
+  docked conversation list.
+- `startConversation(prompt)` (in `ConversationsProvider`) keeps the prompt by request id and navigates with it in the
+  router state; `ConversationPage` reads it once, hands it to `ConversationView` as `initialPrompt` (the composer's first
+  text) and replaces the history entry without it, so a reload does not seed the composer again.
 
 ## Mission board (artifacts)
 

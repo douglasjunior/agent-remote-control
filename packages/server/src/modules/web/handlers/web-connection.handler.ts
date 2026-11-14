@@ -13,6 +13,7 @@ import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebSkillsService } from '../services/web-skills.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
 import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
@@ -76,6 +77,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
     private readonly renameConversation: RenameConversationUseCase,
     private readonly archiveConversation: ArchiveConversationUseCase,
+    private readonly skills: WebSkillsService,
   ) {}
 
   onModuleInit(): void {
@@ -168,6 +170,12 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'projects.list':
         connection.send({ type: 'projects.list', projects: [...await this.workspace.listProjectFolders()] });
+        return;
+      case 'skills.list':
+        connection.send({ type: 'skills.list', skills: await this.skills.list() });
+        return;
+      case 'skill.get':
+        connection.send({ type: 'skill.detail', name: command.name, skill: await this.skills.get(command.name) });
         return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);

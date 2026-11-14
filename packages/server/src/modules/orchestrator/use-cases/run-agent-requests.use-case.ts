@@ -94,10 +94,10 @@ export class RunAgentRequestsUseCase {
   }
 
   private async listSkills({ role }: AgentRequester): Promise<Result> {
-    const skills = await this.skills.listAll(role);
-    if (!skills) {
+    if (!this.skills.writesSkills(role)) {
       return { request: 'skill_list', failed: true, body: 'Listing the skills of every role is reserved to the agents that write skills.' };
     }
+    const skills = await this.skills.listAll();
     const lines = skills.map(skill => `- ${skill.name} (${skill.builtIn ? 'built-in' : 'user'}; roles: ${skill.roles.join(', ')}): ${skill.description}`);
     return { request: 'skill_list', body: lines.length > 0 ? lines.join('\n') : 'There are no skills.' };
   }

@@ -117,6 +117,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'auth.status.failed':
     case 'auth.login':
     case 'projects.list':
+    case 'skills.list':
+    case 'skill.detail':
     case 'artifacts.list':
     case 'artifact.detail':
     case 'artifact.updated':

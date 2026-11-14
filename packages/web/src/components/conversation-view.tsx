@@ -71,9 +71,11 @@ function PaneLink({ to, label, icon, active, badge }: {
   );
 }
 
-export function ConversationView({ conversationId, pane = { kind: 'chat' } }: {
+export function ConversationView({ conversationId, pane = { kind: 'chat' }, initialPrompt = '' }: {
   readonly conversationId: string;
   readonly pane?: ConversationPane;
+  /** Text the composer starts with, for the user to finish and send. */
+  readonly initialPrompt?: string;
 }) {
   const { connection, status } = useConnection();
   const { state, renameConversation } = useConversations();
@@ -90,7 +92,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' } }: {
   const feed = useRef<FeedHandle>(null);
   const tabbed = useMediaQuery(TABS_QUERY);
   const [panelOpen, setPanelOpen] = useStoredFlag(SQUAD_OPEN_KEY, true);
-  const [suggestion, setSuggestion] = useState({ text: '', nonce: 0 });
+  const [suggestion, setSuggestion] = useState({ text: initialPrompt, nonce: 0 });
   const noAgents = state.agents.length === 0;
 
   useEffect(() => {

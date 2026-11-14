@@ -10,7 +10,8 @@ import type { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 
 export class StubAgentSkillsPort implements IAgentSkillsPort {
   skills: Record<string, readonly AgentSkill[]> = {};
-  listing: readonly AgentSkillListing[] | undefined;
+  listing: readonly AgentSkillListing[] = [];
+  writers: readonly string[] = ['CEO'];
   writeResult: AgentSkillWriteResult = { ok: true, created: true };
   readonly written: AgentSkillInput[] = [];
 
@@ -22,8 +23,18 @@ export class StubAgentSkillsPort implements IAgentSkillsPort {
     return (this.skills[role] ?? []).find(skill => skill.name === name);
   }
 
-  async listAll(): Promise<readonly AgentSkillListing[] | undefined> {
+  async listAll(): Promise<readonly AgentSkillListing[]> {
     return this.listing;
+  }
+
+  async readAny(name: string): Promise<(AgentSkill & AgentSkillListing) | undefined> {
+    const listed = this.listing.find(skill => skill.name === name);
+    const skill = Object.values(this.skills).flat().find(candidate => candidate.name === name);
+    return listed && skill ? { ...listed, content: skill.content } : undefined;
+  }
+
+  writesSkills(role: string): boolean {
+    return this.writers.includes(role);
   }
 
   async write(_role: string, skill: AgentSkillInput): Promise<AgentSkillWriteResult> {

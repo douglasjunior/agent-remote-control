@@ -56,6 +56,8 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('files.close'), requestId: z.string() }),
   z.object({ type: z.literal('agents.list') }),
   z.object({ type: z.literal('projects.list') }),
+  z.object({ type: z.literal('skills.list') }),
+  z.object({ type: z.literal('skill.get'), name: z.string().min(1) }),
   z.object({ type: z.literal('artifacts.list'), conversationId: z.string() }),
   z.object({ type: z.literal('artifact.get'), conversationId: z.string(), id: z.string() }),
   z.object({ type: z.literal('artifact.create'), conversationId: z.string(), requestId: z.string(), artifact: artifactCreateInputSchema }),

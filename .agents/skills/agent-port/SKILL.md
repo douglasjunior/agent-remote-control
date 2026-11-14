@@ -67,7 +67,7 @@ same ACP session and the same `cwd`.
 - `cancel(): Promise<void>`: interrupts the running prompt through the cancellation ladder. With no running prompt it is a no-op, so a late cancellation does not abort the next turn.
 - `closeSession(): Promise<void>`: closes the active session, keeping the connection.
 - `disconnect(): Promise<void>`: discards the session, terminates the subprocess and clears the cached options.
-- `getAvailableModels(): AgentModelState | null`: published models and the active model.
+- `getAvailableModels(): AgentModelState | null`: published models and the active model. Grouped select options are flattened and each value listed once, the first occurrence kept, since some CLIs publish one value twice (Copilot's `auto`).
 - `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: the model's effort levels, read in an isolated probe session.
 - `setConfig(config: AgentConfig): Promise<void>`: applies model and/or effort to the active session and stores it as the preference for the next sessions.
 - `getLastRoundUsage(): Promise<AgentUsage | undefined>`: token usage of the last turn or via fallback.

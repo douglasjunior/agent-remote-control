@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
+import { StubAgentSkillsPort } from '../../orchestrator/testing/stub-agent-skills.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
@@ -11,6 +12,7 @@ import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebSkillsService } from '../services/web-skills.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
@@ -38,6 +40,7 @@ const OBSERVER_AND_CLIENT = 2;
 describe('WebConnectionHandler', () => {
   let transport: FakeClientTransport;
   let harness: ReturnType<typeof createWebHarness>;
+  let skills: StubAgentSkillsPort;
   let handler: WebConnectionHandler;
   const logContext = new ConversationLogContextService();
   let connection: FakeClientConnection;
@@ -48,6 +51,7 @@ describe('WebConnectionHandler', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
     harness = createWebHarness();
+    skills = new StubAgentSkillsPort();
     const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
     const conversationUploads = new WebConversationUploadsService(workspace, uploads);
@@ -80,6 +84,7 @@ describe('WebConnectionHandler', () => {
       workspace,
       new RenameConversationUseCase(store, events),
       new ArchiveConversationUseCase(store, events),
+      new WebSkillsService(skills),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -299,6 +304,24 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(sent()).toEqual([{ type: 'projects.list', projects: ['shop', 'web'] }]);
+    });
+
+    it('lists the skills and reads one, or tells that no skill has the name', async () => {
+      skills.listing = [{ name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true }];
+      skills.skills = { QA: [{ name: 'api-testing', description: 'API.', content: '# API' }] };
+
+      connection.receive({ type: 'skills.list' });
+      await settle();
+      connection.receive({ type: 'skill.get', name: 'api-testing' });
+      await settle();
+      connection.receive({ type: 'skill.get', name: 'missing' });
+      await settle();
+
+      expect(sent()).toEqual([
+        { type: 'skills.list', skills: [{ name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true }] },
+        { type: 'skill.detail', name: 'api-testing', skill: { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true, content: '# API' } },
+        { type: 'skill.detail', name: 'missing', skill: null },
+      ]);
     });
 
     it('creates, lists, reads, updates, comments on and deletes the artifacts of a conversation', async () => {
