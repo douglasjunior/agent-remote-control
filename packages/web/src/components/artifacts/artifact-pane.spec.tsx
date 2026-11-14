@@ -216,7 +216,7 @@ describe('ArtifactPane', () => {
     const items = within(activity).getAllByRole('listitem');
     expect(items[0]).toHaveTextContent('System');
     expect(items[0]).toHaveTextContent('Restarted');
-    expect(within(activity).getByRole('img', { name: 'Coordinator, idle' })).toBeInTheDocument();
+    expect(within(activity).getByRole('img', { name: 'CEO, idle' })).toBeInTheDocument();
     expect(within(activity).getByText('You')).toBeInTheDocument();
     expect(within(activity).getByText('In progress', { selector: 'span' })).toBeInTheDocument();
     expect(within(activity).getByText('Ready')).toBeInTheDocument();

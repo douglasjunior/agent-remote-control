@@ -33,7 +33,7 @@ const CLOSING_STATE = { finished: 'done', failed: 'failed', cancelled: 'idle' } 
 /**
  * The team as the current turn left it: every role of the team in order, then any other role delegated to.
  * A user message ends the turn that precedes it, except for delegations still open while a turn runs: the
- * coordinator accepts new messages while delegates keep working, so those stay in the team with their
+ * CEO accepts new messages while delegates keep working, so those stay in the team with their
  * activity. The agent whose question is still open is waiting, whatever was published after the question.
  * A delegation still open when no turn runs was stopped by a restart, so its agent is idle. An open
  * question outlives a restart, which leaves its agent waiting with no turn running.
@@ -93,7 +93,7 @@ export function deriveTeam(
 
   const roster = [...TEAM_ROLES, ...[...delegates.keys()].filter(role => !TEAM_ROLES.includes(role))];
   return roster.map((role): TeamMember => {
-    const member = role === CEO_ROLE ? coordinator(running, othersBusy, last) : delegates.get(role)?.member;
+    const member = role === CEO_ROLE ? ceo(running, othersBusy, last) : delegates.get(role)?.member;
     const identity = agentIdentity(role, member?.roleName);
     const found = activity.get(role);
     const base: TeamMember = { ...(member ?? { role, roleName: identity.label, state: 'idle', steps: 0 }), ...(found ? { steps: found.steps, doing: found.doing } : {}) };
@@ -108,7 +108,7 @@ export function deriveTeam(
   });
 }
 
-function coordinator(running: boolean, othersBusy: boolean, last: ConversationEntry | undefined): TeamMember {
+function ceo(running: boolean, othersBusy: boolean, last: ConversationEntry | undefined): TeamMember {
   const base = { role: CEO_ROLE, roleName: agentIdentity(CEO_ROLE).label, steps: 0 };
   if (running) {
     return { ...base, state: othersBusy ? 'idle' : 'working' };

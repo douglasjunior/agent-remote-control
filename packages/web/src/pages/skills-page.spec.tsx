@@ -59,7 +59,7 @@ describe('SkillsPage', () => {
     expect(within(pane).getByRole('heading', { name: 'api-testing', level: 2 })).toBeInTheDocument();
     expect(within(pane).getByText('Built-in')).toBeInTheDocument();
     expect(within(pane).getByText(/Built-in skills ship with the server and are read-only/)).toBeInTheDocument();
-    expect(within(pane).queryByRole('button', { name: 'Ask the Coordinator' })).not.toBeInTheDocument();
+    expect(within(pane).queryByRole('button', { name: 'Ask the CEO' })).not.toBeInTheDocument();
     expect(within(pane).getByText('Do it well.')).toBeInTheDocument();
   });
 
@@ -70,13 +70,13 @@ describe('SkillsPage', () => {
     expect(screen.getByText('No skill is named "missing".')).toBeInTheDocument();
   });
 
-  it('should open a new conversation with a request to the Coordinator to change a custom skill', async () => {
+  it('should open a new conversation with a request to the CEO to change a custom skill', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp('/skills/electron-testing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
 
     expect(screen.getByText('Custom')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Ask the Coordinator' }));
+    await user.click(screen.getByRole('button', { name: 'Ask the CEO' }));
     const create = connection.sent.find(command => command.type === 'conversation.create') as { requestId: string };
     act(() => connection.emitEvent({
       type: 'conversation.created',
@@ -87,6 +87,23 @@ describe('SkillsPage', () => {
     expect(router.state.location.pathname).toBe('/c/new');
     expect(router.state.location.state).toBeNull();
     expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue('Change the skill "electron-testing": ');
+  });
+
+  it('should open a new conversation with a request to the CEO for a new skill', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = renderApp('/skills');
+    act(() => connection.emitEvent({ type: 'skills.list', skills: SKILLS }));
+
+    await user.click(screen.getByRole('button', { name: 'New skill' }));
+    const create = connection.sent.find(command => command.type === 'conversation.create') as { requestId: string };
+    act(() => connection.emitEvent({
+      type: 'conversation.created',
+      requestId: create.requestId,
+      conversation: { id: 'new', title: 'New', createdAt: AT, updatedAt: AT },
+    }));
+
+    expect(router.state.location.pathname).toBe('/c/new');
+    expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue('Create a skill that ');
   });
 
   it('should delete a custom skill after a confirmation and return to the list', async () => {

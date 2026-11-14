@@ -51,7 +51,7 @@ function sendPulse(container: Element, from: string, to: string, big: boolean) {
 }
 
 /**
- * The light on the spine. While an agent works, a pulse travels from the Coordinator to it on a repeating interval; a
+ * The light on the spine. While an agent works, a pulse travels from the CEO to it on a repeating interval; a
  * bigger one goes out when it starts and one returns when it ends. A delivery sends one to every station and plays the
  * panel's one flare. Nothing runs under reduced motion or without the Web Animations API.
  */

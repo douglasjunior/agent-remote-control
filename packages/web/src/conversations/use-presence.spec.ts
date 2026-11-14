@@ -78,7 +78,7 @@ describe('usePresence', () => {
 
       renderHook(() => usePresence([member('CEO', 'waiting')]));
 
-      expect(notify).toHaveBeenCalledWith('Needs your answer', { body: 'Coordinator' });
+      expect(notify).toHaveBeenCalledWith('Needs your answer', { body: 'CEO' });
     });
 
     it('should stay quiet while the tab is visible, when nobody asks and when notifications are not allowed', () => {

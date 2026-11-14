@@ -44,7 +44,7 @@ export function Station({ member, profile, index, now, delegating, selected, hig
   readonly profile?: RoleProfile;
   readonly index: number;
   readonly now: number;
-  /** Whether other agents are at work, which keeps the Coordinator active although it is not itself working. */
+  /** Whether other agents are at work, which keeps the CEO active although it is not itself working. */
   readonly delegating: boolean;
   readonly selected: boolean;
   readonly highlighted: boolean;

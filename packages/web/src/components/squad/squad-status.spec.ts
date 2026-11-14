@@ -22,7 +22,7 @@ describe('squadStatus', () => {
       .toEqual({ live: true, text: '1 working · needs your answer', tab: 'Squad · needs your answer' });
   });
 
-  it('should say the answer was delivered once the coordinator is done', () => {
+  it('should say the answer was delivered once the CEO is done', () => {
     expect(squadStatus([member('CEO', 'done'), member('DEVELOPER', 'done')]).text).toBe('Answer delivered');
   });
 

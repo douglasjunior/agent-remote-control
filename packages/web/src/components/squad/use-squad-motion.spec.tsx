@@ -63,7 +63,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(0);
   });
 
-  it('should send a pulse back to the coordinator when the agent ends, then stop the interval', () => {
+  it('should send a pulse back to the CEO when the agent ends, then stop the interval', () => {
     const { container, rerender } = render(panel(team(['DEVELOPER'])));
     flights.splice(0).forEach(flight => flight.onfinish!());
 

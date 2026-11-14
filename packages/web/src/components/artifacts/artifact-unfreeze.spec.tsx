@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('Unfreezing a task', () => {
-  it('should move a frozen task on and hand the instruction to the coordinator', async () => {
+  it('should move a frozen task on and hand the instruction to the CEO', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
     expect(screen.getAllByText('Frozen').length).toBeGreaterThan(0);
@@ -29,7 +29,7 @@ describe('Unfreezing a task', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Move to' })).toHaveTextContent('Ready');
 
     await pick(user, 'Move to', 'Blocked');
-    await user.type(within(dialog).getByLabelText('Instruction for the coordinator'), '  Split it in two  ');
+    await user.type(within(dialog).getByLabelText('Instruction for the CEO'), '  Split it in two  ');
     await user.click(within(dialog).getByRole('button', { name: 'Unfreeze' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-6', changes: { status: 'blocked' } });
     answer(app, 'artifact.update', { ok: true, id: 'T-6' });
@@ -99,7 +99,7 @@ describe('Unfreezing a task', () => {
     await pick(user, 'Status', 'Approved');
     dialog = await screen.findByRole('dialog', { name: 'Unfreeze T-6' });
     expect(within(dialog).getByRole('combobox', { name: 'Move to' })).toHaveTextContent('Approved');
-    await user.type(within(dialog).getByLabelText('Instruction for the coordinator'), 'Ship it');
+    await user.type(within(dialog).getByLabelText('Instruction for the CEO'), 'Ship it');
     await user.click(within(dialog).getByRole('button', { name: 'Unfreeze' }));
     answer(app, 'artifact.update', { ok: false, error: 'Only the user can unfreeze it' });
     expect(await screen.findByText('Only the user can unfreeze it')).toBeInTheDocument();

@@ -49,7 +49,7 @@ function DeleteSkillButton({ name, onDelete }: { readonly name: string; readonly
   );
 }
 
-/** A skill in full; a custom one can be changed by asking the Coordinator in a new conversation, or deleted. */
+/** A skill in full; a custom one can be changed by asking the CEO in a new conversation, or deleted. */
 export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readonly onDelete: () => void }) {
   const { startConversation } = useConversations();
   const { state } = useLocation();
@@ -81,15 +81,15 @@ export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readon
       {skill.builtIn
         ? (
           <p className="rounded-xl border border-dashed px-4 py-3 text-[13px] text-muted-foreground">
-            Built-in skills ship with the server and are read-only. To teach the agents something else, ask the Coordinator for a custom skill.
+            Built-in skills ship with the server and are read-only. To teach the agents something else, ask the CEO for a custom skill.
           </p>
         )
         : (
           <div className="flex flex-col gap-3 rounded-xl border bg-muted/40 px-4 py-3 @lg:flex-row @lg:items-center @lg:justify-between">
-            <p className="text-[13px] text-muted-foreground">Want it to say something else? The Coordinator rewrites it for you.</p>
+            <p className="text-[13px] text-muted-foreground">Want it to say something else? The CEO rewrites it for you.</p>
             <Button size="sm" className="h-auto min-h-8 w-full shrink-0 py-1.5 whitespace-normal @lg:w-auto" onClick={() => startConversation(changeSkillPrompt(skill.name))}>
               <MessageSquarePlus />
-              Ask the Coordinator
+              Ask the CEO
             </Button>
           </div>
         )}

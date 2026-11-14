@@ -31,11 +31,11 @@ describe('deriveTeam', () => {
     expect(team.every(member => member.state === 'idle')).toBe(true);
   });
 
-  it('should have the coordinator working while a turn runs with nobody delegated', () => {
+  it('should have the CEO working while a turn runs with nobody delegated', () => {
     expect(stateOf(deriveTeam([user], true), 'CEO').state).toBe('working');
   });
 
-  it('should put delegates to work and rest the coordinator while they do', () => {
+  it('should put delegates to work and rest the CEO while they do', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER', { projectName: 'app' }), delegation('started', 'CODE_REVIEWER')], true);
 
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working', summary: 'DEVELOPER summary', projectName: 'app', startedAt: Date.parse(at) });
@@ -71,8 +71,8 @@ describe('deriveTeam', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER'), question], true);
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'waiting', summary: 'DEVELOPER summary' });
 
-    const coordinatorAsks = deriveTeam([user, { ...question, askerRole: 'CEO' }], true);
-    expect(stateOf(coordinatorAsks, 'CEO')).toMatchObject({ state: 'waiting', startedAt: Date.parse(at) });
+    const ceoAsks = deriveTeam([user, { ...question, askerRole: 'CEO' }], true);
+    expect(stateOf(ceoAsks, 'CEO')).toMatchObject({ state: 'waiting', startedAt: Date.parse(at) });
   });
 
   it('should keep the asker waiting while entries follow its open question', () => {
@@ -174,7 +174,7 @@ describe('deriveTeam', () => {
       expect(stateOf(team, 'DEVELOPER')).not.toHaveProperty('summary');
     });
 
-    it('should not show the coordinator working while another agent waits for an answer', () => {
+    it('should not show the CEO working while another agent waits for an answer', () => {
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), next, question], true);
       expect(stateOf(team, 'DEVELOPER').state).toBe('waiting');
       expect(stateOf(team, 'CEO').state).toBe('idle');
@@ -192,7 +192,7 @@ describe('deriveTeam', () => {
     expect(stateOf(team, 'CEO').state).toBe('idle');
   });
 
-  it('should show how the turn ended on the coordinator', () => {
+  it('should show how the turn ended on the CEO', () => {
     expect(stateOf(deriveTeam([user, response('completed')], false), 'CEO').state).toBe('done');
     expect(stateOf(deriveTeam([user, response('failed')], false), 'CEO').state).toBe('failed');
   });
@@ -219,7 +219,7 @@ describe('deriveTeam', () => {
     expect(team.find(member => member.role === 'DEVELOPER')).toMatchObject({ state: 'idle', summary: 'Build', projectName: 'app', interruptedWorkId: 'w' });
   });
 
-  it('should mark a stopped coordinator, which has no summary or project of its own', () => {
+  it('should mark a stopped CEO, which has no summary or project of its own', () => {
     const work = { id: 'c', role: 'CEO', roleName: 'CEO', projectName: null, summary: '' };
 
     const team = deriveTeam([user], false, [work]);

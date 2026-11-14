@@ -17,7 +17,7 @@ export interface AgentIdentity {
 const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
   CEO: {
     mark: 'ceo',
-    label: 'Coordinator',
+    label: 'CEO',
     tagline: 'Leads the team and talks to you',
     stage: 'Leads',
     responsibility: 'Understands what you want, picks who does what, and checks every result before it reaches you.',
@@ -97,7 +97,7 @@ export function agentIdentity(role: string, roleName?: string): AgentIdentity {
     label: roleName ?? role,
     tagline: 'Helps the team',
     stage: 'Helps',
-    responsibility: 'Takes on the work the Coordinator hands over and reports back.',
+    responsibility: 'Takes on the work the CEO hands over and reports back.',
     example: 'Ask for help',
     color: `oklch(0.62 0.15 ${hueOf(role)})`,
   };

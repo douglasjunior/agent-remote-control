@@ -55,7 +55,7 @@ describe('artifact-protocol.prompt', () => {
     expect(buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS)).toContain('An artifact another agent holds is not changed under you');
   });
 
-  it('should let the coordinator steer a held artifact through its status and refinements', () => {
+  it('should let the CEO steer a held artifact through its status and refinements', () => {
     const instructions = buildArtifactProtocolInstructions(CEO_ARTIFACT_ACCESS);
 
     expect(instructions).toContain('Meanwhile you change only its status and refinement states; comment instead.');

@@ -48,7 +48,7 @@ describe('SettingsSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: /Settings/ }));
 
     const roles = within(dialog()).getByRole('list', { name: 'Roles' });
-    expect(within(roles).getByText('Coordinator')).toBeInTheDocument();
+    expect(within(roles).getByText('CEO')).toBeInTheDocument();
     expect(within(roles).getByText('Codex · GPT · High')).toBeInTheDocument();
     expect(within(roles).getByText('not installed')).toBeInTheDocument();
     expect(within(roles).getByText('Not configured')).toBeInTheDocument();
@@ -130,12 +130,12 @@ describe('SettingsSheet', () => {
     const app = await openSettings();
     const { user } = app;
 
-    await user.click(within(dialog()).getByRole('button', { name: 'Change Coordinator' }));
-    expect(within(editor('Coordinator')).getByRole('combobox', { name: 'Agent' })).toHaveTextContent('Codex');
+    await user.click(within(dialog()).getByRole('button', { name: 'Change CEO' }));
+    expect(within(editor('CEO')).getByRole('combobox', { name: 'Agent' })).toHaveTextContent('Codex');
     expect(sentOf(app, 'models.list')).toEqual([{ type: 'models.list', agentId: 'codex' }]);
     emit(app, { type: 'models.list', agentId: 'codex', models: [{ id: 'gpt', name: 'GPT' }] });
-    await user.click(within(editor('Coordinator')).getByRole('button', { name: 'Cancel' }));
-    expect(within(dialog()).queryByRole('group', { name: 'Coordinator' })).not.toBeInTheDocument();
+    await user.click(within(editor('CEO')).getByRole('button', { name: 'Cancel' }));
+    expect(within(dialog()).queryByRole('group', { name: 'CEO' })).not.toBeInTheDocument();
 
     await user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
     await pick(user, editor('Developer'), 'Agent', 'Codex');

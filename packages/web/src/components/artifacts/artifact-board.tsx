@@ -58,7 +58,7 @@ function EmptyState({ onCreate }: { readonly onCreate: () => void }) {
       <div className="flex flex-col gap-1">
         <p className="font-heading text-base font-medium">No tasks yet</p>
         <p className="max-w-sm text-sm text-muted-foreground">
-          Create one here, or tell the Coordinator what you need: the Product Owner turns ideas into features and tasks.
+          Create one here, or tell the CEO what you need: the Product Owner turns ideas into features and tasks.
         </p>
       </div>
       <Button onClick={onCreate}>

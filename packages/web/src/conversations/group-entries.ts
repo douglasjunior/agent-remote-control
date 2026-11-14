@@ -46,7 +46,7 @@ export function itemId(item: EntryItem): string {
   return item.kind === 'entry' ? item.entry.id : item.id;
 }
 
-const isCoordinator = (role: string) => role === 'CEO';
+const isCeo = (role: string) => role === 'CEO';
 
 /** The steps of every delegated agent, filed under the delegation that was running for its role when they happened. */
 function stepsByDelegation(entries: readonly ConversationEntry[]): ReadonlyMap<string, ActivityEntry[]> {
@@ -56,7 +56,7 @@ function stepsByDelegation(entries: readonly ConversationEntry[]): ReadonlyMap<s
     if (entry.type === 'delegation' && entry.phase === 'started') {
       latestByRole.set(entry.role, entry.id);
     } else if ((entry.type === 'thought' && !entry.removed) || entry.type === 'tool' || entry.type === 'skill') {
-      const owner = isCoordinator(entry.role) ? undefined : latestByRole.get(entry.role);
+      const owner = isCeo(entry.role) ? undefined : latestByRole.get(entry.role);
       if (owner) {
         steps.set(owner, [...(steps.get(owner) ?? []), entry]);
       }

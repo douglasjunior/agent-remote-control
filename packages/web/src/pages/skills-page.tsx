@@ -71,7 +71,7 @@ export function SkillsPage() {
           <span className="grid size-12 place-items-center rounded-2xl bg-muted text-muted-foreground"><BookOpenText aria-hidden /></span>
           <p className="font-heading text-base font-medium">Pick a skill</p>
           <p className="max-w-sm text-sm text-muted-foreground">
-            Skills are what the agents read on demand. Custom ones are yours: ask the Coordinator to create or change them.
+            Skills are what the agents read on demand. Custom ones are yours: ask the CEO to create or change them.
           </p>
         </div>
       );

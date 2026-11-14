@@ -38,7 +38,7 @@ function RefinementSwitch({ id, checked, onChange, title, description }: {
 }
 
 /**
- * Creates a feature or a task on the board of a conversation. Both refinements off means a simple task the Coordinator
+ * Creates a feature or a task on the board of a conversation. Both refinements off means a simple task the CEO
  * hands straight to the Developer.
  */
 export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defaultParentId }: {
@@ -97,7 +97,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{type === 'feature' ? 'New feature' : 'New task'}</DialogTitle>
-          <DialogDescription>Describe what needs to be done. The Coordinator moves it through the team by its status.</DialogDescription>
+          <DialogDescription>Describe what needs to be done. The CEO moves it through the team by its status.</DialogDescription>
         </DialogHeader>
         <form id="artifact-create" onSubmit={event => void submit(event)} className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">

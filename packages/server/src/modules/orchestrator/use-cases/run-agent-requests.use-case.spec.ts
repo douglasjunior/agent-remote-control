@@ -164,7 +164,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ branch: 'feat/t-1', sections: { implementation_notes: 'Done.' } });
     });
 
-    it('should let the coordinator move the status and refinements of an artifact another agent holds', async () => {
+    it('should let the CEO move the status and refinements of an artifact another agent holds', async () => {
       const { useCase, artifacts } = setup();
 
       await useCase.execute([update('T-1', { status: 'in_progress', refinement: { technical: 'done' } })], as('CEO'));
@@ -202,7 +202,7 @@ describe('RunAgentRequestsUseCase', () => {
       ['a task other than the delegated one', update('T-3', { branch: 'x' }), as('DEVELOPER', { artifactId: 'T-1' }), 'You may change only T-1, the artifact you were delegated.'],
       ['a task when none was delegated', update('T-3', { branch: 'x' }), as('GIT_OPS'), 'You may change only the artifact you were delegated, and this task delegated none.'],
       ['an artifact held by another agent', update('T-1', { title: 'x' }), as('TECH_LEAD'), 'T-1 is with Developer Agent (DEVELOPER) right now, and an artifact is changed only by the agent holding it. Comment on it instead, or wait until it is released.'],
-      ['content of a held artifact by the coordinator', update('T-1', { status: 'done', sections: [{ section: 'overview', content: 'x', mode: 'append' }] }), as('CEO'), 'T-1 is with Developer Agent (DEVELOPER) right now'],
+      ['content of a held artifact by the CEO', update('T-1', { status: 'done', sections: [{ section: 'overview', content: 'x', mode: 'append' }] }), as('CEO'), 'T-1 is with Developer Agent (DEVELOPER) right now'],
       ['a field outside the role', update('T-1', { status: 'done' }), as('DEVELOPER', { delegationId: 'dev-1', artifactId: 'T-1' }), 'You cannot change status.'],
       ['a section outside the role', update('T-3', { sections: [{ section: 'overview', content: 'x', mode: 'replace' }] }), as('TECH_LEAD'), 'You cannot write the sections overview.'],
       ['pull requests outside the role', update('T-3', { pullRequests: [{ url: 'https://x/pull/1' }] }), as('TECH_LEAD'), 'You cannot change pull_requests.'],

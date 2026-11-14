@@ -7,7 +7,7 @@ import {
 } from '../ui/alert-dialog.js';
 
 
-/** Confirms a move that stops the agent holding the artifact; the coordinator hears that the user stopped it. */
+/** Confirms a move that stops the agent holding the artifact; the CEO hears that the user stopped it. */
 export function ArtifactStopWorkDialog({ artifact, status, onConfirm, onCancel }: {
   readonly artifact: ArtifactSummary;
   readonly status: ArtifactStatus;
@@ -21,7 +21,7 @@ export function ArtifactStopWorkDialog({ artifact, status, onConfirm, onCancel }
         <AlertDialogHeader>
           <AlertDialogTitle>{`Move ${artifact.id} to ${STATUS_LABELS[status]}?`}</AlertDialogTitle>
           <AlertDialogDescription>
-            {`${agent} is working on it right now. Moving it stops the agent before it finishes, and the coordinator keeps the status you chose.`}
+            {`${agent} is working on it right now. Moving it stops the agent before it finishes, and the CEO keeps the status you chose.`}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

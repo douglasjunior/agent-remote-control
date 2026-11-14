@@ -49,7 +49,7 @@ describe('ConversationView', () => {
     });
     act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
 
-    const trigger = screen.getByRole('button', { name: /Coordinator.*Running project commands….*\(4 steps\)/ });
+    const trigger = screen.getByRole('button', { name: /CEO.*Running project commands….*\(4 steps\)/ });
     expect(screen.queryByText('Reading files')).not.toBeInTheDocument();
     await user.click(trigger);
     expect(screen.getByText('Thinking')).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe('ConversationView', () => {
     expect(screen.getByLabelText('running')).toBeInTheDocument();
 
     act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'idle' }));
-    expect(screen.getByRole('button', { name: /Coordinator.*Show details.*\(4 steps\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /CEO.*Show details.*\(4 steps\)/ })).toBeInTheDocument();
   });
 
   it('should use the singular for a single step', () => {
@@ -133,7 +133,7 @@ describe('ConversationView', () => {
     expect(feed.getByText('Looking at the router')).toBeInTheDocument();
   });
 
-  it('should show what the Coordinator asked of an agent when its delegation opens', async () => {
+  it('should show what the CEO asked of an agent when its delegation opens', async () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
@@ -143,10 +143,10 @@ describe('ConversationView', () => {
     });
     const feed = within(screen.getByTestId('message-viewport'));
 
-    expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
+    expect(feed.queryByText('Prompt from the CEO')).not.toBeInTheDocument();
     await user.click(feed.getByRole('button', { name: 'See the prompt' }));
 
-    expect(feed.getByText('Prompt from the Coordinator')).toBeInTheDocument();
+    expect(feed.getByText('Prompt from the CEO')).toBeInTheDocument();
     expect(feed.getByText('login')).toBeInTheDocument();
   });
 
@@ -162,7 +162,7 @@ describe('ConversationView', () => {
 
     await user.click(feed.getByRole('button', { name: 'See the prompt' }));
 
-    expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
+    expect(feed.queryByText('Prompt from the CEO')).not.toBeInTheDocument();
   });
 
   it('should keep a cancelled delegation stopped while a later turn runs', () => {
@@ -388,7 +388,7 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('status', { name: '' })).not.toBeInTheDocument();
 
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
-      expect(screen.getByRole('status')).toHaveTextContent('Coordinator is thinking…');
+      expect(screen.getByRole('status')).toHaveTextContent('CEO is thinking…');
 
       emitDraft(connection, 'Writing');
       expect(screen.queryByRole('status')).not.toBeInTheDocument();

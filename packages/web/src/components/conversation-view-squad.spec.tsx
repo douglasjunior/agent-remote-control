@@ -123,21 +123,21 @@ describe('ConversationView squad', () => {
     expect(dimmed('Briefing the team')).toBe('false');
   });
 
-  it('should focus the coordinator by clicking its name in the feed, and toggle it off', async () => {
+  it('should focus the CEO by clicking its name in the feed, and toggle it off', async () => {
     const user = userEvent.setup();
     openConversation({ entries: [userEntry('u1'), interim] });
 
-    await user.click(screen.getByRole('button', { name: 'Show only Coordinator' }));
-    expect(screen.getByRole('button', { name: 'Coordinator only, show everyone' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Show only CEO' }));
+    expect(screen.getByRole('button', { name: 'CEO only, show everyone' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Show only Coordinator' }));
+    await user.click(screen.getByRole('button', { name: 'Show only CEO' }));
     expect(screen.queryByRole('button', { name: /only, show everyone/ })).not.toBeInTheDocument();
   });
 
   it('should forget the focus when another conversation opens', async () => {
     const user = userEvent.setup();
     const { router } = openConversation({ entries: [userEntry('u1'), interim] });
-    await user.click(screen.getByRole('button', { name: 'Show only Coordinator' }));
+    await user.click(screen.getByRole('button', { name: 'Show only CEO' }));
 
     await act(() => router.navigate('/c/c2'));
 
@@ -147,14 +147,14 @@ describe('ConversationView squad', () => {
   it('should highlight the station of the feed item under the pointer', async () => {
     const user = userEvent.setup();
     openConversation({ entries: [userEntry('u1'), interim] });
-    const coordinator = within(squad()).getByRole('button', { name: /Coordinator/ });
-    expect(coordinator.className).not.toContain('_14%');
+    const ceo = within(squad()).getByRole('button', { name: /CEO/ });
+    expect(ceo.className).not.toContain('_14%');
 
     await user.hover(screen.getByText('Briefing the team'));
-    expect(coordinator.className).toContain('_14%');
+    expect(ceo.className).toContain('_14%');
 
     await user.unhover(screen.getByText('Briefing the team'));
-    expect(coordinator.className).not.toContain('_14%');
+    expect(ceo.className).not.toContain('_14%');
   });
 
   it('should play the delivery moment when a running turn that delegated ends with its answer', () => {

@@ -15,7 +15,7 @@ import { ChoiceSelect } from './choice-select.js';
 
 /**
  * Gives a frozen task back to the team. Only the user can: the server froze it after too many delegations. An
- * instruction is kept on the task as a comment and sent to the coordinator in the chat, so the next round starts
+ * instruction is kept on the task as a comment and sent to the CEO in the chat, so the next round starts
  * from it.
  */
 export function ArtifactUnfreezeDialog({ conversationId, artifact, open, onOpenChange, defaultStatus = 'ready' }: {
@@ -74,7 +74,7 @@ export function ArtifactUnfreezeDialog({ conversationId, artifact, open, onOpenC
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="artifact-unfreeze-instruction">Instruction for the coordinator</Label>
+            <Label htmlFor="artifact-unfreeze-instruction">Instruction for the CEO</Label>
             <Textarea
               id="artifact-unfreeze-instruction"
               value={instruction}
@@ -82,7 +82,7 @@ export function ArtifactUnfreezeDialog({ conversationId, artifact, open, onOpenC
               placeholder="Optional: what should change so the task does not get stuck again."
               className="max-h-48 min-h-20"
             />
-            <span className="text-xs text-muted-foreground">Kept on the task as a comment and sent to the coordinator in the chat.</span>
+            <span className="text-xs text-muted-foreground">Kept on the task as a comment and sent to the CEO in the chat.</span>
           </div>
         </form>
         <DialogFooter>

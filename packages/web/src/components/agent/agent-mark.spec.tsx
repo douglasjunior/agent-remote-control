@@ -16,7 +16,7 @@ describe('AgentMark', () => {
   it('should be idle by default and show no badge', () => {
     const { container } = render(<AgentMark role="CEO" />);
 
-    expect(screen.getByRole('img', { name: 'Coordinator, idle' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'CEO, idle' })).toBeInTheDocument();
     expect(container.querySelector('.mark-badge')).toBeNull();
   });
 

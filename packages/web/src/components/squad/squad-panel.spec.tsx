@@ -47,7 +47,7 @@ describe('SquadPanel', () => {
       ],
     });
 
-    expect(station(/Coordinator/)).toHaveTextContent('GitHub Copilot · Auto');
+    expect(station(/CEO/)).toHaveTextContent('GitHub Copilot · Auto');
     expect(station(/QA/)).toHaveTextContent('Codex · GPT · Highnot installed');
     expect(station(/Developer/)).toHaveTextContent('Not configured');
     expect(within(station(/Reviewer/)).queryByText(/·|Not configured/)).not.toBeInTheDocument();
@@ -94,12 +94,12 @@ describe('SquadPanel', () => {
 
   it('should read Coordinating the squad while delegates work and Thinking when it works itself', () => {
     const delegating = renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
-    expect(station(/Coordinator/)).toHaveTextContent('Coordinating the squad');
-    expect(station(/Coordinator/)).toHaveAttribute('data-state', 'working');
+    expect(station(/CEO/)).toHaveTextContent('Coordinating the squad');
+    expect(station(/CEO/)).toHaveAttribute('data-state', 'working');
     delegating.unmount();
 
     renderPanel([user('u1')], true);
-    expect(station(/Coordinator/)).toHaveTextContent('Thinking');
+    expect(station(/CEO/)).toHaveTextContent('Thinking');
   });
 
   it('should show the latest action as one ticker line, and finished work with its duration', () => {
@@ -127,7 +127,7 @@ describe('SquadPanel', () => {
     expect(screen.getByText('needs your answer')).toBeInTheDocument();
   });
 
-  it('should show a failed delegation and a failed coordinator', () => {
+  it('should show a failed delegation and a failed CEO', () => {
     renderPanel([
       user('u1'),
       started('s1', 'DEVELOPER', 'Developer'),
@@ -136,14 +136,14 @@ describe('SquadPanel', () => {
     ], false);
 
     expect(station(/Developer/)).toHaveTextContent('Failed');
-    expect(station(/Coordinator/)).toHaveTextContent('Hit a problem');
+    expect(station(/CEO/)).toHaveTextContent('Hit a problem');
     expect(screen.getByText('Something failed')).toBeInTheDocument();
   });
 
   it('should describe a delivered turn', () => {
     renderPanel([user('u1'), { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'done' }], false);
 
-    expect(station(/Coordinator/)).toHaveTextContent('Answer delivered');
+    expect(station(/CEO/)).toHaveTextContent('Answer delivered');
     expect(screen.getAllByText('Answer delivered')).toHaveLength(2);
   });
 

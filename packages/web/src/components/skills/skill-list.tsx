@@ -1,15 +1,17 @@
 import type { SkillSummary } from '@agent-remote-control/protocol/skill';
-import { Search, Sparkles, X } from 'lucide-react';
+import { MessageSquarePlus, Search, Sparkles, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 
+import { useConversations } from '../../conversations/conversations-context.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
 import { ChoiceSelect } from '../artifacts/choice-select.js';
 import { IconButton } from '../icon-button.js';
+import { Button } from '../ui/button.js';
 import { Input } from '../ui/input.js';
 
-import { skillsPath } from './skill-paths.js';
+import { CREATE_SKILL_PROMPT, skillsPath } from './skill-paths.js';
 import { SkillRoles } from './skill-roles.js';
 
 
@@ -52,9 +54,10 @@ function SkillGroup({ title, hint, skills, state }: {
   );
 }
 
-/** Every skill, the user's own first, filtered by text and by the role that reads it. */
+/** Every skill, the user's own first, filtered by text and by the role that reads it; a new one is asked of the CEO. */
 export function SkillList({ skills, onClose }: { readonly skills: readonly SkillSummary[]; readonly onClose: () => void }) {
   const { state } = useLocation();
+  const { startConversation } = useConversations();
   const [query, setQuery] = useState('');
   const [role, setRole] = useState(ALL_ROLES);
   const roles = useMemo(() => [...new Set(skills.flatMap(skill => skill.roles))], [skills]);
@@ -80,13 +83,19 @@ export function SkillList({ skills, onClose }: { readonly skills: readonly Skill
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input aria-label="Search skills" placeholder="Search skills" value={query} onChange={event => setQuery(event.target.value)} className="pl-8" />
         </div>
-        <ChoiceSelect
-          label="Filter by role"
-          size="sm"
-          value={role}
-          onChange={setRole}
-          choices={[{ value: ALL_ROLES, label: 'Every role' }, ...roles.map(value => ({ value, label: agentIdentity(value).label }))]}
-        />
+        <div className="flex items-center justify-between gap-2">
+          <ChoiceSelect
+            label="Filter by role"
+            size="sm"
+            value={role}
+            onChange={setRole}
+            choices={[{ value: ALL_ROLES, label: 'Every role' }, ...roles.map(value => ({ value, label: agentIdentity(value).label }))]}
+          />
+          <Button variant="outline" size="sm" title="Ask the CEO for a new skill" onClick={() => startConversation(CREATE_SKILL_PROMPT)}>
+            <MessageSquarePlus />
+            New skill
+          </Button>
+        </div>
       </div>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         {visible.length === 0

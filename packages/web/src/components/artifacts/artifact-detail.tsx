@@ -187,7 +187,7 @@ export function ArtifactDetail({ conversationId, artifact }: { readonly conversa
 
   const update = async (changes: ArtifactUpdateInput) => (await updateArtifact(artifact.id, changes)).ok;
   /**
-   * Leaving Frozen goes through its dialog, which also offers an instruction for the coordinator; a status that stops
+   * Leaving Frozen goes through its dialog, which also offers an instruction for the CEO; a status that stops
    * the agent working on it is confirmed first.
    */
   const change = (changes: ArtifactUpdateInput) => {
