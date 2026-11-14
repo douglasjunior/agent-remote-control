@@ -15,34 +15,3 @@ export function formatDelegationForms(agent: AgentDefinition): string {
   }
   return forms.join(' or ');
 }
-
-export function formatArtifactUse(agent: AgentDefinition): string {
-  const { artifact, needsReviewableWork } = agent.delegation;
-  if (!artifact) {
-    return 'Takes no artifact.';
-  }
-  const kind = agent.artifacts.scope === 'task' ? 'a task' : 'a task or a feature';
-  const pullRequest = needsReviewableWork ? ' The task must already have work to inspect: a linked pull request or a recorded branch.' : '';
-  return artifact === 'required'
-    ? `Always works on ${kind} of the board and runs in its project.${pullRequest}`
-    : `May work on ${kind} of the board, then running in its project.${pullRequest}`;
-}
-
-export function formatProjectAccess(agent: AgentDefinition): string {
-  return agent.delegation.readOnly
-    ? 'Read-only, so it may work alongside an agent that modifies the same project.'
-    : 'Modifies files, so no other agent that modifies files may work in the same project folder at the same time.';
-}
-
-export function formatSessionMode(agent: AgentDefinition): string {
-  const mode = agent.defaultSessionMode ?? 'resume';
-  return agent.delegation.sessionMode
-    ? `Runs in "${mode}" session mode unless you set session="new" or session="resume".`
-    : `Always runs in "${mode}" session mode, so never set the session attribute.`;
-}
-
-export function formatUserQuestions(agent: AgentDefinition): string {
-  return agent.delegation.asksUser
-    ? 'Asks the user directly for the decisions it needs while it works.'
-    : 'Never asks the user: a decision it needs comes back in its result, for you to take to the user.';
-}

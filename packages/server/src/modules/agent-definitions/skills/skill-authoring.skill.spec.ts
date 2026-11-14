@@ -27,6 +27,14 @@ describe('skill-authoring skill', () => {
     expect(skill).toContain('`description`: one or two sentences, up to 1024 characters: what the skill covers, then when to read it');
   });
 
+  it('should give a complete skill to copy, and the file the server stores it as', () => {
+    expect(skill).toContain('A complete request, to copy and adapt:');
+    expect(skill).toContain('## Setup\n');
+    expect(skill).toContain('## When It Fails\n');
+    expect(skill).toContain('---\nname: electron-testing\ndescription: Testing an Electron desktop app');
+    expect(skill).toContain('\nroles: QA\n---\n# Testing an Electron App');
+  });
+
   it('should keep the content in English, prescriptive and within the role limits', () => {
     expect(skill).toContain('In English, whatever the language of the conversation');
     expect(skill).toContain('Prescriptive and concrete');

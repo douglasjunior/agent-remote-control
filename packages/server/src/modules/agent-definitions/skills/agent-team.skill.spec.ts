@@ -40,6 +40,20 @@ describe('agent-team skill', () => {
     expect(AGENT_TEAM_SKILL.buildContent(skillContext({ team: [owner] }))).toContain('- Asks the user directly for the decisions it needs while it works.');
   });
 
+  it('should describe how each agent uses the board, its project and its session', () => {
+    const contentFor = (overrides: Partial<AgentDefinition>) => AGENT_TEAM_SKILL.buildContent(skillContext({ team: [{ ...gitOps, ...overrides }] }));
+
+    expect(skill).toContain('- Takes no artifact.');
+    expect(contentFor({ delegation: { artifact: 'required', needsReviewableWork: true }, artifacts: { scope: 'task', sections: [], fields: [] } })).toContain(
+      '- Always works on a task of the board and runs in its project. The task must already have work to inspect: a linked pull request or a recorded branch.',
+    );
+    expect(contentFor({ delegation: { artifact: 'optional' }, artifacts: { scope: 'tree', sections: [], fields: [] } })).toContain(
+      '- May work on a task or a feature of the board, then running in its project.',
+    );
+    expect(contentFor({ delegation: { readOnly: true } })).toContain('- Read-only, so it may work alongside an agent that modifies the same project.');
+    expect(contentFor({ delegation: {}, defaultSessionMode: 'new' })).toContain('- Always runs in "new" session mode, so never set the session attribute.');
+  });
+
   it('should put discovery before technical planning and keep requirement interviews with the agents', () => {
     expect(skill).toContain('discovery of what to build before technical planning');
     expect(skill).toContain('Different items, and phases that do not depend on each other, overlap across roles');

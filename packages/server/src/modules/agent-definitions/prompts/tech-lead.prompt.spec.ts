@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { TECH_LEAD_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -26,7 +26,7 @@ describe('tech-lead.prompt', () => {
   it('should write the technical solution of each task on the board instead of a file', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Write the `technical_solution` of each task');
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Set `technical_refinement="done"` on every artifact you refined');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildArtifactProtocolInstructions(TECH_LEAD_ARTIFACT_ACCESS));
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS));
     expect(TECH_LEAD_TURN_REMINDER).toContain(buildArtifactProtocolReminder(TECH_LEAD_ARTIFACT_ACCESS));
     expect(TECH_LEAD_SYSTEM_PROMPT).not.toContain('plan.md');
   });

@@ -1,6 +1,6 @@
 import { TECH_LEAD_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -52,7 +52,7 @@ Your primary mission is to serve as the software architect and technical lead. Y
    - Set \`technical_refinement="done"\` on every artifact you refined. When you refine an existing solution, keep what still holds so earlier references stay valid.
    - Your final answer gives the ids you created or changed with a one-line summary each, the order between the tasks, and what the caller must decide or do next. It does not repeat their content.
 
-${buildArtifactProtocolInstructions(TECH_LEAD_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 

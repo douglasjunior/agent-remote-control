@@ -17,12 +17,25 @@ A skill is know-how an agent reads on demand. Its name and description go to the
 4. Tell the user what the skill covers and who reads it.
 
 ## Request Grammar
+A complete request, to copy and adapt:
 \`\`\`text
 <skill_write name="electron-testing" roles="QA" description="Testing an Electron desktop app in practice with Playwright's Electron support - launching the app, driving its windows and capturing evidence. Read before testing any Electron app.">
 # Testing an Electron App
 
-## Launch
-- ...
+## Setup
+- Install the test runner in a scratch folder outside the project: \`npm i -D @playwright/test\`.
+- Build the app the way its README says, and note the path of the built entry point.
+
+## Steps
+1. Launch the app with \`_electron.launch({ args: ['<entry point>'] })\` and wait for its first window.
+2. Drive the window like a page: click, type and assert what the user sees.
+3. Close the app at the end of every scenario, even after a failure.
+
+## Evidence
+- Save a screenshot of every checked screen and attach the paths to the test report.
+
+## When It Fails
+- When the app does not launch, report the command and its output instead of testing anything else.
 </skill_write>
 \`\`\`
 - \`name\`: lowercase kebab-case, up to 64 characters, naming the subject (\`electron-testing\`, \`release-checklist\`). Built-in skill names are taken.
@@ -41,6 +54,15 @@ A skill is know-how an agent reads on demand. Its name and description go to the
 
 ## Availability
 - An agent sees a new skill in its catalog from its next session; a changed skill applies the next time it is read.
-- Skills live in the server's data directory, where the user can also edit or delete them.
+- Skills live in the server's data directory, where the user can also edit or delete them. The server stores the request above as \`skills/electron-testing/SKILL.md\`, its attributes in the frontmatter:
+\`\`\`markdown
+---
+name: electron-testing
+description: Testing an Electron desktop app in practice with Playwright's Electron support - launching the app, driving its windows and capturing evidence. Read before testing any Electron app.
+roles: QA
+---
+# Testing an Electron App
+...
+\`\`\`
 `,
 };

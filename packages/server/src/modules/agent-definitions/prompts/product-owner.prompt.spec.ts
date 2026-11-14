@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { PRODUCT_OWNER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from './product-owner.prompt.js';
@@ -53,7 +53,7 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Set `business_refinement="done"`');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Everything you write goes to the board through artifact requests');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the ids of the artifacts you created or changed');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildArtifactProtocolInstructions(PRODUCT_OWNER_ARTIFACT_ACCESS));
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS));
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS));
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).not.toContain('intent.md');
   });

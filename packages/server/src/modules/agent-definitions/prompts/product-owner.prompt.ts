@@ -1,6 +1,6 @@
 import { PRODUCT_OWNER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -109,7 +109,7 @@ Confirm every item. Whatever is missing becomes questions now: another round cos
 - Your final answer, without any \`<question>\` or artifact request, gives the caller the ids of the artifacts you created or changed with a one-line summary each, the dependencies between the tasks, and the technical pending decisions the technical team must settle. It does not repeat their content: whoever continues reads it from the board.
 - If the user stops answering the interview and asks for something else, end with a final answer that reports the progress so far and repeats the user's new request verbatim, so the caller can take it over.
 
-${buildArtifactProtocolInstructions(PRODUCT_OWNER_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 

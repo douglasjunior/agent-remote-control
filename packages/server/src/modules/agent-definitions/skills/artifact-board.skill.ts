@@ -1,7 +1,8 @@
 import { CEO_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
-import { buildArtifactProtocolBody } from '../prompts/artifact-protocol.prompt.js';
+
+import { buildBoardRequestsBody } from './board-requests.skill.js';
 
 
 export const ARTIFACT_BOARD_SKILL: AgentSkillDefinition = {
@@ -52,6 +53,6 @@ Each conversation is a mission with its own board. Features group the tasks of a
 - \`<agent_result>\` carries \`artifact="T-3"\` and \`artifact_status\` for the work done on it. Your answer to the user never leaves a task in a status its results contradict: a finished implementation is not left \`in_progress\`, nor an approved review \`in_review\`, nor a passed test \`in_testing\`.
 
 ## Request Grammar
-${buildArtifactProtocolBody(CEO_ARTIFACT_ACCESS)}
+${buildBoardRequestsBody(CEO_ARTIFACT_ACCESS)}
 `,
 };
