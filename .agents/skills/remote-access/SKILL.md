@@ -95,6 +95,10 @@ or to stand in for a host.
 - CapRover builds both images from the repository root through `deploy/p2p-server/captain-definition`
   (`Dockerfile.p2p`) and `deploy/coturn/captain-definition`; coturn's ports go in host mode through a service
   override. [docs/remote-access.md](../../../docs/remote-access.md) holds the deployment steps.
+- `.github/workflows/deploy-remote-access.yml` calls the CapRover build webhooks of both apps on every published
+  release (pre-releases excepted) and on manual dispatch. The webhook URLs carry a token, so they live only in the
+  secrets `CAPROVER_P2P_SERVER_WEBHOOK_URL` and `CAPROVER_COTURN_WEBHOOK_URL`. Deploys follow releases because the
+  hosted web app must speak the `PROTOCOL_VERSION` of released hosts.
 
 ## Tests
 

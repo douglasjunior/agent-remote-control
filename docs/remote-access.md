@@ -165,6 +165,14 @@ EndpointSpec:
       PublishMode: host
 ```
 
+**Deploys**
+
+Point both apps at this repository in their Deployment tab, on the branch the releases come from. The workflow
+`Deploy remote access` calls their build webhooks whenever a release is published (pre-releases excepted), or on
+demand from the Actions tab for one app or both. It reads the webhooks from the repository secrets
+`CAPROVER_P2P_SERVER_WEBHOOK_URL` and `CAPROVER_COTURN_WEBHOOK_URL`. The hosted web app refuses hosts of another
+protocol version, so it follows releases rather than every push.
+
 To try the relay alone, open the [Trickle ICE](https://webrtc.github.io/samples/src/content/peerconnection/trickle-ice/)
 page with the TURN URL and a credential: a candidate of type `relay` means it works. In the web app, the connection
 badge reads "WebRTC through a TURN relay" when a session goes through it.

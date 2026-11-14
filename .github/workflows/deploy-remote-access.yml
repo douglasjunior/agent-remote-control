@@ -1,0 +1,52 @@
+# Deploys the remote access services on CapRover whenever a release is published: the p2p-server, which serves the
+# hosted web app, and the coturn relay. The hosted web app refuses hosts of another protocol version, so it follows
+# releases rather than every push. A pre-release deploys nothing. Each webhook makes CapRover build the branch set in
+# the app's Deployment tab with the Captain Definition Path of that app.
+#
+# One-time setup in GitHub → Settings → Secrets and variables → Actions:
+#   CAPROVER_P2P_SERVER_WEBHOOK_URL: build webhook of the p2p-server app (Deployment tab of CapRover)
+#   CAPROVER_COTURN_WEBHOOK_URL:     build webhook of the coturn app
+
+name: Deploy remote access
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App to deploy
+        type: choice
+        options: [all, p2p-server, coturn]
+        default: all
+
+permissions: {}
+
+concurrency:
+  group: deploy-remote-access
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ matrix.app }}
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: p2p-server
+            secret: CAPROVER_P2P_SERVER_WEBHOOK_URL
+          - app: coturn
+            secret: CAPROVER_COTURN_WEBHOOK_URL
+    steps:
+      - name: Trigger the CapRover build
+        if: github.event_name == 'release' || inputs.app == 'all' || inputs.app == matrix.app
+        env:
+          WEBHOOK_URL: ${{ secrets[matrix.secret] }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "::error::The secret ${{ matrix.secret }} is not set"
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 60 --request POST "$WEBHOOK_URL" > /dev/null
