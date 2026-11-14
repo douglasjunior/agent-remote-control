@@ -64,7 +64,9 @@ packages/web/src/
   It sends `auth` first and reports `open` on `auth.ok`. `auth.failed` or an `unauthorized` close clears the stored token,
   reports `unauthorized` and stops; `incompatible` and `untrusted` stop too. Other closes reconnect with exponential
   backoff from 500 ms to a 10 s cap, reset after a successful auth, and at once when the page becomes visible again.
-  Commands sent while not `open` are queued and flushed after `auth.ok`. Every message goes through `parseServerEvent`;
+  Commands sent while not `open` are queued and flushed after `auth.ok`. Once authenticated it sends `ping` every 5 s
+  when none is pending; any message answers it (`pong` is not forwarded), and a ping unanswered for 10 s drops the
+  connection into the reconnection, since a vanished network closes no socket. Every message goes through `parseServerEvent`;
   invalid ones are dropped with `console.warn`. Reports of a replaced attempt are ignored.
 - `WebSocketServerConnection` always connects to the relative `/ws` (`wss` on https); close code `4401` is `unauthorized`.
 - `WebRtcServerConnection` reaches a host through the signaling server of the page and a data channel, both ways in

@@ -104,6 +104,14 @@ describe('WebConnectionHandler', () => {
     expect(harness.registry.size).toBe(OBSERVER_AND_CLIENT);
   });
 
+  it('should answer the heartbeat of an authenticated connection', async () => {
+    connection.receive({ type: 'auth', token: 'secret' });
+    connection.receive({ type: 'ping' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connection.sent).toEqual([{ type: 'auth.ok' }, { type: 'pong' }]);
+  });
+
   it('should not close an authenticated connection when the timeout elapses', () => {
     connection.receive({ type: 'auth', token: 'secret' });
     vi.advanceTimersByTime(AUTH_TIMEOUT_MS);

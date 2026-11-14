@@ -7,6 +7,13 @@ import type { ConnectionStatus, ConnectionTransport, IServerConnection } from '.
 
 const INITIAL_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 10_000;
+/** How often an authenticated connection asks the server for a `pong`. */
+const HEARTBEAT_INTERVAL_MS = 5_000;
+/**
+ * How long a `ping` may go unanswered before the connection counts as lost: a network that vanishes (Wi-Fi to mobile,
+ * no signal) closes no socket. Counted from the ping, so the timers a background tab slows down drop nothing.
+ */
+const HEARTBEAT_TIMEOUT_MS = 10_000;
 
 export type ChannelCloseReason = 'closed' | 'unauthorized' | 'incompatible' | 'untrusted';
 
@@ -27,8 +34,8 @@ export type ServerChannel = {
 
 /**
  * The connection rules every transport shares: authenticate first with the access token, queue commands until
- * `auth.ok`, validate every event, stop on a rejected token and reconnect otherwise with exponential backoff, at once
- * when the page becomes visible again.
+ * `auth.ok`, validate every event, check the server still answers, stop on a rejected token and reconnect otherwise
+ * with exponential backoff, at once when the page becomes visible again.
  */
 export abstract class ChannelServerConnection implements IServerConnection {
   private channel: ServerChannel | null = null;
@@ -37,6 +44,8 @@ export abstract class ChannelServerConnection implements IServerConnection {
   private currentTransport: ConnectionTransport;
   private attempt = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  private pingSentAt: number | null = null;
   private queue: ClientCommand[] = [];
   private readonly eventListeners = new Set<(event: ServerEvent) => void>();
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
@@ -109,6 +118,7 @@ export abstract class ChannelServerConnection implements IServerConnection {
       this.rejectCredentials();
       return;
     }
+    this.stopHeartbeat();
     this.setStatus('connecting');
     const id = ++this.attemptId;
     const live = () => id === this.attemptId && this.channel !== null;
@@ -121,6 +131,7 @@ export abstract class ChannelServerConnection implements IServerConnection {
   }
 
   private handleMessage(text: string): void {
+    this.pingSentAt = null;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -138,6 +149,10 @@ export abstract class ChannelServerConnection implements IServerConnection {
       this.attempt = 0;
       this.setStatus('open');
       this.flushQueue();
+      this.startHeartbeat();
+      return;
+    }
+    if (event.type === 'pong') {
       return;
     }
     if (event.type === 'auth.failed') {
@@ -148,6 +163,7 @@ export abstract class ChannelServerConnection implements IServerConnection {
   }
 
   private handleClose(reason: ChannelCloseReason): void {
+    this.stopHeartbeat();
     this.channel = null;
     if (reason === 'unauthorized') {
       this.rejectCredentials();
@@ -175,9 +191,36 @@ export abstract class ChannelServerConnection implements IServerConnection {
   }
 
   private closeChannel(): void {
+    this.stopHeartbeat();
     const channel = this.channel;
     this.channel = null;
     channel?.close();
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => this.beat(), HEARTBEAT_INTERVAL_MS);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeat) {
+      clearInterval(this.heartbeat);
+      this.heartbeat = null;
+    }
+    this.pingSentAt = null;
+  }
+
+  /** Sends a ping when none is pending, and drops the connection when the pending one went unanswered too long. */
+  private beat(): void {
+    if (this.pingSentAt === null) {
+      this.pingSentAt = Date.now();
+      this.channel!.send(JSON.stringify({ type: 'ping' }));
+      return;
+    }
+    if (Date.now() - this.pingSentAt >= HEARTBEAT_TIMEOUT_MS) {
+      this.closeChannel();
+      this.handleClose('closed');
+    }
   }
 
   private flushQueue(): void {

@@ -54,6 +54,7 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - A correct token sends `auth.ok` and registers the connection in `WebConnectionRegistryService`, which
   removes it on close and offers `broadcast(event)`.
 - Invalid commands from an authenticated connection answer an `error` event.
+- `ping` from an authenticated connection answers `pong`; the web app drops a connection that stops answering.
 
 ## Conversations
 

@@ -109,6 +109,71 @@ describe('ChannelServerConnection', () => {
     expect(connection.channels).toHaveLength(2);
   });
 
+  describe('heartbeat', () => {
+    const authenticate = () => {
+      connection.connect();
+      latest().handlers.onMessage('{"type":"auth.ok"}');
+    };
+    const pings = (channel = latest()) => channel.sent.filter(text => text === '{"type":"ping"}').length;
+
+    it('should ping every 5 s once authenticated and keep a connection that answers', () => {
+      const events: unknown[] = [];
+      connection.onEvent(event => events.push(event));
+      connection.connect();
+      vi.advanceTimersByTime(30_000);
+      expect(pings()).toBe(0);
+
+      latest().handlers.onMessage('{"type":"auth.ok"}');
+      for (let beat = 0; beat < 4; beat += 1) {
+        vi.advanceTimersByTime(5_000);
+        latest().handlers.onMessage('{"type":"pong"}');
+      }
+
+      expect(pings()).toBe(4);
+      expect(events).toEqual([]);
+      expect(statuses).toEqual(['connecting', 'open']);
+    });
+
+    it('should take any message from the server as an answer', () => {
+      authenticate();
+      vi.advanceTimersByTime(5_000);
+      latest().handlers.onMessage('{"type":"conversation.list","conversations":[]}');
+      vi.advanceTimersByTime(10_000);
+
+      expect(statuses.at(-1)).toBe('open');
+      expect(pings()).toBe(2);
+    });
+
+    it('should drop a connection whose ping goes unanswered for 10 s and reconnect', () => {
+      authenticate();
+      const silent = latest();
+      vi.advanceTimersByTime(5_000);
+      vi.advanceTimersByTime(5_000);
+      expect(statuses.at(-1)).toBe('open');
+
+      vi.advanceTimersByTime(5_000);
+      expect(statuses.at(-1)).toBe('closed');
+      expect(silent.closed).toBe(true);
+      expect(pings(silent)).toBe(1);
+
+      vi.advanceTimersByTime(500);
+      expect(connection.channels).toHaveLength(2);
+    });
+
+    it.each([
+      ['the connection disconnects', () => connection.disconnect()],
+      ['the channel closes', () => latest().handlers.onClose('closed')],
+      ['the token is refused', () => latest().handlers.onMessage('{"type":"auth.failed"}')],
+    ])('should stop when %s', (_name, stop) => {
+      authenticate();
+      const channel = latest();
+      stop();
+      vi.advanceTimersByTime(60_000);
+
+      expect(pings(channel)).toBe(0);
+    });
+  });
+
   it('should stop watching the visibility after disconnect', () => {
     connection.connect();
     latest().handlers.onClose('closed');

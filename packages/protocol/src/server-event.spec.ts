@@ -29,6 +29,7 @@ describe('parseServerEvent', () => {
   it.each([
     { type: 'auth.ok' },
     { type: 'auth.failed' },
+    { type: 'pong' },
     { type: 'conversation.list', conversations: [conversation] },
     { type: 'conversation.created', requestId: 'r', conversation },
     { type: 'conversation.updated', conversation },

@@ -147,6 +147,9 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     switch (command.type) {
       case 'auth':
         return;
+      case 'ping':
+        connection.send({ type: 'pong' });
+        return;
       case 'conversation.list':
         connection.send({ type: 'conversation.list', conversations: [...await this.listConversations.execute()] });
         return;
