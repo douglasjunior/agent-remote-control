@@ -17,10 +17,12 @@ agent-remote-control/
 ├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and global preferences (user language)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
-│   ├── web/                        # @agent-remote-control/web: React + Vite web interface (connection, conversations, components)
+│   ├── web/                        # @agent-remote-control/web: React + Vite web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access
+│   ├── p2p-server/                 # @agent-remote-control/p2p-server: NestJS signaling server of remote access; serves the `p2p` build of the web app
 │   └── server/                     # @agent-remote-control/server: the NestJS application
 │       ├── src/                    # NestJS application source code
 │       │   ├── modules/                    # Vertical modules segregated by domain
+│       │   │   ├── access-token/           # The access token of the web channel, local and remote alike
 │       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, demux and the CLI login (IAgentAuthPort)
 │       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA), their access to the board, prompts, skills and registry
 │       │   │   ├── artifacts/              # Board of each conversation: features and tasks, statuses, dependencies, holders and history (IArtifactsPort)
@@ -28,6 +30,7 @@ agent-remote-control/
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
 │       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
+│       │   │   ├── remote/                 # Remote access: the host's identity, its signaling socket and the WebRTC transport of the web channel
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │
 │       │   │   Internal folders of a module (each module uses only the ones it needs):
@@ -55,8 +58,12 @@ agent-remote-control/
 │       ├── vitest.config.ts        # Vitest project "server" (unit tests)
 │       ├── vitest.config.e2e.ts    # Vitest configuration for e2e tests
 │       └── package.json            # Server dependencies and scripts
-├── .github/workflows/              # CI (type check, lint and tests) on pull requests; publishes the multi-platform Docker image to Docker Hub on every GitHub release
+├── .github/workflows/              # CI (type check, lint and tests) on pull requests; publishes the multi-platform Docker image to Docker Hub and deploys the p2p-server and coturn on CapRover on every GitHub release
+├── captain-definition-*            # CapRover definitions of the p2p-server and of the coturn TURN relay
+├── deploy/coturn/                  # Image and configuration of the coturn TURN relay
+├── docs/                           # Roadmap, delivery plans and the remote access guide
 ├── Dockerfile                      # Production image (Debian-based) with the app and Codex
+├── Dockerfile.p2p                  # Image of the p2p-server with the hosted web app
 ├── docker-entrypoint.sh            # Provides the CLIs listed in ARC_AGENTS at container startup
 ├── .dockerignore                   # Files excluded from the Docker build context
 ├── vitest.config.ts                # Vitest root configuration: test projects and coverage
@@ -101,6 +108,7 @@ All commands run from the repository root and apply to every package in `package
 
 - Install dependencies: `pnpm install`
 - Development mode with watch, server and web together: `pnpm dev` (`pnpm dev:server` or `pnpm dev:web` for one of them)
+- Remote access locally: `pnpm dev:p2p-server` and `pnpm dev:web:p2p` (the web app in `p2p` mode)
 - Preview the built web app: `pnpm preview:web`
 - Every package script runs from its own folder (`packages/server`, `packages/web`); the root scripts delegate to them. The server resolves `.env`, `data/` and `workspaces/` from the repository root through `repository-root.util.ts`, whatever the working directory.
 - Build: `pnpm build`

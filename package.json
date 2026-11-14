@@ -33,6 +33,8 @@
     "setup:stt": "node scripts/setup-stt.mjs",
     "dev:server": "pnpm --filter @agent-remote-control/server dev",
     "dev:web": "pnpm --filter @agent-remote-control/web dev",
+    "dev:web:p2p": "pnpm --filter @agent-remote-control/web dev:p2p",
+    "dev:p2p-server": "pnpm --filter @agent-remote-control/p2p-server dev",
     "preview:web": "pnpm --filter @agent-remote-control/web preview",
     "start": "pnpm --filter @agent-remote-control/server start",
     "start:debug": "pnpm --filter @agent-remote-control/server start:debug",

@@ -7,6 +7,7 @@ import type { Duplex } from 'node:stream';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 
 import type { IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
+import { parseJsonMessage } from '../utils/json-message.util.js';
 
 
 const WS_PATH = '/ws';
@@ -24,7 +25,7 @@ class WsClientConnection implements IClientConnection {
   }
 
   onMessage(listener: (data: unknown) => void): () => void {
-    const handler = (raw: RawData) => listener(parseJson(raw.toString()));
+    const handler = (raw: RawData) => listener(parseJsonMessage(raw.toString()));
     this.socket.on('message', handler);
     return () => this.socket.off('message', handler);
   }
@@ -36,14 +37,6 @@ class WsClientConnection implements IClientConnection {
 
   close(code?: number, reason?: string): void {
     this.socket.close(code, reason);
-  }
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
   }
 }
 

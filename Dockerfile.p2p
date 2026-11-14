@@ -1,0 +1,45 @@
+# Image of packages/p2p-server: the signaling server of remote access, serving the hosted web app (dist-p2p)
+
+FROM node:24-bookworm-slim AS base
+WORKDIR /app
+
+# Installs the dependencies of the p2p-server, the web app and the protocol they share
+FROM base AS deps
+RUN corepack enable
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY packages/protocol/package.json ./packages/protocol/package.json
+COPY packages/p2p-server/package.json ./packages/p2p-server/package.json
+COPY packages/server/package.json ./packages/server/package.json
+COPY packages/web/package.json ./packages/web/package.json
+RUN pnpm install --frozen-lockfile --filter "@agent-remote-control/p2p-server..." --filter "@agent-remote-control/web..."
+
+# Compiles the protocol, the p2p-server and the p2p build of the web app
+FROM base AS build
+RUN corepack enable
+COPY . .
+COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules
+COPY --from=deps /app/packages/p2p-server/node_modules ./packages/p2p-server/node_modules
+COPY --from=deps /app/packages/web/node_modules ./packages/web/node_modules
+RUN pnpm --filter @agent-remote-control/protocol build \
+  && pnpm --filter @agent-remote-control/p2p-server build \
+  && pnpm --filter @agent-remote-control/web build:p2p
+
+# Extracts the p2p-server with only its production dependencies into a self-contained directory
+FROM build AS prod-deps
+RUN pnpm --filter @agent-remote-control/p2p-server deploy --prod /deploy
+
+FROM base AS runner
+ENV NODE_ENV=production \
+  PORT=3100 \
+  P2P_WEB_DIR=/app/web
+
+COPY --chown=node:node --from=prod-deps /deploy/node_modules ./node_modules
+COPY --chown=node:node --from=prod-deps /deploy/package.json ./package.json
+COPY --chown=node:node --from=build /app/packages/p2p-server/dist ./dist
+COPY --chown=node:node --from=build /app/packages/web/dist-p2p ./web
+
+USER node
+EXPOSE 3100
+
+CMD ["node", "dist/main.js"]

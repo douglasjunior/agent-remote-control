@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:p2p": "vite --mode p2p",
     "build": "tsc --noEmit && vite build",
+    "build:p2p": "tsc --noEmit && vite build --mode p2p",
     "ts": "tsc --noEmit",
     "preview": "vite preview",
     "ui:relativize": "node scripts/relativize-imports.mjs",

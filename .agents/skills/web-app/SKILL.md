@@ -1,8 +1,8 @@
 ---
 name: web-app
 description: >
-  React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket
-  implementation, access token handling, conversation state, the feed and composer, the mission
+  React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
+  WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
   board, the squad panel, usage and agent login indicators, the skills page, the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
@@ -26,7 +26,7 @@ app. It talks to the server only through `@agent-remote-control/protocol`, over 
 packages/web/src/
 ├── main.tsx                 # bootstrap: ConnectionProvider + RouterProvider
 ├── router.tsx               # route table (`routes`) and the browser router
-├── connection/              # IServerConnection, WebSocket implementation, AccessTokenStore, context
+├── connection/              # IServerConnection, ChannelServerConnection and its WebSocket and WebRTC transports, remote link, AccessTokenStore, context
 ├── conversations/           # reducer, context, entry grouping, open question, team state, presence
 ├── artifacts/               # the mission board of each conversation: reducer, context, useBoard, tree helpers, labels, paths
 ├── theme/                   # ThemeProvider and useTheme (light, dark, system)
@@ -54,23 +54,47 @@ packages/web/src/
 
 ## Connection
 
-- Components depend on `IServerConnection` (`connect`, `disconnect`, `send`, `onEvent`, `onStatus`, `hasAccessToken`, `setAccessToken`), never
-  on `WebSocket`, so another transport can replace `WebSocketServerConnection`. Status is
-  `'connecting' | 'open' | 'unauthorized' | 'closed'`; `onEvent` and `onStatus` return an unsubscribe function.
-  `hasAccessToken()` says whether a token is at hand (in storage or in a `#token=` link the page was opened with)
+- Components depend on `IServerConnection` (`transport`, `connect`, `disconnect`, `send`, `onEvent`, `onStatus`, `onTransport`,
+  `hasAccessToken`, `setAccessToken`), never on a transport. Status is `'connecting' | 'open' | 'unauthorized' | 'closed' |
+  'incompatible' | 'untrusted'`; transport is `'websocket' | 'webrtc' | 'turn'`. The `on*` methods return an unsubscribe function.
+  `hasAccessToken()` says whether a token is at hand (in storage or in a link the page was opened with)
   and `setAccessToken(token)` keeps the one the user typed.
-- `WebSocketServerConnection` receives an `AccessTokenStore` through its constructor (`main.tsx` creates it) and always connects to the relative `/ws` (`wss` on https), sends `auth` first and
-  reports `open` on `auth.ok`. `auth.failed` or close code `4401` clears the stored token, reports
-  `unauthorized` and stops. Other closes reconnect with exponential backoff from 500 ms to a 10 s cap, reset
-  after a successful auth. Commands sent while not `open` are queued and flushed after `auth.ok`. Every frame
-  goes through `parseServerEvent`; invalid frames are dropped with `console.warn`.
+- `ChannelServerConnection` holds the rules every transport shares; a subclass only opens one attempt (`openChannel`,
+  given the stored token) and
+  reports through `ChannelHandlers` (`onOpen`, `onMessage` with one whole JSON text, `onClose` with a reason, `onTransport`).
+  It sends `auth` first and reports `open` on `auth.ok`. `auth.failed` or an `unauthorized` close clears the stored token,
+  reports `unauthorized` and stops; `incompatible` and `untrusted` stop too. Other closes reconnect with exponential
+  backoff from 500 ms to a 10 s cap, reset after a successful auth, and at once when the page becomes visible again.
+  Commands sent while not `open` are queued and flushed after `auth.ok`. Once authenticated it sends `ping` every 5 s
+  when none is pending; any message answers it (`pong` is not forwarded), and a ping unanswered for 10 s drops the
+  connection into the reconnection, since a vanished network closes no socket. Every message goes through `parseServerEvent`;
+  invalid ones are dropped with `console.warn`. Reports of a replaced attempt are ignored.
+- `WebSocketServerConnection` always connects to the relative `/ws` (`wss` on https); close code `4401` is `unauthorized`.
+- `WebRtcServerConnection` reaches a host through the signaling server of the page and a data channel, both ways in
+  frames. Each attempt generates an ECDSA certificate (`RTCPeerConnection.generateCertificate`), reads its fingerprint
+  from a throwaway offer and sends `client.connect` with `sessionProof(token, instance id, fingerprint)`; the offer, made
+  with that certificate, waits for `client.accepted`. `client.rejected` (the host refused the proof) is `unauthorized`.
+  Attempts leave the TURN URLs out until one fails to connect (no channel 8 s after its offer, or a failed peer
+  connection); from then on, for the life of the page, they take the relay.
+  It refuses an answer whose certificate fingerprint is not the pinned one (`untrusted`) and a host of another
+  `PROTOCOL_VERSION` (`incompatible`), and turns its transport to `turn` when the selected candidate pair is relayed.
+- `createAppConnection(import.meta.env.MODE)` picks the transport in `main.tsx`: the `p2p` mode (`vite --mode p2p`,
+  `build:p2p` into `dist-p2p`) is the hosted web app, which reads the remote link (`readRemoteLink`: instance id from
+  `/i/<instance id>`, fingerprint from the `fp` fragment parameter, kept as `arc.remote.<id>.fingerprint`, and ignored,
+  from the link or from storage, unless it derives the instance id), uses the
+  router basename `/i/<instance id>` and a token store per instance, and renders `RemoteLinkMissingPage` without a link.
+  Every other mode reaches the server that serves the page over WebSocket.
 - `ConnectionProvider` owns the token state and the connection lifecycle: it asks the connection for the token
   (`hasAccessToken`, `setAccessToken`), connects when one exists and
-  exposes `status`, `hasToken` and `submitToken` through `useConnection()`. Without a token (or after
+  exposes `status`, `transport`, `hasToken` and `submitToken` through `useConnection()`. Without a token (or after
   `unauthorized`) `AppLayout` renders `MissingTokenPage`.
-- `AccessTokenStore` (`connection/access-token-store.ts`) keeps the token in `localStorage` (`arc.accessToken`) with `read`, `store`, `clear` and `load`. `load` first takes a `#token=` URL fragment into storage and removes it
-  with `history.replaceState`. Every storage access is wrapped in `try/catch`.
-- Vite proxies `/ws` and `/health` to the server in `dev` and `preview` without `changeOrigin`, so the server's origin check sees a same-origin request; the target port is the `PORT` of the root `.env` (default `3000`). nginx proxies the same path in production.
+- `ConnectionBadge` shows the status with an icon of the transport (`Cable`, `ArrowLeftRight`, `Waypoints`); its
+  popover, opened on hover or click, explains the transport and why an `incompatible` or `untrusted` host was refused.
+- `AccessTokenStore` (`connection/access-token-store.ts`) keeps the token in `localStorage` under its key (`arc.accessToken`,
+  or `arc.accessToken.<instance id>` for a remote host) with `read`, `store`, `clear` and `load`. `load` first takes the
+  `token` fragment parameter into storage; `takeFragmentParam` removes the parameter it reads with
+  `history.replaceState` and keeps the others. Every storage access is wrapped in `try/catch`.
+- Vite proxies `/ws` and `/health` to the server in `dev` and `preview` without `changeOrigin`, so the server's origin check sees a same-origin request; the target port is the `PORT` of the root `.env` (default `3000`). In the `p2p` mode it proxies `/signal` to the p2p-server on port 3100 instead. nginx proxies the same path in production.
 
 ## Imports and vendored UI
 
@@ -87,7 +111,7 @@ packages/web/src/
 - Use `FakeServerConnection` from `src/test/fake-server-connection.ts` for components; it records sent
   commands, lets the test emit events and statuses, and keeps the token in memory (`accessToken`, a token at the start;
   set it to `null` for a signed-out spec).
-- The browser `WebSocket` is an external I/O boundary: stub it with `vi.stubGlobal` and fake timers.
+- The browser `WebSocket` and `RTCPeerConnection` are external I/O boundaries: stub them with `vi.stubGlobal` and fake timers.
 - Specs that render the feed wrap it in `VirtuosoMockContext` (`renderApp` already does); the scrolling specs are described in [references/conversation-feed.md](references/conversation-feed.md).
 - Target 100% coverage outside `components/ui`.
 

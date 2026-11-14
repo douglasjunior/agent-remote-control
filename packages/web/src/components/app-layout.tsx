@@ -46,7 +46,7 @@ const DOCKED_QUERY = '(min-width: 768px)';
 const CONVERSATION_LIST_ID = 'conversation-list';
 
 function AppShell() {
-  const { status } = useConnection();
+  const { status, transport } = useConnection();
   const location = useLocation();
   const { createConversation } = useConversations();
   const docked = useMediaQuery(DOCKED_QUERY);
@@ -89,7 +89,7 @@ function AppShell() {
             </Tooltip>
             <AgentAuthController />
             <UsageIndicator />
-            <ConnectionBadge status={status} />
+            <ConnectionBadge status={status} transport={transport} />
             <ThemeToggle />
           </div>
         </header>

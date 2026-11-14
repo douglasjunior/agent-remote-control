@@ -16,6 +16,8 @@ import {
 
 export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth'), token: z.string() }),
+  /** Sent every few seconds by the web app once authenticated; a connection that stops answering `pong` is dropped. */
+  z.object({ type: z.literal('ping') }),
   z.object({ type: z.literal('conversation.list') }),
   z.object({ type: z.literal('conversation.create'), requestId: z.string() }),
   z.object({ type: z.literal('conversation.history'), conversationId: z.string() }),

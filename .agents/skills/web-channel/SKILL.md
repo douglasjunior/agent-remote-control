@@ -3,7 +3,7 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, agent CLI login
+  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
   (auth.* commands and events), uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
   access token or web conversations.
 ---
@@ -24,12 +24,15 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 ## Transport port
 
 - `IClientTransportPort` (`onConnection`) and `IClientConnection` (`send`, `onMessage`, `onClose`,
-  `close`) hide the technology, so a WebRTC DataChannel can replace WebSocket.
-- `onMessage` delivers parsed JSON, or the raw value when the payload is not JSON. The transport only
-  serializes `ServerEvent`; validating commands belongs to the handler through `parseClientCommand`.
+  `close`) hide the technology. `WebModule` binds the port to `CombinedClientTransportAdapter`, which hands the
+  connections of `WsClientTransportAdapter` (local) and of the remote module's WebRTC data channels alike, so every
+  rule below applies to both.
+- `onMessage` delivers parsed JSON, or the raw value when the payload is not JSON (`parseJsonMessage`). The transport
+  only serializes `ServerEvent`; validating commands belongs to the handler through `parseClientCommand`.
 - `WsClientTransportAdapter` uses `ws` with `WebSocketServer({ noServer: true })` attached to the
   `upgrade` event of the Nest HTTP server. It accepts the path `/ws` only and destroys the socket of any
   other upgrade. It enforces a 256 KiB payload limit and closes the server on module destroy.
+- A data channel carries no close code: a connection refused by the auth gate reads `auth.failed`, sent before the close.
 
 ## Origin check
 
@@ -40,16 +43,18 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 
 ## Access token and auth gate
 
-- `WebAccessTokenService` takes the token from `WEB_ACCESS_TOKEN`, otherwise from
-  `<DATA_DIR>/web/access-token`, generated once with `randomBytes(24).toString('base64url')` and file
-  mode `0o600`. `verify` compares with `timingSafeEqual` and returns false on a length mismatch.
-- On bootstrap it logs `Web interface access token: <token>`.
+- `AccessTokenService` (module `access-token`, imported by the web and remote modules) takes the token from
+  `WEB_ACCESS_TOKEN`, otherwise from `<DATA_DIR>/web/access-token`, generated once with
+  `randomBytes(24).toString('base64url')` and file mode `0o600`. `token()` returns it; `verify` compares with
+  `timingSafeEqual` and returns false on a length mismatch.
+- On bootstrap it logs `Web interface access token: <token>` from a context the log files leave out.
 - `WebConnectionHandler` waits at most 5 s for an `auth` command on each connection. A wrong token, any
   other first command or a timeout sends `auth.failed` and closes with code `4401`. Commands from a
   connection that has not authenticated are never routed.
 - A correct token sends `auth.ok` and registers the connection in `WebConnectionRegistryService`, which
   removes it on close and offers `broadcast(event)`.
 - Invalid commands from an authenticated connection answer an `error` event.
+- `ping` from an authenticated connection answers `pong`; the web app drops a connection that stops answering.
 
 ## Conversations
 
@@ -118,6 +123,6 @@ a proxy in front of both makes the upgrade same-origin.
 
 ## Environment
 
-`WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`), `WEB_ACCESS_TOKEN`,
-`WEB_ALLOWED_ORIGINS` and `WEB_STATIC_DIR`. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`, remote access included), `WEB_ACCESS_TOKEN`,
+`WEB_ALLOWED_ORIGINS`, `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
 `AGENT_AUTH_STATUS_TIMEOUT_MS`.

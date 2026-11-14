@@ -24,6 +24,7 @@ export type InterruptedWork = z.infer<typeof interruptedWorkSchema>;
 export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth.ok') }),
   z.object({ type: z.literal('auth.failed') }),
+  z.object({ type: z.literal('pong') }),
   z.object({
     type: z.literal('conversation.list'),
     conversations: z.array(conversationSummarySchema),

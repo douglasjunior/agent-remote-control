@@ -12,7 +12,7 @@ Each stage ships something usable on its own and fits in a few focused work sess
 |---|---|---|
 | [1](#stage-1-monorepo-and-local-web-channel) | Monorepo and local web channel | Done |
 | [2](#stage-2-simple-mode) | Simple mode: projects, live preview, versions | Planned |
-| [3](#stage-3-peer-to-peer-remote-access) | Peer-to-peer remote access | Planned |
+| [3](#stage-3-peer-to-peer-remote-access) | Peer-to-peer remote access | In progress |
 | [4](#stage-4-remote-preview-over-the-datachannel) | Remote preview over the DataChannel | Planned |
 | [5](#stage-5-installer-for-non-developers) | Installer for non-developers | Future |
 | [6](#stage-6-publish) | Publish to the web | Future |
@@ -63,6 +63,8 @@ The experience for people who do not program. Access is local: the browser on th
 
 ## Stage 3: Peer-to-peer remote access
 
+**Status: in progress.** The signaling server, the WebRTC transport on both ends and the TURN relay work; [Remote access](remote-access.md) describes how they run and deploy.
+
 The user reaches the service running on their machine from any device, with no server in the data path.
 
 ### How the connection works
@@ -71,29 +73,28 @@ WebRTC, the technology behind browser video calls, connects the two peers:
 
 | Piece | Role | Server |
 |---|---|---|
-| Signaling | Both peers exchange their connection descriptions (SDP) to find each other | A tiny relay used for a few seconds per connection, such as a Cloudflare Worker on the free tier |
+| Signaling | Both peers exchange their connection descriptions (SDP) and candidates to find each other | `packages/p2p-server`, which also serves the hosted web app |
 | STUN | Each peer discovers its public address behind the router | Free public servers (Google, Cloudflare) |
-| TURN | Fallback relay when a direct path fails (corporate networks, mobile carrier NAT, roughly 10–20% of cases) | Relays DTLS-encrypted traffic it cannot read; Cloudflare offers TURN with a free quota |
+| TURN | Fallback relay when a direct path fails (corporate networks, mobile carrier NAT, roughly 10–20% of cases) | coturn, relaying DTLS-encrypted traffic it cannot read, within per-session and total bandwidth limits |
 
-After the handshake, browser and service talk over a **DataChannel**, encrypted end to end with DTLS.
+The service keeps a WebSocket open to the signaling server and answers each browser's offer; after the handshake, browser and service talk over a **DataChannel**, encrypted end to end with DTLS. Messages larger than a data channel carries are split into frames.
 
-### Pairing and trust
+### Link and trust
 
-The service displays a QR code holding a URL to the hosted interface, for example:
+At startup the service prints its link:
 
 ```text
-https://<owner>.github.io/agent-remote-control/#pair=<one-time-token>&fp=<service-fingerprint>&room=<id>
+https://arc-p2p-server.arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
 ```
 
-The data travels in the URL fragment (`#`), which the browser never sends to the hosting server. Scanning the code opens the hosted interface, which joins the signaling room, completes the handshake and stores the service fingerprint. Every later connection checks that fingerprint, so neither the signaling server nor anyone else can impersonate the service, which matters because the service executes commands on the user's machine.
+- The **instance id** derives from a secret the service keeps, so only the holder of the secret registers that instance on the signaling server.
+- The **fingerprint** pins the DTLS certificate the service keeps. The browser refuses an answer announcing another certificate, so neither the signaling server nor anyone else can impersonate the service, which matters because the service executes commands on the user's machine.
+- The fingerprint and the **access token** travel in the URL fragment (`#`), which the browser never sends to the server that hosts the page.
 
-### Steps
+### Next steps
 
-- **3a. Proof of concept.** Exchange the SDP by pasting text or scanning QR codes, with no server at all.
-- **3b. Signaling and pairing.** A signaling Worker plus QR pairing with the pinned fingerprint.
-- **3c. Hosted interface.** The same `packages/web` build is also published as a static PWA on GitHub Pages and picks the transport at runtime: WebSocket when served locally by the service, WebRTC DataChannel when opened from the hosted URL. The local interface from Stage 1 keeps working unchanged.
-
-On the server, the DataChannel adapter is a second implementation of `IClientTransportPort` (candidates: `node-datachannel`, `werift`).
+- **Pairing by QR code.** The service shows its link as a QR code, so a phone opens it without copying text.
+- **Signaling server limits.** Rate limits per address on `/signal/client`, so nobody exhausts the negotiation slots of a host.
 
 ## Stage 4: Remote preview over the DataChannel
 
