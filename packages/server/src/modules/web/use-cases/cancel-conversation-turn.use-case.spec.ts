@@ -5,7 +5,7 @@ import { CancelConversationTurnUseCase } from './cancel-conversation-turn.use-ca
 
 
 describe('CancelConversationTurnUseCase', () => {
-  it('stays silent when a turn was cancelled', async () => {
+  it('should stay silent when a turn was cancelled', async () => {
     const { agentTurn, events, store } = createWebHarness();
     store.seed('web-1');
 
@@ -15,7 +15,7 @@ describe('CancelConversationTurnUseCase', () => {
     expect(store.histories.get('web-1')).toEqual([]);
   });
 
-  it('tells the user when there was nothing to cancel', async () => {
+  it('should tell the user when there was nothing to cancel', async () => {
     const { agentTurn, events, store } = createWebHarness();
     store.seed('web-1');
     agentTurn.cancelResult = false;

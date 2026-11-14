@@ -4,7 +4,7 @@ import { ListPromptHistoryUseCase } from './list-prompt-history.use-case.js';
 
 
 describe('ListPromptHistoryUseCase', () => {
-  it('returns the stored prompts, most recent first', async () => {
+  it('should return the stored prompts, most recent first', async () => {
     const history = new FakePromptHistory();
     await history.append('older');
     await history.append('latest');

@@ -16,7 +16,7 @@ function setup() {
 }
 
 describe('ResumeConversationWorkUseCase', () => {
-  it('does nothing for work that is not interrupted', async () => {
+  it('should do nothing for work that is not interrupted', async () => {
     const { useCase, agentTurn, types } = setup();
 
     await useCase.execute('web-1', 'w');
@@ -25,7 +25,7 @@ describe('ResumeConversationWorkUseCase', () => {
     expect(types()).toEqual([]);
   });
 
-  it('runs the work as a turn, tells the clients it left the list and returns to idle', async () => {
+  it('should run the work as a turn, tell the clients it left the list and return to idle', async () => {
     const { useCase, agentTurn, observer, types, events } = setup();
     agentTurn.interruptedWork = [work];
 
@@ -38,7 +38,7 @@ describe('ResumeConversationWorkUseCase', () => {
     expect(events.stateOf('web-1')).toBe('idle');
   });
 
-  it('reports a failure as a notice and returns to idle', async () => {
+  it('should report a failure as a notice and return to idle', async () => {
     const { useCase, agentTurn, types, events } = setup();
     agentTurn.interruptedWork = [work];
     agentTurn.turnError = new Error('boom');
@@ -49,7 +49,7 @@ describe('ResumeConversationWorkUseCase', () => {
     expect(events.stateOf('web-1')).toBe('idle');
   });
 
-  it('delivers answers as a turn', async () => {
+  it('should deliver answers as a turn', async () => {
     const { useCase, agentTurn, types, events } = setup();
     const restoredWork = { workId: 'w', answers: [] };
 

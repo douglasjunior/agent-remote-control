@@ -51,7 +51,7 @@ describe('FeedList open question out of view', () => {
     virtuoso.scrollToIndex.mockClear();
   });
 
-  it('shows the waiting line and scrolls to the question card from its button', async () => {
+  it('should show the waiting line and scroll to the question card from its button', async () => {
     const user = userEvent.setup();
     renderFeed();
 
@@ -63,7 +63,7 @@ describe('FeedList open question out of view', () => {
     expect(screen.queryByRole('button', { name: 'Go to question' })).not.toBeInTheDocument();
   });
 
-  it('hides the line when the question is within the visible range, and when it is closed', () => {
+  it('should hide the line when the question is within the visible range, and when it is closed', () => {
     virtuoso.range = { startIndex: 0, endIndex: 2 };
     const { unmount } = renderFeed();
     expect(screen.queryByText('Tech Lead is waiting for your answer')).not.toBeInTheDocument();
@@ -74,7 +74,7 @@ describe('FeedList open question out of view', () => {
     expect(screen.queryByText('Tech Lead is waiting for your answer')).not.toBeInTheDocument();
   });
 
-  it('does not snap back to the end when the content grows after scrolling up to the question', async () => {
+  it('should not snap back to the end when the content grows after scrolling up to the question', async () => {
     const user = userEvent.setup();
     let grow: () => void = vi.fn();
     vi.stubGlobal('ResizeObserver', class {

@@ -86,6 +86,31 @@ Keep the frontmatter strictly lean:
 Do not invent fields such as `tags`, `version`, `category` or `parameters` that only inflate
 L1 token consumption.
 
+### Template
+
+A new skill starts from this shape, the frontmatter first and the sections in the order the reader works:
+
+```markdown
+---
+name: release-notes
+description: How release notes are written for this repository - where they live, the sections, the tone and how each change is grouped. Use when preparing a release, writing a changelog entry or reviewing the notes of a pull request.
+---
+
+# Release Notes
+
+## When it applies
+One short paragraph on the situations this skill governs.
+
+## Rules
+- Prescriptive, verifiable rules, one per bullet.
+
+## Steps
+1. The procedure, in the order it is carried out.
+
+## Checklist
+- [ ] What to confirm before finishing.
+```
+
 ## Skill or permanent instruction (`AGENTS.md`)?
 
 Not every rule should become a skill:

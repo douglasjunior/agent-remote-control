@@ -13,7 +13,7 @@ describe('useNow', () => {
     vi.useRealTimers();
   });
 
-  it('ticks every second while active', () => {
+  it('should tick every second while active', () => {
     const { result } = renderHook(() => useNow(true));
     const start = result.current;
 
@@ -22,7 +22,7 @@ describe('useNow', () => {
     expect(result.current).toBe(start + 3000);
   });
 
-  it('stands still while inactive', () => {
+  it('should stand still while inactive', () => {
     const { result } = renderHook(() => useNow(false));
     const start = result.current;
 
@@ -31,7 +31,7 @@ describe('useNow', () => {
     expect(result.current).toBe(start);
   });
 
-  it('stops ticking when it becomes inactive', () => {
+  it('should stop ticking when it becomes inactive', () => {
     const { result, rerender } = renderHook(({ active }) => useNow(active), { initialProps: { active: true } });
 
     act(() => vi.advanceTimersByTime(1000));

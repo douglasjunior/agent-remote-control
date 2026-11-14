@@ -860,10 +860,12 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     return match ?? null;
   }
 
+  /** The value identifies an option, and some agents list one twice (Copilot repeats `auto`): the first is kept. */
   private flattenSelectOptions(
     options: SessionConfigSelectOptions,
   ): readonly SessionConfigSelectOption[] {
-    return options.flatMap(item => ('value' in item ? [item] : item.options));
+    const flat = options.flatMap(item => ('value' in item ? [item] : item.options));
+    return flat.filter((option, index) => flat.findIndex(other => other.value === option.value) === index);
   }
 
   private isMethodNotFoundError(message: string): boolean {

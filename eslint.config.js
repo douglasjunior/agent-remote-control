@@ -142,6 +142,28 @@ export default defineConfig([
     },
   },
   {
+    files: ['**/*.spec.{ts,tsx}', '**/*.e2e-spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...[
+          'CallExpression[callee.name="it"]',
+          'CallExpression[callee.object.name="it"]',
+          'CallExpression[callee.callee.object.name="it"]',
+        ].flatMap(test => [
+          {
+            selector: `${test} > Literal.arguments:first-child[value!=/^should /]`,
+            message: 'A test name starts with "should" followed by the expected behavior.',
+          },
+          {
+            selector: `${test} > TemplateLiteral.arguments:first-child > TemplateElement.quasis:first-child[value.raw!=/^should /]`,
+            message: 'A test name starts with "should" followed by the expected behavior.',
+          },
+        ]),
+      ],
+    },
+  },
+  {
     files: ['**/*.cjs'],
     rules: {
       '@typescript-eslint/no-require-imports': 'off',

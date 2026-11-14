@@ -40,9 +40,8 @@ describe('AgentRegistryService', () => {
       expect(promptMixed).toBe(promptUpper);
     });
 
-    it('should include root directory guideline for delegations in the CEO system prompt', () => {
-      const prompt = service.getSystemPrompt('CEO');
-      expect(prompt).toContain('The project folder is the name of a direct subfolder of your CWD that already exists');
+    it('should point the CEO to its delegation skill for the project folder and the other attributes', () => {
+      expect(service.getSystemPrompt('CEO')).toContain('with `artifact`, `project` and `session` as the `delegation-protocol` skill explains');
     });
 
     it('should give the CEO its team of every other registered agent', () => {
@@ -52,6 +51,7 @@ describe('AgentRegistryService', () => {
         description: 'Reviews pull requests.',
         buildSystemPrompt: () => 'Reviewer prompt',
         delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
         turnReminder: 'Reviewer turn reminder',
       });
 
@@ -83,6 +83,7 @@ describe('AgentRegistryService', () => {
         buildSystemPrompt: () => 'You test things.',
         defaultModel: 'claude-3-5-sonnet',
         delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
         turnReminder: 'Tester turn reminder',
       });
 
@@ -144,18 +145,22 @@ describe('AgentRegistryService', () => {
       expect(service.getDelegationContract('developer')).toEqual({
         project: 'required',
         sessionMode: 'overridable',
+        artifact: 'required',
       });
       expect(service.getDelegationContract('GIT_OPS')).toEqual({
         project: 'optional',
         sessionMode: 'overridable',
+        artifact: 'optional',
       });
     });
 
-    it('should require a project folder for the code reviewer while allowing an explicit session mode', () => {
+    it('should have the code reviewer review the pull request of a task while allowing an explicit session mode', () => {
       expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({
         project: 'required',
         sessionMode: 'overridable',
         readOnly: true,
+        artifact: 'required',
+        needsReviewableWork: true,
       });
     });
 
@@ -172,39 +177,23 @@ describe('AgentRegistryService', () => {
     });
   });
 
-  describe('usesPlansDirectory', () => {
-    it('should report the Product Owner and the Tech Lead as writing plan documents', () => {
-      expect(service.usesPlansDirectory('PRODUCT_OWNER')).toBe(true);
-      expect(service.usesPlansDirectory('tech_lead')).toBe(true);
-      expect(service.usesPlansDirectory('DEVELOPER')).toBe(false);
-      expect(service.usesPlansDirectory('UNKNOWN_ROLE')).toBe(false);
+  describe('getArtifactAccess', () => {
+    it('should give each role its access to the board, and an unknown role read-only tasks', () => {
+      expect(service.getArtifactAccess('ceo').scope).toBe('board');
+      expect(service.getArtifactAccess('PRODUCT_OWNER')).toMatchObject({ scope: 'tree', create: true });
+      expect(service.getArtifactAccess('TECH_LEAD').sections).toContain('technical_solution');
+      expect(service.getArtifactAccess('DEVELOPER')).toEqual({ scope: 'task', sections: ['implementation_notes'], fields: ['branch'] });
+      expect(service.getArtifactAccess('GIT_OPS').fields).toContain('pull_requests');
+      expect(service.getArtifactAccess('UNKNOWN_ROLE')).toEqual({ scope: 'task', sections: [], fields: [] });
     });
   });
 
-  describe('getWorkspaceFiles', () => {
-    it('should collect the workspace files of every definition, built with its team', () => {
-      service.registerDefinition({
-        role: 'AUDITOR' as AgentRole,
-        name: 'Auditor Agent',
-        description: 'Audits.',
-        buildSystemPrompt: () => 'Auditor prompt',
-        buildWorkspaceFiles: (team, workspaceDir) => [{ path: 'audit.md', content: `${workspaceDir}:${team.map(agent => agent.role).join(',')}` }],
-        delegation: {},
-      });
+  describe('getTeam', () => {
+    it('should give every definition but the role\'s own, and every one for an unknown role', () => {
+      const all = service.getAllDefinitions().map(definition => definition.role);
 
-      const files = service.getWorkspaceFiles('/ws');
-
-      expect(files.map(file => file.path)).toEqual(expect.arrayContaining([
-        'AGENTS.md',
-        '.agents/skills/agent-team/SKILL.md',
-        'audit.md',
-      ]));
-      const audit = files.find(file => file.path === 'audit.md');
-      expect(audit?.content).toContain('/ws:CEO,');
-      expect(audit?.content).not.toContain('AUDITOR');
-      const team = files.find(file => file.path === '.agents/skills/agent-team/SKILL.md');
-      expect(team?.content).toContain('### AUDITOR — Auditor Agent');
-      expect(team?.content).not.toContain('### CEO');
+      expect(service.getTeam('ceo').map(definition => definition.role)).toEqual(all.filter(role => role !== 'CEO'));
+      expect(service.getTeam('UNKNOWN').map(definition => definition.role)).toEqual(all);
     });
   });
 
@@ -245,6 +234,7 @@ describe('AgentRegistryService', () => {
         description: 'Custom description',
         buildSystemPrompt: () => 'prompt',
         delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
         turnReminder: 'Custom turn reminder',
       });
       expect(service.getTurnReminder('custom')).toBe('Custom turn reminder');
@@ -279,6 +269,7 @@ describe('AgentRegistryService', () => {
         description: 'Architectural governance',
         buildSystemPrompt: () => 'Architect prompt',
         delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
         turnReminder: 'Architect turn reminder',
       });
 
@@ -296,6 +287,7 @@ describe('AgentRegistryService', () => {
         description: 'Overridden developer',
         buildSystemPrompt: () => 'Overridden prompt',
         delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
         turnReminder: 'Overridden turn reminder',
       });
 

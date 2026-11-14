@@ -74,7 +74,7 @@ describe('WebSocketServerConnection', () => {
     latest().receive({ type: 'auth.ok' });
   }
 
-  it('connects to the relative /ws endpoint and authenticates first', () => {
+  it('should connect to the relative /ws endpoint and authenticate first', () => {
     connection.connect();
     expect(latest().url).toBe(`ws://${location.host}/ws`);
     expect(statuses).toEqual(['connecting']);
@@ -86,13 +86,13 @@ describe('WebSocketServerConnection', () => {
     expect(statuses).toEqual(['connecting', 'open']);
   });
 
-  it('uses wss on https pages', () => {
+  it('should use wss on https pages', () => {
     vi.stubGlobal('location', { protocol: 'https:', host: 'example.com' });
     connection.connect();
     expect(latest().url).toBe('wss://example.com/ws');
   });
 
-  it('has a token when one is stored or comes in the link, and none once it is cleared', () => {
+  it('should have a token when one is stored or comes in the link, and none once it is cleared', () => {
     expect(connection.hasAccessToken()).toBe(true);
 
     tokens.clear();
@@ -104,20 +104,20 @@ describe('WebSocketServerConnection', () => {
     history.replaceState(null, '', '/');
   });
 
-  it('stores the token it is given', () => {
+  it('should store the token it is given', () => {
     connection.setAccessToken('given');
 
     expect(tokens.read()).toBe('given');
   });
 
-  it('reports unauthorized without connecting when there is no token', () => {
+  it('should report unauthorized without connecting when there is no token', () => {
     tokens.clear();
     connection.connect();
     expect(FakeWebSocket.instances).toHaveLength(0);
     expect(statuses).toEqual(['unauthorized']);
   });
 
-  it('forwards valid events and drops invalid frames with a warning', () => {
+  it('should forward valid events and drop invalid frames with a warning', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     authenticate();
 
@@ -129,7 +129,7 @@ describe('WebSocketServerConnection', () => {
     expect(warn).toHaveBeenCalledTimes(2);
   });
 
-  it('unsubscribes listeners', () => {
+  it('should unsubscribe listeners', () => {
     const extra: ServerEvent[] = [];
     const unsubscribeEvent = connection.onEvent(event => extra.push(event));
     const extraStatuses: ConnectionStatus[] = [];
@@ -144,7 +144,7 @@ describe('WebSocketServerConnection', () => {
     expect(extraStatuses).toEqual([]);
   });
 
-  it('queues commands until authentication and flushes them in order', () => {
+  it('should queue commands until authentication and flush them in order', () => {
     connection.send({ type: 'conversation.list' });
     connection.connect();
     connection.send({ type: 'agents.list' });
@@ -162,7 +162,7 @@ describe('WebSocketServerConnection', () => {
     expect(latest().sent.at(-1)).toEqual({ type: 'turn.cancel', conversationId: 'c1' });
   });
 
-  it('clears the token and stops on auth.failed', () => {
+  it('should clear the token and stop on auth.failed', () => {
     connection.connect();
     latest().open();
     latest().receive({ type: 'auth.failed' });
@@ -176,7 +176,7 @@ describe('WebSocketServerConnection', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
-  it('treats close code 4401 as unauthorized', () => {
+  it('should treat close code 4401 as unauthorized', () => {
     connection.connect();
     latest().serverClose(4401);
 
@@ -186,7 +186,7 @@ describe('WebSocketServerConnection', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
-  it('reconnects with exponential backoff capped at 10 s', () => {
+  it('should reconnect with exponential backoff capped at 10 s', () => {
     connection.connect();
     const delays = [500, 1000, 2000, 4000, 8000, 10_000, 10_000];
 
@@ -200,7 +200,7 @@ describe('WebSocketServerConnection', () => {
     });
   });
 
-  it('resets the backoff after a successful authentication', () => {
+  it('should reset the backoff after a successful authentication', () => {
     connection.connect();
     latest().serverClose();
     vi.advanceTimersByTime(500);
@@ -217,7 +217,7 @@ describe('WebSocketServerConnection', () => {
     expect(FakeWebSocket.instances).toHaveLength(count + 1);
   });
 
-  it('does not reconnect after disconnect', () => {
+  it('should not reconnect after disconnect', () => {
     authenticate();
     const socket = latest();
     connection.disconnect();
@@ -229,7 +229,7 @@ describe('WebSocketServerConnection', () => {
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
-  it('cancels a pending retry on disconnect and on connect', () => {
+  it('should cancel a pending retry on disconnect and on connect', () => {
     connection.connect();
     latest().serverClose();
     connection.disconnect();
@@ -244,7 +244,7 @@ describe('WebSocketServerConnection', () => {
     expect(FakeWebSocket.instances).toHaveLength(3);
   });
 
-  it('ignores frames and closes from a replaced socket', () => {
+  it('should ignore frames and close from a replaced socket', () => {
     connection.connect();
     const stale = latest();
     connection.disconnect();

@@ -529,6 +529,46 @@ describe('DiscordMessageHandler', () => {
       expect(thoughtMsg!.delete).toHaveBeenCalled();
     });
 
+    it('should post each skill an agent reads or writes, going on when the message fails', async () => {
+      let sends = 0;
+      const posted: string[] = [];
+      const mockThread = {
+        id: 'thread-1',
+        parentId: 'channel-1',
+        ownerId: 'bot-123',
+        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: vi.fn().mockReturnValue(true),
+        send: vi.fn().mockImplementation(async (content: string) => {
+          sends += 1;
+          if (content.includes('could not')) {
+            throw new Error('Discord down');
+          }
+          posted.push(content);
+          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        }),
+      } as unknown as ThreadChannel;
+      const message = {
+        author: { bot: false, id: 'user-42' },
+        channelId: 'channel-1',
+        cleanContent: 'Hi',
+        content: 'Hi',
+        mentions: { has: vi.fn().mockReturnValue(false) },
+        channel: mockThread,
+      } as unknown as Message;
+
+      vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
+        req.onActivity?.({ kind: 'skill', id: 's1', action: 'read', names: ['api-testing'], status: 'completed' }, 'QA');
+        req.onActivity?.({ kind: 'skill', id: 's2', action: 'write', names: ['x'], status: 'failed', error: 'No.' }, 'CEO');
+        return agentTurn.turnResult;
+      });
+
+      await handler.handleMessage(message);
+      await vi.runAllTimersAsync();
+
+      expect(posted).toContain('📘 **QA** read the skill `api-testing`');
+      expect(sends).toBeGreaterThanOrEqual(3);
+    });
+
     it('should announce delegations and deliver thoughts and tool calls as individual messages', async () => {
       const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
       const mockThread = {

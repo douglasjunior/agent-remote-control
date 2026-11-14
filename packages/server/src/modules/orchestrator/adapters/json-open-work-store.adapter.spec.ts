@@ -20,7 +20,7 @@ describe('JsonOpenWorkStoreAdapter', () => {
 
   afterEach(() => rm(directory, { recursive: true, force: true }));
 
-  it('reads back what it saved, leaving no temporary file', async () => {
+  it('should read back what it saved, leaving no temporary file', async () => {
     await new JsonOpenWorkStoreAdapter(dataDirectoryAt(join(directory, 'nested'))).save({ 'web-1': [record] });
 
     expect(await new JsonOpenWorkStoreAdapter(dataDirectoryAt(join(directory, 'nested'))).load()).toEqual({ 'web-1': [record] });
@@ -28,13 +28,13 @@ describe('JsonOpenWorkStoreAdapter', () => {
     expect(JSON.parse(await readFile(join(directory, 'nested', 'open-work.json'), 'utf-8'))).toEqual({ 'web-1': [record] });
   });
 
-  it.each([['invalid JSON', '{'], ['a list', '[]'], ['null', 'null']])('treats %s as empty', async (_name, content) => {
+  it.each([['invalid JSON', '{'], ['a list', '[]'], ['null', 'null']])('should treat %s as empty', async (_name, content) => {
     await writeFile(join(directory, 'open-work.json'), content);
 
     expect(await new JsonOpenWorkStoreAdapter(dataDirectoryAt(directory)).load()).toEqual({});
   });
 
-  it('treats a missing file as empty', async () => {
+  it('should treat a missing file as empty', async () => {
     expect(await new JsonOpenWorkStoreAdapter(dataDirectoryAt(directory)).load()).toEqual({});
   });
 });

@@ -37,7 +37,7 @@ function setup() {
 describe('usePromptHistory', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('opens the history on the first ArrowUp and shows the most recent prompt', async () => {
+  it('should open the history on the first ArrowUp and show the most recent prompt', async () => {
     const { field, press, answer, connection } = setup();
 
     press('ArrowUp');
@@ -48,7 +48,7 @@ describe('usePromptHistory', () => {
     expect(screen.getByRole('status')).toHaveTextContent('2/2');
   });
 
-  it('walks to the oldest entry and stops there', async () => {
+  it('should walk to the oldest entry and stop there', async () => {
     const { field, press, answer } = setup();
 
     press('ArrowUp');
@@ -60,7 +60,7 @@ describe('usePromptHistory', () => {
     expect(screen.getByRole('status')).toHaveTextContent('1/2');
   });
 
-  it('returns to the text being typed when going down past the most recent entry', async () => {
+  it('should return to the text being typed when going down past the most recent entry', async () => {
     const { field, type, press, answer } = setup();
     type('draft');
 
@@ -72,7 +72,7 @@ describe('usePromptHistory', () => {
     expect(screen.getByRole('status')).toHaveTextContent('none');
   });
 
-  it('keeps the edit made at each position', async () => {
+  it('should keep the edit made at each position', async () => {
     const { field, type, press, answer } = setup();
 
     press('ArrowUp');
@@ -84,7 +84,7 @@ describe('usePromptHistory', () => {
     expect(field.value).toBe('latest edited');
   });
 
-  it('does nothing on ArrowDown outside a navigation session', () => {
+  it('should do nothing on ArrowDown outside a navigation session', () => {
     const { field, type, press } = setup();
     type('draft');
 
@@ -93,7 +93,7 @@ describe('usePromptHistory', () => {
     expect(field.value).toBe('draft');
   });
 
-  it('does not open a session for an empty history, and the next ArrowUp asks again', async () => {
+  it('should not open a session for an empty history, and the next ArrowUp asks again', async () => {
     const { press, answer, connection } = setup();
 
     press('ArrowUp');
@@ -103,7 +103,7 @@ describe('usePromptHistory', () => {
     expect(connection.sent).toHaveLength(2);
   });
 
-  it('ignores ArrowUp while the history is loading', () => {
+  it('should ignore ArrowUp while the history is loading', () => {
     const { press, connection } = setup();
 
     press('ArrowUp');
@@ -112,7 +112,7 @@ describe('usePromptHistory', () => {
     expect(connection.sent).toHaveLength(1);
   });
 
-  it('ignores responses to other requests', async () => {
+  it('should ignore responses to other requests', async () => {
     const { field, press, connection } = setup();
 
     press('ArrowUp');
@@ -121,7 +121,7 @@ describe('usePromptHistory', () => {
     expect(field.value).toBe('');
   });
 
-  it('gives up after the timeout and asks again on the next ArrowUp', async () => {
+  it('should give up after the timeout and ask again on the next ArrowUp', async () => {
     vi.useFakeTimers();
     const { press, connection } = setup();
 
@@ -132,7 +132,7 @@ describe('usePromptHistory', () => {
     expect(connection.sent).toHaveLength(2);
   });
 
-  it('only navigates from the first line going up and the last line going down', async () => {
+  it('should only navigates from the first line going up and the last line going down', async () => {
     const { field, type, press, answer, connection } = setup();
     type('one\ntwo');
 
@@ -157,7 +157,7 @@ describe('usePromptHistory', () => {
     ['ctrl', { ctrlKey: true }],
     ['meta', { metaKey: true }],
     ['IME composition', { isComposing: true }],
-  ])('ignores ArrowUp with %s', (_label, init) => {
+  ])('should ignore ArrowUp with %s', (_label, init) => {
     const { press, connection } = setup();
 
     press('ArrowUp', init);
@@ -165,7 +165,7 @@ describe('usePromptHistory', () => {
     expect(connection.sent).toHaveLength(0);
   });
 
-  it('ignores other keys', () => {
+  it('should ignore other keys', () => {
     const { press, connection } = setup();
 
     press('a');
@@ -173,7 +173,7 @@ describe('usePromptHistory', () => {
     expect(connection.sent).toHaveLength(0);
   });
 
-  it('reset ends the session so the next ArrowUp reads the history again', async () => {
+  it('should reset ends the session so the next ArrowUp reads the history again', async () => {
     const { press, answer, connection } = setup();
 
     press('ArrowUp');

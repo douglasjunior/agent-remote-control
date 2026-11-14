@@ -8,29 +8,29 @@ import { squadNeedsAttention, squadStatus } from './squad-status.js';
 const member = (role: string, state: TeamMember['state']): TeamMember => ({ role, roleName: role, state, steps: 0 });
 
 describe('squadStatus', () => {
-  it('is ready when everyone is idle', () => {
+  it('should be ready when everyone is idle', () => {
     expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'idle')])).toEqual({ live: false, text: 'Ready', tab: 'Squad' });
   });
 
-  it('tallies the agents at work', () => {
+  it('should tally the agents at work', () => {
     expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'working'), member('GIT_OPS', 'working')]))
       .toEqual({ live: true, text: '2 working', tab: 'Squad · 2 working' });
   });
 
-  it('puts the question first on the tab', () => {
+  it('should put the question first on the tab', () => {
     expect(squadStatus([member('DEVELOPER', 'working'), member('PRODUCT_OWNER', 'waiting')]))
       .toEqual({ live: true, text: '1 working · needs your answer', tab: 'Squad · needs your answer' });
   });
 
-  it('says the answer was delivered once the coordinator is done', () => {
+  it('should say the answer was delivered once the CEO is done', () => {
     expect(squadStatus([member('CEO', 'done'), member('DEVELOPER', 'done')]).text).toBe('Answer delivered');
   });
 
-  it('says something failed', () => {
+  it('should say something failed', () => {
     expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'failed')]).text).toBe('Something failed');
   });
 
-  it('says how many agents stopped, without counting as live', () => {
+  it('should say how many agents stopped, without counting as live', () => {
     const stopped = { ...member('DEVELOPER', 'idle'), interruptedWorkId: 'w' };
 
     expect(squadStatus([member('CEO', 'idle'), stopped])).toEqual({ live: false, text: '1 stopped', tab: 'Squad' });
@@ -39,15 +39,15 @@ describe('squadStatus', () => {
 });
 
 describe('squadNeedsAttention', () => {
-  it('is true for an agent waiting for the user', () => {
+  it('should be true for an agent waiting for the user', () => {
     expect(squadNeedsAttention([member('DEVELOPER', 'working'), member('PRODUCT_OWNER', 'waiting')])).toBe(true);
   });
 
-  it('is true for work a restart stopped', () => {
+  it('should be true for work a restart stopped', () => {
     expect(squadNeedsAttention([{ ...member('DEVELOPER', 'idle'), interruptedWorkId: 'w' }])).toBe(true);
   });
 
-  it('is false while everyone works, finished or rests', () => {
+  it('should be false while everyone works, finished or rests', () => {
     expect(squadNeedsAttention([member('DEVELOPER', 'working'), member('CEO', 'done')])).toBe(false);
   });
 });

@@ -4,7 +4,7 @@ import { Markdown } from './markdown.js';
 
 
 describe('Markdown', () => {
-  it('renders GitHub-flavored markdown', () => {
+  it('should render GitHub-flavored markdown', () => {
     render(<Markdown text={'# Title\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- item'} />);
 
     expect(screen.getByRole('heading', { name: 'Title' })).toBeInTheDocument();
@@ -12,7 +12,7 @@ describe('Markdown', () => {
     expect(screen.getByRole('listitem')).toHaveTextContent('item');
   });
 
-  it('completes unfinished markdown only while the text is streaming', () => {
+  it('should complete unfinished markdown only while the text is streaming', () => {
     const { container, rerender } = render(<Markdown text="some **bold" isAnimating />);
     expect(container).toHaveTextContent('some bold');
     expect(container).not.toHaveTextContent('**');

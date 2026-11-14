@@ -55,7 +55,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     rmSync(baseDirectory, { recursive: true, force: true });
   });
 
-  it('announces the walk and its end, and lists the base directory without a query', async () => {
+  it('should announce the walk and its end, and list the base directory without a query', async () => {
     touch('app/src/main.ts');
     touch('README.md');
 
@@ -65,7 +65,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(paths).toEqual(['app/', 'README.md']);
   });
 
-  it('finds nested paths with a fuzzy query', async () => {
+  it('should find nested paths with a fuzzy query', async () => {
     touch('klist-workspace-sdd/repositories/klist-site/app/components/button.tsx');
 
     const { paths } = await run('klist-site/components');
@@ -73,7 +73,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(paths).toContain('klist-workspace-sdd/repositories/klist-site/app/components/');
   });
 
-  it('skips dot entries and node_modules', async () => {
+  it('should skip dot entries and node_modules', async () => {
     touch('.git/config');
     touch('app/node_modules/pkg/index.js');
     touch('app/index.ts');
@@ -83,7 +83,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(paths).toEqual(['app/index.ts']);
   });
 
-  it('follows a link to a directory and does not loop on a link to an ancestor', async () => {
+  it('should follow a link to a directory and not loop on a link to an ancestor', async () => {
     touch('real/inner.ts');
     symlinkSync(join(baseDirectory, 'real'), join(baseDirectory, 'linked'), 'dir');
     symlinkSync(baseDirectory, join(baseDirectory, 'real', 'back'), 'dir');
@@ -93,7 +93,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(paths).toEqual(expect.arrayContaining(['real/inner.ts', 'linked/inner.ts']));
   });
 
-  it('skips a link whose target is gone', async () => {
+  it('should skip a link whose target is gone', async () => {
     touch('a.ts');
     symlinkSync(join(baseDirectory, 'missing'), join(baseDirectory, 'broken'));
 
@@ -102,7 +102,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(paths).toEqual(['a.ts']);
   });
 
-  it('finishes with nothing when the base directory does not exist', async () => {
+  it('should finish with nothing when the base directory does not exist', async () => {
     rmSync(baseDirectory, { recursive: true, force: true });
 
     const { paths, states } = await run();
@@ -111,7 +111,7 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     expect(states).toEqual([true, false]);
   });
 
-  it('does not report the end of the walk after stop', async () => {
+  it('should not report the end of the walk after stop', async () => {
     touch('a.ts');
     const states: boolean[] = [];
     const session = search.start({ onResults: () => undefined, onWalking: walking => states.push(walking) });

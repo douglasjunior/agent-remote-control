@@ -10,6 +10,8 @@ export class StubFileSystem implements IFileSystemPort {
   isReadable?: (path: string) => boolean;
   /** What `readText` returns for every path. */
   text: string | null = null;
+  /** The paths `readText` was asked for, in order. */
+  readonly reads: string[] = [];
 
   addBinary(binary: string, path = `/usr/bin/${binary}`): this {
     this.binaries.set(binary, path);
@@ -28,7 +30,8 @@ export class StubFileSystem implements IFileSystemPort {
     return this.readableFiles.has(path) || (this.isReadable?.(path) ?? false);
   }
 
-  async readText(): Promise<string | null> {
+  async readText(filePath: string): Promise<string | null> {
+    this.reads.push(filePath);
     return this.text;
   }
 

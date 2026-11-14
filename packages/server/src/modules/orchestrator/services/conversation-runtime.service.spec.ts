@@ -381,10 +381,12 @@ describe('ConversationRuntimeService', () => {
     it('should register, find, get, and unregister active delegations', () => {
       const delegatePort = new StubAgentPort();
       const delegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -392,6 +394,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -410,10 +413,12 @@ describe('ConversationRuntimeService', () => {
 
     it('should keep one delegation per role, whatever the project, and one per other role alongside it', () => {
       const backend = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'backend',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build the API',
         cwd: '/mock/backend',
@@ -421,6 +426,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
       const frontend = { ...backend, projectName: 'frontend', cwd: '/mock/frontend', agentPort: new StubAgentPort() };
       const planner = { ...backend, role: 'TECH_LEAD', roleName: 'Tech Lead', agentPort: new StubAgentPort() };
@@ -438,10 +444,12 @@ describe('ConversationRuntimeService', () => {
       const delegatePort1 = new StubAgentPort();
       const delegatePort2 = new StubAgentPort();
       const delegation1 = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -449,6 +457,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort1,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
       const delegation2 = {
         ...delegation1,
@@ -472,10 +481,12 @@ describe('ConversationRuntimeService', () => {
       const delegatePort = new StubAgentPort();
       const cancelTurnMock = vi.fn().mockResolvedValue(undefined);
       const delegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -483,6 +494,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort,
         turn: { cancel: cancelTurnMock } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -505,10 +517,12 @@ describe('ConversationRuntimeService', () => {
       const cancelMock1 = vi.fn().mockRejectedValue(new Error('fail 1'));
       const cancelMock2 = vi.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('a', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'task',
         cwd: '/mock',
@@ -516,12 +530,15 @@ describe('ConversationRuntimeService', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
       runtime.registerDelegation('a', {
+        delegationId: 'd-1',
         role: 'CODE_REVIEWER',
         roleName: 'Reviewer',
         agentInfo: { roleName: 'Reviewer', agentName: 'stub' },
         projectName: null,
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'review',
         cwd: '/mock',
@@ -529,6 +546,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
 
       await expect(runtime.cancel('a')).rejects.toThrow('fail 1');
@@ -540,10 +558,12 @@ describe('ConversationRuntimeService', () => {
       const cancelMock1 = vi.fn().mockResolvedValue(undefined);
       const cancelMock2 = vi.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('a', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'task',
         cwd: '/mock',
@@ -551,12 +571,15 @@ describe('ConversationRuntimeService', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
       runtime.registerDelegation('a', {
+        delegationId: 'd-1',
         role: 'CODE_REVIEWER',
         roleName: 'Reviewer',
         agentInfo: { roleName: 'Reviewer', agentName: 'stub' },
         projectName: null,
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'review',
         cwd: '/mock',
@@ -564,6 +587,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
 
       await expect(runtime.cancel('a')).resolves.toBe(true);
@@ -575,10 +599,12 @@ describe('ConversationRuntimeService', () => {
       const delegatePort = new StubAgentPort();
       delegatePort.connected = true;
       const delegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -586,6 +612,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -599,10 +626,12 @@ describe('ConversationRuntimeService', () => {
       const delegatePort = new StubAgentPort();
       delegatePort.connected = true;
       const delegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -610,6 +639,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       await runtime.run('a', 'stub', async () => undefined);
@@ -632,10 +662,12 @@ describe('ConversationRuntimeService', () => {
       const delegatePort = new StubAgentPort();
       delegatePort.connected = true;
       const delegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer Agent',
         agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Build it',
         cwd: '/mock/my-app',
@@ -643,6 +675,7 @@ describe('ConversationRuntimeService', () => {
         agentPort: delegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -721,10 +754,12 @@ describe('ConversationRuntimeService', () => {
     };
 
     const registerDelegationOn = (port: StubAgentPort) => runtime.registerDelegation('a', {
+      delegationId: 'd-1',
       role: 'DEVELOPER',
       roleName: 'Developer',
       agentInfo: { roleName: 'Developer', agentName: 'stub' },
       projectName: null,
+      artifactId: null,
       summary: 'Summary',
       taskSpec: 'task',
       cwd: '/mock',
@@ -732,6 +767,7 @@ describe('ConversationRuntimeService', () => {
       agentPort: port,
       turn: { cancel: vi.fn() } as any,
       steer: vi.fn(),
+      stop: vi.fn(),
     });
 
     it('should tear down every agent on shutdown even when disconnecting fails', async () => {

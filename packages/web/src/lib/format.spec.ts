@@ -10,7 +10,7 @@ describe('formatCountdown', () => {
     [3 * 3_600_000, '3h'],
     [24 * 3_600_000, '1d'],
     [4 * 86_400_000, '4d'],
-  ])('formats %d ms as %s', (duration, expected) => {
+  ])('should format %d ms as %s', (duration, expected) => {
     expect(formatCountdown(duration)).toBe(expected);
   });
 });
@@ -23,7 +23,7 @@ describe('formatRelativeTime', () => {
     ['2026-01-10T11:55:00.000Z', '5 minutes ago'],
     ['2026-01-10T09:00:00.000Z', '3 hours ago'],
     ['2026-01-08T12:00:00.000Z', '2 days ago'],
-  ])('formats %s', (iso, expected) => {
+  ])('should format %s', (iso, expected) => {
     expect(formatRelativeTime(iso, now)).toBe(expected);
   });
 });
@@ -37,7 +37,7 @@ describe('formatDuration', () => {
     [3_599_000, '59m 59s'],
     [3_600_000, '1h'],
     [3_900_000, '1h 5m'],
-  ])('formats %i ms as %s', (durationMs, expected) => {
+  ])('should format %i ms as %s', (durationMs, expected) => {
     expect(formatDuration(durationMs)).toBe(expected);
   });
 });

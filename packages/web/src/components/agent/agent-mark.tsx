@@ -52,6 +52,14 @@ const GLYPHS: Readonly<Record<MarkId, ReactNode>> = {
       <path d="M20 20 L27 27" />
     </g>
   ),
+  qa: (
+    <>
+      <path d="M12.5 5 H19.5 M13.5 5 V13 L7 24.5 C6.3 25.8 7.2 27 8.6 27 H23.4 C24.8 27 25.7 25.8 25 24.5 L18.5 13 V5" />
+      <path d="M9.6 20 H22.4 L25 24.5 C25.7 25.8 24.8 27 23.4 27 H8.6 C7.2 27 6.3 25.8 7 24.5 Z" fill="currentColor" fillOpacity=".22" stroke="none" />
+      <circle className="g-bubble" cx="14.5" cy="21" r="1.4" {...DOT} />
+      <circle className="g-bubble" cx="18" cy="23" r="1.1" {...DOT} />
+    </>
+  ),
   git: (
     <>
       <path d="M9 7 V25" />

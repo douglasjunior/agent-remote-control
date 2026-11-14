@@ -15,7 +15,7 @@ function setup() {
 }
 
 describe('SetConversationProfilesUseCase', () => {
-  it('configures through the orchestrator and broadcasts the resulting profiles', async () => {
+  it('should configure through the orchestrator and broadcast the resulting profiles', async () => {
     const { useCase, configuration, observer } = setup();
     configuration.store.byConversation.set('web-1', { profiles: {}, updatedAt: '2026-01-01T00:00:00Z' });
 
@@ -26,7 +26,7 @@ describe('SetConversationProfilesUseCase', () => {
     expect(observer.sent).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array) }]);
   });
 
-  it('returns the refusal and broadcasts nothing', async () => {
+  it('should return the refusal and broadcast nothing', async () => {
     const { useCase, configuration, observer } = setup();
     configuration.configureResult = { ok: false, error: 'Unknown agent' };
 

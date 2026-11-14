@@ -100,7 +100,7 @@ describe('CancelAgentTurnUseCase', () => {
     await turn.done;
   });
 
-  it('forgets the open work of the conversation', async () => {
+  it('should forget the open work of the conversation', async () => {
     await openWork.open('conv-1', { id: 'd', role: 'DEVELOPER', roleName: 'Dev', projectName: null, summary: 'Build', taskSpec: 'Go', cwd: '/w', round: 1, root: false });
 
     await useCase.execute('conv-1');

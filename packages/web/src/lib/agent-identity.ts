@@ -1,4 +1,4 @@
-export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'git' | 'generic';
+export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'generic';
 
 export interface AgentIdentity {
   /** Which glyph `AgentMark` draws. */
@@ -17,7 +17,7 @@ export interface AgentIdentity {
 const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
   CEO: {
     mark: 'ceo',
-    label: 'Coordinator',
+    label: 'CEO',
     tagline: 'Leads the team and talks to you',
     stage: 'Leads',
     responsibility: 'Understands what you want, picks who does what, and checks every result before it reaches you.',
@@ -60,6 +60,15 @@ const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
     example: 'Review my latest changes',
     color: 'var(--agent-code-reviewer)',
   },
+  QA: {
+    mark: 'qa',
+    label: 'QA',
+    tagline: 'Tests the app in practice',
+    stage: 'Test',
+    responsibility: 'Runs the app and goes through it like a user, in the browser, the API or a phone, and reports whether it passed or failed.',
+    example: 'Test the checkout flow',
+    color: 'var(--agent-qa)',
+  },
   GIT_OPS: {
     mark: 'git',
     label: 'Git Ops',
@@ -88,7 +97,7 @@ export function agentIdentity(role: string, roleName?: string): AgentIdentity {
     label: roleName ?? role,
     tagline: 'Helps the team',
     stage: 'Helps',
-    responsibility: 'Takes on the work the Coordinator hands over and reports back.',
+    responsibility: 'Takes on the work the CEO hands over and reports back.',
     example: 'Ask for help',
     color: `oklch(0.62 0.15 ${hueOf(role)})`,
   };

@@ -6,10 +6,12 @@ import type { ActiveDelegation } from './active-delegation.model.js';
 describe('ActiveDelegation', () => {
   it('should represent an active delegation structure', () => {
     const delegation: ActiveDelegation = {
+      delegationId: 'd-1',
       role: 'DEVELOPER',
       roleName: 'Developer Agent',
       agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
       projectName: 'my-app',
+      artifactId: null,
       summary: 'Summary',
       taskSpec: 'Build login',
       cwd: '/mock/my-app',
@@ -17,6 +19,7 @@ describe('ActiveDelegation', () => {
       agentPort: {} as any,
       turn: {} as any,
       steer: async () => true,
+      stop: async () => undefined,
     };
 
     expect(delegation.role).toBe('DEVELOPER');

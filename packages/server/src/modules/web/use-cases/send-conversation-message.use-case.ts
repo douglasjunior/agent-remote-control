@@ -74,10 +74,10 @@ export class SendConversationMessageUseCase {
     if (text !== '') {
       await this.promptHistory.append(text);
     }
-    const conversation = isFirstMessage
-      ? await this.store.rename(conversationId, this.titleFrom(text || attachments[0].name))
-      : await this.store.touch(conversationId);
-    this.events.publishConversation(conversation);
+    if (isFirstMessage) {
+      await this.store.rename(conversationId, this.titleFrom(text || attachments[0].name));
+    }
+    this.events.publishConversation(await this.store.touch(conversationId));
   }
 
   private titleFrom(text: string): string {

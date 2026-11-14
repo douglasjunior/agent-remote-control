@@ -21,7 +21,7 @@ async function afterRestart(...records: OpenWork[]) {
 }
 
 describe('OpenWorkService', () => {
-  it('treats what it opens as live and what it loads as interrupted', async () => {
+  it('should treat what it opens as live and what it loads as interrupted', async () => {
     const { service, store } = await afterRestart(delegate);
 
     await service.open('web-2', root);
@@ -32,7 +32,7 @@ describe('OpenWorkService', () => {
     expect(store.saved['web-2']).toEqual([root]);
   });
 
-  it('removes a record on close and ignores an unknown one', async () => {
+  it('should remove a record on close and ignore an unknown one', async () => {
     const { service, store } = await afterRestart(delegate);
 
     await service.close('web-1', 'other');
@@ -43,7 +43,7 @@ describe('OpenWorkService', () => {
     expect(store.saved['web-1']).toEqual([]);
   });
 
-  it('updates a known record and ignores an unknown one', async () => {
+  it('should update a known record and ignore an unknown one', async () => {
     const { service, store } = await afterRestart(delegate);
 
     await service.update('web-1', 'other', { taskSpec: 'x' });
@@ -52,7 +52,7 @@ describe('OpenWorkService', () => {
     expect(store.saved['web-1']).toEqual([{ ...delegate, taskSpec: 'New' }]);
   });
 
-  it('closes every record of a conversation', async () => {
+  it('should close every record of a conversation', async () => {
     const { service, store } = await afterRestart(delegate, root);
     await service.open('web-1', { ...delegate, id: 'live' });
 
@@ -63,7 +63,7 @@ describe('OpenWorkService', () => {
     expect(service.conversations()).toEqual([]);
   });
 
-  it('keeps every record once shutting down, whatever the dying turns report', async () => {
+  it('should keep every record once shutting down, whatever the dying turns report', async () => {
     const { service, store } = await afterRestart(delegate, root);
     service.onModuleDestroy();
 
@@ -77,19 +77,19 @@ describe('OpenWorkService', () => {
   });
 
   describe('continuable', () => {
-    it('lists stopped delegates and hides the root waiting for them', async () => {
+    it('should list stopped delegates and hide the root waiting for them', async () => {
       const { service } = await afterRestart(delegate, root);
 
       expect(service.continuable('web-1')).toEqual([{ id: 'd', role: 'DEVELOPER', roleName: 'Dev', projectName: 'app', summary: 'Build' }]);
     });
 
-    it('lists a root that stopped alone, only the latest', async () => {
+    it('should list a root that stopped alone, only the latest', async () => {
       const { service } = await afterRestart(root, { ...root, id: 'c2' });
 
       expect(service.continuable('web-1').map(work => work.id)).toEqual(['c2']);
     });
 
-    it('leaves out an agent that asked, which answering sets going', async () => {
+    it('should leave out an agent that asked, which answering sets going', async () => {
       const { service } = await afterRestart({ ...delegate, questions: waiting }, { ...delegate, id: 'd2' });
 
       expect(service.continuable('web-1').map(work => work.id)).toEqual(['d2']);
@@ -97,7 +97,7 @@ describe('OpenWorkService', () => {
   });
 
   describe('claims', () => {
-    it('hands stopped work over once', async () => {
+    it('should hand stopped work over once', async () => {
       const { service } = await afterRestart(delegate);
 
       expect(service.claimStopped('web-1', 'd')).toEqual(delegate);
@@ -105,7 +105,7 @@ describe('OpenWorkService', () => {
       expect(service.continuable('web-1')).toEqual([]);
     });
 
-    it('hands asked work over once, only to the delivery of its answers', async () => {
+    it('should hand asked work over once, only to the delivery of its answers', async () => {
       const asked = { ...delegate, questions: waiting };
       const { service } = await afterRestart(asked);
 
@@ -114,14 +114,14 @@ describe('OpenWorkService', () => {
       expect(service.claimAsked('web-1', 'd')).toBeUndefined();
     });
 
-    it('does not hand stopped work to a delivery of answers', async () => {
+    it('should not hand stopped work to a delivery of answers', async () => {
       const { service } = await afterRestart(delegate);
 
       expect(service.claimAsked('web-1', 'd')).toBeUndefined();
     });
   });
 
-  it('discards interrupted roots unless they wait for answers', async () => {
+  it('should discard interrupted roots unless they wait for answers', async () => {
     const { service, store } = await afterRestart(root, { ...root, id: 'asking', questions: waiting }, delegate);
 
     await service.discardInterruptedRoots('web-1');
@@ -130,7 +130,7 @@ describe('OpenWorkService', () => {
     expect(store.saved['web-1']!.map(work => work.id)).toEqual(['asking', 'd']);
   });
 
-  it('keeps working after a failed write', async () => {
+  it('should keep working after a failed write', async () => {
     const { service, store } = await afterRestart();
     store.failNextSave = true;
 

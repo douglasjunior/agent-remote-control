@@ -14,7 +14,7 @@ function setup() {
 }
 
 describe('WebFileSearchSessionsService', () => {
-  it('starts a session on the first search, announcing the walk', () => {
+  it('should start a session on the first search, announcing the walk', () => {
     const { service, connection, fileSearch } = setup();
 
     service.search(connection, 'r1', 'ap');
@@ -23,7 +23,7 @@ describe('WebFileSearchSessionsService', () => {
     expect(connection.sent).toEqual([{ type: 'files.results', requestId: 'r1', items: [], walking: true }]);
   });
 
-  it('sends the results and the end of the walk under the request id', () => {
+  it('should send the results and the end of the walk under the request id', () => {
     const { service, connection, fileSearch } = setup();
     service.search(connection, 'r1', '');
 
@@ -36,7 +36,7 @@ describe('WebFileSearchSessionsService', () => {
     ]);
   });
 
-  it('only changes the query while the request id stays the same', () => {
+  it('should only change the query while the request id stays the same', () => {
     const { service, connection, fileSearch } = setup();
 
     service.search(connection, 'r1', 'a');
@@ -46,7 +46,7 @@ describe('WebFileSearchSessionsService', () => {
     expect(fileSearch.sessions[0].queries).toEqual(['a', 'ab']);
   });
 
-  it('replaces the session when the request id changes', () => {
+  it('should replace the session when the request id changes', () => {
     const { service, connection, fileSearch } = setup();
 
     service.search(connection, 'r1', 'a');
@@ -56,7 +56,7 @@ describe('WebFileSearchSessionsService', () => {
     expect(fileSearch.sessions[1].queries).toEqual(['b']);
   });
 
-  it('keeps one session per connection', () => {
+  it('should keep one session per connection', () => {
     const { service, connection, fileSearch } = setup();
 
     service.search(connection, 'r1', '');
@@ -65,7 +65,7 @@ describe('WebFileSearchSessionsService', () => {
     expect(fileSearch.sessions.map(session => session.stopped)).toEqual([false, false]);
   });
 
-  it('closes the session of the matching request id only', () => {
+  it('should close the session of the matching request id only', () => {
     const { service, connection, fileSearch } = setup();
     service.search(connection, 'r1', '');
 
@@ -76,7 +76,7 @@ describe('WebFileSearchSessionsService', () => {
     expect(fileSearch.sessions[0].stopped).toBe(true);
   });
 
-  it('closes whatever session the connection has when no request id is given, and ignores unknown connections', () => {
+  it('should close whatever session the connection has when no request id is given, and ignore unknown connections', () => {
     const { service, connection, fileSearch } = setup();
     service.search(connection, 'r1', '');
 

@@ -36,6 +36,18 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     details: z.string().optional(),
     role: z.string(),
   }),
+  /** A skill an agent read or wrote. */
+  z.object({
+    ...entryBase,
+    type: z.literal('skill'),
+    role: z.string(),
+    action: z.enum(['read', 'write']),
+    names: z.array(z.string()),
+    status: z.enum(['completed', 'failed']),
+    /** Whether a write created the skill rather than replacing it. */
+    created: z.boolean().optional(),
+    error: z.string().optional(),
+  }),
   z.object({
     ...entryBase,
     type: z.literal('delegation'),
@@ -46,6 +58,8 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     role: z.string(),
     roleName: z.string(),
     projectName: z.string().optional(),
+    /** The artifact the agent was delegated, which it holds until the delegation ends. */
+    artifactId: z.string().optional(),
     /** One plain-language sentence from the CEO telling the user what the agent was asked to do. */
     summary: z.string(),
     /** What the CEO wrote for the agent. A stored history is validated whole, so an entry written without it reads as empty rather than losing the conversation. */

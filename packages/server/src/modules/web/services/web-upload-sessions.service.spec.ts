@@ -21,7 +21,7 @@ function setup() {
 describe('WebUploadSessionsService', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('opens a writer in the conversation upload directory and answers upload.ready', async () => {
+  it('should open a writer in the conversation upload directory and answers upload.ready', async () => {
     const { start, files, last } = setup();
 
     await start();
@@ -30,7 +30,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toEqual({ type: 'upload.ready', uploadId: 'u1' });
   });
 
-  it('assembles ordered chunks, acknowledges each one and answers upload.done with the stored path', async () => {
+  it('should assemble ordered chunks, acknowledges each one and answers upload.done with the stored path', async () => {
     const { service, connection, start, files } = setup();
     await start();
 
@@ -47,7 +47,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].committed).toBe(true);
   });
 
-  it('accepts an empty file', async () => {
+  it('should accept an empty file', async () => {
     const { service, connection, start, last } = setup();
     await start('u1', 0);
 
@@ -56,7 +56,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toMatchObject({ type: 'upload.done' });
   });
 
-  it('refuses a file above the limit', async () => {
+  it('should refuse a file above the limit', async () => {
     const { start, last, files } = setup();
 
     await start('u1', MAX_UPLOAD_BYTES + 1);
@@ -65,7 +65,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers).toHaveLength(0);
   });
 
-  it('refuses an id that is already in use without touching the running upload', async () => {
+  it('should refuse an id that is already in use without touching the running upload', async () => {
     const { start, last, files } = setup();
     await start();
 
@@ -75,7 +75,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].aborted).toBe(false);
   });
 
-  it('limits the uploads in progress per connection, not per server', async () => {
+  it('should limit the uploads in progress per connection, not per server', async () => {
     const { service, connection, start, last } = setup();
     for (let index = 0; index < MAX_CONCURRENT_UPLOADS; index += 1) {
       await start(`u${index}`);
@@ -90,7 +90,7 @@ describe('WebUploadSessionsService', () => {
     expect(connection.sent.at(-1)).toMatchObject({ reason: 'Too many uploads in progress' });
   });
 
-  it('discards the upload on a chunk that arrives out of order', async () => {
+  it('should discard the upload on a chunk that arrives out of order', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
 
@@ -100,7 +100,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].aborted).toBe(true);
   });
 
-  it('discards the upload on a chunk that goes past the announced size', async () => {
+  it('should discard the upload on a chunk that goes past the announced size', async () => {
     const { service, connection, start, files, last } = setup();
     await start('u1', 11);
 
@@ -110,7 +110,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].aborted).toBe(true);
   });
 
-  it('discards the upload on a chunk above the chunk limit', async () => {
+  it('should discard the upload on a chunk above the chunk limit', async () => {
     const { service, connection, start, last } = setup();
     await start('u1', MAX_UPLOAD_BYTES);
 
@@ -119,7 +119,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'Chunk exceeds the announced size' });
   });
 
-  it('refuses to finish an incomplete file and discards it', async () => {
+  it('should refuse to finish an incomplete file and discard it', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
     await service.chunk(connection, { uploadId: 'u1', index: 0, dataBase64: base64('short') });
@@ -131,7 +131,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].committed).toBe(false);
   });
 
-  it('answers upload.failed for an unknown upload', async () => {
+  it('should answer upload.failed for an unknown upload', async () => {
     const { service, connection, last } = setup();
 
     await service.chunk(connection, { uploadId: 'ghost', index: 0, dataBase64: '' });
@@ -141,7 +141,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toEqual({ type: 'upload.failed', uploadId: 'ghost', reason: 'Unknown upload' });
   });
 
-  it('reports a write failure and discards the upload', async () => {
+  it('should report a write failure and discard the upload', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
     vi.spyOn(files.writers[0], 'append').mockRejectedValueOnce(new Error('disk full'));
@@ -152,7 +152,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].aborted).toBe(true);
   });
 
-  it('reports a failure that carries no message', async () => {
+  it('should report a failure that carries no message', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
     vi.spyOn(files.writers[0], 'append').mockRejectedValueOnce('boom');
@@ -162,7 +162,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'Upload failed' });
   });
 
-  it('discards the partial file on abort, and ignores an unknown id', async () => {
+  it('should discard the partial file on abort, and ignore an unknown id', async () => {
     const { service, connection, start, files } = setup();
     await start();
 
@@ -172,7 +172,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers[0].aborted).toBe(true);
   });
 
-  it('drops every upload of a connection that went away and keeps the others', async () => {
+  it('should drop every upload of a connection that went away and keep the others', async () => {
     const { service, start, files } = setup();
     await start('u1');
     const other = new FakeClientConnection('c2');
@@ -183,7 +183,7 @@ describe('WebUploadSessionsService', () => {
     expect(files.writers.map(writer => writer.aborted)).toEqual([true, false]);
   });
 
-  it('fails an upload that stays silent, and keeps one that keeps sending', async () => {
+  it('should fail an upload that stays silent, and keep one that keeps sending', async () => {
     vi.useFakeTimers();
     const { service, connection, start, files, last } = setup();
     await start('u1', 100);
@@ -198,7 +198,7 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'Upload timed out' });
   });
 
-  it('does not time out an upload that finished', async () => {
+  it('should not time out an upload that finished', async () => {
     vi.useFakeTimers();
     const { service, connection, start, files } = setup();
     await start('u1', 0);
