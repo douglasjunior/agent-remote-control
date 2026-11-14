@@ -14,6 +14,8 @@ export type DelegationResult = {
   readonly taskSpec: string;
   readonly summary: string;
   readonly sessionMode?: DelegationSessionMode;
+  /** The artifact the agent works on and holds while it runs. */
+  readonly artifactId?: string;
 };
 
 /** `message` is the text outside the protocol tags, addressed to the user. */
@@ -30,7 +32,8 @@ type ParsedTag =
 const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
 const ROLE = /^[A-Za-z][\w-]*$/;
 
-const DELEGATE_ATTRIBUTES = ['role', 'project', 'session', 'summary'];
+const DELEGATE_ATTRIBUTES = ['role', 'project', 'session', 'summary', 'artifact'];
+const ARTIFACT_ID = /^[a-z]-\d+$/i;
 const MAX_SUMMARY_LENGTH = 120;
 const ATTACHMENT_ATTRIBUTES = ['path'];
 
@@ -141,12 +144,18 @@ export class DelegationDetectorService {
       return `<delegate role="${role}"> has no task specification. Write the task between <delegate ...> and </delegate>.`;
     }
 
+    const artifactId = attributes.get('artifact');
+    if (artifactId !== undefined && !ARTIFACT_ID.test(artifactId)) {
+      return `The artifact attribute of <delegate role="${role}"> takes one artifact id, such as artifact="T-3".`;
+    }
+
     return {
       delegateToRole: role.toUpperCase(),
       projectName,
       taskSpec,
       summary,
       ...(session ? { sessionMode: session } : {}),
+      ...(artifactId ? { artifactId: artifactId.toUpperCase() } : {}),
     };
   }
 

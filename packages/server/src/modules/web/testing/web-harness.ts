@@ -1,6 +1,7 @@
 import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
+import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
@@ -11,7 +12,6 @@ import { FakeConversationStore } from './fake-conversation-store.js';
 import { FakePromptHistory } from './fake-prompt-history.js';
 import { FakeWorkspaceFileSearch } from './fake-workspace-file-search.js';
 import { FakeWorkspaceUpload } from './fake-workspace-upload.js';
-import { StubWorkspacePort } from './stub-workspace.port.js';
 
 
 /** Real events service and registry over a fake store, stubbed orchestrator ports and one observer connection. */

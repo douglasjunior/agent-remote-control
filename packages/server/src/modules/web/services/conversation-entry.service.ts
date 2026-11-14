@@ -81,6 +81,7 @@ export class ConversationEntryService {
       role: event.role,
       roleName: event.roleName,
       ...(event.projectName ? { projectName: event.projectName } : {}),
+      ...(event.artifactId ? { artifactId: event.artifactId } : {}),
       summary: event.summary,
       prompt: event.taskSpec,
     };

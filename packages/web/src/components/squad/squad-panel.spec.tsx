@@ -34,7 +34,7 @@ describe('SquadPanel', () => {
 
     expect(screen.getByRole('heading', { name: 'Your squad' })).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(6);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
     expect(stationStates().every(([, state]) => state === 'idle')).toBe(true);
   });
 
@@ -50,28 +50,28 @@ describe('SquadPanel', () => {
 
     const many = renderPanel(Array.from({ length: 200 }, (_, index) => turn(index)).flat(), false);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(6);
-    expect(many.container.querySelectorAll('li')).toHaveLength(6);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(many.container.querySelectorAll('li')).toHaveLength(7);
     expect(many.container.innerHTML).toBe(small);
   });
 
   it('adds a station only for an unknown role delegated to in the current turn', () => {
     renderPanel([user('u1'), started('s1', 'DESIGNER', 'Designer')], true);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
     expect(station(/Designer/)).toHaveAttribute('data-state', 'working');
   });
 
   it('starts from a clean panel on each new user message', () => {
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer'), finished('f1', 'DEVELOPER', 'Developer'), user('u2')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['GIT_OPS', 'idle']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'idle']]);
   });
 
   it('leaves every station the turn did not involve idle when it delegates only to Git Ops', () => {
     renderPanel([user('u1'), started('s1', 'GIT_OPS', 'Git Ops', 'Open the pull request')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['GIT_OPS', 'working']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'working']]);
     expect(station(/Git Ops/)).toHaveTextContent('Open the pull request');
     expect(station(/Product Owner/)).toHaveTextContent('Figures out what to build');
     expect(screen.getByText('1 working')).toBeInTheDocument();

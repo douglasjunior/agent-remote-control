@@ -289,7 +289,7 @@ describe('agent configuration selection', () => {
         expect(selection.targetRoles).toBeUndefined();
         expect(selection.options.map(option => option.id)).toEqual(ROLE_IDS);
         expect(selection.options.map(option => option.label)).toEqual(ROLE_LABELS);
-        expect(selection.options.map(option => option.index)).toEqual([1, 2, 3, 4, 5, 6]);
+        expect(selection.options.map(option => option.index)).toEqual([1, 2, 3, 4, 5, 6, 7]);
         expect(selection.options.find(option => option.id === 'DEVELOPER')?.description)
           .toBe('Other Agent - Opus - High');
         expect(selection.options.find(option => option.id === 'CEO')?.description)
@@ -533,7 +533,7 @@ describe('agent configuration selection', () => {
         expect(settingsStore.saved).toHaveLength(0);
       });
 
-      it.each(['abc', '7', '1,7', '1 x', '0,1', '', ' , ', '1.5'])(
+      it.each(['abc', '8', '1,8', '1 x', '0,1', '', ' , ', '1.5'])(
         'should reject %j keeping the same list',
         async (input) => {
           await openProfiles();

@@ -11,6 +11,8 @@ export const routes = [
     children: [
       { index: true, element: <ConversationPage /> },
       { path: 'c/:conversationId', element: <ConversationPage /> },
+      { path: 'c/:conversationId/tasks', element: <ConversationPage /> },
+      { path: 'c/:conversationId/tasks/:artifactId', element: <ConversationPage /> },
     ],
   },
 ];

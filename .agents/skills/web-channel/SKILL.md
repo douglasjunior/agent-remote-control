@@ -3,8 +3,9 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, agent CLI login (auth.* commands and events), /health and the WEB_* variables.
-  Use when working with the web module, WebSocket connections, the access token or web conversations.
+  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, agent CLI login
+  (auth.* commands and events), /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
+  access token or web conversations.
 ---
 
 # Web channel
@@ -56,8 +57,12 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   channel owns its history through `IConversationStorePort`; Discord keeps its own.
 - `WebConnectionHandler` routes authenticated commands. `conversation.list` and `conversation.history`
   answer the requester only; `conversation.create` answers the requester with `conversation.created` and
-  broadcasts `conversation.updated` to the other connections. Every command carrying a `conversationId`
-  for an unknown conversation answers an `error` event before reaching a use case.
+  broadcasts `conversation.updated` to the other connections. `conversation.rename { conversationId, title }`
+  (`RenameConversationUseCase`, title trimmed, up to `MAX_CONVERSATION_TITLE_LENGTH`) and
+  `conversation.archive { conversationId, archived }` (`ArchiveConversationUseCase`, stamping or clearing
+  `archivedAt`) publish `conversation.updated` to every connection, the requester included; neither is activity, so
+  `updatedAt` and the place in the list stay. An archived conversation still opens and takes messages. Every command
+  carrying a `conversationId` for an unknown conversation answers an `error` event before reaching a use case.
 - `SendConversationMessageUseCase` never rejects: it checks the configuration, records the
   `user_message` (the first one renames the conversation to its first line, cut at 60 characters) and runs
   `orchestrator.executeTurn` as `userId: 'web-local'` with role `CEO` in the workspace base directory.
@@ -66,6 +71,16 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `prompts.history` (with a `requestId`) answers the requester with `prompts.list`: the stored prompts, most
   recent first. The history is global to the machine, capped at `MAX_PROMPT_HISTORY`, never repeats the
   latest prompt, and is recorded by the server only; the client never appends.
+- **Board of a conversation** (`WebArtifactsService` over `IArtifactsPort`, acting as `{ kind: 'user', channel: 'web' }`):
+  `artifacts.list { conversationId }` answers `artifacts.list` with every artifact summary, closed ones included (no sections
+  or history); `artifact.get { conversationId, id }` answers `artifact.detail` (sections and history) or an `error` for an unknown id;
+  `artifact.create`, `artifact.update`, `artifact.comment` and `artifact.delete` (each with a `requestId`) answer the requester with
+  `artifact.result { conversationId, requestId, ok, id | error }`. `artifact.create` maps the switches `businessRefinement` and
+  `technicalRefinement` to `pending` or `skipped`; `artifact.update` replaces the sections it carries. `onModuleInit` subscribes to
+  `IArtifactsPort.onChange` and broadcasts `artifact.updated { conversationId, artifact }` (a summary; a client showing the detail asks
+  for it again) and `artifact.deleted` to every connection, whoever made the change, for web conversations only (`IConversationStorePort.exists`).
+  `projects.list` answers the project folders of the workspace (`IWorkspacePort.listProjectFolders`), the values an artifact's project takes.
+  The artifact mutations are logged by type. A `delegation` entry carries `artifactId` when the agent held one.
 - Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`),
   `onInterimMessage` → `interim`, `onQuestion` → `question` (with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply), and, when a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`; the `TurnResult` becomes `agent_response`.
   Steering and cancellation markers have no entry.

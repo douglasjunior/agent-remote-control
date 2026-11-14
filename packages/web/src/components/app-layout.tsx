@@ -2,6 +2,7 @@ import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Outlet } from 'react-router';
 
+import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
 import { useConnection } from '../connection/connection-context.js';
 import { ConversationsProvider, useConversations } from '../conversations/conversations-context.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
@@ -29,9 +30,11 @@ export function AppLayout() {
 
   return (
     <ConversationsProvider>
-      <AmbientGlow />
-      <AppShell />
-      <Toaster position="bottom-right" />
+      <ArtifactsProvider>
+        <AmbientGlow />
+        <AppShell />
+        <Toaster position="bottom-right" />
+      </ArtifactsProvider>
     </ConversationsProvider>
   );
 }

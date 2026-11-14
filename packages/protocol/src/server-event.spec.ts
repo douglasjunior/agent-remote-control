@@ -4,6 +4,26 @@ import { parseServerEvent } from './server-event.js';
 const at = '2026-01-01T00:00:00.000Z';
 const conversation = { id: 'c', title: 'T', createdAt: at, updatedAt: at };
 const entry = { id: '1', at, type: 'interim', text: 'x' };
+const artifact = {
+  id: 'T-1',
+  type: 'task',
+  title: 'Login',
+  status: 'in_progress',
+  parentId: 'F-1',
+  projectName: 'app',
+  dependsOn: ['T-2'],
+  refinement: { business: 'done', technical: 'skipped' },
+  assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: at },
+  branch: 'feat/login',
+  pullRequests: [{ url: 'https://example.com/pr/1', state: 'open', addedAt: at }],
+  createdAt: at,
+  updatedAt: at,
+};
+const history = [
+  { id: 'h1', at, actor: { kind: 'user', channel: 'web' }, kind: 'created', summary: 'Created' },
+  { id: 'h2', at, actor: { kind: 'agent', role: 'CEO', roleName: 'CEO' }, kind: 'updated', summary: 'Status', changes: [{ field: 'status', from: 'ready', to: 'in_progress' }] },
+  { id: 'h3', at, actor: { kind: 'system' }, kind: 'commented', summary: 'Comment', text: 'Hi' },
+];
 
 describe('parseServerEvent', () => {
   it.each([
@@ -18,6 +38,13 @@ describe('parseServerEvent', () => {
     { type: 'conversation.draft', conversationId: 'c', text: 'Working on it' },
     { type: 'conversation.draft', conversationId: 'c', text: '' },
     { type: 'conversation.state', conversationId: 'c', state: 'running' },
+    { type: 'projects.list', projects: ['app'] },
+    { type: 'artifacts.list', conversationId: 'c', artifacts: [artifact] },
+    { type: 'artifact.detail', conversationId: 'c', artifact: { ...artifact, sections: { overview: 'Why' }, history } },
+    { type: 'artifact.updated', conversationId: 'c', artifact },
+    { type: 'artifact.deleted', conversationId: 'c', id: 'T-1' },
+    { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: true, id: 'T-1' },
+    { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: false, error: 'Unknown artifact' },
     { type: 'prompts.list', requestId: 'r', prompts: ['latest', 'older'] },
     {
       type: 'files.results',

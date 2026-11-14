@@ -8,7 +8,7 @@ describe('agentIdentity', () => {
     const identities = TEAM_ROLES.map(role => agentIdentity(role));
 
     expect(new Set(identities.map(identity => identity.mark)).size).toBe(TEAM_ROLES.length);
-    expect(identities.map(identity => identity.stage)).toEqual(['Leads', 'Idea', 'Plan', 'Build', 'Review', 'Ship']);
+    expect(identities.map(identity => identity.stage)).toEqual(['Leads', 'Idea', 'Plan', 'Build', 'Review', 'Test', 'Ship']);
     expect(new Set(identities.map(identity => identity.color)).size).toBe(TEAM_ROLES.length);
   });
 

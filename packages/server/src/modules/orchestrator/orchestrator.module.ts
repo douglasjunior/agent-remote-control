@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
+import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { PathsModule } from '../paths/paths.module.js';
 import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
@@ -22,7 +23,9 @@ import { AgentCapabilitiesService } from './services/agent-capabilities.service.
 import { AgentConfigurationService } from './services/agent-configuration.service.js';
 import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
+import { AgentRequestParserService } from './services/agent-request-parser.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
+import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
 import { OpenWorkService } from './services/open-work.service.js';
@@ -36,14 +39,14 @@ import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.j
 import { ConfigureAgentProfilesUseCase } from './use-cases/configure-agent-profiles.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
 import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
-import { ProvisionWorkspaceGuidanceUseCase } from './use-cases/provision-workspace-guidance.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
+import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
 
 
 @Module({
-  imports: [AgentModule, AgentDefinitionsModule, LoggingModule, PathsModule, SpeechToTextModule, WorkspaceModule],
+  imports: [AgentModule, AgentDefinitionsModule, ArtifactsModule, LoggingModule, PathsModule, SpeechToTextModule, WorkspaceModule],
   providers: [
     {
       provide: ISessionStorePort,
@@ -68,16 +71,18 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     ConversationRuntimeService,
     DelegationDetectorService,
     AgentProtocolService,
+    ArtifactPromptFormatterService,
+    AgentRequestParserService,
     QuestionParserService,
     QuestionTimeoutConfigService,
     ShellCommandConfigService,
     UserLanguageService,
     UserQuestionQueueService,
     ExecuteAgentTurnUseCase,
+    RunAgentRequestsUseCase,
     CancelAgentTurnUseCase,
     GetAgentQuotaUseCase,
     RunShellCommandUseCase,
-    ProvisionWorkspaceGuidanceUseCase,
     TranscribeAudioAttachmentsUseCase,
     ConfigureAgentProfilesUseCase,
     { provide: IAgentTurnPort, useClass: AgentTurnService },

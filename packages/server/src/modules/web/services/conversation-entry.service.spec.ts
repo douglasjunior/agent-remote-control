@@ -120,9 +120,9 @@ describe('ConversationEntryService', () => {
     });
 
     it('maps a started delegation', () => {
-      const entry = entries.delegation({ delegationId: 'dl-1', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', taskSpec: 'Do the work', summary: 'Adding the login screen' });
+      const entry = entries.delegation({ delegationId: 'dl-1', phase: 'started', round: 2, role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', artifactId: 'T-3', taskSpec: 'Do the work', summary: 'Adding the login screen' });
 
-      expect(entry).toMatchObject({ id: 'delegation:dl-1:started', delegationId: 'dl-1', phase: 'started', projectName: 'app', prompt: 'Do the work', summary: 'Adding the login screen' });
+      expect(entry).toMatchObject({ id: 'delegation:dl-1:started', delegationId: 'dl-1', phase: 'started', projectName: 'app', artifactId: 'T-3', prompt: 'Do the work', summary: 'Adding the login screen' });
       expect(entry).not.toHaveProperty('response');
       expect(valid(entry)).toBe(true);
     });

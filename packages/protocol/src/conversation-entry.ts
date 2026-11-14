@@ -46,6 +46,8 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     role: z.string(),
     roleName: z.string(),
     projectName: z.string().optional(),
+    /** The artifact the agent was delegated, which it holds until the delegation ends. */
+    artifactId: z.string().optional(),
     /** One plain-language sentence from the CEO telling the user what the agent was asked to do. */
     summary: z.string(),
     /** What the CEO wrote for the agent. A stored history is validated whole, so an entry written without it reads as empty rather than losing the conversation. */

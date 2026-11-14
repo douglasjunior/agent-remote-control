@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Agent Remote Control** is a NestJS application for remote control and orchestration of AI software development agents, running over the **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces, starting with a **Discord Bot**.
+**Agent Remote Control** is a NestJS application for remote control and orchestration of AI software development agents, running over the **Agent Client Protocol (ACP)** and controlled through pluggable channel interfaces (a web interface and a **Discord Bot**). The work of each conversation is a board of features and tasks that the agents read and write themselves, routed by the CEO through their statuses.
 
 The project follows **Clean Architecture with Ports & Adapters**, decoupling the business core from external technologies (Discord, the ACP SDK, the file system and processes). Behavior and business rules are orchestrated directly by independent, cohesive **Use Cases**.
 
@@ -14,7 +14,7 @@ Everything in the repository is written in **English**: source code, identifiers
 agent-remote-control/
 ├── .agents/                        # AI agent governance
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
-├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings and global preferences (user language)
+├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and global preferences (user language)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
 │   ├── web/                        # @agent-remote-control/web: React + Vite web interface (connection, conversations, components)
@@ -22,7 +22,8 @@ agent-remote-control/
 │       ├── src/                    # NestJS application source code
 │       │   ├── modules/                    # Vertical modules segregated by domain
 │       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, demux and the CLI login (IAgentAuthPort)
-│       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER), prompts and registry
+│       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA), their access to the board, prompts, skills and registry
+│       │   │   ├── artifacts/              # Board of each conversation: features and tasks, statuses, dependencies, holders and history (IArtifactsPort)
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation

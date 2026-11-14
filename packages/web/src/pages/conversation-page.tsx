@@ -1,5 +1,5 @@
 import { Plus } from 'lucide-react';
-import { useParams } from 'react-router';
+import { useMatch, useParams } from 'react-router';
 
 import { ConversationView } from '../components/conversation-view.js';
 import { Button } from '../components/ui/button.js';
@@ -7,7 +7,8 @@ import { useConversations } from '../conversations/conversations-context.js';
 
 
 export function ConversationPage() {
-  const { conversationId } = useParams();
+  const { conversationId, artifactId } = useParams();
+  const onBoard = useMatch('/c/:conversationId/tasks/*') !== null;
   const { createConversation } = useConversations();
 
   if (!conversationId) {
@@ -23,5 +24,6 @@ export function ConversationPage() {
     );
   }
 
-  return <ConversationView key={conversationId} conversationId={conversationId} />;
+  const pane = artifactId ? { kind: 'artifact', artifactId } as const : { kind: onBoard ? 'board' : 'chat' } as const;
+  return <ConversationView key={conversationId} conversationId={conversationId} pane={pane} />;
 }

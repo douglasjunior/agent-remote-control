@@ -2,6 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
+import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';
+import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
+import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
+import type { InMemoryArtifactStoreFake } from '../../artifacts/testing/in-memory-artifact-store.fake.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
@@ -10,16 +14,20 @@ import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { QuestionAnswerInput, QuestionPrompt, RestoredWorkAnswers } from '../models/user-question.model.js';
 import {
+  type ArtifactAccess,
   type DelegationContract,
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
 import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
+import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
   buildAgentLanguagePrompt,
   buildCeoLanguagePrompt,
   buildLanguageDetectionPrompt,
 } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
+import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
+import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
@@ -31,11 +39,13 @@ import { questionListener } from '../testing/question-listener.fixture.js';
 import { buildSessionContext } from '../testing/session-context.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
+import { StubAgentSkillsPort } from '../testing/stub-agent-skills.port.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 import { RestoreOpenWorkUseCase } from './restore-open-work.use-case.js';
+import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
@@ -50,10 +60,9 @@ class StubAgentRegistryPort implements IAgentRegistryPort {
     (_role: string) => ({ project: 'optional', sessionMode: 'overridable' }) as DelegationContract,
   );
 
+  getArtifactAccess = vi.fn((_role: string): ArtifactAccess => ({ scope: 'task', sections: [], fields: [] }));
   getTurnReminder = vi.fn().mockReturnValue('');
   isSystemPromptEveryTurn = vi.fn().mockReturnValue(false);
-  usesPlansDirectory = vi.fn((role: string) => role === 'TECH_LEAD');
-  getWorkspaceFiles = vi.fn().mockReturnValue([]);
 }
 
 class StubWorkspacePort implements IWorkspacePort {
@@ -103,6 +112,9 @@ describe('ExecuteAgentTurnUseCase', () => {
   let openWorkStore: InMemoryOpenWorkStoreFake;
   let speechToText: StubSpeechToText;
   let fileSystem: StubFileSystem;
+  let artifacts: ArtifactsService;
+  let artifactStore: InMemoryArtifactStoreFake;
+  let agentSkills: StubAgentSkillsPort;
 
   beforeEach(() => {
     stubAgentPort = new StubAgentPort();
@@ -131,6 +143,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     openWork = new OpenWorkService(openWorkStore);
     speechToText = new StubSpeechToText();
     fileSystem = new StubFileSystem();
+    ({ service: artifacts, store: artifactStore } = createArtifactsService({ conversationId: 'conv-1' }));
+    const formatter = new ArtifactPromptFormatterService();
+    agentSkills = new StubAgentSkillsPort();
     useCase = new ExecuteAgentTurnUseCase(
       factory,
       sessionStore,
@@ -147,6 +162,11 @@ describe('ExecuteAgentTurnUseCase', () => {
       openWork,
       fileSystem,
       logContext,
+      artifacts,
+      new AgentRequestParserService(),
+      new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills),
+      formatter,
+      agentSkills,
     );
   };
 
@@ -481,35 +501,6 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(stubAgentPort.promptCalls[0]).toContain('- DEVELOPER: Agent: unlisted, Model: default, Effort: default, Status: idle');
   });
 
-  describe('plans directory', () => {
-    it('should give the Tech Lead the plans folder of its project', async () => {
-      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" project="my-app">Plan it.</delegate>', 'Ok.'];
-      delegateStubPort.mockResponses = ['Planned.'];
-
-      await useCase.execute(turnRequest());
-
-      expect(delegateStubPort.promptCalls[0]).toContain('[PLANS_DIRECTORY]\nFolder for this task: /mock/workspace/.plans/my-app\n');
-    });
-
-    it('should give a role without a project the general plans folder', async () => {
-      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning">Plan it.</delegate>', 'Ok.'];
-      delegateStubPort.mockResponses = ['Planned.'];
-
-      await useCase.execute(turnRequest());
-
-      expect(delegateStubPort.promptCalls[0]).toContain('Folder for this task: /mock/workspace/.plans/general\n');
-    });
-
-    it('should keep the plans folder away from roles that do not write plans', async () => {
-      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Ok.'];
-      delegateStubPort.mockResponses = ['Built.'];
-
-      await useCase.execute(turnRequest());
-
-      expect(delegateStubPort.promptCalls[0]).not.toContain('[PLANS_DIRECTORY]');
-    });
-  });
-
   describe('delegation contract', () => {
     it('should repair a delegation missing a project folder the role requires', async () => {
       agentRegistry.getDelegationContract.mockReturnValueOnce({ project: 'required' });
@@ -645,6 +636,27 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(result.errorMessage).toBe('Invalid CEO response: Found </delegate> without its opening <delegate> tag.');
       expect(stubAgentPort.promptCalls).toHaveLength(2);
     });
+  });
+
+  it('should send the skill catalog of the role with its system prompt', async () => {
+    agentSkills.skills = { CEO: [{ name: 'board', description: 'Routing the board.', content: 'Route it.' }] };
+    stubAgentPort.mockResponses = ['First.', 'Second.'];
+
+    await useCase.execute(turnRequest());
+    await useCase.execute(turnRequest({ prompt: 'Again' }));
+
+    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([{ name: 'board', description: 'Routing the board.' }])}\n\n`);
+    expect(stubAgentPort.promptCalls[1]).not.toContain('[SKILLS]');
+  });
+
+  it('should answer a skill request with the skill content in the next prompt', async () => {
+    agentSkills.skills = { CEO: [{ name: 'board', description: 'Routing the board.', content: 'Route it.' }] };
+    stubAgentPort.mockResponses = ['<final_response><skill_read name="board"/></final_response>', 'Done.'];
+
+    const result = await useCase.execute(turnRequest());
+
+    expect(result.response).toBe('Done.');
+    expect(stubAgentPort.promptCalls[1]).toContain('<request_result request="skill_read" name="board" status="ok">\n# Skill: board\n\nRoute it.\n</request_result>');
   });
 
   it('should send the system prompt only when the CEO ACP session is created', async () => {
@@ -1600,6 +1612,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/my-app',
@@ -1990,6 +2003,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Implement the endpoint',
         cwd: '/mock/workspace/my-app',
@@ -2083,6 +2097,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Run build and tests',
         cwd: '/mock/workspace/project-a',
@@ -2096,6 +2111,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Code Reviewer',
         agentInfo: { roleName: 'Code Reviewer', agentName: 'stub' },
         projectName: null,
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Review code',
         cwd: '/mock/workspace',
@@ -2124,6 +2140,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/project-a',
@@ -2199,6 +2216,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Original task',
         cwd: '/mock/workspace/my-app',
@@ -2236,6 +2254,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Old task in project-a',
         cwd: '/mock/workspace/project-a',
@@ -2274,6 +2293,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'project-a',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Concurrent newer task',
         cwd: '/mock/workspace/project-a',
@@ -2331,6 +2351,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       roleName: role,
       agentInfo: { roleName: role, agentName: 'stub' },
       projectName,
+      artifactId: null,
       summary: 'Summary',
       taskSpec: 'Running task',
       cwd: `/mock/workspace/${projectName}`,
@@ -3156,6 +3177,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: null,
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Old task',
         cwd: '/mock/workspace',
@@ -3415,6 +3437,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
         projectName: 'my-app',
+        artifactId: null,
         summary: 'Summary',
         taskSpec: 'Old task',
         cwd: '/mock/workspace/my-app',
@@ -3666,6 +3689,202 @@ describe('ExecuteAgentTurnUseCase', () => {
       await delegationNow.steer('Build more.');
 
       await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.taskSpec).toBe('Build more.'));
+    });
+  });
+
+  describe('artifacts', () => {
+    const contracts: Record<string, DelegationContract> = {
+      DEVELOPER: { project: 'required', sessionMode: 'overridable', artifact: 'required' },
+      CODE_REVIEWER: { project: 'required', readOnly: true, artifact: 'required', needsReviewableWork: true },
+      TECH_LEAD: { project: 'optional', readOnly: true, artifact: 'optional' },
+      GIT_OPS: { project: 'optional' },
+    };
+    const accesses: Record<string, ArtifactAccess> = {
+      CEO: { scope: 'board', create: true, sections: ['overview'], fields: ['status', 'refinement', 'title'] },
+      DEVELOPER: { scope: 'task', sections: ['implementation_notes'], fields: ['branch'] },
+      TECH_LEAD: { scope: 'tree', create: true, sections: ['technical_solution'], fields: ['refinement'] },
+    };
+    const seed = (...artifacts: Parameters<typeof buildArtifact>[0][]) =>
+      artifacts.forEach(artifact => artifactStore.artifactsOf('conv-1').set(artifact.id, buildArtifact({ projectName: 'my-app', ...artifact })));
+
+    beforeEach(() => {
+      agentRegistry.getDelegationContract.mockImplementation((role: string) => contracts[role] ?? {});
+      agentRegistry.getArtifactAccess.mockImplementation((role: string) => accesses[role] ?? { scope: 'task', sections: [], fields: [] });
+      agentRegistry.hasRole.mockImplementation((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'GIT_OPS'].includes(role));
+    });
+
+    it('answers the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
+      stubAgentPort.mockResponses = ['Creating it. <artifact_create type="task" title="Login" project="my-app"/>', 'Created T-1.'];
+      const onDraft = vi.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Created T-1.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('<request_result request="create" id="T-1" status="ok">');
+      expect(onDraft).toHaveBeenCalledWith('');
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ title: 'Login', history: [{ actor: { kind: 'agent', role: 'CEO' } }] });
+    });
+
+    it('runs the requests that go with a delegation and hands their results over with the agent results', async () => {
+      seed({ id: 'T-1', title: 'Login', status: 'ready' });
+      stubAgentPort.mockResponses = ['<artifact_update id="T-1" status="in_progress"/>\n<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Built.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+      expect(delegateStubPort.promptCalls[0]).toContain('- Status: in_progress');
+      expect(stubAgentPort.promptCalls[1]).toMatch(/^<request_results>\n<request_result request="update" id="T-1" status="ok">[\s\S]*<\/request_results>\n\n<agent_result role="DEVELOPER"/);
+      expect(stubAgentPort.promptCalls[1]).not.toContain('was not taken as your final answer');
+    });
+
+    it('hands the results of requests that go with questions over with the answers', async () => {
+      stubAgentPort.mockResponses = ['<artifact_list/>\n<question>Which project?<option>demo</option></question>', 'Ok.'];
+      const onQuestion = vi.fn();
+
+      const turn = useCase.execute(turnRequest({ onQuestion }));
+      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      questionQueue.submit('conv-1', { kind: 'option', optionIndex: 1 });
+
+      expect(await turn).toMatchObject({ status: 'completed', response: 'Ok.' });
+      expect(stubAgentPort.promptCalls[1]).toMatch(/^<request_results>[\s\S]*No artifact matches\.[\s\S]*<\/request_results>\n\n<user_answers>/);
+    });
+
+    it('hands a delegate the results of requests that go with its questions over with the answers', async () => {
+      seed({ id: 'T-1' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Starting.</artifact_comment><question>Which name?</question>', 'Built.'];
+      const onQuestion = vi.fn();
+
+      const turn = useCase.execute(turnRequest({ onQuestion }));
+      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      questionQueue.submit('conv-1', { kind: 'text', text: 'multiply' });
+
+      expect((await turn).status).toBe('completed');
+      expect(delegateStubPort.promptCalls[1]).toMatch(/^<request_results>[\s\S]*Commented on T-1[\s\S]*<\/request_results>\n\n<user_answers>/);
+    });
+
+    it('asks again when protocol tags were written outside the final response envelope', async () => {
+      stubAgentPort.mockResponses = [
+        '<artifact_list status="all"/>\n<final_response>Vou conferir o quadro.</final_response>',
+        '<final_response><artifact_list status="all"/></final_response>',
+        'Nothing on the board yet.',
+      ];
+      const onDraft = vi.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(stubAgentPort.promptCalls[1]).toBe('[PROTOCOL_ERROR]\nYour previous response wrote <artifact_list> outside the <final_response> block, where text is only progress narration, so nothing was done with it.\nAnswer again with every protocol tag, and the text that goes with it, inside a single <final_response>...</final_response> block.');
+      expect(stubAgentPort.promptCalls[2]).toContain('No artifact matches.');
+      expect(result).toMatchObject({ status: 'completed', response: 'Nothing on the board yet.' });
+      expect(onDraft).toHaveBeenCalledWith('');
+    });
+
+    it('repairs a delegate the same way, without touching the draft of the CEO', async () => {
+      seed({ id: 'T-1' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">x</artifact_comment><final_response>Built.</final_response>', 'Built.'];
+      const onDraft = vi.fn();
+
+      await useCase.execute(turnRequest({ onDraft }));
+
+      expect(delegateStubPort.promptCalls[1]).toContain('[PROTOCOL_ERROR]');
+      expect(onDraft).not.toHaveBeenCalledWith('');
+    });
+
+    it('takes the last response as it is when the requests never stop', async () => {
+      stubAgentPort.mockResponses = Array.from({ length: 31 }, () => '<artifact_list/>');
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls).toHaveLength(31);
+      expect(result.status).toBe('completed');
+    });
+
+    it('runs the delegate in the artifact project with its content, holding it until it finishes', async () => {
+      seed({ id: 'T-1', title: 'Login', sections: { technical_solution: 'Use JWT.' } });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building the login" artifact="t-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<artifact_update id="T-1" branch="feat/t-1"/>', 'Built on feat/t-1.'];
+      const onDelegation = vi.fn();
+
+      const result = await useCase.execute(turnRequest({ onDelegation }));
+
+      expect(result.status).toBe('completed');
+      expect(workspacePort.resolveRepositoryPath).toHaveBeenCalledWith('my-app');
+      expect(delegateStubPort.promptCalls[0]).toContain('[DELEGATED_ARTIFACT]\nYou hold T-1 while you work on it.\n\n# T-1 · Login');
+      expect(delegateStubPort.promptCalls[0]).toContain('## Technical solution\nUse JWT.\n[/DELEGATED_ARTIFACT]\n\nImplement T-1.');
+      expect(delegateStubPort.promptCalls[1]).toContain('<request_result request="update" id="T-1" status="ok">');
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="ready"');
+      expect(onDelegation).toHaveBeenCalledWith(expect.objectContaining({ phase: 'started', artifactId: 'T-1' }));
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({
+        assignee: null,
+        branch: 'feat/t-1',
+        history: [
+          { kind: 'assigned', summary: 'DEVELOPER took it' },
+          { kind: 'updated' },
+          { kind: 'released', summary: 'DEVELOPER released it: finished' },
+        ],
+      });
+    });
+
+    it('reports a delegation whose artifact another delegation of the role took meanwhile as failed', async () => {
+      seed({ id: 'T-1', assignee: { role: 'DEVELOPER', roleName: 'DEVELOPER', delegationId: 'elsewhere', since: '2026-01-01T00:00:00.000Z' } });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Ok.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="ready" status="failed">\nT-1 is with DEVELOPER (DEVELOPER) right now');
+      expect(delegateStubPort.connectCalls).toBe(0);
+    });
+
+    it('tells the CEO the status of the artifact a failed delegation held', async () => {
+      seed({ id: 'T-1', status: 'in_progress' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Ok.'];
+      delegateStubPort.promptErrorToThrow = new Error('agent crashed');
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="in_progress" agent="stub" model="default" effort="default" status="failed">\nagent crashed\n</agent_result>');
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null, history: [expect.anything(), { kind: 'released', summary: 'DEVELOPER released it: failed' }] });
+    });
+
+    it('logs a release that fails without failing the delegation', async () => {
+      seed({ id: 'T-1' });
+      artifacts.release = () => Promise.reject(new Error('disk full'));
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Built.'];
+
+      expect((await useCase.execute(turnRequest())).status).toBe('completed');
+    });
+
+    it('lets an agent that may take an artifact work without one, in the folder it was given', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Investigating" project="my-app">Investigate.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Found it.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[0]).not.toContain('[DELEGATED_ARTIFACT]');
+    });
+
+    it.each([
+      ['a task-bound agent without an artifact', [], '<delegate role="DEVELOPER" summary="x" project="my-app">Go.</delegate>', 'DEVELOPER works on a task of the board: add artifact="<task id>" to the <delegate> tag'],
+      ['an agent that takes no artifact', [{ id: 'T-1' }], '<delegate role="GIT_OPS" summary="x" artifact="T-1">Go.</delegate>', 'Role "GIT_OPS" does not take an artifact.'],
+      ['an unknown artifact', [], '<delegate role="DEVELOPER" summary="x" artifact="T-9">Go.</delegate>', 'Unknown artifact "T-9".'],
+      ['a feature for a task-bound agent', [{ id: 'F-1', type: 'feature' }], '<delegate role="DEVELOPER" summary="x" artifact="F-1">Go.</delegate>', 'DEVELOPER works on tasks only, and F-1 is a feature.'],
+      ['a frozen artifact', [{ id: 'T-1', status: 'frozen' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is frozen after too many delegations, and only the user takes it out.'],
+      ['a closed artifact', [{ id: 'T-1', status: 'done' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is done. Set its status back to an open one'],
+      ['a review with neither a pull request nor a branch', [{ id: 'T-1' }], '<delegate role="CODE_REVIEWER" summary="x" artifact="T-1">Go.</delegate>', 'CODE_REVIEWER inspects the work of T-1, which has neither a pull request nor a branch yet.'],
+      ['an artifact another role holds', [{ id: 'T-1', assignee: { role: 'TECH_LEAD', roleName: 'TL', delegationId: 'd', since: '2026-01-01T00:00:00.000Z' } }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is with TECH_LEAD right now, and an artifact is with one agent at a time.'],
+      ['another project', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1" project="project-a">Go.</delegate>', 'T-1 belongs to project "my-app", so the work on it runs there'],
+      ['the same artifact twice', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate><delegate role="TECH_LEAD" summary="y" artifact="T-1">Plan.</delegate>', 'T-1 appears in more than one delegation.'],
+    ] as const)('rejects %s', async (_name, artifactsToSeed, delegation, reason) => {
+      seed(...artifactsToSeed);
+      stubAgentPort.mockResponses = [delegation, delegation];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('failed');
+      expect(result.errorMessage).toContain(reason);
     });
   });
 });

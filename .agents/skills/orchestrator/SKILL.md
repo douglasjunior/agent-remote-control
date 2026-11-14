@@ -3,9 +3,10 @@ name: orchestrator
 description: >
   Channel-agnostic agent orchestration: turns, CEO delegation (<delegate>/<agent_result>),
   questions agents ask the user, ACP session resumption by role and project, per-conversation
-  agent/model/effort settings, user language, cancellation and queueing. Agents only: menus and
-  typed input belong to each channel. Use when implementing turns, delegation, cancellation,
-  session or settings persistence, agent configuration or new channel interfaces.
+  agent/model/effort settings, user language, agent requests (artifacts and skills read on demand),
+  cancellation and queueing. Agents only: menus and typed input belong to each channel. Use when
+  implementing turns, delegation, cancellation, session or settings persistence, agent configuration,
+  agent requests or new channel interfaces.
 ---
 
 # Channel-Agnostic Agent Orchestrator
@@ -52,7 +53,7 @@ Encapsulates the parameters for running an interaction round:
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
 - `onQuestion`: optional callback `(event: QuestionEvent) => void` (`question-event.model.ts`), called with `{ kind: 'asked', prompt }` when an agent of this turn asks and the question reaches the front of the conversation queue on its own, and with `{ kind: 'timedOut', asker, answered, timeoutMs, next? }` when the user did not answer in time (see "Questions to the User").
-- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?` and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
+- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?`, `artifactId?` (the artifact the agent holds) and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo` and `usage` and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
@@ -161,12 +162,24 @@ Contract for resolving behavioral instructions and model specifications:
 - `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`); empty contract for an unknown role
 - `getTurnReminder(agentRole: string): string`: reminder injected at the end of every turn prompt (always a string, empty when the role has none)
 - `isSystemPromptEveryTurn(agentRole: string): boolean`: role whose system prompt accompanies every user message (the CEO)
-- `getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[]`: guidance files (`workspace-file.model.ts`: `path` relative to the workspaces root, `content`) written at boot
 - Symbol of the same name: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
 The implementation is `AgentRegistryService` from `AgentDefinitionsModule`, which resolves the
-full prompts of each role (`CEO`, `TECH_LEAD`, `DEVELOPER`, `CODE_REVIEWER`), provides turn reminders and returns a generic prompt for
+full prompts of each role, provides turn reminders and returns a generic prompt for
 unknown roles.
+
+### `IAgentSkillsPort` (`agent-skills.port.ts`)
+
+The skills each role reads on demand (`models/agent-skill.model.ts`: `AgentSkillSummary` `{ name, description }`,
+`AgentSkill` adding `content`):
+
+- `list(role): Promise<readonly AgentSkillSummary[]>`: the catalog sent with the system prompt
+- `read(role, name): Promise<AgentSkill | undefined>`: the full skill, name matched case-insensitively
+- `listAll(role): Promise<readonly AgentSkillListing[] | undefined>`: every skill with its roles and whether it is built-in, for a role that writes skills
+- `write(role, skill: AgentSkillInput): Promise<AgentSkillWriteResult>`: creates or replaces a user skill, `{ ok: false, error }` when refused
+
+The implementation is `AgentSkillsService` from `AgentDefinitionsModule` (built-in skills plus the user's own; see the
+`agent-definitions` skill). Specs use `StubAgentSkillsPort` from `testing/`.
 
 ### 3. `ConversationRuntimeService` (`services/conversation-runtime.service.ts`)
 
@@ -216,9 +229,6 @@ Each delegated agent operates in `IWorkspacePort.resolveRepositoryPath(project)`
 
 ```text
 ./workspaces/                    ← cwd of the CEO and of GIT_OPS without a project folder
-├── AGENTS.md                    ← CEO manual, regenerated at boot
-├── .agents/skills/              ← CEO skills, regenerated at boot
-├── .claude/skills -> ../.agents/skills
 ├── workspace-manifest.json      ← URL-to-folder mapping, written only by GIT_OPS
 ├── my-backend/                  ← cwd of the delegated agent with <delegate role="ROLE" project="my-backend">
 └── my-frontend/
@@ -232,23 +242,12 @@ must also appear in `listProjectFolders()` (direct non-hidden subfolders, includ
 would become an empty CWD created by `ensureDirectory`, so the delegation becomes `invalid` and the repair
 lists the existing folders.
 
-`IWorkspacePort` exposes `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory`,
-`listProjectFolders`, `writeFile` (path relative to the root, overwrites) and `ensureSymlink` (refuses to
-replace a real file or directory): the app resolves, lists and creates directories and writes the CEO's
-guidance, and does not run Git. Cloning a repository into the workspace, registering it in the manifest
+`IWorkspacePort` exposes `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory` and
+`listProjectFolders`: the app resolves, lists and creates directories, writes nothing else in the workspace (the
+CEO's guidance is its prompt and its skills, read on demand) and does not run Git. Cloning a repository into the workspace, registering it in the manifest
 and other standalone Git operations against a remote belong to the `GIT_OPS` agent, and the URL reaches it
 through the specification the CEO writes. The project's own scripts that clone sub-repositories, such as an
 `init`, are run by the `DEVELOPER`.
-
-### CEO Guidance in the Workspace (`ProvisionWorkspaceGuidanceUseCase`)
-
-In `onModuleInit`, before the channels connect, it writes at the workspaces root the files from
-`IAgentRegistryPort.getWorkspaceFiles(baseDir)` (the CEO's `AGENTS.md` and skills), always
-overwriting to follow the code and the registry, and ensures the `.claude/skills` →
-`../.agents/skills` link. A failure is logged and does not bring down the service, because the core prompt
-sent on every turn keeps the CEO operating. Delegated agents run in a subfolder and are not
-instructed to read these files; for that reason no `CLAUDE.md` is generated, since Claude Code loads it from
-parent directories and it would leak to them.
 
 ### Tag Protocol
 
@@ -258,11 +257,12 @@ parent directories and it would leak to them.
 | With `<question>` | Queues the questions and, with the answers, runs a new CEO round in the same turn |
 | Without `<delegate>` or `<question>` | Ends the loop and returns the `message` as `response`, with the resolved attachments |
 | *(invalid)* | Sends the repair prompt with the reason to the CEO |
+| With agent requests (`<artifact_list>`, `<artifact_read>`, `<artifact_create>`, `<artifact_update>`, `<artifact_comment>`, `<skill_read>`, `<skill_list>`, `<skill_write>`) | Runs them first and sends `<request_results>` back to the same agent, CEO or delegate, until a response carries none; only that response is classified |
 
 The classified response is the content of the `<final_response>` envelope, read by `AgentProtocolService`
 (`services/agent-protocol.service.ts`), and that is why the tags go inside it. The repair prompt reinforces this rule.
 
-The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder">\n<response>\n</agent_result>` (without `project` when there is no folder). In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
+The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder" artifact="T-1" artifact_status="in_review">\n<response>\n</agent_result>` (without `project` or `artifact` when there is none; `artifact_status` is the artifact's status read when the agent finished, so the CEO sets the next one against the result). In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
 
 ### Turn Execution (`ExecuteAgentTurnUseCase`)
 
@@ -276,10 +276,10 @@ Running the `execute(request: TurnRequest): Promise<TurnResult>` method follows 
 2. **Turn agent**: each role resolves its agent from the conversation's `AgentSettings` through `resolveProfile`, falling back to `IAgentPortFactory.defaultAgentId`, which is read only when no profile exists because it scans PATH. The CEO port uses the CEO profile; each delegate uses its own role's profile, read when the delegation starts. The settings are read at every turn and delegation start, so a saved change applies to the next one without interrupting work in progress.
    - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, preceded by the `[TEAM_PROFILES]` block and followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
 3. **CEO mutual exclusion**: runs the CEO round via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. The CEO port is released as soon as the CEO decides to delegate, allowing new user messages to be handled while specialists work in the background.
-4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. It injects the `[TEAM_PROFILES]` block (`buildTeamProfilesBlock`) into the CEO's initial prompt: one line per role of `IAgentRegistryPort.listRoles()` except the CEO's, with the coding agent, model and effort, and `Status: idle` or `Status: working`. The profile comes from the conversation settings (`resolveProfile`, falling back to the CEO's profile, then to the default agent and `default` for model and effort); a working role shows the `agentInfo` it started with (`ActiveDelegation.agentInfo`, resolved with `buildAgentInfo` when the delegation starts, so a settings change applies to the next delegation and not to the running one) plus `Running` time, `Project`, `Waiting for user` (`UserQuestionQueueService.isWaiting`) and the `Summary` of the task (`ActiveDelegation.summary`, the `summary` attribute of the `<delegate>`). The block is always present, so the CEO reads a prompt without it as an unchanged team, and a CEO session that was just created or switched has no memory of who is on the team. In later rounds of the same turn the block is sent again only when its signature (profiles, states, projects, wait states and summaries, without elapsed time) changed since the last block of the turn. Notices pending from a turn that failed or was cancelled come before it in a `[PREVIOUS_TURN]` block (`buildPreviousTurnPrompt`): how the turn ended, each agent stopped before finishing (a delegation the CEO replaced is left out) and each delegation the round limit kept from starting. `ConversationRuntimeService` holds them in memory, outside the runtime that expires when idle, and they leave once a CEO round returns; a restart loses them.
-5. **Delegation loop**: runs one CEO round per prompt; `MAX_DELEGATION_ROUNDS` (100) bounds the rounds in which the CEO delegates:
+4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. It injects the `[TEAM_PROFILES]` block (`buildTeamProfilesBlock`) into the CEO's initial prompt: one line per role of `IAgentRegistryPort.listRoles()` except the CEO's, with the coding agent, model and effort, and `Status: idle` or `Status: working`. The profile comes from the conversation settings (`resolveProfile`, falling back to the CEO's profile, then to the default agent and `default` for model and effort); a working role shows the `agentInfo` it started with (`ActiveDelegation.agentInfo`, resolved with `buildAgentInfo` when the delegation starts, so a settings change applies to the next delegation and not to the running one) plus `Running` time, `Project`, `Artifact` (when it holds one), `Waiting for user` (`UserQuestionQueueService.isWaiting`) and the `Summary` of the task (`ActiveDelegation.summary`, the `summary` attribute of the `<delegate>`). The block is always present, so the CEO reads a prompt without it as an unchanged team, and a CEO session that was just created or switched has no memory of who is on the team. In later rounds of the same turn the block is sent again only when its signature (profiles, states, projects, wait states and summaries, without elapsed time) changed since the last block of the turn. Notices pending from a turn that failed or was cancelled come before it in a `[PREVIOUS_TURN]` block (`buildPreviousTurnPrompt`): how the turn ended, each agent stopped before finishing (a delegation the CEO replaced is left out) and each delegation the round limit kept from starting. `ConversationRuntimeService` holds them in memory, outside the runtime that expires when idle, and they leave once a CEO round returns; a restart loses them.
+5. **Delegation loop**: runs one CEO round per prompt; `MAX_DELEGATION_ROUNDS` (1000) bounds the rounds in which the CEO delegates, a last resort that also covers delegations without an artifact; the guard against agents looping on a task is the freeze of the artifact after too many delegations:
    1. Runs the CEO turn with `cwd = request.workspacePath`.
-   2. Classifies the response with `DelegationDetectorService.detect()` and validates the delegation: the role must exist (`hasRole`) and differ from the root role, the tag attributes must fit `getDelegationContract(role)` and the project must be accepted by `resolveRepositoryPath` and appear in `listProjectFolders()`. Validation failures become `invalid`, and project failures list the existing folders in the reason. With several delegations, it validates each one and then the set: the same role does not appear twice, whatever the project, and at most one agent that modifies files works in each `cwd`, counting active delegations from previous turns; agents with `readOnly` in the contract do not count, and neither does an active delegation of the same role, because the new one replaces it.
+   2. Classifies the response with `DelegationDetectorService.detect()` and validates the delegation: the role must exist (`hasRole`) and differ from the root role, the tag attributes must fit `getDelegationContract(role)`, an `artifact` must pass the board checks (see "Artifacts"), which also set the project to the artifact's, and the project must be accepted by `resolveRepositoryPath` and appear in `listProjectFolders()`. Validation failures become `invalid`, and project failures list the existing folders in the reason. With several delegations, it validates each one and then the set: the same role does not appear twice, whatever the project, nor the same artifact, and at most one agent that modifies files works in each `cwd`, counting active delegations from previous turns; agents with `readOnly` in the contract do not count, and neither does an active delegation of the same role, because the new one replaces it.
    3. **Repair**: on `invalid`, sends `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), starting with `[DELEGATION_ERROR]`, to the CEO and classifies the new response. There are up to `MAX_REPAIR_ATTEMPTS` (1) attempts per CEO response, outside the round count. If it remains `invalid`, returns `status: 'failed'` with `errorMessage: 'Invalid CEO response: <reason>'`.
    4. `ask` does not leave the round: the CEO waits for the answers in the queue and receives `<user_answers>` on the same port, inside `runOnCeo`, with `isUserMessage` true (the system prompt accompanies it); the new response is classified and repaired like the first. `reply` ends with `status: 'completed'` once no delegation of the turn is running; while some still run, its text goes to `onInterimMessage` and the loop keeps waiting for their results.
    5. On `delegate` in the last allowed delegation round, it ends without running the delegate (item 6), because the result would not return to the CEO.
@@ -301,12 +301,13 @@ Each agent turn (CEO or delegate) internally runs:
 3. `connect()` followed by `turn.throwIfCancelled()`.
 3. If `currentSessionId` is not set:
    1. **With a session for the role on the port's agent (`agentId === agentPort.agentName`) in `agentSessions` and `sessionMode !== 'new'`**: rereads the `SessionContext` from the store and calls `loadSession(cwd, sessionId)`. On success, the system prompt is not resent, except for a role with `isSystemPromptEveryTurn`. The reread is necessary because the turn's object does not reflect the sessions written by the CEO and by previous rounds.
-   2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
+   2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`, followed by the `[SKILLS]` catalog of the role when it has skills (`buildSkillCatalogPrompt`, `prompts/skill-catalog.prompt.ts`). The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
    3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
 4. Configuration: with the role's profile for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. A profile for another agent is ignored because model IDs are not valid across agents. Applies to the CEO and to delegates. Since sessions are keyed by role, agent and project, changing a role's agent starts a new session for it, while changing only its model or effort keeps the session.
 5. Registration of a listener via `onActivity(...)`, undone in `finally`, feeding an `AgentProtocolStream` (`AgentProtocolService.stream`) per prompt. The stream relays the activities of every agent to `request.onActivity`: a message with a `<final_response>` envelope settles its `thought` entry to the prose before the envelope (`final: true`) or takes it back (`removed: true`) when there is none. It also reports the answer as it stands, whole at every change (the content of the envelopes or, while no message has one, everything the agent said, reasoning excluded, a tag being typed held back): the CEO's becomes `request.onDraft` calls and those of delegated agents are not asked for.
 6. `turn.throwIfCancelled()` and draining of `prompt(text)`, accumulating the text blocks as the fallback response.
-7. Response: `AgentProtocolService.finalResponse` of `lastAgentMessage` or of the accumulated blocks (the content of the envelopes, accepting an unclosed one, or the whole text when there is none), logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
+7. Protocol repair: when the text has a `<final_response>` envelope and protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`, the artifact and skill requests) were written outside it, outside Markdown code (`AgentProtocolService.strayTags` over everything the agent wrote in the prompt), the same agent receives `buildProtocolRepairPrompt(tags)` (`prompts/protocol-repair.prompt.ts`, starting with `[PROTOCOL_ERROR]` and naming the tags) once, the CEO's draft discarded first, because text outside the envelope is narration and those tags would be dropped without a word.
+8. Response: `AgentProtocolService.finalResponse` of `lastAgentMessage` or of the accumulated blocks (the content of the envelopes, accepting an unclosed one, or the whole text when there is none), logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
 
 **Cancellation and failure handling**: `PromptCancelledError` (or an error with the same
 name) thrown by any agent or by `ActiveTurn` returns `status: 'cancelled'`. Other
@@ -401,7 +402,7 @@ My understanding is: ... (free text, shown before the first question)
 
 A turn with `TurnRequest.resumable` (the web channel sets it; Discord does not) keeps its work on disk through
 `OpenWorkService` over `IOpenWorkStorePort` (`JsonOpenWorkStoreAdapter`, `DATA_DIR/open-work.json`, written atomically).
-Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `summary`,
+Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `artifactId?`, `summary`,
 `taskSpec`, `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
 never written. A resumed record keeps its questions until the prompt with the answers is sent: a restart before that asks
 the last question again, and from then on the agent has the answers and counts as working. The record is closed when that work
@@ -422,9 +423,20 @@ ends, however it ends, and `CancelAgentTurnUseCase` closes every record of the c
 - **Replaced work**: a new turn discards interrupted roots that did not ask, and delegating a role again discards
   what a restart left stopped for that role, its questions included.
 
-### Plans Directory
+### Agent Requests: Artifacts and Skills
 
-Roles whose definition sets `plansDirectory` (PRODUCT_OWNER, TECH_LEAD) write their deliverable to a file outside their project folder. `runAgentTurn` appends a `[PLANS_DIRECTORY]` block (`buildPlansDirectoryPrompt`, `prompts/plans-directory.prompt.ts`) after the language block of each of their rounds. It names `<IWorkspacePort.getBaseDirectory()>/.plans/<project folder>`, or `.plans/general` when the delegation has no project (`PLANS_DIRECTORY_NAME` and `PLANS_NO_PROJECT_FOLDER`, `constants/plans-directory.constant.ts`), and authorizes writing there as an exception to the CWD boundary. Inside it each initiative has its own folder with `intent.md` and `plan.md` (`agent-definitions` skill). The folder starts with a dot, so the CEO does not list it as a project.
+Every CEO and delegate response goes through `resolveAgentRequests` before it is classified: `AgentRequestParserService`
+reads the agent requests and the response without them, and `RunAgentRequestsUseCase` runs them in order: artifact requests on the board of the conversation
+under the access of the role (`IAgentRegistryPort.getArtifactAccess`), and the skill requests through `IAgentSkillsPort`:
+`<skill_read name="a,b"/>` (`read(role, name)`, the content returned as `<request_result request="skill_read" name="a,b">` with one `# Skill: <name>` block per skill; an unknown
+name fails the request and lists the skills of the role), and, for a role that writes skills, `<skill_list/>` (`listAll`, one line per skill with whether it is built-in, its roles and description)
+and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
+for the CEO, questions for a delegate) is classified from that rest and its `<request_results>` open the agent's next prompt
+(`PendingRequestResults`); any other one gets the results right away, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). A delegation with `artifact="T-1"` is validated against the board (`applyArtifact`): known, of a type the
+role works on, neither frozen nor closed, with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, and in its project,
+which becomes the delegation's folder. `delegate` assigns it before creating the port, prefixes the first prompt with
+`[DELEGATED_ARTIFACT]` (its full content) and releases it in `finally` with how the work ended; a running delegation is steered only
+for the same artifact.
 
 ### User Language
 

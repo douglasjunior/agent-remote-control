@@ -33,10 +33,11 @@
 AI coding agents are incredible, as long as you are sitting in front of the terminal that runs them. **Agent Remote Control takes the desk out of the equation.** It plugs Claude Code, Codex, Copilot, Cursor, Antigravity and OpenCode into Discord, wraps them in a team of specialized personas and lets you drive real work on real repositories from your phone.
 
 - 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open Discord, you can ship.
-- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops agent, in parallel when it can.
+- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer, QA and Git Ops agent, in parallel when it can.
 - 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, and every agent keeps its own session.
 - 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
 - 👀 **Watch it work, live.** Reasoning and tool calls stream into the Discord thread as they happen, with a typing indicator and rate-limit-safe updates.
+- 📋 **A board per mission.** Every conversation keeps a board of features and tasks, as a tree or a kanban in the web interface. The Product Owner writes the business side, the Tech Lead the technical solution, the Developer implements, Git Ops links the pull request, the Code Reviewer reviews it and QA tests it in practice, each agent reading and writing the task itself, one agent per task at a time, with the full history of every change. You can create tasks yourself too, and send simple ones straight to development.
 - 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
 - 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
 - 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
@@ -67,6 +68,8 @@ A browser interface to chat with the agents without Discord. It is a separate ap
 1. **Start the server** (`pnpm dev:server`, or `pnpm dev` to start the server and the web app together).
 2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
 3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
+
+Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open.
 
 | Mode | Command | URL |
 |---|---|---|
@@ -126,16 +129,33 @@ You only need one of them. An agent is listed only when its command is on the `P
 
 ## 👥 Meet the Team
 
-Every conversation is handled by a **CEO** agent that never touches the code itself: it talks to you, decides who does what and reviews the results before answering.
+Every conversation is handled by a **CEO** agent that never touches the code itself: it talks to you, turns each request into tasks on the conversation's board (or adds it to an open one), moves each task through its statuses (backlog, ready, in progress, in review, changes requested, approved, in testing, done) and delegates it to the agent its status calls for.
 
 | Role | What it does |
 |---|---|
 | 🧭 **CEO** | Talks with you, scopes requests, delegates all hands-on work and reviews the results. |
-| 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left. |
-| 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and actionable implementation plans. |
+| 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left, then writes them as a feature and its tasks on the board. |
+| 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and the technical solution of each task, splitting large work into dependent tasks. |
 | 🛠️ **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
-| 🔍 **Code Reviewer** | Unbiased review in a fresh session against project conventions, security and correctness. Can publish comments on PRs. |
+| 🔍 **Code Reviewer** | Unbiased review in a fresh session of the task's pull request, or of its branch locally when there is no PR, against the task, project conventions, security and correctness. Relies on the PR pipeline instead of running the project, records its findings on the task (and publishes them on the PR when there is one) and approves or requests changes. |
+| 🧪 **QA** | Tests the reviewed work in practice: runs the app from the task's branch and exercises its acceptance criteria and test cases like a real user or client, with Playwright for web interfaces and APIs and mobile-mcp for mobile apps. Never touches the code; records a test report on the task and passes or fails it. |
 | 🔀 **Git Ops** | Clones and locates repositories, pulls, pushes, rebases, opens pull requests and sets up SSH keys. |
+
+Agents keep their prompts lean and read **skills** on demand: each one receives the catalog of the skills its role may read (a name and when to use it) and asks for the full content when a task calls for it, like QA reading how to test a web interface before testing one, or the CEO reading how to run the board. Each skill declares the roles that read it.
+
+The easiest way to add a skill is to ask the CEO: *"create a skill that teaches QA how to test Electron apps"*. It checks the existing skills, asks what it needs to know and saves the skill in the expected shape. You can also write one yourself, or replace a built-in one by its name, in `DATA_DIR/skills/<skill-name>/SKILL.md`:
+
+```markdown
+---
+description: Testing an Electron desktop app in practice with Playwright. Read before testing any Electron app.
+roles: QA, DEVELOPER
+---
+
+# Testing an Electron App
+...
+```
+
+No restart is needed: an edited skill is read fresh the next time an agent asks for it, and a new one joins the catalog of the agent's next session.
 
 ## 🧠 How It Works
 
@@ -148,8 +168,9 @@ flowchart LR
     CEO --> TL["Tech Lead"]
     CEO --> DEV["Developer"]
     CEO --> CR["Code Reviewer"]
+    CEO --> QA["QA"]
     CEO --> GIT["Git Ops"]
-    PO & TL & DEV & CR & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
+    PO & TL & DEV & CR & QA & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
     CLI --> WS[("Workspace<br/>your repositories")]
     O -.->|live activity<br/>+ final answer| D
 ```
@@ -235,11 +256,12 @@ cp .env.example .env
 |---|---|---|---|
 | `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
-| `WORKSPACE_DIR` | Root directory where repositories are cloned. On every startup, the application regenerates the CEO's `AGENTS.md` and skills in it (`.agents/skills/`, linked at `.claude/skills`); manual edits to these files are overwritten | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, and `preferences.json` with global preferences such as the user language) | Local machine configuration | `./data` |
+| `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` |
+| `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `preferences.json` with global preferences such as the user language, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills) | Local machine configuration | `./data` |
 | `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
+| `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` |
 | `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` |
 | `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` |
 | `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` |
@@ -441,7 +463,7 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
 - **Choosing Agent, Model and Effort**:
   - On the first message, if there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex, Cursor and OpenCode). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
   - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
-  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
+  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer, QA and Git Ops): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
   - Type `/usage` to see the usage limits of every available agent, one section per agent.
   - Type `/shell <command>` (e.g. `/shell df -h`) to run a command directly on the host, in the workspace directory, without going through the agents. The answer is visible only to you and shows the output and exit code. The command is only available when `SHELL_COMMAND_ENABLED=true`; `/cancel` stops it.
   - Every answer ends with a footer showing the role, agent, model and effort used, for example: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
@@ -509,7 +531,7 @@ A NestJS application built on **Clean Architecture with Ports & Adapters** and *
 
 - **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (Google Antigravity CLI through its native ACP mode `agy acp`), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) `CursorAdapter` (Cursor CLI through its native ACP mode) and `OpenCodeAdapter` (OpenCode CLI through its native ACP mode `opencode acp`).
 - **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer** and **Git Ops**.
+- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer**, **QA** and **Git Ops**, with the skills each one reads on demand.
 - **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
 - **`discord`** (`packages/server/src/modules/discord`): primary input adapter through the Discord Bot (Discord.js). Manages context threads, real-time activity streaming (thoughts and tool calls) and delivery of formatted final answers.
 

@@ -9,6 +9,8 @@ export interface ActiveDelegation {
   readonly roleName: string;
   readonly agentInfo: TurnAgentInfo;
   readonly projectName: string | null;
+  /** The artifact the agent holds while it runs. */
+  readonly artifactId: string | null;
   readonly summary: string;
   readonly taskSpec: string;
   readonly cwd: string;

@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 
-import type { WorkspaceFile } from '../../orchestrator/models/workspace-file.model.js';
 import type {
+  ArtifactAccess,
   DelegationContract,
   IAgentRegistryPort,
 } from '../../orchestrator/ports/agent-registry.port.js';
 import { INITIAL_AGENT_DEFINITIONS } from '../constants/initial-agents.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
+
+
+const READ_TASKS_ONLY: ArtifactAccess = { scope: 'task', sections: [], fields: [] };
 
 
 @Injectable()
@@ -24,7 +27,7 @@ export class AgentRegistryService implements IAgentRegistryPort {
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}.`;
     }
-    return definition.buildSystemPrompt(this.getTeam(definition));
+    return definition.buildSystemPrompt(this.getTeam(agentRole));
   }
 
   getDefaultModel(agentRole: string): string | undefined {
@@ -51,6 +54,10 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.delegation ?? {};
   }
 
+  getArtifactAccess(agentRole: string): ArtifactAccess {
+    return this.getDefinition(agentRole)?.artifacts ?? READ_TASKS_ONLY;
+  }
+
   getTurnReminder(agentRole: string): string {
     const definition = this.getDefinition(agentRole);
     if (!definition) {
@@ -61,15 +68,6 @@ export class AgentRegistryService implements IAgentRegistryPort {
 
   isSystemPromptEveryTurn(agentRole: string): boolean {
     return this.getDefinition(agentRole)?.systemPromptEveryTurn === true;
-  }
-
-  usesPlansDirectory(agentRole: string): boolean {
-    return this.getDefinition(agentRole)?.plansDirectory === true;
-  }
-
-  getWorkspaceFiles(workspaceDir: string): readonly WorkspaceFile[] {
-    return this.getAllDefinitions().flatMap(definition =>
-      definition.buildWorkspaceFiles?.(this.getTeam(definition), workspaceDir) ?? []);
   }
 
   getDefinition(roleOrId: string): AgentDefinition | undefined {
@@ -84,7 +82,9 @@ export class AgentRegistryService implements IAgentRegistryPort {
     this.definitions.set(definition.role.toUpperCase(), definition);
   }
 
-  private getTeam(definition: AgentDefinition): AgentDefinition[] {
+  /** The definitions a role works with: every one but its own. */
+  getTeam(agentRole: string): AgentDefinition[] {
+    const definition = this.getDefinition(agentRole);
     return this.getAllDefinitions().filter(other => other !== definition);
   }
 }

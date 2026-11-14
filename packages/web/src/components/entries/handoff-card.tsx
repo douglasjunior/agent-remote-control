@@ -1,6 +1,8 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, SquareCheck } from 'lucide-react';
 import type { CSSProperties } from 'react';
+import { Link, useParams } from 'react-router';
 
+import { artifactPath } from '../../artifacts/artifact-paths.js';
 import type { Handoff, HandoffStatus } from '../../conversations/group-entries.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { formatDuration } from '../../lib/format.js';
@@ -51,6 +53,7 @@ function HandoffRow({ handoff, running, open, dimmed, onOpenChange, onHover }: {
   const working = handoff.status === 'working' && running;
   const stopped = handoff.status === 'cancelled' || (handoff.status === 'working' && !running);
   const now = useNow(working);
+  const { conversationId = '' } = useParams();
   const markState: AgentMarkState = working ? 'working' : RESTING_MARK[handoff.status];
   const time = working
     ? formatDuration(Math.max(0, now - handoff.startedAt))
@@ -73,18 +76,30 @@ function HandoffRow({ handoff, running, open, dimmed, onOpenChange, onHover }: {
         dimmed && 'opacity-30',
       )}
     >
-      <CollapsibleTrigger
-        aria-label={triggerLabel(handoff)}
-        className="group flex w-full items-center gap-[11px] px-[13px] py-2.5 text-left outline-none hover:bg-[color-mix(in_oklab,var(--c)_7%,transparent)] focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        <AgentMark role={handoff.role} roleName={handoff.roleName} state={markState} size="sm" />
-        <span className="min-w-0 flex-1">
-          <span className="block leading-[1.3] font-medium" title={handoff.projectName}>{handoff.summary}</span>
-          <span className="block text-[12.5px] text-muted-foreground">{label}</span>
-        </span>
-        <span className="font-mono text-[12.5px] whitespace-nowrap text-muted-foreground tabular-nums">{time}</span>
-        <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-250 group-data-[panel-open]:rotate-90" />
-      </CollapsibleTrigger>
+      <div className="flex items-center">
+        <CollapsibleTrigger
+          aria-label={triggerLabel(handoff)}
+          className="group flex min-w-0 flex-1 items-center gap-[11px] px-[13px] py-2.5 text-left outline-none hover:bg-[color-mix(in_oklab,var(--c)_7%,transparent)] focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <AgentMark role={handoff.role} roleName={handoff.roleName} state={markState} size="sm" />
+          <span className="min-w-0 flex-1">
+            <span className="block leading-[1.3] font-medium" title={handoff.projectName}>{handoff.summary}</span>
+            <span className="block text-[12.5px] text-muted-foreground">{label}</span>
+          </span>
+          <span className="font-mono text-[12.5px] whitespace-nowrap text-muted-foreground tabular-nums">{time}</span>
+          <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-250 group-data-[panel-open]:rotate-90" />
+        </CollapsibleTrigger>
+        {handoff.artifactId && (
+          <Link
+            to={artifactPath(conversationId, handoff.artifactId)}
+            title={`Open ${handoff.artifactId}`}
+            className="mr-[13px] inline-flex shrink-0 items-center gap-1 rounded-md bg-[color-mix(in_oklab,var(--c)_12%,transparent)] px-1.5 py-0.5 font-mono text-[11.5px] text-foreground outline-none hover:bg-[color-mix(in_oklab,var(--c)_20%,transparent)] focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <SquareCheck aria-hidden className="size-3" />
+            {handoff.artifactId}
+          </Link>
+        )}
+      </div>
       <CollapsibleContent className="flex flex-col gap-2.5 px-[13px] pt-0.5 pb-[13px] text-sm text-muted-foreground">
         {handoff.prompt && <HandoffPrompt prompt={handoff.prompt} />}
         {handoff.steps.length > 0 && <ActivitySteps steps={handoff.steps} />}

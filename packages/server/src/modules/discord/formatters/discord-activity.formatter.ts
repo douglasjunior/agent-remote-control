@@ -437,6 +437,8 @@ export class DiscordActivityFormatter {
   }
 
   private formatProject(event: DelegationEvent): string {
-    return event.projectName ? ` in project \`${event.projectName}\`` : '';
+    const project = event.projectName ? ` in project \`${event.projectName}\`` : '';
+    const artifact = event.artifactId ? ` on \`${event.artifactId}\`` : '';
+    return `${project}${artifact}`;
   }
 }

@@ -433,6 +433,9 @@ describe('DiscordActivityFormatter', () => {
     it('should announce a delegation with and without a project', () => {
       const delegation = { delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' };
 
+      expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app', artifactId: 'T-3' })).toBe(
+        '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` on `T-3` — it is working on it now.',
+      );
       expect(formatter.formatDelegation({ ...delegation, phase: 'started', projectName: 'my-app' })).toBe(
         '🔀 **Task delegated** to agent **Developer** (`DEVELOPER`) in project `my-app` — it is working on it now.',
       );

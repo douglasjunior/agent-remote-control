@@ -13,6 +13,8 @@ import {
 type ConversationsContextValue = {
   readonly state: ConversationsState;
   readonly createConversation: () => void;
+  readonly renameConversation: (conversationId: string, title: string) => void;
+  readonly archiveConversation: (conversationId: string, archived: boolean) => void;
 };
 
 const ConversationsContext = createContext<ConversationsContextValue | null>(null);
@@ -42,7 +44,18 @@ export function ConversationsProvider({ children }: { readonly children: ReactNo
     connection.send({ type: 'conversation.create', requestId });
   }, [connection]);
 
-  const value = useMemo(() => ({ state, createConversation }), [state, createConversation]);
+  const renameConversation = useCallback((conversationId: string, title: string) => {
+    connection.send({ type: 'conversation.rename', conversationId, title });
+  }, [connection]);
+
+  const archiveConversation = useCallback((conversationId: string, archived: boolean) => {
+    connection.send({ type: 'conversation.archive', conversationId, archived });
+  }, [connection]);
+
+  const value = useMemo(
+    () => ({ state, createConversation, renameConversation, archiveConversation }),
+    [state, createConversation, renameConversation, archiveConversation],
+  );
   return <ConversationsContext.Provider value={value}>{children}</ConversationsContext.Provider>;
 }
 

@@ -48,8 +48,10 @@
   --agent-developer: oklch(0.5 0.1 186);
   --agent-code-reviewer: oklch(0.55 0.2 350);
   --agent-git-ops: oklch(0.6 0.17 50);
+  --agent-qa: oklch(0.55 0.15 135);
   --attention: oklch(0.6 0.15 70);
   --good: oklch(0.52 0.14 160);
+  --frozen: oklch(0.58 0.11 230);
   --scrollbar-thumb: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
   --scrollbar-thumb-hover: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
 }
@@ -92,8 +94,10 @@
   --agent-developer: oklch(0.8 0.13 183);
   --agent-code-reviewer: oklch(0.77 0.16 350);
   --agent-git-ops: oklch(0.8 0.15 55);
+  --agent-qa: oklch(0.82 0.15 130);
   --attention: oklch(0.82 0.15 80);
   --good: oklch(0.78 0.15 160);
+  --frozen: oklch(0.82 0.09 225);
 }
 
 @theme inline {
@@ -123,6 +127,7 @@
   --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
   --color-attention: var(--attention);
   --color-good: var(--good);
+  --color-frozen: var(--frozen);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -202,6 +207,11 @@
   15%, 85% { opacity: 1; }
   100% { transform: translate(14px, -11px); opacity: 0; }
 }
+@keyframes mark-rise {
+  0% { transform: translateY(0); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(-7px); opacity: 0; }
+}
 @keyframes mark-pop { from { transform: scale(0); } }
 @keyframes mark-attention { 50% { box-shadow: 0 0 30px 0 var(--attention); } }
 @keyframes live-pulse { 70%, 100% { box-shadow: 0 0 0 8px transparent; } }
@@ -230,6 +240,8 @@
   .agent-mark[data-state='working'] .g-cursor { animation: mark-blink 0.8s steps(2) infinite; }
   .agent-mark[data-state='working'] .g-glass { animation: mark-scan 2.1s ease-in-out infinite; }
   .agent-mark[data-state='working'] .g-dot { animation: mark-travel 1.6s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-bubble { animation: mark-rise 1.8s ease-in infinite; }
+  .agent-mark[data-state='working'] .g-bubble:nth-of-type(2) { animation-delay: 0.6s; }
   .agent-mark[data-state='done'] .mark-badge { animation: mark-pop 0.45s cubic-bezier(0.3, 1.7, 0.5, 1) both; }
   .agent-mark[data-state='waiting'] { animation: mark-attention 1.6s ease-in-out infinite; }
   .squad-live-dot[data-live='true'] { animation: live-pulse 1.6s infinite; }

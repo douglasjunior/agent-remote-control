@@ -1,7 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -429,14 +429,17 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await app.close();
   });
 
-  it('should delegate from CEO to Developer inside the project workspace and report the final summary', async () => {
+  it('should run a task of the board through the Developer inside its project and report the final summary', async () => {
     seedAgentSettings(dataDir, 'channel-delegation:thread-delegation');
     mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
-      'On it.\n<delegate role="DEVELOPER" summary="Doing the work" project="my-app">\nImplement the login screen.\n</delegate>',
+      '<skill_read name="artifact-board"/>',
+      '<artifact_create type="task" title="Login screen" project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Add login to my-app.</section></artifact_create>',
+      'On it.\n<artifact_update id="T-1" status="in_progress"/>\n<delegate role="DEVELOPER" summary="Doing the work" artifact="T-1">\nImplement T-1.\n</delegate>',
+      '<artifact_update id="T-1" status="done"/>',
       'Login delivered.',
     ]);
-    const developer = new ScriptedAgentFake(['Login screen implemented.']);
+    const developer = new ScriptedAgentFake(['<artifact_update id="T-1" branch="feat/t-1-login"/>', 'Login screen implemented.']);
     const agents = [ceo, developer];
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -481,45 +484,28 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(ceo.sessionCwds).toEqual([workspaceDir]);
     expect(ceo.prompts[0]).toContain('[ORCHESTRATOR_INSTRUCTIONS]');
-    expect(ceo.prompts[1]).not.toContain('[ORCHESTRATOR_INSTRUCTIONS]');
+    expect(ceo.prompts[0]).toMatch(/\[SKILLS\][\s\S]*- artifact-board: [\s\S]*- skill-authoring: [\s\S]*\[\/SKILLS\]/);
+    expect(ceo.prompts[0]).not.toContain('- api-testing:');
+    expect(ceo.prompts[1]).toContain('<request_result request="skill_read" name="artifact-board" status="ok">\n# Skill: artifact-board\n\n# Artifact Board');
+    expect(existsSync(join(workspaceDir, 'AGENTS.md'))).toBe(false);
+    expect(ceo.prompts[2]).toContain('<request_result request="create" id="T-1" status="ok">');
     expect(developer.sessionCwds).toEqual([join(workspaceDir, 'my-app')]);
     expect(developer.prompts[0]).toContain('Developer Agent');
-    expect(developer.prompts[0]).toContain('Implement the login screen.');
+    expect(developer.prompts[0]).toContain('[DELEGATED_ARTIFACT]\nYou hold T-1 while you work on it.\n\n# T-1 · Login screen');
+    expect(developer.prompts[0]).toContain('Implement T-1.');
     expect(developer.prompts[0]).not.toContain('On it.');
-    expect(ceo.prompts[1]).toContain(
-      '<agent_result role="DEVELOPER" project="my-app" agent="agy" model="Fast Model" effort="default">\nLogin screen implemented.\n</agent_result>',
-    );
+    expect(developer.prompts[1]).toContain('<request_result request="update" id="T-1" status="ok">');
+    expect(ceo.prompts[3]).toMatch(/^<request_results>[\s\S]*<\/request_results>\n\n<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="in_progress" agent="agy" model="Fast Model" effort="default">\nLogin screen implemented.\n<\/agent_result>/);
     expect(threadMessages.indexOf('On it.')).toBeLessThan(
       threadMessages.findIndex(content => content.startsWith('🔀 **Task delegated**')),
     );
     expect(threadMessages).toContain(
-      '🔀 **Task delegated** to agent **Developer Agent** (`DEVELOPER`) in project `my-app` — it is working on it now.',
+      '🔀 **Task delegated** to agent **Developer Agent** (`DEVELOPER`) in project `my-app` on `T-1` — it is working on it now.',
     );
-    expect(threadMessages).toContain('↩️ **Developer Agent finished** in project `my-app` — the CEO is reviewing the result.');
+    expect(threadMessages).toContain('↩️ **Developer Agent finished** in project `my-app` on `T-1` — the CEO is reviewing the result.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
-
-    await app.close();
-  });
-
-  it('should write the CEO guidance to the workspaces root on startup', async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(IAgentPortFactory)
-      .useValue(agentFactory(() => new E2EAgentFake()))
-      .compile();
-
-    const app = moduleFixture.createNestApplication();
-    await app.init();
-
-    expect(readFileSync(join(workspaceDir, 'AGENTS.md'), 'utf8')).toContain(workspaceDir);
-    for (const skill of ['agent-team', 'delegation-protocol', 'response-protocol', 'workspace-navigation']) {
-      expect(existsSync(join(workspaceDir, '.agents', 'skills', skill, 'SKILL.md'))).toBe(true);
-    }
-    const skillsLink = join(workspaceDir, '.claude', 'skills');
-    expect(lstatSync(skillsLink).isSymbolicLink()).toBe(true);
-    expect(readlinkSync(skillsLink)).toBe('../.agents/skills');
-    expect(existsSync(join(skillsLink, 'agent-team', 'SKILL.md'))).toBe(true);
+    const board = JSON.parse(readFileSync(join(dataDir, 'artifacts', `${encodeURIComponent('channel-delegation:thread-delegation')}.json`), 'utf-8'));
+    expect(board.artifacts).toEqual([expect.objectContaining({ id: 'T-1', status: 'done', branch: 'feat/t-1-login', assignee: null, projectName: 'my-app' })]);
 
     await app.close();
   });

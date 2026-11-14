@@ -1,4 +1,4 @@
-export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'git' | 'generic';
+export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'generic';
 
 export interface AgentIdentity {
   /** Which glyph `AgentMark` draws. */
@@ -59,6 +59,15 @@ const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
     responsibility: 'Inspects the work with fresh eyes and sends it back when something is wrong.',
     example: 'Review my latest changes',
     color: 'var(--agent-code-reviewer)',
+  },
+  QA: {
+    mark: 'qa',
+    label: 'QA',
+    tagline: 'Tests the app in practice',
+    stage: 'Test',
+    responsibility: 'Runs the app and goes through it like a user, in the browser, the API or a phone, and reports whether it passed or failed.',
+    example: 'Test the checkout flow',
+    color: 'var(--agent-qa)',
   },
   GIT_OPS: {
     mark: 'git',

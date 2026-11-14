@@ -1,12 +1,14 @@
 import { Logger } from '@nestjs/common';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
+import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
+import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
@@ -14,6 +16,7 @@ import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
 import { createWebHarness } from '../testing/web-harness.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
+import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
 import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-history.use-case.js';
@@ -21,6 +24,7 @@ import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-pr
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
+import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
@@ -72,6 +76,10 @@ describe('WebConnectionHandler', () => {
       new WebAgentQuotaService(agentTurn),
       new WebAgentAuthService(agentAuth, harness.registry),
       logContext,
+      new WebArtifactsService(createArtifactsService({ conversationId: 'web-1' }).service, store, harness.registry),
+      workspace,
+      new RenameConversationUseCase(store, events),
+      new ArchiveConversationUseCase(store, events),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -260,6 +268,72 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(agentAuth.cancelled).toEqual(['claude']);
+    });
+
+    it('renames and archives a conversation, telling every connection, the requester included', async () => {
+      harness.store.seed('web-1', 'Old title');
+      const other = new FakeClientConnection('other');
+      transport.connect(other);
+      other.receive({ type: 'auth', token: 'secret' });
+
+      connection.receive({ type: 'conversation.rename', conversationId: 'web-1', title: 'Login flow' });
+      await settle();
+      connection.receive({ type: 'conversation.archive', conversationId: 'web-1', archived: true });
+      await settle();
+      connection.receive({ type: 'conversation.archive', conversationId: 'web-1', archived: false });
+      await settle();
+
+      const updates = sent().filter(event => event.type === 'conversation.updated');
+      expect(updates).toEqual([
+        { type: 'conversation.updated', conversation: expect.objectContaining({ id: 'web-1', title: 'Login flow', updatedAt: '2026-01-01T00:00:00.000Z' }) },
+        { type: 'conversation.updated', conversation: expect.objectContaining({ title: 'Login flow', archivedAt: '2026-01-03T00:00:00.000Z' }) },
+        { type: 'conversation.updated', conversation: expect.not.objectContaining({ archivedAt: expect.anything() }) },
+      ]);
+      expect(other.sent.filter(event => event.type === 'conversation.updated')).toHaveLength(3);
+    });
+
+    it('answers projects.list with the project folders of the workspace', async () => {
+      harness.workspace.folders = ['shop', 'web'];
+
+      connection.receive({ type: 'projects.list' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'projects.list', projects: ['shop', 'web'] }]);
+    });
+
+    it('creates, lists, reads, updates, comments on and deletes the artifacts of a conversation', async () => {
+      harness.store.seed('web-1');
+      const command = { conversationId: 'web-1', requestId: 'r' };
+
+      connection.receive({ type: 'artifact.create', ...command, artifact: { type: 'task', title: 'Login', projectName: 'shop', businessRefinement: false, technicalRefinement: true } });
+      await settle();
+      connection.receive({ type: 'artifacts.list', conversationId: 'web-1' });
+      await settle();
+      connection.receive({ type: 'artifact.update', ...command, id: 'T-1', changes: { title: 'Sign in', sections: { overview: 'Why' } } });
+      await settle();
+      connection.receive({ type: 'artifact.comment', ...command, id: 'T-1', text: 'Looks right' });
+      await settle();
+      connection.receive({ type: 'artifact.get', conversationId: 'web-1', id: 'T-1' });
+      await settle();
+      connection.receive({ type: 'artifact.delete', ...command, id: 'T-1' });
+      await settle();
+      connection.receive({ type: 'artifact.get', conversationId: 'web-1', id: 'T-1' });
+      await settle();
+
+      const events = sent();
+      expect(events).toContainEqual({ type: 'artifact.result', conversationId: 'web-1', requestId: 'r', ok: true, id: 'T-1' });
+      expect(events).toContainEqual({ type: 'artifacts.list', conversationId: 'web-1', artifacts: [expect.objectContaining({ id: 'T-1', status: 'backlog', refinement: { business: 'skipped', technical: 'pending' } })] });
+      expect(events).toContainEqual({ type: 'artifact.detail', conversationId: 'web-1', artifact: expect.objectContaining({ title: 'Sign in', sections: { overview: 'Why' } }) });
+      expect(events.at(-1)).toEqual({ type: 'error', message: 'Unknown artifact "T-1"', conversationId: 'web-1' });
+    });
+
+    it('answers a refused artifact change to the requester', async () => {
+      harness.store.seed('web-1');
+
+      connection.receive({ type: 'artifact.update', conversationId: 'web-1', requestId: 'r', id: 'T-9', changes: { status: 'done' } });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'artifact.result', conversationId: 'web-1', requestId: 'r', ok: false, error: 'Unknown artifact "T-9".' }]);
     });
 
     it('answers conversation.list to the requester', async () => {

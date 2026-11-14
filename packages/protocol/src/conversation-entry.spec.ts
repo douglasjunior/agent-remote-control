@@ -10,7 +10,7 @@ describe('conversationEntrySchema', () => {
     { id: '1b', at, type: 'user_message', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
     { id: 'thought:1', at, type: 'thought', text: 'hmm', removed: true, role: 'CEO' },
     { id: 'tool:1', at, type: 'tool', title: 'Read', status: 'in_progress', result: 'r', details: 'd', role: 'DEVELOPER' },
-    { id: 'delegation:dl-1:started', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen' },
+    { id: 'delegation:dl-1:started', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen', artifactId: 'T-1' },
     {
       id: 'delegation:dl-1:finished',
       at,
