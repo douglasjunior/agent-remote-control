@@ -32,6 +32,8 @@ describe('delegation-protocol skill', () => {
     expect(skill).toContain('`<agent_result role="ROLE" project="project-folder" artifact="T-3" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>`');
     expect(skill).toContain('are the coding agent, model and effort that ran it, `default` when none was set');
     expect(skill).toContain('`status="failed"` means the agent stopped with an error');
+    expect(skill).toContain('`status="stopped"` means the user ended the work on its artifact');
+    expect(skill).toContain('what the agent changed in the project stays as it left it, for them to keep or discard');
   });
 
   it('should describe the team profiles and when they are repeated', () => {

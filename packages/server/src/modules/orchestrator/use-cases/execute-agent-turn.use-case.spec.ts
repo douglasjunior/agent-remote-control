@@ -3966,7 +3966,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       stopWork.onModuleDestroy();
 
       expect(result).toMatchObject({ status: 'completed', response: 'Noted.' });
-      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="cancelled" artifact_status_by="user" agent="stub" model="default" effort="default" status="stopped">\nThe user moved T-1 to cancelled on the board, which stopped this agent before it finished.\n</agent_result>');
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="cancelled" artifact_status_by="user" agent="stub" model="default" effort="default" status="stopped">\nThe user moved T-1 to cancelled on the board, which stopped this agent before it finished. What it changed in project "my-app" before stopping stays there as it left it');
       expect(onDelegation).toHaveBeenCalledWith(expect.objectContaining({ phase: 'cancelled', artifactId: 'T-1' }));
       expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null, status: 'cancelled' });
       expect((await artifacts.get('conv-1', 'T-1'))?.history.at(-1)).toMatchObject({ kind: 'released', summary: 'DEVELOPER released it: stopped by the user' });

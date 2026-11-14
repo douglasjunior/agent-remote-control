@@ -77,7 +77,7 @@ Investigate why the nightly import is slow and propose a fix.
 - The other agents never ask the user: a decision they need comes back in their result, with the options they see. Ask the user, then delegate again to the same agent, resuming its session, with the answer.
 - When a result points to a document outside the workspaces root that the agent produced for this request, attach it to your answer and authorize reading that exact path in the specification of the agent that continues the work.
 - \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the task again when the error looks transient, or report it to the user.
-- \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent before it finished. Do not delegate that artifact again unless the user asks; tell the user what was left unfinished.
+- \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent before it finished. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it, for them to keep or discard.
 - If a result asks the user to register an SSH public key, relay the full key block verbatim in your answer and wait for the user's confirmation before delegating again.
 
 ## Running Agents

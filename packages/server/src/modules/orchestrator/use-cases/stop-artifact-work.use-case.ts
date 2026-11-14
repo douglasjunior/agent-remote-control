@@ -3,6 +3,7 @@ import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } f
 import { WORK_ENDING_STATUSES } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactChangeEvent } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
+import { buildStoppedWorkPrompt } from '../prompts/stopped-work.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 
 
@@ -42,7 +43,7 @@ export class StopArtifactWorkUseCase implements OnModuleInit, OnModuleDestroy {
       return false;
     }
     this.logger.log(`[Artifact Work Stopped] Conversation=${conversationId}, Artifact=${artifact.id}, Role=${holder.role}, Status=${change.to}`);
-    await delegation.stop(`The user moved ${artifact.id} to ${change.to} on the board, which stopped this agent before it finished.`);
+    await delegation.stop(buildStoppedWorkPrompt(artifact.id, change.to, artifact.projectName));
     return true;
   }
 

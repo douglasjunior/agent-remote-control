@@ -5,6 +5,7 @@ import type { ArtifactsService } from '../../artifacts/services/artifacts.servic
 import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
+import { buildStoppedWorkPrompt } from '../prompts/stopped-work.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -57,7 +58,7 @@ describe('StopArtifactWorkUseCase', () => {
     await artifacts.update(CONVERSATION, 'T-1', { status }, USER);
     await settle();
 
-    expect(stops).toEqual([`The user moved T-1 to ${status} on the board, which stopped this agent before it finished.`]);
+    expect(stops).toEqual([buildStoppedWorkPrompt('T-1', status, 'shop')]);
   });
 
   it('should leave the agent working when the user moves the artifact to a status that keeps the work going', async () => {
