@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 import { RESPONSE_PROTOCOL_SKILL } from './response-protocol.skill.js';
 
 
 const WORKSPACE_DIR = '/home/user/workspaces';
 
 describe('response-protocol skill', () => {
-  const skill = RESPONSE_PROTOCOL_SKILL.buildContent({ team: [], workspaceDir: WORKSPACE_DIR });
+  const skill = RESPONSE_PROTOCOL_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR }));
 
   it('should be read by the CEO only', () => {
     expect(RESPONSE_PROTOCOL_SKILL).toMatchObject({ name: 'response-protocol', roles: ['CEO'] });

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 import { SKILL_AUTHORING_SKILL } from './skill-authoring.skill.js';
 
 
 describe('skill-authoring skill', () => {
-  const skill = SKILL_AUTHORING_SKILL.buildContent({ team: [], workspaceDir: '/home/user/workspaces' });
+  const skill = SKILL_AUTHORING_SKILL.buildContent(skillContext({ workspaceDir: '/home/user/workspaces' }));
 
   it('should be read by the CEO only, when the user asks for a skill', () => {
     expect(SKILL_AUTHORING_SKILL).toMatchObject({ name: 'skill-authoring', roles: ['CEO'] });

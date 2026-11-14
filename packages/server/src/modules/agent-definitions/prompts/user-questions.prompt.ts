@@ -1,4 +1,7 @@
-export const USER_QUESTIONS_REMINDER = '- When you cannot go on without a decision from the user, ask it with <question> tags and wait for <user_answers>; never ask in plain prose.';
+/** The skill that holds the full guide, for the roles that ask the user only now and then. */
+export const ASKING_THE_USER_SKILL_NAME = 'asking-the-user';
+
+export const USER_QUESTIONS_REMINDER = `- When you cannot go on without a decision from the user, ask it with <question> tags and wait for <user_answers>; never ask in plain prose. The \`${ASKING_THE_USER_SKILL_NAME}\` skill has the full guide.`;
 
 export const USER_QUESTIONS_GUIDE = `When the work cannot go on without a decision only the user can make (an ambiguous requirement, a trade-off, a business rule nobody has stated), ask the user directly instead of guessing.
 - Write each question inside your final response as \`<question rationale="why the answer matters">question text<option>first choice</option><option>second choice</option></question>\`, with one \`<option>\` per plausible answer (none for an open question), as plain text without code fences. Text outside the tags is shown to the user above the first question.
@@ -13,3 +16,7 @@ export const USER_QUESTIONS_GUIDE = `When the work cannot go on without a decisi
 
 export const USER_QUESTIONS_INSTRUCTIONS = `### Asking the User
 ${USER_QUESTIONS_GUIDE}`;
+
+/** The guide in brief, for a role that asks the user only now and then; the full guide is the skill. */
+export const USER_QUESTIONS_BRIEF = `### Asking the User
+When the work cannot go on without a decision only the user can make, ask it directly instead of guessing, with \`<question rationale="why the answer matters">question<option recommended>safest choice</option><option>other choice</option></question>\` tags in your final response, and continue with the answers that arrive in \`<user_answers>\`. Read the \`${ASKING_THE_USER_SKILL_NAME}\` skill before asking: how each question stands on its own, which option to recommend, and what to do with an answer that timed out.`;

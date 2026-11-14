@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('user-questions.prompt', () => {
@@ -22,5 +22,12 @@ describe('user-questions.prompt', () => {
 
   it('should remind the agent to ask with tags instead of prose', () => {
     expect(USER_QUESTIONS_REMINDER).toContain('never ask in plain prose');
+    expect(USER_QUESTIONS_REMINDER).toContain('The `asking-the-user` skill has the full guide.');
+  });
+
+  it('should give the roles that ask now and then the grammar in brief and the skill with the guide', () => {
+    expect(USER_QUESTIONS_BRIEF).toContain('<question rationale="why the answer matters">question<option recommended>safest choice</option>');
+    expect(USER_QUESTIONS_BRIEF).toContain('Read the `asking-the-user` skill before asking');
+    expect(USER_QUESTIONS_BRIEF.length).toBeLessThan(USER_QUESTIONS_INSTRUCTIONS.length / 3);
   });
 });

@@ -38,7 +38,7 @@ const as = (role: string, extra: Partial<AgentRequester> = {}): AgentRequester =
 const update = (id: string, changes: Partial<Extract<AgentRequest, { kind: 'update' }>> = {}): AgentRequest => ({ kind: 'update', id, sections: [], pullRequests: [], ...changes });
 
 describe('RunAgentRequestsUseCase', () => {
-  it('answers every request in order, inside one results block', async () => {
+  it('answers every request in order, inside one results block, sending the agent to its skills when one failed', async () => {
     const { useCase } = setup();
 
     const results = await useCase.execute([
@@ -55,7 +55,9 @@ describe('RunAgentRequestsUseCase', () => {
       '- T-3 [task] "Docs" · status: ready · project: shop · refinement: business done, technical done',
       '</request_result>',
       '</request_results>',
+      'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).',
     ].join('\n'));
+    expect(await useCase.execute([{ kind: 'list' }], as('CEO'))).not.toContain('Some requests failed');
   });
 
   describe('list and read', () => {

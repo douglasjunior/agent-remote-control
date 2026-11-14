@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { AGENT_ROLES } from '../models/agent-role.type.js';
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 
 import { BUILT_IN_SKILLS } from './built-in-skills.constant.js';
 
@@ -31,7 +33,7 @@ describe('built-in-skills.constant', () => {
 
   it('should open every content with its title', () => {
     for (const skill of BUILT_IN_SKILLS) {
-      expect(skill.buildContent({ team: [], workspaceDir: '/ws' }).startsWith('# ')).toBe(true);
+      expect(skill.buildContent(skillContext({ workspaceDir: '/ws' })).startsWith('# ')).toBe(true);
     }
   });
 });

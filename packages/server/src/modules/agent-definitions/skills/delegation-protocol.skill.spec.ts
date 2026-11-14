@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 import { DELEGATION_PROTOCOL_SKILL } from './delegation-protocol.skill.js';
 
 
 const WORKSPACE_DIR = '/home/user/workspaces';
 
 describe('delegation-protocol skill', () => {
-  const skill = DELEGATION_PROTOCOL_SKILL.buildContent({ team: [], workspaceDir: WORKSPACE_DIR });
+  const skill = DELEGATION_PROTOCOL_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR }));
 
   it('should be read by the CEO only', () => {
     expect(DELEGATION_PROTOCOL_SKILL).toMatchObject({ name: 'delegation-protocol', roles: ['CEO'] });

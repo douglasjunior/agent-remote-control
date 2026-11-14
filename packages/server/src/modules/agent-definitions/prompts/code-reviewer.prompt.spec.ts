@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { CODE_REVIEWER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CODE_REVIEWER_SYSTEM_PROMPT, CODE_REVIEWER_TURN_REMINDER } from './code-reviewer.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
@@ -44,7 +44,7 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('APPROVED: no high or medium finding and no failing check');
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('Your final answer starts with the verdict');
     expect(CODE_REVIEWER_TURN_REMINDER).toContain('Your final answer starts with the verdict, APPROVED or CHANGES_REQUESTED.');
-    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(buildArtifactProtocolInstructions(CODE_REVIEWER_ARTIFACT_ACCESS));
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS));
     expect(CODE_REVIEWER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(CODE_REVIEWER_ARTIFACT_ACCESS));
   });
 

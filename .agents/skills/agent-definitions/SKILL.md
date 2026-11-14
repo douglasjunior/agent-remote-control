@@ -63,9 +63,29 @@ Each agent is described by the `AgentDefinition` structure:
 - `turnReminder`: optional turn reminder (`string`) appended to the prompt of each of the agent's rounds;
 - `systemPromptEveryTurn`: when `true`, the orchestrator prefixes the system prompt to every user message, including in a resumed session; delegation result rounds and repair prompts for the same message do not repeat it. It serves long-session agents, whose context is compacted and loses the prompt sent at session creation; such an agent does without `turnReminder`.
 
+### Where an instruction lives
+
+Every instruction sits in one of four layers, chosen so that context stays small and the information is there when
+the agent needs it:
+
+1. **Core** (the system prompt): only what the role uses in nearly every task, kept short. The executors get it once
+   per session; the CEO with every user message, so its core is the most expensive and the leanest.
+2. **Turn reminder** (`turnReminder`, every round): the rules that must not fail and the skills to read again. It is
+   what survives when a long session is compacted and the system prompt is gone.
+3. **Skills** (read on demand): full grammars, guides and edge cases, always available on the server, listed by the
+   `[SKILLS]` catalog and named by the reminder.
+4. **Server validation**: every request and delegation is checked; an error comes back with its reason (and, for a
+   failed request, a pointer to the skills), so an agent that forgot a detail gets it back instead of failing silently.
+
 ### The board (`artifact-protocol.prompt.ts`)
 
-Every agent writes its deliverable to the board of the conversation, never to a document. `buildArtifactProtocolInstructions(access)` and `buildArtifactProtocolReminder(access)` write, from the role's `ArtifactAccess`, the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment) and its rules: requests go in a response of their own, the results come back as `<request_results>`, the final answer comes after them; a `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. Executor prompts include them; the CEO gets the grammar in its `artifact-board` skill.
+Every agent writes its deliverable to the board of the conversation, never to a document. From the role's `ArtifactAccess`:
+
+- `buildArtifactProtocolInstructions(access)` writes the full protocol: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment) and its rules: the results come back as `<request_results>`, the final answer comes in a response without requests; a `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed.
+- `buildArtifactProtocolBrief(access)` writes the board in brief: what it holds, the round trip, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), what it writes, its scope, and the `board-requests` skill for everything else.
+- `buildArtifactProtocolReminder(access)` is the reminder line, which also names the `board-requests` skill.
+
+The agents that work on one task (DEVELOPER, CODE_REVIEWER, QA, GIT_OPS) get the brief in their system prompt; PRODUCT_OWNER and TECH_LEAD, whose deliverable is the board in every task, get the full protocol. The `board-requests` skill (`skills/board-requests.skill.ts`, for every executor role) holds the full protocol built for the reader's access, to read again whenever it is out of view. The CEO gets the grammar and the routing in its `artifact-board` skill.
 
 ### Executor agents' CWD boundary
 
@@ -89,12 +109,13 @@ and results in the `orchestrator` skill). The description is all the agent sees 
 skill covers and when to read it.
 
 Every skill is an `AgentSkillDefinition` (`models/agent-skill-definition.model.ts`): `name`, `description`, the `roles`
-that may read it, and `buildContent({ team, workspaceDir })`, built when read with the team of the reader and the
+that may read it, and `buildContent({ team, artifacts, workspaceDir })`, built when read with the team and the board access of the reader and the
 workspaces root.
 
 - **Built-in skills**: one `skills/<name>.skill.ts` constant each, listed in `BUILT_IN_SKILLS`
   (`constants/built-in-skills.constant.ts`). The CEO's (`roles: ['CEO']`): `agent-team`, `artifact-board`,
-  `delegation-protocol`, `response-protocol`, `workspace-navigation` and `skill-authoring`; QA's: `running-the-app`,
+  `delegation-protocol`, `response-protocol`, `workspace-navigation` and `skill-authoring`; every executor's:
+  `board-requests`; QA's: `running-the-app`,
   `web-ui-testing`, `api-testing` and `mobile-testing`.
 - **User skills**: `FileUserSkillStoreAdapter` (bound to `IUserSkillStorePort`) reads `DATA_DIR/skills/<skill>/SKILL.md`
   on every call, so edits apply without a restart. The frontmatter needs a `description` and `roles` (comma-separated,
@@ -133,10 +154,11 @@ in the `orchestrator` skill). The instructions live in `prompts/user-questions.p
 - `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
   in the batch, options without "Other", the recommended option first and marked `<option recommended>` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
   `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
-- `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, included in the system prompt
-  of the executor agents that depend on user decisions (DEVELOPER, GIT_OPS, TECH_LEAD and
-  PRODUCT_OWNER);
-- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those same agents.
+- `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, in the system prompt of
+  PRODUCT_OWNER and TECH_LEAD, for whom asking the user is part of every task;
+- `USER_QUESTIONS_BRIEF`: the grammar in brief and the `asking-the-user` skill, in the system prompt of DEVELOPER and
+  GIT_OPS, which ask now and then; the skill (`skills/asking-the-user.skill.ts`, for the four roles) holds the guide;
+- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those four agents, which also names the skill.
 
 CODE_REVIEWER and QA do not receive the instructions: they audit or test and return findings, with no user
 decision they depend on to finish.
@@ -150,9 +172,8 @@ carries only the tag's shape and the fact that the answer comes back in the same
 The CEO has no primer: with `systemPromptEveryTurn`, the core prompt accompanies every user
 message to survive session compaction. Every line of it costs on every turn and dilutes the
 rules that matter, so it carries only the hard rules whose loss breaks the protocol:
-pure orchestration, answering every request the user made (a newer message never replaces an earlier request and every `<agent_result>` is reported), the three response outcomes (delegate, ask, answer) with the shape of
-each tag, the team, project folder, `session`, access requests and attachments. Examples, explanations,
-edge cases and full guides go into the CEO's skills, which it reads on demand when it needs to go deeper.
+pure orchestration, answering every request the user made (a newer message never replaces an earlier request and every `<agent_result>` is reported), the workspace and its boundaries, the conversation style, the team with the `<delegate>` forms of each role, the board in brief (list it first, delegate with `artifact`, own the statuses), the three response outcomes (delegate, ask, answer) with the shape of
+each tag, parallel work across roles, that agents ask the user directly, the user's confirmation for access outside the workspaces root, and attachments in an answer. The project folder rules, `session`, parallel limits, access requests, what each agent does, the request grammar and the routing of each status live in its skills (`delegation-protocol`, `response-protocol`, `agent-team`, `artifact-board`), which the core names, and the orchestrator's validation sends a repair when a delegation breaks one of them.
 
 When adding a rule to the CEO, write at most the sentence that makes it mandatory in the core prompt
 and put the details in the topic's skill. Never concatenate into the core prompt an instruction block

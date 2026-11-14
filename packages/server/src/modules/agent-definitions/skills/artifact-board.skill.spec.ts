@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 import { ARTIFACT_BOARD_SKILL } from './artifact-board.skill.js';
 
 
 describe('artifact-board skill', () => {
-  const skill = ARTIFACT_BOARD_SKILL.buildContent({ team: [], workspaceDir: '/home/user/workspaces' });
+  const skill = ARTIFACT_BOARD_SKILL.buildContent(skillContext({ workspaceDir: '/home/user/workspaces' }));
 
   it('should be read by the CEO only', () => {
     expect(ARTIFACT_BOARD_SKILL).toMatchObject({ name: 'artifact-board', roles: ['CEO'] });

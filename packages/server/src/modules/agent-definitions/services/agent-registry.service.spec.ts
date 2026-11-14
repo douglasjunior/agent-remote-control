@@ -40,9 +40,8 @@ describe('AgentRegistryService', () => {
       expect(promptMixed).toBe(promptUpper);
     });
 
-    it('should include root directory guideline for delegations in the CEO system prompt', () => {
-      const prompt = service.getSystemPrompt('CEO');
-      expect(prompt).toContain('The project folder is the name of a direct subfolder of your CWD that already exists');
+    it('should point the CEO to its delegation skill for the project folder and the other attributes', () => {
+      expect(service.getSystemPrompt('CEO')).toContain('with `artifact`, `project` and `session` as the `delegation-protocol` skill explains');
     });
 
     it('should give the CEO its team of every other registered agent', () => {

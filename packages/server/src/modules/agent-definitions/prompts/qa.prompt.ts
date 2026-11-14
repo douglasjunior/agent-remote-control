@@ -1,6 +1,6 @@
 import { QA_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -43,7 +43,7 @@ Your mission is to prove in practice that the work on a task of the board does w
 - PASSED: every acceptance criterion and test case passed. FAILED: anything else the developer must fix. A test you could not run is not a pass: when it leaves an acceptance criterion unverified, the verdict is FAILED and the report says what blocked it.
 - Your final answer starts with the verdict, then the counts of tests passed and failed and what could not be tested. The details are on the task.
 
-${buildArtifactProtocolInstructions(QA_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(QA_ARTIFACT_ACCESS)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 

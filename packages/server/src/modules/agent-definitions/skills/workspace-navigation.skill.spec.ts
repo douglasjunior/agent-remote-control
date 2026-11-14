@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { skillContext } from '../testing/skill-context.fixture.js';
+
 import { WORKSPACE_NAVIGATION_SKILL } from './workspace-navigation.skill.js';
 
 
 const WORKSPACE_DIR = '/home/user/workspaces';
 
 describe('workspace-navigation skill', () => {
-  const skill = WORKSPACE_NAVIGATION_SKILL.buildContent({ team: [], workspaceDir: WORKSPACE_DIR });
+  const skill = WORKSPACE_NAVIGATION_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR }));
 
   it('should be read by the CEO only', () => {
     expect(WORKSPACE_NAVIGATION_SKILL).toMatchObject({ name: 'workspace-navigation', roles: ['CEO'] });

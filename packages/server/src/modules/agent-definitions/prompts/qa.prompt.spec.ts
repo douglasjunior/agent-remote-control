@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { QA_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -28,7 +28,7 @@ describe('qa.prompt', () => {
     expect(QA_SYSTEM_PROMPT).toContain('replace the task\'s `test_report` section with');
     expect(QA_SYSTEM_PROMPT).toContain('A test you could not run is not a pass');
     expect(QA_TURN_REMINDER).toContain('your final answer starts with the verdict, PASSED or FAILED.');
-    expect(QA_SYSTEM_PROMPT).toContain(buildArtifactProtocolInstructions(QA_ARTIFACT_ACCESS));
+    expect(QA_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(QA_ARTIFACT_ACCESS));
     expect(QA_TURN_REMINDER).toContain(buildArtifactProtocolReminder(QA_ARTIFACT_ACCESS));
   });
 

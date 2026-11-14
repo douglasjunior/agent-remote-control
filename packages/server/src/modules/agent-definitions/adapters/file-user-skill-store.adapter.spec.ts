@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { skillContext } from '../testing/skill-context.fixture.js';
 
 import { FileUserSkillStoreAdapter } from './file-user-skill-store.adapter.js';
 
@@ -16,7 +17,7 @@ describe('FileUserSkillStoreAdapter', () => {
     await mkdir(join(dataDir, 'skills', folder), { recursive: true });
     await writeFile(join(dataDir, 'skills', folder, 'SKILL.md'), text);
   };
-  const listed = async () => (await store.list()).map(({ buildContent, ...skill }) => ({ ...skill, content: buildContent({ team: [], workspaceDir: '/ws' }) }));
+  const listed = async () => (await store.list()).map(({ buildContent, ...skill }) => ({ ...skill, content: buildContent(skillContext({ team: [], workspaceDir: '/ws' })) }));
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'arc-skills-'));

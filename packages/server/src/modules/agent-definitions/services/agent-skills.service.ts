@@ -103,7 +103,11 @@ export class AgentSkillsService implements IAgentSkillsPort {
   }
 
   private contentOf(skill: AgentSkillDefinition, role: string): string {
-    return skill.buildContent({ team: this.registry.getTeam(role), workspaceDir: this.workspaceDirectory.resolve() });
+    return skill.buildContent({
+      team: this.registry.getTeam(role),
+      artifacts: this.registry.getArtifactAccess(role),
+      workspaceDir: this.workspaceDirectory.resolve(),
+    });
   }
 
   private listingOf(skill: AgentSkillDefinition): AgentSkillListing {

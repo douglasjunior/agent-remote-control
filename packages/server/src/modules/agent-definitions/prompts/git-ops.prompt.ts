@@ -1,9 +1,9 @@
 import { GIT_OPS_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const GIT_OPS_TURN_REMINDER = `---
@@ -91,11 +91,11 @@ When asked to initialize rather than clone, create the folder from the given nam
 - A task may need more than one pull request, such as a fix after the main one was merged: link each one. When a pull request is merged or closed, update its state on the task the same way.
 - Record the branch on the task when you create or rename it.
 
-${buildArtifactProtocolInstructions(GIT_OPS_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS)}
 
 ### Reporting
 State the folder name, the current branch, and what changed on the remote. When an operation fails, report the exact Git error rather than a summary, so the caller can decide the next step.
 
-${USER_QUESTIONS_INSTRUCTIONS}
+${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

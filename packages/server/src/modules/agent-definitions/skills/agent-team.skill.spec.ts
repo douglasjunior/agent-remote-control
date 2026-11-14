@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
+
 import { GIT_OPS_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
+import { skillContext } from '../testing/skill-context.fixture.js';
 
 import { AGENT_TEAM_SKILL } from './agent-team.skill.js';
 
@@ -18,7 +20,7 @@ const gitOps: AgentDefinition = {
 };
 
 describe('agent-team skill', () => {
-  const skill = AGENT_TEAM_SKILL.buildContent({ team: [gitOps], workspaceDir: WORKSPACE_DIR });
+  const skill = AGENT_TEAM_SKILL.buildContent(skillContext({ team: [gitOps], workspaceDir: WORKSPACE_DIR }));
 
   it('should be read by the CEO only', () => {
     expect(AGENT_TEAM_SKILL).toMatchObject({ name: 'agent-team', roles: ['CEO'] });
@@ -38,6 +40,6 @@ describe('agent-team skill', () => {
   });
 
   it('should state that no agent is available when the team is empty', () => {
-    expect(AGENT_TEAM_SKILL.buildContent({ team: [], workspaceDir: WORKSPACE_DIR })).toContain('No agents are available for delegation.');
+    expect(AGENT_TEAM_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR }))).toContain('No agents are available for delegation.');
   });
 });

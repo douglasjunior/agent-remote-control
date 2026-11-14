@@ -1,6 +1,6 @@
 import { CODE_REVIEWER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
@@ -71,7 +71,7 @@ Your mission is to review the work on a task of the board with fresh eyes, witho
 - APPROVED: no high or medium finding and no failing check. CHANGES_REQUESTED: anything else that must change before the work is merged.
 - Your final answer starts with the verdict, then what you reviewed, how many findings of each severity, and the link of each published pull request comment you have. The findings themselves are on the task.
 
-${buildArtifactProtocolInstructions(CODE_REVIEWER_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 

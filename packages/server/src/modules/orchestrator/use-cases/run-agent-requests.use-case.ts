@@ -23,6 +23,9 @@ type Result = {
   readonly body: string;
 };
 
+/** A failed request is often a grammar the agent no longer has in view, which its skills hold. */
+const FAILED_REQUESTS_NOTE = 'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).';
+
 /** Fields a coordinating agent may change on an artifact another agent holds: they steer the work without touching its content. */
 const BOARD_FIELDS_WHILE_HELD: readonly ArtifactField[] = ['status', 'refinement'];
 
@@ -61,6 +64,7 @@ export class RunAgentRequestsUseCase {
       '<request_results>',
       ...results.map(result => this.formatResult(result)),
       '</request_results>',
+      ...(results.some(result => result.failed) ? [FAILED_REQUESTS_NOTE] : []),
     ].join('\n');
   }
 

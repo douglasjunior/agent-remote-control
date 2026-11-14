@@ -1,10 +1,10 @@
 import { DEVELOPER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
-import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const DEVELOPER_TURN_REMINDER = `---
@@ -48,7 +48,7 @@ Your core mission is to execute technical implementations, write code, refactor 
 - When you finish, record on the task, in a response of its own, the branch (\`branch\` attribute) and the \`implementation_notes\` section: what you changed and why, the commits, decisions you made within the solution, and how to verify it. Append to the notes when you come back to fix findings.
 - Your final answer reports the branch, the commits and whether everything the task asks is done; anything left undone is stated plainly.
 
-${buildArtifactProtocolInstructions(DEVELOPER_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 
@@ -77,6 +77,6 @@ The project's own commands are within your scope even when they reach the networ
    - Never commit broken code; verify that tests pass before committing.
    - Keep commits atomic, cohesive, and focused on a single change.
 
-${USER_QUESTIONS_INSTRUCTIONS}
+${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
