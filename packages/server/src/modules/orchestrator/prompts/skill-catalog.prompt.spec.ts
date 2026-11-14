@@ -9,11 +9,12 @@ describe('buildSkillCatalogPrompt', () => {
     { name: 'api-testing', description: 'Testing an HTTP API.' },
   ];
 
-  it('lists each skill with when to use it and explains that a skill is read, never looked for in files', () => {
+  it('lists each skill with when to use it, read through a request, besides the skills a project keeps in its files', () => {
     const prompt = buildSkillCatalogPrompt(skills);
 
     expect(prompt.startsWith('[SKILLS]\n')).toBe(true);
-    expect(prompt).toContain('They live on the server, not in your working directory, so a skill reaches you only by reading it');
+    expect(prompt).toContain('The skills listed here are kept by the server, not in any folder, so you read one only with <skill_read name="skill-name"/>');
+    expect(prompt).toContain('They add to the guidance and skills a project keeps in its own files, which you still follow.');
     expect(prompt).toContain('<skill_read name="skill-name"/>');
     expect(prompt).not.toContain('<skill_write>');
     expect(prompt).toContain('- playwright-web: Testing a web interface.\n- api-testing: Testing an HTTP API.\n[/SKILLS]');
