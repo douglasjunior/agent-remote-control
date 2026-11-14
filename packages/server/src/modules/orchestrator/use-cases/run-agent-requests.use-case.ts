@@ -5,9 +5,11 @@ import { FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.consta
 import type { Artifact, ArtifactActor, ArtifactChanges, ArtifactOutcome } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import type { AgentRequest, AgentRequester } from '../models/agent-request.model.js';
+import type { ResolvedResponse } from '../models/pending-request-results.model.js';
 import type { SkillActivity } from '../models/turn-activity.model.js';
 import { type ArtifactAccess, type ArtifactField, IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
+import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 
@@ -25,6 +27,9 @@ type Result = {
 
 /** A failed request is often a grammar the agent no longer has in view, which its skills hold. */
 const FAILED_REQUESTS_NOTE = 'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).';
+
+const MAX_REQUEST_ROUNDS = 30;
+const REQUEST_RESULTS_NOTE = 'Your last response had only artifact requests, so it was not taken as your final answer. Go on with your work.';
 
 /** Fields a coordinating agent may change on an artifact another agent holds: they steer the work without touching its content. */
 const BOARD_FIELDS_WHILE_HELD: readonly ArtifactField[] = ['status', 'refinement'];
@@ -45,7 +50,37 @@ export class RunAgentRequestsUseCase {
     @Inject(IAgentRegistryPort) private readonly agentRegistry: IAgentRegistryPort,
     private readonly formatter: ArtifactPromptFormatterService,
     @Inject(IAgentSkillsPort) private readonly skills: IAgentSkillsPort,
+    private readonly requestParser: AgentRequestParserService,
   ) {}
+
+  /**
+   * Carries out the artifact requests of each response before anything else reads it, so the content an agent reads
+   * never passes through the CEO. A response that also has an outcome (`hasOutcome`: a delegation or questions) goes on
+   * with it, without its requests, and the results wait for the agent's next prompt; any other response gets the
+   * results right away, until a response carries no request.
+   */
+  async resolve(
+    response: string,
+    runAgent: (results: string) => Promise<string>,
+    requester: AgentRequester,
+    hasOutcome: (rest: string) => boolean,
+    onSkill: (activity: SkillActivity) => void,
+  ): Promise<ResolvedResponse> {
+    let current = response;
+    for (let round = 0; round < MAX_REQUEST_ROUNDS; round++) {
+      const parsed = this.requestParser.parse(current);
+      if (parsed.kind === 'none') {
+        return { response: current };
+      }
+      const results = await this.execute(parsed.requests, requester, onSkill);
+      if (hasOutcome(parsed.rest)) {
+        return { response: parsed.rest, requestResults: results };
+      }
+      current = await runAgent(`${results}\n${REQUEST_RESULTS_NOTE}`);
+    }
+    this.logger.warn(`[Artifact Requests Exceeded] Role=${requester.role}, Rounds=${MAX_REQUEST_ROUNDS}`);
+    return { response: current };
+  }
 
   /** `onSkill` hears each skill read or written, for the channel to show it. */
   async execute(requests: readonly AgentRequest[], requester: AgentRequester, onSkill?: (activity: SkillActivity) => void): Promise<string> {
@@ -134,7 +169,7 @@ export class RunAgentRequestsUseCase {
 
   private async list(request: Extract<AgentRequest, { kind: 'list' }>, { conversationId }: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {
     const types = access.scope === 'task' ? ['task' as const] : request.types;
-    const parentId = request.parent === undefined || request.parent === null ? request.parent : this.resolve(request.parent, refs);
+    const parentId = request.parent === undefined || request.parent === null ? request.parent : this.resolveRef(request.parent, refs);
     const listed = await this.artifacts.list(conversationId, {
       ...(types ? { types } : {}),
       ...(request.statuses ? { statuses: request.statuses } : {}),
@@ -178,9 +213,9 @@ export class RunAgentRequestsUseCase {
     const outcome = await this.artifacts.create(requester.conversationId, {
       type: request.type,
       title: request.title,
-      ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolve(request.parent, refs) } : {}),
+      ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolveRef(request.parent, refs) } : {}),
       ...(request.project ? { projectName: request.project } : {}),
-      ...(request.dependsOn ? { dependsOn: request.dependsOn.map(id => this.resolve(id, refs)) } : {}),
+      ...(request.dependsOn ? { dependsOn: request.dependsOn.map(id => this.resolveRef(id, refs)) } : {}),
       ...(request.refinement ? { refinement: request.refinement } : {}),
       sections: Object.fromEntries(request.sections.map(change => [change.section, change.content])),
     }, this.actorOf(requester));
@@ -194,7 +229,7 @@ export class RunAgentRequestsUseCase {
   }
 
   private async update(request: Extract<AgentRequest, { kind: 'update' }>, requester: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {
-    const id = this.resolve(request.id, refs);
+    const id = this.resolveRef(request.id, refs);
     const fail = (body: string): Result => ({ request: 'update', id, failed: true, body });
     const artifact = await this.artifacts.get(requester.conversationId, id);
     if (!artifact) {
@@ -210,9 +245,9 @@ export class RunAgentRequestsUseCase {
     const changes: ArtifactChanges = {
       ...(request.title !== undefined ? { title: request.title } : {}),
       ...(request.status !== undefined ? { status: request.status } : {}),
-      ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolve(request.parent, refs) } : {}),
+      ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolveRef(request.parent, refs) } : {}),
       ...(request.project ? { projectName: request.project } : {}),
-      ...(request.dependsOn !== undefined ? { dependsOn: request.dependsOn.map(dependency => this.resolve(dependency, refs)) } : {}),
+      ...(request.dependsOn !== undefined ? { dependsOn: request.dependsOn.map(dependency => this.resolveRef(dependency, refs)) } : {}),
       ...(request.refinement ? { refinement: request.refinement } : {}),
       ...(request.branch !== undefined ? { branch: request.branch } : {}),
       ...(request.note ? { note: request.note } : {}),
@@ -305,7 +340,7 @@ export class RunAgentRequestsUseCase {
   }
 
   /** A `ref` names an artifact created earlier in the same response. */
-  private resolve(idOrRef: string, refs: ReadonlyMap<string, string>): string {
+  private resolveRef(idOrRef: string, refs: ReadonlyMap<string, string>): string {
     return refs.get(idOrRef) ?? idOrRef;
   }
 

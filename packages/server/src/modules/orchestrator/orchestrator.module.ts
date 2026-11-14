@@ -24,23 +24,28 @@ import { AgentConfigurationService } from './services/agent-configuration.servic
 import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentRequestParserService } from './services/agent-request-parser.service.js';
+import { AgentRoundService } from './services/agent-round.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
+import { DelegationValidatorService } from './services/delegation-validator.service.js';
 import { OpenWorkService } from './services/open-work.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
 import { QuestionTimeoutConfigService } from './services/question-timeout-config.service.js';
 import { ShellCommandConfigService } from './services/shell-command-config.service.js';
+import { TeamProfilesService } from './services/team-profiles.service.js';
 import { UserLanguageService } from './services/user-language.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
 import { UserQuestionService } from './services/user-question.service.js';
+import { AnswerAgentQuestionsUseCase } from './use-cases/answer-agent-questions.use-case.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
 import { ConfigureAgentProfilesUseCase } from './use-cases/configure-agent-profiles.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
 import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
 import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
+import { RunDelegationUseCase } from './use-cases/run-delegation.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
 import { StopArtifactWorkUseCase } from './use-cases/stop-artifact-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
@@ -79,6 +84,11 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     ShellCommandConfigService,
     UserLanguageService,
     UserQuestionQueueService,
+    AgentRoundService,
+    DelegationValidatorService,
+    TeamProfilesService,
+    AnswerAgentQuestionsUseCase,
+    RunDelegationUseCase,
     ExecuteAgentTurnUseCase,
     RunAgentRequestsUseCase,
     CancelAgentTurnUseCase,

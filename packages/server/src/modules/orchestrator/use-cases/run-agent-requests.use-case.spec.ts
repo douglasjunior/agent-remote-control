@@ -4,6 +4,7 @@ import { AgentRegistryService } from '../../agent-definitions/services/agent-reg
 import { ARTIFACT_AT, buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import type { AgentRequest, AgentRequester } from '../models/agent-request.model.js';
+import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { StubAgentSkillsPort } from '../testing/stub-agent-skills.port.js';
 
@@ -23,14 +24,14 @@ function setup() {
       buildArtifact({ id: 'T-3', title: 'Docs' }),
     ],
   });
-  const useCase = new RunAgentRequestsUseCase(artifacts.service, new AgentRegistryService(), new ArtifactPromptFormatterService(), new StubAgentSkillsPort());
+  const useCase = new RunAgentRequestsUseCase(artifacts.service, new AgentRegistryService(), new ArtifactPromptFormatterService(), new StubAgentSkillsPort(), new AgentRequestParserService());
   return { useCase, artifacts };
 }
 
 function setupSkills() {
   const skills = new StubAgentSkillsPort();
   const artifacts = createArtifactsService({ conversationId: CONVERSATION });
-  const useCase = new RunAgentRequestsUseCase(artifacts.service, new AgentRegistryService(), new ArtifactPromptFormatterService(), skills);
+  const useCase = new RunAgentRequestsUseCase(artifacts.service, new AgentRegistryService(), new ArtifactPromptFormatterService(), skills, new AgentRequestParserService());
   return { useCase, skills };
 }
 
@@ -140,7 +141,7 @@ describe('RunAgentRequestsUseCase', () => {
       const { artifacts } = setup();
       const registry = new AgentRegistryService();
       registry.registerDefinition({ ...registry.getDefinition('PRODUCT_OWNER')!, artifacts: { scope: 'tree', create: true, sections: [], fields: [] } });
-      const restricted = new RunAgentRequestsUseCase(artifacts.service, registry, new ArtifactPromptFormatterService(), new StubAgentSkillsPort());
+      const restricted = new RunAgentRequestsUseCase(artifacts.service, registry, new ArtifactPromptFormatterService(), new StubAgentSkillsPort(), new AgentRequestParserService());
 
       const results = await restricted.execute([{ kind: 'create', ref: 'r', type: 'task', title: 'X', project: 'shop', refinement: { business: 'done' }, sections: [] }], as('PRODUCT_OWNER'));
 

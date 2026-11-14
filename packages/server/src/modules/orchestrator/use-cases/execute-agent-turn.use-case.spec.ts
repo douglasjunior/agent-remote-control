@@ -28,11 +28,14 @@ import {
 } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
+import { AgentRoundService } from '../services/agent-round.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
+import { DelegationValidatorService } from '../services/delegation-validator.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
+import { TeamProfilesService } from '../services/team-profiles.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
@@ -44,9 +47,11 @@ import { StubAgentSkillsPort } from '../testing/stub-agent-skills.port.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 
+import { AnswerAgentQuestionsUseCase } from './answer-agent-questions.use-case.js';
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 import { RestoreOpenWorkUseCase } from './restore-open-work.use-case.js';
 import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
+import { RunDelegationUseCase } from './run-delegation.use-case.js';
 import { StopArtifactWorkUseCase } from './stop-artifact-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
@@ -148,27 +153,28 @@ describe('ExecuteAgentTurnUseCase', () => {
     ({ service: artifacts, store: artifactStore } = createArtifactsService({ conversationId: 'conv-1' }));
     const formatter = new ArtifactPromptFormatterService();
     agentSkills = new StubAgentSkillsPort();
+    const runAgentRequests = new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills, new AgentRequestParserService());
+    const questionParser = new QuestionParserService();
+    const audioTranscription = new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem);
+    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills);
+    const agentQuestions = new AnswerAgentQuestionsUseCase(agentRegistry, questionParser, questionQueue, openWork, audioTranscription);
     useCase = new ExecuteAgentTurnUseCase(
       factory,
-      sessionStore,
       agentRegistry,
-      workspacePort,
-      settingsStore,
       preferencesStore,
+      fileSystem,
       delegationDetector,
+      new DelegationValidatorService(delegationDetector, agentRegistry, artifacts, workspacePort, runtime),
       runtime,
       new AgentProtocolService(),
-      new QuestionParserService(),
-      questionQueue,
-      new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem),
+      agentRound,
+      new TeamProfilesService(factory, agentRegistry, settingsStore, runtime, questionQueue),
       openWork,
-      fileSystem,
       logContext,
-      artifacts,
-      new AgentRequestParserService(),
-      new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills),
-      formatter,
-      agentSkills,
+      audioTranscription,
+      agentQuestions,
+      runAgentRequests,
+      new RunDelegationUseCase(factory, agentRegistry, artifacts, runtime, questionQueue, questionParser, openWork, formatter, agentRound, agentQuestions, runAgentRequests),
     );
   };
 
@@ -658,6 +664,18 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest());
 
     expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([], true)}\n\n`);
+  });
+
+  it('should report the skills a delegated agent reads with its role', async () => {
+    agentSkills.skills = { DEVELOPER: [{ name: 'testing', description: 'How to test.', content: 'Test it.' }] };
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Done.'];
+    delegateStubPort.mockResponses = ['<final_response><skill_read name="testing"/></final_response>', 'Built.'];
+    const onActivity = vi.fn();
+
+    await useCase.execute(turnRequest({ onActivity }));
+
+    expect(delegateStubPort.promptCalls[1]).toContain('Test it.');
+    expect(onActivity).toHaveBeenCalledWith(expect.objectContaining({ kind: 'skill', action: 'read', names: ['testing'], status: 'completed' }), 'DEVELOPER');
   });
 
   it('should answer a skill request with the skill content in the next prompt', async () => {
