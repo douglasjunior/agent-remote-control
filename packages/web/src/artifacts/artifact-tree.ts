@@ -1,4 +1,4 @@
-import { ARTIFACT_TYPES, type ArtifactStatus, type ArtifactSummary, type ArtifactType } from '@agent-remote-control/protocol/artifact';
+import { ARTIFACT_TYPES, type ArtifactStatus, type ArtifactSummary, type ArtifactType, WORK_ENDING_STATUSES } from '@agent-remote-control/protocol/artifact';
 
 
 export type ArtifactNode = {
@@ -18,6 +18,11 @@ export const EMPTY_FILTER: ArtifactFilter = { text: '', project: null, type: nul
 
 export function isClosed(status: ArtifactStatus): boolean {
   return status === 'done' || status === 'cancelled';
+}
+
+/** True when moving the artifact to `status` stops the agent working on it. */
+export function stopsWork(artifact: ArtifactSummary, status: ArtifactStatus): boolean {
+  return artifact.assignee !== null && WORK_ENDING_STATUSES.includes(status);
 }
 
 /** Features before tasks; within a type, in the order they were numbered. */

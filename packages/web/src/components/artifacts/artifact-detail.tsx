@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router';
 
 import { SECTION_LABELS, TYPE_LABELS } from '../../artifacts/artifact-labels.js';
 import { artifactPath, boardPath } from '../../artifacts/artifact-paths.js';
-import { childrenOf, taskProgress } from '../../artifacts/artifact-tree.js';
+import { childrenOf, stopsWork, taskProgress } from '../../artifacts/artifact-tree.js';
 import { useBoard } from '../../artifacts/use-board.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { formatRelativeTime } from '../../lib/format.js';
@@ -26,6 +26,7 @@ import { ArtifactCreateDialog } from './artifact-create-dialog.js';
 import { ArtifactProperties } from './artifact-properties.js';
 import { ArtifactSectionCard } from './artifact-section.js';
 import { ArtifactStatusBadge } from './artifact-status-badge.js';
+import { ArtifactStopWorkDialog } from './artifact-stop-work-dialog.js';
 import { ArtifactTypeIcon } from './artifact-type-icon.js';
 import { ArtifactUnfreezeDialog } from './artifact-unfreeze-dialog.js';
 
@@ -178,19 +179,25 @@ export function ArtifactDetail({ conversationId, artifact }: { readonly conversa
   const [adding, setAdding] = useState<ArtifactSection | null>(null);
   const [creatingChild, setCreatingChild] = useState(false);
   const [unfreezeTo, setUnfreezeTo] = useState<ArtifactStatus | null>(null);
+  const [stopTo, setStopTo] = useState<ArtifactStatus | null>(null);
   const parent = artifact.parentId ? board.byId[artifact.parentId] : undefined;
   const filled = ARTIFACT_SECTIONS.filter(section => (artifact.sections[section] ?? '').trim() !== '');
   const empty = ARTIFACT_SECTIONS.filter(section => !filled.includes(section) && section !== adding);
   const shown = ARTIFACT_SECTIONS.filter(section => filled.includes(section) || section === adding);
 
   const update = async (changes: ArtifactUpdateInput) => (await updateArtifact(artifact.id, changes)).ok;
-  /** Leaving Frozen goes through its dialog, which also offers an instruction for the coordinator. */
+  /**
+   * Leaving Frozen goes through its dialog, which also offers an instruction for the coordinator; a status that stops
+   * the agent working on it is confirmed first.
+   */
   const change = (changes: ArtifactUpdateInput) => {
     if (artifact.status === 'frozen' && changes.status && changes.status !== 'frozen') {
       setUnfreezeTo(changes.status);
-      return;
+    } else if (changes.status && stopsWork(artifact, changes.status)) {
+      setStopTo(changes.status);
+    } else {
+      void update(changes);
     }
-    void update(changes);
   };
   const remove = async () => {
     if ((await deleteArtifact(artifact.id)).ok) {
@@ -257,6 +264,17 @@ export function ArtifactDetail({ conversationId, artifact }: { readonly conversa
           <ArtifactProperties conversationId={conversationId} artifact={artifact} byId={board.byId} projects={projects} onChange={changes => void change(changes)} />
         </aside>
       </div>
+      {stopTo && (
+        <ArtifactStopWorkDialog
+          artifact={artifact}
+          status={stopTo}
+          onConfirm={() => {
+            setStopTo(null);
+            void update({ status: stopTo });
+          }}
+          onCancel={() => setStopTo(null)}
+        />
+      )}
       {unfreezeTo && (
         <ArtifactUnfreezeDialog
           conversationId={conversationId}

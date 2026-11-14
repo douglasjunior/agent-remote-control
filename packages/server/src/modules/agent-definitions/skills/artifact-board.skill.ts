@@ -38,7 +38,7 @@ Each conversation is a mission with its own board. Features group the tasks of a
 - A feature follows its tasks: \`in_progress\` once any task started, \`done\` once every task is done or cancelled.
 - Set the status of a task in the same response that delegates its next step (\`<artifact_update id="T-3" status="in_progress"/>\` next to the \`<delegate>\`).
 - Every verdict leaves its own status in the history, so a status is never skipped: after an APPROVED review, \`<artifact_update id="T-3" status="approved"/>\` comes before \`<artifact_update id="T-3" status="in_testing"/>\` and the delegation to the agent that tests.
-- After every \`<agent_result>\`, update the board before anything else, starting from its \`artifact_status\` (the status when the agent finished): the status the result calls for, the refinement the agent finished (it marks its own refinement \`done\`; check it), and a comment when the result carries something the next agent must know.
+- After every \`<agent_result>\`, update the board before anything else, starting from its \`artifact_status\` (the status when the agent finished; with \`artifact_status_by="user"\` the user set it while the agent worked, and it stays until the user asks otherwise): the status the result calls for, the refinement the agent finished (it marks its own refinement \`done\`; check it), and a comment when the result carries something the next agent must know.
 - A failed result leaves the status as it was; decide whether to delegate again.
 
 ## Dependencies and Parallel Work

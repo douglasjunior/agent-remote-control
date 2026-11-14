@@ -20,6 +20,9 @@ export const FROZEN_STATUS = 'frozen';
 /** Statuses that take an artifact off the board: nobody works on it any more. */
 export const CLOSED_ARTIFACT_STATUSES: readonly string[] = ['done', 'cancelled'];
 
+/** Statuses that end the work on an artifact: a user who moves a held artifact to one of them stops the agent holding it. */
+export const WORK_ENDING_STATUSES: readonly string[] = ['done', 'blocked', 'cancelled'];
+
 export const ARTIFACT_SECTIONS = [
   'overview',
   'user_stories',

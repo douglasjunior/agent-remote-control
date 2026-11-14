@@ -2,7 +2,7 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-import { answer, lastSent, openBoard, summary } from '../../test/artifact-fixtures.js';
+import { answer, lastSent, openBoard, pick, summary } from '../../test/artifact-fixtures.js';
 
 
 const feature = summary({ id: 'F-1', type: 'feature', title: 'Login' });
@@ -23,11 +23,6 @@ async function openDialog() {
   const app = openBoard([feature, typo, done, form, landing]);
   await user.click(screen.getByRole('button', { name: 'New' }));
   return { user, app, dialog: await screen.findByRole('dialog') };
-}
-
-async function pick(user: ReturnType<typeof userEvent.setup>, combobox: string, option: string) {
-  await user.click(screen.getByRole('combobox', { name: combobox }));
-  await user.click(await screen.findByRole('option', { name: option }));
 }
 
 describe('ArtifactCreateDialog', () => {

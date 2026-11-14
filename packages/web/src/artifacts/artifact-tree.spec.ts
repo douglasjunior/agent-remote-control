@@ -1,7 +1,7 @@
 import { summary } from '../test/artifact-fixtures.js';
 
 import {
-  buildTree, childrenOf, dependencyCandidates, compareArtifacts, dependentsOf, EMPTY_FILTER, isClosed, matchesFilter, parentCandidates, pendingDependencies, taskProgress,
+  buildTree, childrenOf, dependencyCandidates, compareArtifacts, dependentsOf, EMPTY_FILTER, isClosed, matchesFilter, parentCandidates, pendingDependencies, stopsWork, taskProgress,
 } from './artifact-tree.js';
 
 
@@ -86,5 +86,14 @@ describe('artifact-tree', () => {
     const cancelled = summary({ id: 'T-11', parentId: 'F-1', status: 'cancelled' });
     expect(taskProgress('F-1', [...all, cancelled])).toEqual({ done: 1, total: 2 });
     expect(taskProgress('T-3', all)).toEqual({ done: 0, total: 0 });
+  });
+
+  it('stops the work only of a held artifact moved to a status that ends it', () => {
+    const held = summary({ id: 'T-12', status: 'in_progress', assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd-1', since: '2026-01-01T00:00:00.000Z' } });
+    expect(stopsWork(held, 'cancelled')).toBe(true);
+    expect(stopsWork(held, 'blocked')).toBe(true);
+    expect(stopsWork(held, 'done')).toBe(true);
+    expect(stopsWork(held, 'in_review')).toBe(false);
+    expect(stopsWork(standalone, 'cancelled')).toBe(false);
   });
 });

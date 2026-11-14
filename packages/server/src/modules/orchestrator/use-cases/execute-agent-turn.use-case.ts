@@ -11,6 +11,7 @@ import {
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { CLOSED_ARTIFACT_STATUSES, FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
+import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.util.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
@@ -84,11 +85,14 @@ const REQUEST_RESULTS_NOTE = 'Your last response had only artifact requests, so 
 
 /** What a result says about the agent that produced it, besides its role and project. */
 type AgentResultDetails = {
-  readonly status?: 'failed';
+  /** `stopped`: the user ended the work on its artifact before the agent finished. */
+  readonly status?: 'failed' | 'stopped';
   readonly agentInfo?: TurnAgentInfo;
   readonly artifactId?: string;
   /** The status of the artifact when the agent finished, which the CEO sets next from the result. */
   readonly artifactStatus?: string;
+  /** The user set that status while the agent worked, which makes it their decision. */
+  readonly artifactStatusByUser?: boolean;
 };
 
 type ValidatedDelegation = DelegationResult & {
@@ -970,7 +974,7 @@ export class ExecuteAgentTurnUseCase {
   ): string {
     const project = projectName ? ` project="${projectName}"` : '';
     const artifact = options.artifactId
-      ? ` artifact="${options.artifactId}"${options.artifactStatus ? ` artifact_status="${options.artifactStatus}"` : ''}`
+      ? ` artifact="${options.artifactId}"${options.artifactStatus ? ` artifact_status="${options.artifactStatus}"` : ''}${options.artifactStatusByUser ? ' artifact_status_by="user"' : ''}`
       : '';
     const { agentInfo } = options;
     const config = agentInfo
@@ -995,6 +999,15 @@ export class ExecuteAgentTurnUseCase {
 
   private async artifactStatusOf(conversationId: string, artifactId: string | undefined): Promise<string | undefined> {
     return artifactId ? (await this.artifacts.get(conversationId, artifactId))?.status : undefined;
+  }
+
+  /** Read before the delegation releases its artifact, so a status the user set during the work is still told apart. */
+  private async heldArtifactDetails(conversationId: string, artifactId: string | undefined): Promise<Pick<AgentResultDetails, 'artifactId' | 'artifactStatus' | 'artifactStatusByUser'>> {
+    const artifact = artifactId ? await this.artifacts.get(conversationId, artifactId) : undefined;
+    if (!artifact) {
+      return { artifactId };
+    }
+    return { artifactId, artifactStatus: artifact.status, ...(statusSetByUserWhileHeld(artifact) && { artifactStatusByUser: true }) };
   }
 
   private isCancellation(error: unknown): boolean {
@@ -1073,7 +1086,9 @@ export class ExecuteAgentTurnUseCase {
     const openWorkId = request.resumable ? event.delegationId : undefined;
 
     const delegationTurn = new ActiveTurn(delegatePort);
+    let stopReason: string | undefined;
     const activeDelegation: ActiveDelegation = {
+      delegationId,
       role: delegateToRole,
       roleName: event.roleName,
       agentInfo,
@@ -1094,6 +1109,11 @@ export class ExecuteAgentTurnUseCase {
         }
         const languagePrompt = await this.buildLanguagePrompt(delegateToRole, request.agentRole);
         return delegatePort.supportsSteering && delegatePort.sendSteeringPrompt(`${newSpec}\n\n${languagePrompt}`);
+      },
+      stop: async (reason: string) => {
+        stopReason = reason;
+        this.questionQueue.discard(conversationKey, delegateToRole, projectName ?? null);
+        await delegationTurn.cancel();
       },
     };
 
@@ -1168,8 +1188,7 @@ export class ExecuteAgentTurnUseCase {
       outcome = 'finished';
       return this.formatAgentResult(delegateToRole, projectName, response, {
         agentInfo,
-        artifactId,
-        artifactStatus: await this.artifactStatusOf(request.conversationId, artifactId),
+        ...await this.heldArtifactDetails(request.conversationId, artifactId),
       });
     } catch (error) {
       // Closing a replaced agent's session can surface as any error, none of which is a failure of its task.
@@ -1177,6 +1196,16 @@ export class ExecuteAgentTurnUseCase {
         outcome = 'replaced';
         request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
         return undefined;
+      }
+      if (stopReason !== undefined) {
+        outcome = 'stopped by the user';
+        request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
+        this.logger.log(`[Delegation Stopped] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${stopReason}`);
+        return this.formatAgentResult(delegateToRole, projectName, stopReason, {
+          agentInfo,
+          status: 'stopped',
+          ...await this.heldArtifactDetails(request.conversationId, artifactId),
+        });
       }
       if (this.isCancellation(error)) {
         outcome = 'cancelled';
@@ -1193,8 +1222,7 @@ export class ExecuteAgentTurnUseCase {
       outcome = 'failed';
       return this.formatFailedResult(session, round, delegateToRole, projectName, error, {
         agentInfo,
-        artifactId,
-        artifactStatus: await this.artifactStatusOf(request.conversationId, artifactId),
+        ...await this.heldArtifactDetails(request.conversationId, artifactId),
       });
     } finally {
       if (openWorkId) {

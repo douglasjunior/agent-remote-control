@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { ArtifactActor } from '../../artifacts/models/artifact.model.js';
 import { ARTIFACT_AT, buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 
 import { ArtifactPromptFormatterService } from './artifact-prompt-formatter.service.js';
@@ -60,6 +61,17 @@ describe('ArtifactPromptFormatterService', () => {
       '## Technical solution\nUse REST.',
       `## Comments\n- ${ARTIFACT_AT} CEO: Go.\n- ${ARTIFACT_AT} user (web): Careful.\n- ${ARTIFACT_AT} system: Restarted.`,
     ].join('\n\n'));
+  });
+
+  it('says when the user set the current status', () => {
+    const moved = (actor: ArtifactActor) => buildArtifact({
+      id: 'T-4',
+      status: 'blocked',
+      history: [{ id: 'h', at: ARTIFACT_AT, actor, kind: 'updated', summary: 'Status', changes: [{ field: 'status', from: 'ready', to: 'blocked' }] }],
+    });
+
+    expect(formatter.detail(moved({ kind: 'user', channel: 'web' }), all)).toContain('- Status: blocked, set by the user\n');
+    expect(formatter.detail(moved({ kind: 'agent', role: 'CEO', roleName: 'CEO' }), all)).toContain('- Status: blocked\n');
   });
 
   it('lists the tasks of a feature, or renders each in full for a tree', () => {

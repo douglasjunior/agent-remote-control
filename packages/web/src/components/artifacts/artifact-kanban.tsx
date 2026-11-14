@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 
 import { STATUS_LABELS, STATUS_TONES } from '../../artifacts/artifact-labels.js';
 import { artifactPath } from '../../artifacts/artifact-paths.js';
-import { type ArtifactFilter, childrenOf, compareArtifacts, isClosed, matchesFilter, taskProgress } from '../../artifacts/artifact-tree.js';
+import { type ArtifactFilter, childrenOf, compareArtifacts, isClosed, matchesFilter, stopsWork, taskProgress } from '../../artifacts/artifact-tree.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
 import { IconButton } from '../icon-button.js';
@@ -15,6 +15,7 @@ import {
 
 import { ArtifactAssignee } from './artifact-assignee.js';
 import { ProjectChip, PullRequestChip, WaitingChip } from './artifact-indicators.js';
+import { ArtifactStopWorkDialog } from './artifact-stop-work-dialog.js';
 import { ArtifactUnfreezeDialog } from './artifact-unfreeze-dialog.js';
 
 
@@ -167,15 +168,18 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
 }) {
   const [target, setTarget] = useState<ArtifactStatus | null>(null);
   const [unfreezing, setUnfreezing] = useState<{ readonly artifact: ArtifactSummary; readonly status?: ArtifactStatus } | null>(null);
+  const [stopping, setStopping] = useState<{ readonly artifact: ArtifactSummary; readonly status: ArtifactStatus } | null>(null);
   const visible = artifacts.filter(artifact => artifact.type === type && matchesFilter(artifact, filter)).sort(compareArtifacts);
 
-  /** Leaving Frozen is the user's decision with its own dialog, wherever the card is moved from. */
+  /** Leaving Frozen, and stopping the agent working on a card, each go through their own dialog, wherever the card is moved from. */
   const move = (artifact: ArtifactSummary, status: ArtifactStatus) => {
     if (artifact.status === 'frozen') {
       setUnfreezing({ artifact, status });
-      return;
+    } else if (stopsWork(artifact, status)) {
+      setStopping({ artifact, status });
+    } else {
+      onMove(artifact.id, status);
     }
-    onMove(artifact.id, status);
   };
 
   const drop = (status: ArtifactStatus) => (event: DragEvent) => {
@@ -218,6 +222,17 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
           </section>
         );
       })}
+      {stopping && (
+        <ArtifactStopWorkDialog
+          artifact={stopping.artifact}
+          status={stopping.status}
+          onConfirm={() => {
+            setStopping(null);
+            onMove(stopping.artifact.id, stopping.status);
+          }}
+          onCancel={() => setStopping(null)}
+        />
+      )}
       {unfreezing && (
         <ArtifactUnfreezeDialog
           conversationId={conversationId}

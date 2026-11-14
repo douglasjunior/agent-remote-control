@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor } from '../../artifacts/models/artifact.model.js';
+import { lastStatusChange } from '../../artifacts/utils/artifact-status.util.js';
 
 
 /** Renders artifacts as the Markdown agents read: the lines of a listing and the full content of one artifact. */
@@ -42,7 +43,7 @@ export class ArtifactPromptFormatterService {
     const blocks = all.filter(other => other.dependsOn.includes(artifact.id));
     const facts = [
       `- Type: ${artifact.type}`,
-      `- Status: ${artifact.status}`,
+      `- Status: ${artifact.status}${lastStatusChange(artifact)?.event.actor.kind === 'user' ? ', set by the user' : ''}`,
       `- Project: ${artifact.projectName}`,
       `- Parent: ${this.ancestry(artifact, all)}`,
       `- Depends on: ${this.references(artifact.dependsOn.map(id => this.find(all, id) ?? id))}`,

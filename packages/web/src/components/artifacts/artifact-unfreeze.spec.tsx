@@ -1,32 +1,12 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-import { answer, CONVERSATION_ID, detail, lastSent, openBoard, showDetail, summary } from '../../test/artifact-fixtures.js';
+import { answer, CONVERSATION_ID, detail, dragTo, lastSent, openBoard, pick, showDetail, summary } from '../../test/artifact-fixtures.js';
 
 
 const frozen = summary({ id: 'T-6', title: 'Login API', status: 'frozen' });
 const ready = summary({ id: 'T-7', title: 'Logout', status: 'ready' });
-
-function dataTransfer() {
-  const data = new Map<string, string>();
-  return {
-    effectAllowed: '',
-    setData: (type: string, value: string) => data.set(type, value),
-    getData: (type: string) => data.get(type) ?? '',
-  };
-}
-
-function dragTo(card: HTMLElement, column: HTMLElement) {
-  const transfer = dataTransfer();
-  fireEvent.dragStart(card, { dataTransfer: transfer });
-  fireEvent.drop(column, { dataTransfer: transfer });
-}
-
-async function pick(user: ReturnType<typeof userEvent.setup>, combobox: string, option: string) {
-  await user.click(screen.getByRole('combobox', { name: combobox }));
-  await user.click(await screen.findByRole('option', { name: option }));
-}
 
 function messagesSent(app: ReturnType<typeof openBoard>) {
   return app.connection.sent.filter(command => command.type === 'message.send');

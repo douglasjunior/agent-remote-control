@@ -72,6 +72,11 @@ rules shared by create and update live in `ArtifactRulesService`.
   left `frozen`. A task bouncing between agents needs the user: no agent request sets `frozen` or moves an artifact out
   of it, and a delegation of a frozen artifact is refused; only a channel acting for the user changes it, and the web
   interface's unfreeze dialog can also comment an instruction and send it to the CEO. `blocked` stays the CEO's own hold.
+- **Stopping work**: a user (actor `user`, any channel) who moves a held artifact to one of `WORK_ENDING_STATUSES`
+  (`done`, `blocked`, `cancelled`; the protocol exports the same list, checked by `artifact-catalog.constant.spec.ts`)
+  stops the agent holding it, through the orchestrator's `StopArtifactWorkUseCase`. Moves by agents never stop anyone.
+  `utils/artifact-status.util.ts` tells who set the current status (`lastStatusChange`) and whether a user set it while
+  the holder worked (`statusSetByUserWhileHeld`).
 
 `IArtifactStorePort` (`JsonArtifactStoreAdapter`): one file per conversation,
 `DATA_DIR/artifacts/<encodeURIComponent(conversationId)>.json` (`{ counters, artifacts }`, validated with the protocol
@@ -107,11 +112,13 @@ commits only after the atomic write (temporary file, then rename). Specs use `In
   is validated before it starts: known artifact, a task for a `task` scope, not closed, a pull request or a branch when required,
   no holder of another role, and the artifact's project (the `project` attribute may be left out; another one is
   refused). One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
-  before the port is created, `release` in `finally` with `finished|failed|cancelled|replaced|stopped`), starts from a
+  before the port is created, `release` in `finally` with `finished|failed|cancelled|replaced|stopped|stopped by the user`), starts from a
   `[DELEGATED_ARTIFACT]` block with its full content before the task, and is steered only when the artifact is the same.
   The artifact travels in `ActiveDelegation.artifactId`, `DelegationEvent.artifactId`, `OpenWork.artifactId`,
   `[TEAM_PROFILES]` (`Artifact: T-1`) and `<agent_result artifact="T-1" artifact_status="…">`, whose status is read when
-  the agent finishes so the CEO never answers with a status the result contradicts.
+  the agent finishes so the CEO never answers with a status the result contradicts. `artifact_status_by="user"` follows
+  when a user set that status while the agent worked, and the CEO keeps it; `artifact_read` shows `Status: <status>, set
+  by the user` whenever a user set the current status.
 
 ## Channels
 

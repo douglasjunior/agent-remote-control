@@ -47,6 +47,7 @@ import { StubPreferencesStore } from '../testing/stub-preferences-store.js';
 import { ExecuteAgentTurnUseCase } from './execute-agent-turn.use-case.js';
 import { RestoreOpenWorkUseCase } from './restore-open-work.use-case.js';
 import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
+import { StopArtifactWorkUseCase } from './stop-artifact-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
@@ -1620,6 +1621,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const cancel = vi.fn();
       const steer = vi.fn().mockResolvedValue(true);
       runtime.registerDelegation('conv-1', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -1632,6 +1634,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activePort,
         turn: { cancel } as any,
         steer,
+        stop: vi.fn(),
       });
       settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-b') });
       responses.set('stub', ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Change course.</delegate>', 'Ok.']);
@@ -2011,6 +2014,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should list the running agents in the message injected into the running CEO round', async () => {
       stubAgentPort.supportsSteering = true;
       runtime.registerDelegation('conv-1', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2023,6 +2027,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: new StubAgentPort(),
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
       const gate = await holdFirstPrompt();
 
@@ -2105,6 +2110,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const activeDelegatePort = new StubAgentPort();
       const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2117,8 +2123,10 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activeDelegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
       runtime.registerDelegation(conversationKey, {
+        delegationId: 'd-1',
         role: 'CODE_REVIEWER',
         roleName: 'Code Reviewer',
         agentInfo: { roleName: 'Code Reviewer', agentName: 'stub' },
@@ -2131,6 +2139,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activeDelegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
 
       stubAgentPort.mockResponses = ['Understood, letting developer continue.'];
@@ -2148,6 +2157,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const steerSpy = vi.fn().mockResolvedValue(true);
       const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2160,6 +2170,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: delegateStubPort,
         turn: { cancel: vi.fn() } as any,
         steer: steerSpy,
+        stop: vi.fn(),
       });
 
       stubAgentPort.mockResponses = [
@@ -2224,6 +2235,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const cancelSpy = vi.fn().mockResolvedValue(undefined);
       const steerSpy = vi.fn().mockResolvedValue(false);
       runtime.registerDelegation('conv-1', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2236,6 +2248,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activeDelegatePort,
         turn: { cancel: cancelSpy } as any,
         steer: steerSpy,
+        stop: vi.fn(),
       });
       delegateStubPort.mockResponses = ['Restarted task done.'];
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Change course.</delegate>', 'Finished.'];
@@ -2262,6 +2275,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2274,6 +2288,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: firstDelegatePort,
         turn: { cancel: firstCancelSpy } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
 
       delegateStubPort.supportsSteering = false;
@@ -2301,6 +2316,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const conversationKey = 'conv-1';
       const newerDelegatePort = new StubAgentPort();
       const newerDelegation = {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -2313,6 +2329,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: newerDelegatePort,
         turn: { cancel: vi.fn() } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       };
 
       const unregisterSpy = vi.spyOn(runtime, 'unregisterDelegation');
@@ -2359,6 +2376,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     };
 
     const activeDelegation = (role: string, projectName: string) => ({
+      delegationId: `${role}-${projectName}`,
       role,
       roleName: role,
       agentInfo: { roleName: role, agentName: 'stub' },
@@ -2371,6 +2389,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       agentPort: new StubAgentPort(),
       turn: { cancel: vi.fn() } as any,
       steer: vi.fn().mockResolvedValue(false),
+      stop: vi.fn(),
     });
 
     beforeEach(() => {
@@ -3185,6 +3204,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         throw new Error('disconnect failed');
       };
       runtime.registerDelegation('conv-1', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -3197,6 +3217,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: staleDelegatePort,
         turn: { cancel: vi.fn().mockResolvedValue(undefined) } as any,
         steer: vi.fn(),
+        stop: vi.fn(),
       });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
@@ -3469,6 +3490,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const steer = vi.fn().mockResolvedValue(true);
       const cancel = vi.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('conv-1', {
+        delegationId: 'd-1',
         role: 'DEVELOPER',
         roleName: 'Developer',
         agentInfo: { roleName: 'Developer', agentName: 'stub' },
@@ -3481,6 +3503,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: waitingPort,
         turn: { cancel } as any,
         steer,
+        stop: vi.fn(),
       });
       const waiting = questionQueue.ask('conv-1', { role: 'DEVELOPER', roleName: 'Developer', projectName: 'my-app' }, '', [{ text: 'Q?', options: [] }], questionListener());
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">New task.</delegate>', 'Ok.'];
@@ -3882,6 +3905,53 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="in_progress" agent="stub" model="default" effort="default" status="failed">\nagent crashed\n</agent_result>');
       expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null, history: [expect.anything(), { kind: 'released', summary: 'DEVELOPER released it: failed' }] });
+    });
+
+    /**
+     * Makes the delegate's next prompt run `during` before it answers, as a user acting on the board while it works; a
+     * cancel meanwhile ends the prompt the way an ACP agent does.
+     */
+    const whileDelegateWorks = (during: () => Promise<unknown>, answer: string) => {
+      const prompt = delegateStubPort.prompt.bind(delegateStubPort);
+      delegateStubPort.prompt = async function* (text: string) {
+        await during();
+        if (delegateStubPort.cancelCalls > 0) {
+          throw new PromptCancelledError();
+        }
+        delegateStubPort.mockResponses = [answer];
+        yield* prompt(text);
+      };
+    };
+
+    it('tells the CEO when the user set the status of the artifact while the agent worked on it', async () => {
+      seed({ id: 'T-1', status: 'in_progress' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      whileDelegateWorks(() => artifacts.update('conv-1', 'T-1', { status: 'in_review' }, { kind: 'user', channel: 'web' }), 'Built.');
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="in_review" artifact_status_by="user"');
+    });
+
+    it('stops the agent and reports it to the CEO when the user ends the work on its artifact', async () => {
+      seed({ id: 'T-1', status: 'in_progress' });
+      const stopWork = new StopArtifactWorkUseCase(artifacts, runtime);
+      stopWork.onModuleInit();
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Noted.'];
+      whileDelegateWorks(async () => {
+        await artifacts.update('conv-1', 'T-1', { status: 'cancelled' }, { kind: 'user', channel: 'web' });
+        await vi.waitFor(() => expect(delegateStubPort.cancelCalls).toBe(1));
+      }, 'Built anyway.');
+      const onDelegation = vi.fn();
+
+      const result = await useCase.execute(turnRequest({ onDelegation }));
+      stopWork.onModuleDestroy();
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Noted.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="cancelled" artifact_status_by="user" agent="stub" model="default" effort="default" status="stopped">\nThe user moved T-1 to cancelled on the board, which stopped this agent before it finished.\n</agent_result>');
+      expect(onDelegation).toHaveBeenCalledWith(expect.objectContaining({ phase: 'cancelled', artifactId: 'T-1' }));
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null, status: 'cancelled' });
+      expect((await artifacts.get('conv-1', 'T-1'))?.history.at(-1)).toMatchObject({ kind: 'released', summary: 'DEVELOPER released it: stopped by the user' });
     });
 
     it('logs a release that fails without failing the delegation', async () => {

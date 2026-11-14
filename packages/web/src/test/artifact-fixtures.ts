@@ -1,6 +1,7 @@
 import type { ArtifactDetail, ArtifactSummary } from '@agent-remote-control/protocol/artifact';
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
-import { act } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import type userEvent from '@testing-library/user-event';
 
 import { AT, renderApp, roleProfiles, type AppHarness } from './render-app.js';
 
@@ -69,4 +70,25 @@ export function answer(
 ): void {
   const { requestId } = lastSent(app, type);
   act(() => app.connection.emitEvent({ type: 'artifact.result', conversationId: CONVERSATION_ID, requestId, ...result }));
+}
+
+/** The `dataTransfer` of a drag, which jsdom does not provide. */
+export function dataTransfer() {
+  const data = new Map<string, string>();
+  return {
+    effectAllowed: '',
+    setData: (type: string, value: string) => data.set(type, value),
+    getData: (type: string) => data.get(type) ?? '',
+  };
+}
+
+export function dragTo(card: HTMLElement, column: HTMLElement): void {
+  const transfer = dataTransfer();
+  fireEvent.dragStart(card, { dataTransfer: transfer });
+  fireEvent.drop(column, { dataTransfer: transfer });
+}
+
+export async function pick(user: ReturnType<typeof userEvent.setup>, combobox: string, option: string): Promise<void> {
+  await user.click(screen.getByRole('combobox', { name: combobox }));
+  await user.click(await screen.findByRole('option', { name: option }));
 }

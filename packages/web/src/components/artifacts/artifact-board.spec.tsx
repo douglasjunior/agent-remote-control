@@ -2,7 +2,7 @@ import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-import { CONVERSATION_ID, lastSent, openBoard, summary } from '../../test/artifact-fixtures.js';
+import { CONVERSATION_ID, dataTransfer, lastSent, openBoard, summary } from '../../test/artifact-fixtures.js';
 import { AT, renderApp } from '../../test/render-app.js';
 
 
@@ -20,15 +20,6 @@ const api = summary({
 const typo = summary({ id: 'T-3', title: 'Fix typo', projectName: 'site', status: 'ready' });
 const old = summary({ id: 'T-4', title: 'Old idea', projectName: 'site', status: 'cancelled' });
 const artifacts = [feature, form, api, typo, old];
-
-function dataTransfer() {
-  const data = new Map<string, string>();
-  return {
-    effectAllowed: '',
-    setData: (type: string, value: string) => data.set(type, value),
-    getData: (type: string) => data.get(type) ?? '',
-  };
-}
 
 // Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
 vi.setConfig({ testTimeout: 20_000 });

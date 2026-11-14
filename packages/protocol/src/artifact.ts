@@ -24,6 +24,9 @@ export const ARTIFACT_STATUSES = [
 export const artifactStatusSchema = z.enum(ARTIFACT_STATUSES);
 export type ArtifactStatus = z.infer<typeof artifactStatusSchema>;
 
+/** Statuses that end the work on an artifact: moving a held artifact to one of them stops the agent holding it. */
+export const WORK_ENDING_STATUSES: readonly ArtifactStatus[] = ['done', 'blocked', 'cancelled'];
+
 export const ARTIFACT_SECTIONS = [
   'overview',
   'user_stories',

@@ -42,6 +42,7 @@ import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
 import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
+import { StopArtifactWorkUseCase } from './use-cases/stop-artifact-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
 
 
@@ -81,6 +82,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     ExecuteAgentTurnUseCase,
     RunAgentRequestsUseCase,
     CancelAgentTurnUseCase,
+    StopArtifactWorkUseCase,
     GetAgentQuotaUseCase,
     RunShellCommandUseCase,
     TranscribeAudioAttachmentsUseCase,
