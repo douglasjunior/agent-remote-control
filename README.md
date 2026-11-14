@@ -121,7 +121,7 @@ server {
 The server can be reached from any browser in the world, with no port to open on your router. At startup it prints a link:
 
 ```text
-Remote access link: https://arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
+Remote access link: https://arc-p2p-server.arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
 ```
 
 Opening it loads the web app from the signaling server, which only introduces your browser to your server. They then talk over a WebRTC data channel, directly when the networks allow it and through a TURN relay when they do not, encrypted end to end either way. The connection badge in the header shows which of the two carries it (or the WebSocket, for the local web interface).
@@ -134,7 +134,7 @@ Opening it loads the web app from the signaling server, which only introduces yo
 | Variable | Description | Default |
 |---|---|---|
 | `REMOTE_ENABLED` | Set to `false` to keep the server off the signaling server | `true` |
-| `REMOTE_URL` | Signaling server that introduces browsers to this server and serves the web app of the link | `https://arc.douglasjunior.work` |
+| `REMOTE_URL` | Signaling server that introduces browsers to this server and serves the web app of the link | `https://arc-p2p-server.arc.douglasjunior.work` |
 
 [Self-hosting the signaling server and the TURN relay](docs/remote-access.md) covers `packages/p2p-server`, coturn and their deployment with CapRover.
 
@@ -301,7 +301,7 @@ cp .env.example .env
 | `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 | `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
-| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `true` / `https://arc.douglasjunior.work` |
+| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `true` / `https://arc-p2p-server.arc.douglasjunior.work` |
 
 ## 🐳 Docker
 

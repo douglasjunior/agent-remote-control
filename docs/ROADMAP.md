@@ -84,7 +84,7 @@ The service keeps a WebSocket open to the signaling server and answers each brow
 At startup the service prints its link:
 
 ```text
-https://arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
+https://arc-p2p-server.arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
 ```
 
 - The **instance id** derives from a secret the service keeps, so only the holder of the secret registers that instance on the signaling server.

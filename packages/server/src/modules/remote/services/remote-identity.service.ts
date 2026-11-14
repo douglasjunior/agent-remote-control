@@ -11,7 +11,7 @@ import { DataDirectoryService } from '../../paths/services/data-directory.servic
 import type { RemoteIdentity } from '../models/remote-identity.model.js';
 
 
-const DEFAULT_REMOTE_URL = 'https://arc.douglasjunior.work';
+const DEFAULT_REMOTE_URL = 'https://arc-p2p-server.arc.douglasjunior.work';
 const CERTIFICATE_YEARS = 20;
 const SIGNING_ALGORITHM = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
 

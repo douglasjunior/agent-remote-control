@@ -30,8 +30,8 @@ describe('RemoteIdentityService', () => {
   });
 
   it('should reach the default signaling server, or REMOTE_URL over the matching WebSocket scheme', () => {
-    expect(service().baseUrl()).toBe('https://arc.douglasjunior.work');
-    expect(service().signalingUrl()).toBe('wss://arc.douglasjunior.work/signal/host');
+    expect(service().baseUrl()).toBe('https://arc-p2p-server.arc.douglasjunior.work');
+    expect(service().signalingUrl()).toBe('wss://arc-p2p-server.arc.douglasjunior.work/signal/host');
     vi.stubEnv('REMOTE_URL', ' http://localhost:3100/ ');
     expect(service().baseUrl()).toBe('http://localhost:3100');
     expect(service().signalingUrl()).toBe('ws://localhost:3100/signal/host');

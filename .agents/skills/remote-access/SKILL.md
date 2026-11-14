@@ -63,7 +63,7 @@ or to stand in for a host.
 ## Host (`packages/server/src/modules/remote`)
 
 - `RemoteIdentityService`: `isEnabled()` (`REMOTE_ENABLED` unless `false`), `baseUrl()` (`REMOTE_URL`, default
-  `https://arc.douglasjunior.work`), `signalingUrl()` and `identity()`, created once in `<DATA_DIR>/remote`: `secret`,
+  `https://arc-p2p-server.arc.douglasjunior.work`), `signalingUrl()` and `identity()`, created once in `<DATA_DIR>/remote`: `secret`,
   a self-signed ECDSA P-256 `certificate.pem` and `key.pem`, all `0o600`. The link stays the same across restarts.
 - `ISignalingClientPort` → `WsSignalingClientAdapter`: registers on every connection, reconnects with backoff from
   1 s to 60 s, warns once while unreachable, drops a socket quiet for 70 s and stops for good on `4400` or `4409`.
