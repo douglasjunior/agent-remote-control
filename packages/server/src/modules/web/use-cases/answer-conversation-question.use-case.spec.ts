@@ -25,7 +25,7 @@ function setup() {
 }
 
 describe('AnswerConversationQuestionUseCase', () => {
-  it('does nothing when no question is waiting', async () => {
+  it('should do nothing when no question is waiting', async () => {
     const { useCase, questions, types } = setup();
 
     await expect(useCase.execute('web-1', { kind: 'option', optionIndex: 1 })).resolves.toBe(false);
@@ -34,7 +34,7 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(types()).toEqual([]);
   });
 
-  it('echoes the chosen option as a user message before the confirmation', async () => {
+  it('should echo the chosen option as a user message before the confirmation', async () => {
     const { useCase, questions, types, store } = setup();
     questions.prompt = prompt;
     questions.submission = { kind: 'answered', asker };
@@ -46,7 +46,7 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(store.histories.get('web-1')?.[0]).toMatchObject({ text: 'b' });
   });
 
-  it('delivers the answers of a restored question, which no turn is waiting for', async () => {
+  it('should deliver the answers of a restored question, which no turn is waiting for', async () => {
     const { useCase, questions, agentTurn } = setup();
     questions.prompt = prompt;
     const restoredWork = { workId: 'w', answers: [{ question: prompt.question, answer: 'a', optionNumber: 1 }] };
@@ -60,7 +60,7 @@ describe('AnswerConversationQuestionUseCase', () => {
   describe('with attachments', () => {
     const file = { path: '.arc-uploads/web-1/shot.png', name: 'shot.png' };
 
-    it('hands the uploaded files to the agent and keeps them in the echo', async () => {
+    it('should hand the uploaded files to the agent and keep them in the echo', async () => {
       const { useCase, questions, store, uploads } = setup();
       uploads.files.set(file.path, 10);
       questions.prompt = prompt;
@@ -72,7 +72,7 @@ describe('AnswerConversationQuestionUseCase', () => {
       expect(store.histories.get('web-1')?.[0]).toMatchObject({ type: 'user_message', attachments: [file] });
     });
 
-    it('reports a file that is not an upload of this conversation, without answering', async () => {
+    it('should report a file that is not an upload of this conversation, without answering', async () => {
       const { useCase, questions, types } = setup();
       questions.prompt = prompt;
 
@@ -83,7 +83,7 @@ describe('AnswerConversationQuestionUseCase', () => {
     });
   });
 
-  it('echoes nothing for an invalid option', async () => {
+  it('should echo nothing for an invalid option', async () => {
     const { useCase, questions, types } = setup();
     questions.prompt = prompt;
     questions.submission = { kind: 'invalid', prompt };
@@ -93,7 +93,7 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(types()).toEqual(['notice', 'question']);
   });
 
-  it('confirms an option without an echo when the question is unknown', async () => {
+  it('should confirm an option without an echo when the question is unknown', async () => {
     const { useCase, questions, types } = setup();
     questions.submission = { kind: 'answered', asker };
 
@@ -102,7 +102,7 @@ describe('AnswerConversationQuestionUseCase', () => {
     expect(types()).toEqual(['notice']);
   });
 
-  it('echoes a text answer as a user message before the confirmation', async () => {
+  it('should echo a text answer as a user message before the confirmation', async () => {
     const { useCase, questions, types } = setup();
     questions.submission = { kind: 'next', prompt };
 
@@ -123,7 +123,7 @@ describe('AnswerConversationQuestionUseCase', () => {
       ['answered', { kind: 'answered', asker } as const],
       ['next', { kind: 'next', prompt } as const],
       ['invalid', { kind: 'invalid', prompt } as const],
-    ])('closes it in place on a %s submission, before what follows', async (_kind, submission) => {
+    ])('should close it in place on a %s submission, before what follows', async (_kind, submission) => {
       const harness = setup();
       const entry = await openQuestion(harness);
       harness.questions.prompt = prompt;
@@ -137,7 +137,7 @@ describe('AnswerConversationQuestionUseCase', () => {
       expect(history.slice(1).some(item => item.type === 'question' && !item.closed)).toBe(submission.kind !== 'answered');
     });
 
-    it('closes it with a notice when no question is waiting', async () => {
+    it('should close it with a notice when no question is waiting', async () => {
       const harness = setup();
       const entry = await openQuestion(harness);
 

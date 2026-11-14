@@ -1,7 +1,8 @@
-import { PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Outlet } from 'react-router';
+import { Link, Outlet, useLocation } from 'react-router';
 
+import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
 import { useConnection } from '../connection/connection-context.js';
 import { ConversationsProvider, useConversations } from '../conversations/conversations-context.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
@@ -13,10 +14,12 @@ import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { IconButton } from './icon-button.js';
+import { skillsPath, skillsState } from './skills/skill-paths.js';
 import { ThemeToggle } from './theme-toggle.js';
-import { Button } from './ui/button.js';
+import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
 import { Toaster } from './ui/sonner.js';
+import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip.js';
 import { UsageIndicator } from './usage/usage-indicator.js';
 
 
@@ -29,9 +32,11 @@ export function AppLayout() {
 
   return (
     <ConversationsProvider>
-      <AmbientGlow />
-      <AppShell />
-      <Toaster position="bottom-right" />
+      <ArtifactsProvider>
+        <AmbientGlow />
+        <AppShell />
+        <Toaster position="bottom-right" />
+      </ArtifactsProvider>
     </ConversationsProvider>
   );
 }
@@ -42,6 +47,7 @@ const CONVERSATION_LIST_ID = 'conversation-list';
 
 function AppShell() {
   const { status } = useConnection();
+  const location = useLocation();
   const { createConversation } = useConversations();
   const docked = useMediaQuery(DOCKED_QUERY);
   const [dockOpen, setDockOpen] = useStoredFlag('arc.conversationListOpen', false);
@@ -75,6 +81,12 @@ function AppShell() {
             <h1 className="min-w-0 truncate text-sm font-semibold">Agent Remote Control</h1>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
+                <BookOpenText />
+              </TooltipTrigger>
+              <TooltipContent>Skills</TooltipContent>
+            </Tooltip>
             <AgentAuthController />
             <UsageIndicator />
             <ConnectionBadge status={status} />

@@ -6,7 +6,20 @@ import type { TurnActivity } from '../models/turn-activity.model.js';
 import { findCodeSpans, isInCode } from '../utils/protocol-tag.util.js';
 
 
-const PROTOCOL_TAGS = ['delegate', 'question', 'attachment', 'user_language'] as const;
+const PROTOCOL_TAGS = [
+  'delegate',
+  'question',
+  'attachment',
+  'user_language',
+  'artifact_list',
+  'artifact_read',
+  'artifact_create',
+  'artifact_update',
+  'artifact_comment',
+  'skill_read',
+  'skill_list',
+  'skill_write',
+] as const;
 const OPENING_TAG = new RegExp(String.raw`<(${PROTOCOL_TAGS.join('|')})\b[^>]*>`, 'gi');
 
 type ThoughtActivity = AgentActivity & { kind: 'thought' };
@@ -60,8 +73,27 @@ export class AgentProtocolService {
   }
 
   /**
+   * The protocol tags an agent wrote outside the `<final_response>` envelope of a text that has one. Text outside the
+   * envelope is narration, so such a tag would be dropped without a word; tags inside Markdown code are quoted markup.
+   */
+  strayTags(written: string): string[] {
+    if (!written.includes(FINAL_RESPONSE_OPEN)) {
+      return [];
+    }
+    const { prose } = this.splitEnvelopes(written);
+    const codeSpans = findCodeSpans(prose);
+    const names = new Set<string>();
+    for (const tag of prose.matchAll(new RegExp(OPENING_TAG.source, OPENING_TAG.flags))) {
+      if (!isInCode(tag.index, codeSpans)) {
+        names.add(tag[1]!.toLowerCase());
+      }
+    }
+    return [...names];
+  }
+
+  /**
    * The text of a CEO response that the user reads, from a response that may still be streaming: the protocol
-   * tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and their bodies are left out, and so is
+   * tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`, the artifact and skill requests) and their bodies are left out, and so is
    * a tag still being typed, which stays out until it is complete. Tags inside Markdown code are quoted markup
    * and stay.
    */

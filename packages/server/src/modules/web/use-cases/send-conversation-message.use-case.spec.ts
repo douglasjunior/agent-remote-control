@@ -52,7 +52,7 @@ describe('SendConversationMessageUseCase', () => {
   afterEach(() => vi.restoreAllMocks());
 
   describe('user message', () => {
-    it('records the message and renames the conversation after its first line, cut at 60 characters', async () => {
+    it('should record the message and rename the conversation after its first line, cut at 60 characters', async () => {
       const { useCase, store, observer } = setup();
 
       await useCase.execute('web-1', `\n  ${'a'.repeat(80)}\nsecond line`);
@@ -64,7 +64,7 @@ describe('SendConversationMessageUseCase', () => {
       });
     });
 
-    it('keeps the title after the first message and only touches the conversation', async () => {
+    it('should keep the title after the first message and only touches the conversation', async () => {
       const { useCase, store } = setup();
 
       await useCase.execute('web-1', 'first');
@@ -77,7 +77,7 @@ describe('SendConversationMessageUseCase', () => {
   describe('attachments', () => {
     const attachment = { path: '.arc-uploads/web-1/shot.png', name: 'shot.png' };
 
-    it('records the attachments on the user message and hands the orchestrator the files, as a channel does', async () => {
+    it('should record the attachments on the user message and hand the orchestrator the files, as a channel does', async () => {
       const { useCase, uploads, agentTurn, entries } = setup();
       uploads.files.set(attachment.path, 2048);
 
@@ -90,7 +90,7 @@ describe('SendConversationMessageUseCase', () => {
       });
     });
 
-    it('leaves the text untouched for the orchestrator when the message has only attachments', async () => {
+    it('should leave the text untouched for the orchestrator when the message has only attachments', async () => {
       const { useCase, uploads, agentTurn } = setup();
       uploads.files.set(attachment.path, 1);
 
@@ -99,7 +99,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(agentTurn.turnRequests[0].prompt).toBe('');
     });
 
-    it('sends a message without attachments with an empty attachment list', async () => {
+    it('should send a message without attachments with an empty attachment list', async () => {
       const { useCase, agentTurn } = setup();
 
       await useCase.execute('web-1', 'plain');
@@ -107,7 +107,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(agentTurn.turnRequests[0].attachments).toEqual([]);
     });
 
-    it('shows what the orchestrator transcribed, and could not transcribe, as notices', async () => {
+    it('should show what the orchestrator transcribed, and could not transcribe, as notices', async () => {
       const { useCase, uploads, agentTurn, entries } = setup();
       uploads.files.set('.arc-uploads/web-1/voice.ogg', 10);
       agentTurn.turnBehavior = request => request.onTranscription?.({
@@ -123,7 +123,7 @@ describe('SendConversationMessageUseCase', () => {
       ]));
     });
 
-    it('accepts a message with attachments and no text, titling the conversation after the first file', async () => {
+    it('should accept a message with attachments and no text, titling the conversation after the first file', async () => {
       const { useCase, uploads, store, promptHistory } = setup();
       uploads.files.set(attachment.path, 1);
 
@@ -137,7 +137,7 @@ describe('SendConversationMessageUseCase', () => {
       ['a file that is gone', '.arc-uploads/web-1/shot.png', false],
       ['a file of another conversation', '.arc-uploads/web-2/shot.png', true],
       ['a path that climbs out of the upload directory', '.arc-uploads/web-1/../../secret', true],
-    ])('refuses %s, running no turn', async (_label, path, exists) => {
+    ])('should refuse %s, running no turn', async (_label, path, exists) => {
       const { useCase, uploads, agentTurn, entries } = setup();
       if (exists) {
         uploads.files.set(path, 1);
@@ -151,7 +151,7 @@ describe('SendConversationMessageUseCase', () => {
   });
 
   describe('prompt history', () => {
-    it('records each accepted prompt, most recent first', async () => {
+    it('should record each accepted prompt, most recent first', async () => {
       const { useCase, promptHistory } = setup();
 
       await useCase.execute('web-1', 'first');
@@ -160,7 +160,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(promptHistory.prompts).toEqual(['second', 'first']);
     });
 
-    it('records nothing while the conversation is not configured', async () => {
+    it('should record nothing while the conversation is not configured', async () => {
       const { useCase, configuration, promptHistory } = setup();
       configuration.store.byConversation.clear();
 
@@ -171,7 +171,7 @@ describe('SendConversationMessageUseCase', () => {
   });
 
   describe('configuration', () => {
-    it('refuses to run, and records nothing, while the conversation has no agent settings', async () => {
+    it('should refuse to run, and record nothing, while the conversation has no agent settings', async () => {
       const { useCase, agentTurn, configuration, entries, states } = setup();
       configuration.store.byConversation.clear();
 
@@ -182,7 +182,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual([]);
     });
 
-    it('runs with the default agent when no agent is installed', async () => {
+    it('should run with the default agent when no agent is installed', async () => {
       const { useCase, agentTurn, configuration } = setup();
       configuration.store.byConversation.clear();
       configuration.agents = [];
@@ -192,7 +192,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(agentTurn.turnRequests).toHaveLength(1);
     });
 
-    it('runs with settings inherited from the most recent conversation', async () => {
+    it('should run with settings inherited from the most recent conversation', async () => {
       const { useCase, agentTurn, configuration } = setup();
       configuration.store.byConversation.clear();
       configuration.store.byConversation.set('other', configuredSettings());
@@ -205,7 +205,7 @@ describe('SendConversationMessageUseCase', () => {
   });
 
   describe('turn execution', () => {
-    it('runs the turn as the CEO in the workspace and publishes running, the response and idle', async () => {
+    it('should run the turn as the CEO in the workspace and publish running, the response and idle', async () => {
       const { useCase, agentTurn, types, states, store } = setup();
       agentTurn.turnResult = { response: 'finished', status: 'completed' };
 
@@ -223,7 +223,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(store.flushed).toEqual(['web-1']);
     });
 
-    it('maps activities, delegations, interim messages and questions to entries', async () => {
+    it('should map activities, delegations, interim messages and questions to entries', async () => {
       const { useCase, agentTurn, types } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
@@ -253,7 +253,7 @@ describe('SendConversationMessageUseCase', () => {
         return whileRunning;
       };
 
-      it('closes the open question, reports the recommended answer assumed and shows the next question', async () => {
+      it('should close the open question, report the recommended answer assumed and show the next question', async () => {
         const entries = await runTimedOut({
           kind: 'timedOut',
           asker,
@@ -267,7 +267,7 @@ describe('SendConversationMessageUseCase', () => {
         expect(entries[2]).toMatchObject({ level: 'warning', text: 'No reply in 5 min, Developer: assumed the recommended answer: a.' });
       });
 
-      it('reports that nothing was assumed when the question had no recommendation', async () => {
+      it('should report that nothing was assumed when the question had no recommendation', async () => {
         const entries = await runTimedOut({
           kind: 'timedOut',
           asker: { ...asker, projectName: 'app' },
@@ -280,7 +280,7 @@ describe('SendConversationMessageUseCase', () => {
       });
     });
 
-    it('publishes the response being written as a draft, replaced by the final response', async () => {
+    it('should publish the response being written as a draft, replaced by the final response', async () => {
       const { useCase, agentTurn, events, observer } = setup();
       const seen: string[] = [];
       agentTurn.turnBehavior = async (request) => {
@@ -306,7 +306,7 @@ describe('SendConversationMessageUseCase', () => {
       ]);
     });
 
-    it('returns to running when a draft is the first output after queueing', async () => {
+    it('should return to running when a draft is the first output after queueing', async () => {
       const { useCase, agentTurn, states } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onQueued?.();
@@ -318,7 +318,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual(['running', 'queued', 'running', 'idle']);
     });
 
-    it('updates a streamed thought and a tool in place by id', async () => {
+    it('should update a streamed thought and a tool in place by id', async () => {
       const { useCase, agentTurn, entries } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'th' }, 'CEO');
@@ -343,7 +343,7 @@ describe('SendConversationMessageUseCase', () => {
         request.onDelegation?.({ ...event, phase: 'finished', response: 'done', agentInfo: { roleName: 'Developer', agentName: 'agy' }, durationMs: 5 });
       };
 
-      it('keeps the delegations of two turns that share round and role, each under its own user message', async () => {
+      it('should keep the delegations of two turns that share round and role, each under its own user message', async () => {
         const { useCase, agentTurn, entries } = setup();
 
         agentTurn.turnBehavior = delegating('dl-a');
@@ -356,7 +356,7 @@ describe('SendConversationMessageUseCase', () => {
         expect(new Set(entries().map(entry => entry.id)).size).toBe(entries().length);
       });
 
-      it('keeps the thoughts and tools two turns number alike', async () => {
+      it('should keep the thoughts and tools two turns number alike', async () => {
         const { useCase, agentTurn, entries } = setup();
         agentTurn.turnBehavior = async (request) => {
           request.onActivity?.({ kind: 'thought', id: 'synthetic:0', text: 'thinking' }, 'CEO');
@@ -372,7 +372,7 @@ describe('SendConversationMessageUseCase', () => {
       });
     });
 
-    it('publishes queued and returns to running once the turn produces output', async () => {
+    it('should publish queued and return to running once the turn produces output', async () => {
       const { useCase, agentTurn, states } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onQueued?.();
@@ -384,7 +384,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual(['running', 'queued', 'running', 'idle']);
     });
 
-    it('does not repeat the running state while output keeps arriving', async () => {
+    it('should not repeat the running state while output keeps arriving', async () => {
       const { useCase, agentTurn, states } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onInterimMessage?.('a');
@@ -396,7 +396,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual(['running', 'idle']);
     });
 
-    it('leaves the state to the running turn when the prompt was steered into it', async () => {
+    it('should leave the state to the running turn when the prompt was steered into it', async () => {
       const { useCase, agentTurn, states, entries, store } = setup();
       const gate = deferred();
       agentTurn.turnBehavior = async (request) => {
@@ -417,7 +417,7 @@ describe('SendConversationMessageUseCase', () => {
       await first;
     });
 
-    it('publishes idle only when the last of two overlapping turns ends', async () => {
+    it('should publish idle only when the last of two overlapping turns ends', async () => {
       const { useCase, agentTurn, states, store } = setup();
       const gates = [deferred(), deferred()];
       let started = 0;
@@ -445,7 +445,7 @@ describe('SendConversationMessageUseCase', () => {
       await vi.waitFor(() => expect(store.flushed).toEqual(['web-1']));
     });
 
-    it('closes the question still open when the conversation goes idle', async () => {
+    it('should close the question still open when the conversation goes idle', async () => {
       const { useCase, agentTurn, entries } = setup();
       agentTurn.turnBehavior = async (request) => {
         request.onQuestion?.({ kind: 'asked', prompt });
@@ -456,7 +456,7 @@ describe('SendConversationMessageUseCase', () => {
       await vi.waitFor(() => expect(entries().find(entry => entry.type === 'question')).toMatchObject({ closed: true }));
     });
 
-    it('publishes a failed turn result and returns to idle', async () => {
+    it('should publish a failed turn result and return to idle', async () => {
       const { useCase, agentTurn, entries, states } = setup();
       agentTurn.turnResult = { response: '', status: 'failed', errorMessage: 'boom' };
 
@@ -468,7 +468,7 @@ describe('SendConversationMessageUseCase', () => {
   });
 
   describe('errors', () => {
-    it('reports a thrown turn as an error notice and returns to idle', async () => {
+    it('should report a thrown turn as an error notice and return to idle', async () => {
       const { useCase, agentTurn, entries, states } = setup();
       agentTurn.turnError = new Error('agent crashed');
 
@@ -482,7 +482,7 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual(['running', 'idle']);
     });
 
-    it('reports a failure before the turn without changing the state', async () => {
+    it('should report a failure before the turn without changing the state', async () => {
       const { useCase, configuration, entries, states } = setup();
       vi.spyOn(configuration, 'ensureSettings').mockRejectedValue('plain failure');
 

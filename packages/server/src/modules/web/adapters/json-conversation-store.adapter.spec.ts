@@ -27,7 +27,7 @@ describe('JsonConversationStoreAdapter', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('creates conversations with a web- id and the default title', async () => {
+  it('should create conversations with a web- id and the default title', async () => {
     const summary = await store.create();
 
     expect(summary.id).toMatch(/^web-[0-9a-f-]{36}$/);
@@ -36,7 +36,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(await store.exists('web-other')).toBe(false);
   });
 
-  it('lists the most recently updated conversation first', async () => {
+  it('should list the most recently updated conversation first', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const first = await store.create();
@@ -48,7 +48,19 @@ describe('JsonConversationStoreAdapter', () => {
     expect((await store.list()).map(summary => summary.id)).toEqual([first.id, second.id]);
   });
 
-  it('renames a conversation and rejects unknown ones', async () => {
+  it('should rename and archive without moving the conversation in the list, and restore it', async () => {
+    vi.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
+    const { id, updatedAt } = await store.create();
+    vi.setSystemTime(new Date('2026-03-02T10:00:00.000Z'));
+
+    expect(await store.rename(id, 'Renamed')).toMatchObject({ title: 'Renamed', updatedAt });
+    expect(await store.archive(id, true)).toMatchObject({ archivedAt: '2026-03-02T10:00:00.000Z', updatedAt });
+    expect(await store.archive(id, false)).not.toHaveProperty('archivedAt');
+    expect((await store.touch(id)).updatedAt).toBe('2026-03-02T10:00:00.000Z');
+    await expect(store.archive('web-missing', true)).rejects.toThrow('Unknown conversation');
+  });
+
+  it('should rename a conversation and reject unknown ones', async () => {
     const { id } = await store.create();
 
     expect((await store.rename(id, 'Fix the bug')).title).toBe('Fix the bug');
@@ -56,7 +68,7 @@ describe('JsonConversationStoreAdapter', () => {
     await expect(store.touch('web-missing')).rejects.toThrow('Unknown conversation');
   });
 
-  it('replaces an entry by id keeping its position and appends new ones', async () => {
+  it('should replace an entry by id keeping its position and append new ones', async () => {
     const { id } = await store.create();
 
     await store.upsertEntry(id, note('a', 'first'));
@@ -66,12 +78,12 @@ describe('JsonConversationStoreAdapter', () => {
     expect(await store.history(id)).toEqual([note('a', 'changed'), note('b')]);
   });
 
-  it('does not touch the file system for ids it does not know', async () => {
+  it('should not touch the file system for ids it does not know', async () => {
     await expect(store.history('../../etc/passwd')).rejects.toThrow('Unknown conversation');
     await expect(store.upsertEntry('web-missing', note('a'))).rejects.toThrow('Unknown conversation');
   });
 
-  it('writes the files after the debounce interval', async () => {
+  it('should write the files after the debounce interval', async () => {
     vi.useFakeTimers();
     const { id } = await store.create();
     await store.upsertEntry(id, note('a'));
@@ -85,7 +97,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(readdirSync(join(webDir(), 'history')).every(file => !file.endsWith('.tmp'))).toBe(true);
   });
 
-  it('coalesces many updates into one write', async () => {
+  it('should coalesce many updates into one write', async () => {
     vi.useFakeTimers();
     const { id } = await store.create();
 
@@ -98,7 +110,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(JSON.parse(readFileSync(join(webDir(), 'history', `${id}.json`), 'utf-8'))).toEqual([note('a', 'v4')]);
   });
 
-  it('flushes immediately on request and on module destroy', async () => {
+  it('should flush immediately on request and on module destroy', async () => {
     const first = await store.create();
     await store.upsertEntry(first.id, note('a'));
     await store.flush(first.id);
@@ -109,7 +121,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(JSON.parse(readFileSync(join(webDir(), 'history', `${first.id}.json`), 'utf-8'))).toHaveLength(2);
   });
 
-  it('flushing a conversation without pending changes does nothing', async () => {
+  it('should do nothing when flushing a conversation without pending changes', async () => {
     const { id } = await store.create();
     await store.flush(id);
     await store.flush(id);
@@ -117,7 +129,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(JSON.parse(readFileSync(join(webDir(), 'conversations.json'), 'utf-8'))).toHaveLength(1);
   });
 
-  it('reloads conversations and history written by an earlier instance', async () => {
+  it('should reload conversations and history written by an earlier instance', async () => {
     const { id } = await store.create();
     await store.upsertEntry(id, note('a'));
     await store.onModuleDestroy();
@@ -128,7 +140,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(await reloaded.history(id)).toEqual([note('a')]);
   });
 
-  it('ignores files that do not match the protocol', async () => {
+  it('should ignore files that do not match the protocol', async () => {
     mkdirSync(join(webDir(), 'history'), { recursive: true });
     const summary = { id: 'web-1', title: 'T', createdAt: at, updatedAt: at };
     writeFileSync(join(webDir(), 'conversations.json'), JSON.stringify([summary]));
@@ -141,7 +153,7 @@ describe('JsonConversationStoreAdapter', () => {
     expect(await new JsonConversationStoreAdapter(dataDirectoryAt(dataDir)).list()).toEqual([]);
   });
 
-  it('keeps working when a write fails', async () => {
+  it('should keep working when a write fails', async () => {
     const { id } = await store.create();
     writeFileSync(join(dataDir, 'web'), 'a file where the directory should be');
     await store.upsertEntry(id, note('a'));

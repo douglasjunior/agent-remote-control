@@ -24,7 +24,7 @@ describe('WebAccessTokenService', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('prefers WEB_ACCESS_TOKEN over the stored file', () => {
+  it('should prefer WEB_ACCESS_TOKEN over the stored file', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', ' from-env ');
     const service = new WebAccessTokenService(dataDirectoryAt(dataDir));
 
@@ -32,7 +32,7 @@ describe('WebAccessTokenService', () => {
     expect(() => readFileSync(tokenFile())).toThrow();
   });
 
-  it('generates a token file with mode 0600 on first use and reuses it', () => {
+  it('should generate a token file with mode 0600 on first use and reuse it', () => {
     const first = new WebAccessTokenService(dataDirectoryAt(dataDir));
     const generated = ((): string => {
       first.verify('x');
@@ -44,7 +44,7 @@ describe('WebAccessTokenService', () => {
     expect(new WebAccessTokenService(dataDirectoryAt(dataDir)).verify(generated)).toBe(true);
   });
 
-  it('regenerates when the stored file is empty', () => {
+  it('should regenerate when the stored file is empty', () => {
     mkdirSync(join(dataDir, 'web'), { recursive: true });
     writeFileSync(tokenFile(), '\n');
 
@@ -53,7 +53,7 @@ describe('WebAccessTokenService', () => {
     expect(readFileSync(tokenFile(), 'utf8')).toHaveLength(32);
   });
 
-  it('verifies true for the token, false for a wrong one and false on length mismatch', () => {
+  it('should verify true for the token, false for a wrong one and false on length mismatch', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     const service = new WebAccessTokenService(dataDirectoryAt(dataDir));
 
@@ -63,7 +63,7 @@ describe('WebAccessTokenService', () => {
     expect(service.verify('')).toBe(false);
   });
 
-  it('logs the token on bootstrap', () => {
+  it('should log the token on bootstrap', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 

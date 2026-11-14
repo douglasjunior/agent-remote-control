@@ -230,9 +230,17 @@ export class DiscordMessageHandler implements OnModuleInit {
       const typing = new DiscordTypingIndicator(targetChannel);
       typing.start();
 
-      const onActivity = (activity: TurnActivity): void => {
+      const onActivity = (activity: TurnActivity, role: string): void => {
         typing.keepAlive();
         void cleanInitialProgress();
+
+        if (activity.kind === 'skill') {
+          this.logger.log(`📘 [Skill ${activity.action}: ${activity.status}] ${activity.names.join(', ')} (role: ${role})`);
+          void (targetChannel!.send(this.activityFormatter.formatActivity(activity, role)!) as Promise<unknown>).catch((error: unknown) => {
+            this.logger.warn(`Failed to send skill message: ${this.describeError(error)}`);
+          });
+          return;
+        }
 
         if (activity.kind === 'thought') {
           if (activity.final) {

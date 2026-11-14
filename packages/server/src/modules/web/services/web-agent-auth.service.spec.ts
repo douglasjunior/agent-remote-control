@@ -39,14 +39,14 @@ describe('WebAgentAuthService', () => {
   });
 
   describe('read', () => {
-    it('returns the agents with the time they were fetched', async () => {
+    it('should return the agents with the time they were fetched', async () => {
       await expect(service.read()).resolves.toEqual({
         agents: [info('unauthenticated')],
         fetchedAt: NOW.toISOString(),
       });
     });
 
-    it('reuses the result until it expires', async () => {
+    it('should reuse the result until it expires', async () => {
       await service.read();
       agentAuth.infos = [info('authenticated')];
 
@@ -57,14 +57,14 @@ describe('WebAgentAuthService', () => {
       await expect(service.read()).resolves.toMatchObject({ agents: [info('authenticated')] });
     });
 
-    it('queries again on a refresh while the result is still valid', async () => {
+    it('should query again on a refresh while the result is still valid', async () => {
       await service.read();
       agentAuth.infos = [info('authenticated')];
 
       await expect(service.read(true)).resolves.toMatchObject({ agents: [info('authenticated')] });
     });
 
-    it('shares the query in progress', async () => {
+    it('should share the query in progress', async () => {
       const list = vi.spyOn(agentAuth, 'listAuthInfo');
 
       const [first, second] = await Promise.all([service.read(), service.read(true)]);
@@ -73,7 +73,7 @@ describe('WebAgentAuthService', () => {
       expect(second).toBe(first);
     });
 
-    it('does not keep a failure', async () => {
+    it('should not keep a failure', async () => {
       agentAuth.statusError = new Error('probe down');
       await expect(service.read()).rejects.toThrow('probe down');
 
@@ -83,13 +83,13 @@ describe('WebAgentAuthService', () => {
   });
 
   describe('login', () => {
-    it('starts the login of the agent', () => {
+    it('should start the login of the agent', () => {
       service.login(requester, 'claude');
 
       expect(agentAuth.started).toEqual(['claude']);
     });
 
-    it('sends every progress event to every open connection', () => {
+    it('should send every progress event to every open connection', () => {
       service.login(requester, 'claude');
 
       agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth' });
@@ -103,7 +103,7 @@ describe('WebAgentAuthService', () => {
       }
     });
 
-    it('publishes the new state to every connection once a login completed', async () => {
+    it('should publish the new state to every connection once a login completed', async () => {
       await service.read();
       agentAuth.infos = [info('authenticated')];
       service.login(requester, 'claude');
@@ -120,7 +120,7 @@ describe('WebAgentAuthService', () => {
       }
     });
 
-    it('does not publish a state after a login that failed', async () => {
+    it('should not publish a state after a login that failed', async () => {
       service.login(requester, 'claude');
 
       agentAuth.emit('claude', { kind: 'failed', reason: 'Invalid code.' });
@@ -129,7 +129,7 @@ describe('WebAgentAuthService', () => {
       expect(requester.sent).toEqual([{ type: 'auth.login', agentId: 'claude', event: { kind: 'failed', reason: 'Invalid code.' } }]);
     });
 
-    it('keeps quiet about a state that cannot be read after a completed login', async () => {
+    it('should keep quiet about a state that cannot be read after a completed login', async () => {
       const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       service.login(requester, 'claude');
       agentAuth.statusError = new Error('probe down');
@@ -141,7 +141,7 @@ describe('WebAgentAuthService', () => {
       expect(requester.sent.map(event => event.type)).toEqual(['auth.login']);
     });
 
-    it('tells only the requester when the login cannot start', () => {
+    it('should tell only the requester when the login cannot start', () => {
       agentAuth.startError = new Error('Agent authentication is disabled.');
 
       service.login(requester, 'claude');
@@ -156,7 +156,7 @@ describe('WebAgentAuthService', () => {
       expect(other.sent).toEqual([]);
     });
 
-    it('reports a generic reason for a start failure that is not an error', () => {
+    it('should report a generic reason for a start failure that is not an error', () => {
       agentAuth.startError = 'boom' as unknown as Error;
 
       service.login(requester, 'claude');
@@ -166,7 +166,7 @@ describe('WebAgentAuthService', () => {
   });
 
   describe('input and cancel', () => {
-    it('passes a pasted code to the login and says whether it was accepted', () => {
+    it('should pass a pasted code to the login and say whether it was accepted', () => {
       expect(service.submitInput('claude', 'abc#def')).toBe(true);
       agentAuth.inputAccepted = false;
       expect(service.submitInput('claude', 'abc#def')).toBe(false);
@@ -176,7 +176,7 @@ describe('WebAgentAuthService', () => {
       ]);
     });
 
-    it('cancels the login of the agent', () => {
+    it('should cancel the login of the agent', () => {
       service.cancel('claude');
 
       expect(agentAuth.cancelled).toEqual(['claude']);

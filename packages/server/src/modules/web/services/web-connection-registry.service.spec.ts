@@ -4,7 +4,7 @@ import { WebConnectionRegistryService } from './web-connection-registry.service.
 
 
 describe('WebConnectionRegistryService', () => {
-  it('broadcasts to registered connections and forgets closed ones', () => {
+  it('should broadcast to registered connections and forget closed ones', () => {
     const registry = new WebConnectionRegistryService();
     const first = new FakeClientConnection('a');
     const second = new FakeClientConnection('b');

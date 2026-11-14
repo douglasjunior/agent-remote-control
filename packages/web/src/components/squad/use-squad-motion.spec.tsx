@@ -36,7 +36,7 @@ describe('SquadPanel motion', () => {
   const panel = (members: readonly TeamMember[], delivery = 0) => <SquadPanel members={members} focus={null} highlight={null} delivery={delivery} onSelect={vi.fn()} onContinue={vi.fn()} />;
   const pulses = (container: HTMLElement) => container.querySelectorAll('.squad-pulse');
 
-  it('sends a bigger pulse when an agent starts and repeats on an interval', () => {
+  it('should send a bigger pulse when an agent starts and repeat on an interval', () => {
     const { container } = render(panel(team(['DEVELOPER'])));
     expect(pulses(container)).toHaveLength(1);
 
@@ -44,7 +44,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(2);
   });
 
-  it('removes each pulse when its flight ends or is cancelled', () => {
+  it('should remove each pulse when its flight ends or is cancelled', () => {
     const { container } = render(panel(team(['DEVELOPER', 'GIT_OPS'])));
     act(() => vi.advanceTimersByTime(1150));
     expect(pulses(container)).toHaveLength(4);
@@ -53,7 +53,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(0);
   });
 
-  it('keeps no more pulses than the ones in flight over a long session', () => {
+  it('should keep no more pulses than the ones in flight over a long session', () => {
     const { container } = render(panel(team(['DEVELOPER'])));
     for (let tick = 0; tick < 300; tick++) {
       act(() => vi.advanceTimersByTime(1150));
@@ -63,7 +63,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(0);
   });
 
-  it('sends a pulse back to the coordinator when the agent ends, then stops the interval', () => {
+  it('should send a pulse back to the CEO when the agent ends, then stop the interval', () => {
     const { container, rerender } = render(panel(team(['DEVELOPER'])));
     flights.splice(0).forEach(flight => flight.onfinish!());
 
@@ -75,7 +75,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(0);
   });
 
-  it('sends a pulse to every station on a delivery', () => {
+  it('should send a pulse to every station on a delivery', () => {
     const { container, rerender } = render(panel(team([])));
     rerender(panel(team([]), 1));
     act(() => vi.advanceTimersByTime(1000));
@@ -83,7 +83,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(6);
   });
 
-  it('removes the pulses in flight when the panel unmounts', () => {
+  it('should remove the pulses in flight when the panel unmounts', () => {
     const { container, unmount } = render(panel(team(['DEVELOPER'])));
     const host = container;
     unmount();
@@ -91,7 +91,7 @@ describe('SquadPanel motion', () => {
     expect(pulses(host)).toHaveLength(0);
   });
 
-  it('sends nothing under reduced motion', () => {
+  it('should send nothing under reduced motion', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     const { container } = render(panel(team(['DEVELOPER'])));
 
@@ -99,7 +99,7 @@ describe('SquadPanel motion', () => {
     expect(Element.prototype.animate).not.toHaveBeenCalled();
   });
 
-  it('sends nothing without the Web Animations API', () => {
+  it('should send nothing without the Web Animations API', () => {
     delete (Element.prototype as { animate?: unknown }).animate;
     const { container } = render(panel(team(['DEVELOPER'])));
 
@@ -110,7 +110,7 @@ describe('SquadPanel motion', () => {
 describe('SquadPanel spine', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('joins the first and last lens and stays neutral whatever the roles do', () => {
+  it('should join the first and last lens and stay neutral whatever the roles do', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       const index = ROLES.indexOf(this.dataset.lens ?? '');
       return { top: index < 0 ? 0 : index * 100, height: index < 0 ? 0 : 36 } as DOMRect;

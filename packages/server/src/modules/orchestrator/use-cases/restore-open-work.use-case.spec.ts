@@ -22,7 +22,7 @@ async function restore(...records: OpenWork[]) {
 }
 
 describe('RestoreOpenWorkUseCase', () => {
-  it('queues unanswered questions where the user left them and hands over the answers when they are done', async () => {
+  it('should queue unanswered questions where the user left them and hand over the answers when they are done', async () => {
     const { queue, openWork } = await restore({
       ...record,
       questions: { message: 'Context', questions: [first, second], answers: [{ question: first, answer: 'a', optionNumber: 1 }] },
@@ -37,7 +37,7 @@ describe('RestoreOpenWorkUseCase', () => {
     });
   });
 
-  it('keeps the answers given so far on disk while questions remain', async () => {
+  it('should keep the answers given so far on disk while questions remain', async () => {
     const { queue, store } = await restore({ ...record, questions: { message: '', questions: [first, second], answers: [] } });
 
     queue.submit('web-1', { kind: 'option', optionIndex: 1 });
@@ -46,7 +46,7 @@ describe('RestoreOpenWorkUseCase', () => {
     expect(store.saved['web-1']![0]!.questions!.answers.map(answer => answer.answer)).toEqual(['a']);
   });
 
-  it('leaves work without questions for the user to continue', async () => {
+  it('should leave work without questions for the user to continue', async () => {
     const { queue, openWork } = await restore(record);
 
     expect(queue.hasPending('web-1')).toBe(false);

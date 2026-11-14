@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import { FakeWorkspaceUpload } from '../testing/fake-workspace-upload.js';
-import { StubWorkspacePort } from '../testing/stub-workspace.port.js';
 
 import { WebConversationUploadsService } from './web-conversation-uploads.service.js';
 
@@ -15,7 +15,7 @@ function setup(...files: readonly string[]) {
 const attachment = (name: string) => ({ name, path: `.arc-uploads/web-1/${name}` });
 
 describe('WebConversationUploadsService', () => {
-  it('resolves the uploads of the conversation to absolute paths with their size', async () => {
+  it('should resolve the uploads of the conversation to absolute paths with their size', async () => {
     const service = setup('shot.png');
 
     await expect(service.resolve('web-1', [attachment('shot.png')])).resolves.toEqual([{ name: 'shot.png', path: '/workspaces/.arc-uploads/web-1/shot.png', contentType: 'image/png', size: 100 }]);
@@ -30,7 +30,7 @@ describe('WebConversationUploadsService', () => {
     ['notes.md', 'text/markdown'],
     ['archive.xyz', 'application/octet-stream'],
     ['no-extension', 'application/octet-stream'],
-  ])('gives %s the content type %s, from its extension', async (name, contentType) => {
+  ])('should give %s the content type %s, from its extension', async (name, contentType) => {
     const service = setup(name);
 
     const [file] = (await service.resolve('web-1', [attachment(name)]))!;
@@ -38,7 +38,7 @@ describe('WebConversationUploadsService', () => {
     expect(file!.contentType).toBe(contentType);
   });
 
-  it('refuses the whole list when one file is not an existing upload of the conversation', async () => {
+  it('should refuse the whole list when one file is not an existing upload of the conversation', async () => {
     const service = setup('shot.png');
 
     await expect(service.resolve('web-1', [attachment('shot.png'), attachment('missing.png')])).resolves.toBeNull();

@@ -8,7 +8,7 @@ import { MissingTokenPage } from './missing-token-page.js';
 
 
 describe('MissingTokenPage', () => {
-  it('disables the button until a token is typed and stores it on submit', async () => {
+  it('should disable the button until a token is typed and store it on submit', async () => {
     const user = userEvent.setup();
     const connection = new FakeServerConnection();
     connection.accessToken = null;

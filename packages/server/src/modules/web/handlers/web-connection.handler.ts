@@ -3,16 +3,20 @@ import type { ClientCommand } from '@agent-remote-control/protocol/client-comman
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
+import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
+import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebSkillsService } from '../services/web-skills.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
+import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
 import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-history.use-case.js';
@@ -20,6 +24,7 @@ import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-pr
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
+import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
@@ -28,7 +33,18 @@ import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-pr
 export const AUTH_TIMEOUT_MS = 5_000;
 export const AUTH_FAILED_CLOSE_CODE = 4401;
 
-const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set(['message.send', 'question.answer', 'turn.cancel', 'work.resume', 'auth.login', 'auth.cancel']);
+const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set([
+  'message.send',
+  'question.answer',
+  'turn.cancel',
+  'work.resume',
+  'auth.login',
+  'auth.cancel',
+  'artifact.create',
+  'artifact.update',
+  'artifact.comment',
+  'artifact.delete',
+]);
 
 @Injectable()
 export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
@@ -57,6 +73,11 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly quota: WebAgentQuotaService,
     private readonly agentAuth: WebAgentAuthService,
     private readonly logContext: ConversationLogContextService,
+    private readonly artifacts: WebArtifactsService,
+    @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
+    private readonly renameConversation: RenameConversationUseCase,
+    private readonly archiveConversation: ArchiveConversationUseCase,
+    private readonly skills: WebSkillsService,
   ) {}
 
   onModuleInit(): void {
@@ -147,6 +168,18 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'agents.list':
         connection.send({ type: 'agents.list', agents: [...this.agentOptions.agents()] });
         return;
+      case 'projects.list':
+        connection.send({ type: 'projects.list', projects: [...await this.workspace.listProjectFolders()] });
+        return;
+      case 'skills.list':
+        connection.send({ type: 'skills.list', skills: await this.skills.list() });
+        return;
+      case 'skill.get':
+        connection.send({ type: 'skill.detail', name: command.name, skill: await this.skills.get(command.name) });
+        return;
+      case 'skill.delete':
+        connection.send({ type: 'skill.result', requestId: command.requestId, ...await this.skills.delete(command.name) });
+        return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);
       case 'auth.status':
@@ -204,6 +237,10 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
+      case 'conversation.rename':
+        return this.renameConversation.execute(command.conversationId, command.title);
+      case 'conversation.archive':
+        return this.archiveConversation.execute(command.conversationId, command.archived);
       case 'upload.start':
         return this.uploads.start(connection, command);
       case 'message.send':
@@ -230,6 +267,27 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'question.answer':
         return this.reportUnless(connection, command.conversationId, 'There is no open question', () =>
           this.answerQuestion.execute(command.conversationId, command.answer));
+      case 'artifacts.list':
+        connection.send({ type: 'artifacts.list', conversationId: command.conversationId, artifacts: await this.artifacts.list(command.conversationId) });
+        return;
+      case 'artifact.get': {
+        const artifact = await this.artifacts.detail(command.conversationId, command.id);
+        connection.send(artifact
+          ? { type: 'artifact.detail', conversationId: command.conversationId, artifact }
+          : { type: 'error', message: `Unknown artifact "${command.id}"`, conversationId: command.conversationId });
+        return;
+      }
+      case 'artifact.create':
+        connection.send(await this.artifacts.create(command.conversationId, command.requestId, command.artifact));
+        return;
+      case 'artifact.update':
+        connection.send(await this.artifacts.update(command.conversationId, command.requestId, command.id, command.changes));
+        return;
+      case 'artifact.comment':
+        connection.send(await this.artifacts.comment(command.conversationId, command.requestId, command.id, command.text));
+        return;
+      case 'artifact.delete':
+        connection.send(await this.artifacts.remove(command.conversationId, command.requestId, command.id));
     }
   }
 

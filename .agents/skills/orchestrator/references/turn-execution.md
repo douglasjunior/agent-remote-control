@@ -1,0 +1,108 @@
+# Turn Execution
+
+How a turn runs step by step: the directory hierarchy, the tag protocol, the CEO rounds, the delegations and each agent round. Read before changing how a turn, a delegation or an agent round runs.
+
+## Directory Hierarchy
+
+The CEO operates at the workspaces root (`IWorkspacePort.getBaseDirectory()`, default
+`./workspaces/` or `WORKSPACE_DIR`), which the channel sends as `TurnRequest.workspacePath`.
+Each delegated agent operates in `IWorkspacePort.resolveRepositoryPath(project)`:
+
+```text
+./workspaces/                    ← cwd of the CEO and of GIT_OPS without a project folder
+├── workspace-manifest.json      ← URL-to-folder mapping, written only by GIT_OPS
+├── my-backend/                  ← cwd of the delegated agent with <delegate role="ROLE" project="my-backend">
+└── my-frontend/
+```
+
+Before each `createSession(cwd)`, the orchestrator calls `IWorkspacePort.ensureDirectory(cwd)`, because
+`agy` fails to start in a nonexistent directory. `resolveRepositoryPath` and `ensureDirectory` reject
+paths outside the workspaces root, since the project name comes from the CEO's response, and
+`resolveRepositoryPath` also rejects nested paths (`my-app/src`). A project folder
+must also appear in `listProjectFolders()` (direct non-hidden subfolders, including links to directories): a wrong name
+would become an empty CWD created by `ensureDirectory`, so the delegation becomes `invalid` and the repair
+lists the existing folders.
+
+`IWorkspacePort` exposes `getBaseDirectory`, `resolveRepositoryPath`, `ensureDirectory` and
+`listProjectFolders`: the app resolves, lists and creates directories, writes nothing else in the workspace (the
+CEO's guidance is its prompt and its skills, read on demand) and does not run Git. Cloning a repository into the workspace, registering it in the manifest
+and other standalone Git operations against a remote belong to the `GIT_OPS` agent, and the URL reaches it
+through the specification the CEO writes. The project's own scripts that clone sub-repositories, such as an
+`init`, are run by the `DEVELOPER`.
+
+## Tag Protocol
+
+| CEO response | Orchestrator action |
+|---|---|
+| With `<delegate>` | Hands the `message` to `onInterimMessage` and, for each tag, creates a new `IAgentPort` for `ROLE` with `cwd` in the project, resumes or starts a session according to `session` / `defaultSessionMode` and sends `taskSpec` (prefixed with `systemPrompt(ROLE)` when the session is created) |
+| With `<question>` | Queues the questions and, with the answers, runs a new CEO round in the same turn |
+| Without `<delegate>` or `<question>` | Ends the loop and returns the `message` as `response`, with the resolved attachments |
+| *(invalid)* | Sends the repair prompt with the reason to the CEO |
+| With agent requests (`<artifact_list>`, `<artifact_read>`, `<artifact_create>`, `<artifact_update>`, `<artifact_comment>`, `<skill_read>`, `<skill_list>`, `<skill_write>`) | Runs them first and sends `<request_results>` back to the same agent, CEO or delegate, until a response carries none; only that response is classified |
+
+The classified response is the content of the `<final_response>` envelope, read by `AgentProtocolService`
+(`services/agent-protocol.service.ts`), and that is why the tags go inside it. The repair prompt reinforces this rule.
+
+The delegated agent's result returns to the CEO as `<agent_result role="ROLE" project="folder" artifact="T-1" artifact_status="in_review">\n<response>\n</agent_result>` (without `project` or `artifact` when there is none; `artifact_status` is the artifact's status read when the agent finished, so the CEO sets the next one against the result, followed by `artifact_status_by="user"` when a user set it while the agent worked). A result with `status="stopped"` comes from `ActiveDelegation.stop(reason)`: `StopArtifactWorkUseCase` listens to the board (`IArtifactsPort.onChange`) and, when a user moves a held artifact to a work-ending status, stops the delegation holding it (`delegationId`). The stop discards the agent's pending questions and cancels its turn without ending the CEO's: the reason (`buildStoppedWorkPrompt`: who stopped it, and that what the agent changed in its project stays there for the user to keep or discard) becomes the result body and the turn goes on. In a parallel delegation, the results arrive together, one block per delegation, in tag order, separated by a blank line.
+
+## Turn Execution
+
+A turn is split by responsibility:
+
+- `ExecuteAgentTurnUseCase` runs the CEO turn: steering, the CEO rounds, repairs, the CEO's questions, resumed work and the `TurnResult`.
+- `DelegationValidatorService.decide(response, request)` classifies a CEO response and checks every delegation in it.
+- `RunDelegationUseCase` runs the delegated agents (`start`, `stopRunning`) and turns each one into an `<agent_result>` (`prompts/agent-result.prompt.ts`).
+- `AgentRoundService.run(input)` sends one prompt to one agent, CEO or delegate, in its session, with its profile; it also resolves the conversation's session, the role's agent, its `agentInfo` and the language block.
+- `AnswerAgentQuestionsUseCase` carries an agent's questions to the user and the answers back (`buildUserAnswersPrompt`).
+- `RunAgentRequestsUseCase.resolve` carries out the board and skill requests of each response before it is classified.
+- `TeamProfilesService.build` writes the `[TEAM_PROFILES]` block.
+
+Running `ExecuteAgentTurnUseCase.execute(request: TurnRequest): Promise<TurnResult>` follows this sequence:
+
+1. **Turn lifecycle**: calls `ConversationRuntimeService.beginTurn(conversationKey)`, ensuring tracking in the active turns counter until the `finally`.
+2. **Turn agent**: each role resolves its agent from the conversation's `AgentSettings` through `resolveProfile`, falling back to `IAgentPortFactory.defaultAgentId`, which is read only when no profile exists because it scans PATH. The CEO port uses the CEO profile; each delegate uses its own role's profile, read when the delegation starts. The settings are read at every turn and delegation start, so a saved change applies to the next one without interrupting work in progress.
+   - **Steering**: before entering the queue, tries `steerCeo` with `buildCeoSteeringPrompt` (`prompts/ceo-steering.prompt.ts`, a `[USER_MESSAGE]` block that tells it to continue the current task taking the message into account, because without it the model tends to answer only the message and end the round) over the prompt enriched with `[ATTACHMENTS]`, preceded by the `[TEAM_PROFILES]` block and followed by `getTurnReminder(role)`. If delivered, returns `status: 'steered'` with the CEO's `agentInfo`, without running a new round. If not delivered (agent without steering, CEO still connecting or between rounds, busy queue), it follows the normal flow.
+3. **CEO mutual exclusion**: runs the CEO round via `ConversationRuntimeService.runOnCeo(conversationKey, ...)`. The CEO port is released as soon as the CEO decides to delegate, allowing new user messages to be handled while specialists work in the background.
+4. **Session resolution and prompt enrichment**: resolved in the CEO's first round inside `runOnCeo` so that simultaneous messages deterministically share the same persisted session. If there are `request.attachments`, it enriches the prompt with the `[ATTACHMENTS]` block detailing the local inventory (name, size, MIME type and absolute path on disk) and instructing the agent to inspect the files using the tools available in its environment. It injects the `[TEAM_PROFILES]` block (`TeamProfilesService.build`) into the CEO's initial prompt: one line per role of `IAgentRegistryPort.listRoles()` except the CEO's, with the coding agent, model and effort, and `Status: idle` or `Status: working`. The profile comes from the conversation settings (`resolveProfile`, falling back to the CEO's profile, then to the default agent and `default` for model and effort); a working role shows the `agentInfo` it started with (`ActiveDelegation.agentInfo`, resolved with `AgentRoundService.buildAgentInfo` when the delegation starts, so a settings change applies to the next delegation and not to the running one) plus `Running` time, `Project`, `Artifact` (when it holds one), `Waiting for user` (`UserQuestionQueueService.isWaiting`) and the `Summary` of the task (`ActiveDelegation.summary`, the `summary` attribute of the `<delegate>`). The block is always present, so the CEO reads a prompt without it as an unchanged team, and a CEO session that was just created or switched has no memory of who is on the team. In later rounds of the same turn the block is sent again only when its signature (profiles, states, projects, wait states and summaries, without elapsed time) changed since the last block of the turn. Notices pending from a turn that failed or was cancelled come before it in a `[PREVIOUS_TURN]` block (`buildPreviousTurnPrompt`): how the turn ended, each agent stopped before finishing (a delegation the CEO replaced is left out) and each delegation the round limit kept from starting. `ConversationRuntimeService` holds them in memory, outside the runtime that expires when idle, and they leave once a CEO round returns; a restart loses them.
+5. **Delegation loop**: runs one CEO round per prompt; `MAX_DELEGATION_ROUNDS` (1000) bounds the rounds in which the CEO delegates, a last resort that also covers delegations without an artifact; the guard against agents looping on a task is the freeze of the artifact after too many delegations:
+   1. Runs the CEO turn with `cwd = request.workspacePath`.
+   2. Classifies the response with `DelegationValidatorService.decide()`, which detects the outcome with `DelegationDetectorService.detect()` and validates each delegation: the role must exist (`hasRole`) and differ from the root role, the tag attributes must fit `getDelegationContract(role)`, an `artifact` must pass the board checks (see "Artifacts"), which also set the project to the artifact's, and the project must be accepted by `resolveRepositoryPath` and appear in `listProjectFolders()`. Validation failures become `invalid`, and project failures list the existing folders in the reason. With several delegations, it validates each one and then the set: the same role does not appear twice, whatever the project, nor the same artifact, and at most one agent that modifies files works in each `cwd`, counting active delegations from previous turns; agents with `readOnly` in the contract do not count, and neither does an active delegation of the same role, because the new one replaces it.
+   3. **Repair**: on `invalid`, sends `buildDelegationRepairPrompt(reason)` (`prompts/delegation-repair.prompt.ts`), starting with `[DELEGATION_ERROR]`, to the CEO and classifies the new response. There are up to `MAX_REPAIR_ATTEMPTS` (1) attempts per CEO response, outside the round count. If it remains `invalid`, returns `status: 'failed'` with `errorMessage: 'Invalid CEO response: <reason>'`.
+   4. `ask` does not leave the round: the CEO waits for the answers in the queue and receives `<user_answers>` on the same port, inside `runOnCeo`, with `isUserMessage` true (the system prompt accompanies it); the new response is classified and repaired like the first. `reply` ends with `status: 'completed'` once no delegation of the turn is running; while some still run, its text goes to `onInterimMessage` and the loop keeps waiting for their results.
+   5. On `delegate` in the last allowed delegation round, it ends without running the delegate (item 6), because the result would not return to the CEO.
+   6. In the other rounds, on `delegate`, it hands the non-empty `message` to `onInterimMessage` and starts all delegations in parallel (`RunDelegationUseCase.start`), each as below, tracked in `RunningDelegations` (`models/running-delegations.model.ts`). The next CEO prompt is built from the results as the agents finish: `nextResults()` waits for the first one and returns every result finished so far, so results that finish while the CEO is busy arrive together. If one was cancelled, the turn is cancelled. A delegation that failed with another error becomes the block `<agent_result role="ROLE" project="folder" status="failed">\n<message>\n</agent_result>` (logged as `[Delegation Failed]`), delivered like any other result so the CEO decides between retrying the task or notifying the user. When the turn ends with delegations still running (invalid CEO response, failure, cancellation), `RunDelegationUseCase.stopRunning` discards their questions from the queue, because a wait for an answer would hold the turn open until the user answered, cancels the ones still pending and waits for them to settle, so no agent keeps running unobserved. It touches only the delegations the turn itself started (`delegationOwners`): while a replaced agent closes, its role already points to another turn's agent:
+      - When the role already has an active delegation, in any project (`findActiveDelegation`):
+        - If it works in the same project, the agent is not waiting for answers in the queue, `existing.agentPort.supportsSteering === true` and `await existing.steer(taskSpec)` confirms delivery: immediately returns the `<agent_result>` with `Steering message sent to active agent.`. An agent waiting for answers has no round in progress to receive the steering.
+        - Without steering, with delivery refused, with the agent waiting for answers or with the active delegation in another project: marks it as replaced, discards its questions from the queue (`discard`, which rejects the wait with a cancellation), cancels the previous active round (`await existing.turn.cancel()`), closes the session and disconnects the transport with error-tolerant handling (`closeSession()`, `disconnect()`), removes it from the runtime and proceeds to initialize a new port in the requested directory, resuming the corresponding ACP session and waiting for the specialist's consolidated response. The replaced delegation emits `cancelled`, whatever error ended it, and its outcome is `replaced`: it gives the CEO no result and does not end the turn. A turn left with nothing to wait for, because another turn replaced its last agents, ends with `status: 'steered'` and no response, since that other turn answers the user.
+      - Creates the delegate's port with `create(agentId)`, creates `ActiveDelegation` and registers it in the runtime. The `steer` method updates the `taskSpec` and, with `supportsSteering`, returns the result of `sendSteeringPrompt`; without steering, returns `false`.
+      - Logs `[Delegation Started]` and emits `onDelegation` `started`; on completion, logs `[Delegation Finished]` and emits `finished`; on a cancellation, emits `cancelled` before rethrowing it, and a pending notice reports the agent as stopped before finishing.
+      - Between start and completion, each delegate response goes through `AnswerAgentQuestionsUseCase` (`QuestionParserService` first): with questions, it waits for the answers in the queue and returns them to the same agent, on the same port and session, until it responds without questions. Malformed markup receives one repair (`buildQuestionRepairPrompt`, starting with `[QUESTION_ERROR]`) per response, and so do the questions of a role whose `DelegationContract` lacks `asksUser` (`buildQuestionNotAllowedPrompt`: answer without questions, the decision and its options in the result); if it persists, the response goes on as the result. Only the final response becomes `<agent_result>`.
+   7. In the delegation's `finally`, removes it from the active delegations registry and shuts down the delegated agent (`closeSession()` + `disconnect()`).
+   8. The CEO's next prompt is the `<agent_result>` blocks finished so far (each tagged `agent`, `model` and `effort` from the same `agentInfo`, `default` when unset), separated by a blank line, after the `[TEAM_PROFILES]` block when the team changed.
+6. **Round limit**: when the delegation rounds are exhausted, returns `status: 'failed'` with `errorMessage: 'Max delegation rounds exceeded.'`.
+
+Each agent round (`AgentRoundService.run`, CEO or delegate) runs:
+
+1. Appends the role's `getTurnReminder(role)` to the received prompt and, with `isSystemPromptEveryTurn(role)`, prefixes `getSystemPrompt(role)` in the CEO's first round of each user message and in the round that delivers `<user_answers>` to the CEO, including in a resumed session. The rounds with `<agent_result>` and the repair prompts of the same message do not repeat it, unless the ACP session is created in them.
+2. `turn.activate(agentPort)` and `turn.throwIfCancelled()`.
+3. `connect()` followed by `turn.throwIfCancelled()`.
+4. If `currentSessionId` is not set:
+   1. **With a session for the role on the port's agent (`agentId === agentPort.agentName`) in `agentSessions` and `sessionMode !== 'new'`**: rereads the `SessionContext` from the store and calls `loadSession(cwd, sessionId)`. On success, the system prompt is not resent, except for a role with `isSystemPromptEveryTurn`. The reread is necessary because the turn's object does not reflect the sessions written by the CEO and by previous rounds.
+   2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)`, `createSession(cwd)` and the prompt prefixed with `getSystemPrompt(role)`, followed by the `[SKILLS]` catalog of the role when it has skills or writes them (`buildSkillCatalogPrompt(skills, writesSkills)`, `prompts/skill-catalog.prompt.ts`). The catalog is the one explanation of skills every agent gets, the CEO included: the listed skills are kept by the server and read only through `<skill_read>`, in addition to the guidance and skills a project keeps in its own files, which the agent still follows; for a role that writes skills it adds `<skill_list/>`, reading any skill and `<skill_write>`, pointing to the listed skill about writing skills. The system prompt accompanies the creation of the ACP session, not that of the `SessionContext`, so that a recreated session receives the role's instructions.
+   3. If the ACP session ID changed, replaces the role/agent pair's entry in `agentSessions`, preserving those of other agents, and saves to the store.
+5. Configuration: with the role's profile for the same agent as the port and `modelId` set, `setConfig({ modelId, effortId: effortId ?? undefined })`; otherwise, `setConfig({ modelId })` when `getDefaultModel(role)` returns a model. A profile for another agent is ignored because model IDs are not valid across agents. Applies to the CEO and to delegates. Since sessions are keyed by role, agent and project, changing a role's agent starts a new session for it, while changing only its model or effort keeps the session.
+6. Registration of a listener via `onActivity(...)`, undone in `finally`, feeding an `AgentProtocolStream` (`AgentProtocolService.stream`) per prompt. The stream relays the activities of every agent to `request.onActivity`: a message with a `<final_response>` envelope settles its `thought` entry to the prose before the envelope (`final: true`) or takes it back (`removed: true`) when there is none. It also reports the answer as it stands, whole at every change (the content of the envelopes or, while no message has one, everything the agent said, reasoning excluded, a tag being typed held back): the CEO's becomes `request.onDraft` calls and those of delegated agents are not asked for.
+7. `turn.throwIfCancelled()` and draining of `prompt(text)`, accumulating the text blocks as the fallback response.
+8. Protocol repair: when the text has a `<final_response>` envelope and protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`, the artifact and skill requests) were written outside it, outside Markdown code (`AgentProtocolService.strayTags` over everything the agent wrote in the prompt), the same agent receives `buildProtocolRepairPrompt(tags)` (`prompts/protocol-repair.prompt.ts`, starting with `[PROTOCOL_ERROR]` and naming the tags) once, the CEO's draft discarded first, because text outside the envelope is narration and those tags would be dropped without a word.
+9. Response: `AgentProtocolService.finalResponse` of `lastAgentMessage` or of the accumulated blocks (the content of the envelopes, accepting an unclosed one, or the whole text when there is none), logged as `[Agent Response] Role=<ROLE>, Length=<n>` with a 100-character single-line preview.
+
+**Cancellation and failure handling**: `PromptCancelledError` (or an error with the same
+name) thrown by any agent or by `ActiveTurn` returns `status: 'cancelled'`. Other
+errors return `status: 'failed'` with `errorMessage` and disconnect the CEO agent, so that the
+next turn starts a new transport and resumes the session. In both cases, `response` receives
+the `lastAgentMessage` of the CEO port used in the turn, read by `AgentProtocolService.finalResponse` (empty when the turn fails before there is a port).
+
+**Turn metadata**: `agentInfo.roleName` comes from `getDisplayName(role)` and `agentName` from the
+CEO's `IAgentPort` (the turn's `agentId` when there is no port yet). `modelName` and `effortName`
+come from the role's profile of the same agent; without them, `modelName` is the `displayName` of
+`getAvailableModels().currentModelId`.

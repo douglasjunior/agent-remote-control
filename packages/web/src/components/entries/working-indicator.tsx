@@ -26,7 +26,7 @@ export function WorkingLabel({ children }: { readonly children: string }) {
 export function WorkingIndicator({ members }: { readonly members: readonly TeamMember[] }) {
   const working = members.filter(member => member.state === 'working');
   const lead = working.length === 1 ? working[0]! : undefined;
-  let label = 'Coordinator is thinking…';
+  let label = 'CEO is thinking…';
   if (lead) {
     label = `${agentIdentity(lead.role, lead.roleName).label} is ${lead.role === 'CEO' ? 'thinking' : 'working'}…`;
   } else if (working.length > 1) {

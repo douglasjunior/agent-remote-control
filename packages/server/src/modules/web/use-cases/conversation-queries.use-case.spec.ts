@@ -7,7 +7,7 @@ import { ListConversationsUseCase } from './list-conversations.use-case.js';
 
 
 describe('conversation query use cases', () => {
-  it('creates and lists conversations through the store', async () => {
+  it('should create and list conversations through the store', async () => {
     const { store } = createWebHarness();
 
     const created = await new CreateConversationUseCase(store).execute();
@@ -15,7 +15,7 @@ describe('conversation query use cases', () => {
     expect(await new ListConversationsUseCase(store).execute()).toEqual([created]);
   });
 
-  it('returns the history with the current state', async () => {
+  it('should return the history with the current state', async () => {
     const { store, events, questions, agentTurn } = createWebHarness();
     store.seed('web-1');
     const entry = { id: 'e', at: '2026-01-01T00:00:00.000Z', type: 'interim' as const, text: 'x' };

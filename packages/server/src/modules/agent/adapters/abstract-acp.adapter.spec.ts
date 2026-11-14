@@ -440,7 +440,7 @@ describe('AbstractAcpAdapter', () => {
       expect(adapter.getAvailableModels()).toBeNull();
     });
 
-    it('should flatten grouped model options into a single available models list', async () => {
+    it('should flatten grouped model options into a single available models list, each value once', async () => {
       const adapter = new TestAcpAdapter();
       await adapter.connect();
 
@@ -461,6 +461,7 @@ describe('AbstractAcpAdapter', () => {
                   { value: 'b', name: 'B' },
                 ],
               },
+              { value: 'a', name: 'A again' },
             ],
           },
         ],

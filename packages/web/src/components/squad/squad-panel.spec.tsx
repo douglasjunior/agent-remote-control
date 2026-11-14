@@ -29,16 +29,31 @@ const stationStates = () => screen.getAllByRole('button').map(button => [button.
 describe('SquadPanel', () => {
   afterEach(() => vi.useRealTimers());
 
-  it('shows one station per role of the team and is ready when nothing runs', () => {
+  it('should show one station per role of the team and be ready when nothing runs', () => {
     renderPanel([], false);
 
     expect(screen.getByRole('heading', { name: 'Your squad' })).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(6);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
     expect(stationStates().every(([, state]) => state === 'idle')).toBe(true);
   });
 
-  it('keeps the same size however many delegations the conversation accumulates', () => {
+  it('should show what each role runs on, and an agent that is not installed', () => {
+    renderPanel([], false, {
+      profiles: [
+        { role: 'CEO', roleName: 'CEO', agent: { id: 'copilot', name: 'GitHub Copilot', available: true }, model: { id: 'auto', name: 'Auto' } },
+        { role: 'QA', roleName: 'QA Agent', agent: { id: 'codex', name: 'Codex', available: false }, model: { id: 'm', name: 'GPT' }, effort: { id: 'h', name: 'High' } },
+        { role: 'DEVELOPER', roleName: 'Developer Agent' },
+      ],
+    });
+
+    expect(station(/CEO/)).toHaveTextContent('GitHub Copilot · Auto');
+    expect(station(/QA/)).toHaveTextContent('Codex · GPT · Highnot installed');
+    expect(station(/Developer/)).toHaveTextContent('Not configured');
+    expect(within(station(/Reviewer/)).queryByText(/·|Not configured/)).not.toBeInTheDocument();
+  });
+
+  it('should keep the same size however many delegations the conversation accumulates', () => {
     const turn = (index: number): ConversationEntry[] => [
       user(`u${index}`),
       started(`s${index}`, 'DEVELOPER', 'Developer'),
@@ -50,44 +65,44 @@ describe('SquadPanel', () => {
 
     const many = renderPanel(Array.from({ length: 200 }, (_, index) => turn(index)).flat(), false);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(6);
-    expect(many.container.querySelectorAll('li')).toHaveLength(6);
+    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(many.container.querySelectorAll('li')).toHaveLength(7);
     expect(many.container.innerHTML).toBe(small);
   });
 
-  it('adds a station only for an unknown role delegated to in the current turn', () => {
+  it('should add a station only for an unknown role delegated to in the current turn', () => {
     renderPanel([user('u1'), started('s1', 'DESIGNER', 'Designer')], true);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
     expect(station(/Designer/)).toHaveAttribute('data-state', 'working');
   });
 
-  it('starts from a clean panel on each new user message', () => {
+  it('should start from a clean panel on each new user message', () => {
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer'), finished('f1', 'DEVELOPER', 'Developer'), user('u2')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['GIT_OPS', 'idle']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'idle']]);
   });
 
-  it('leaves every station the turn did not involve idle when it delegates only to Git Ops', () => {
+  it('should leave every station the turn did not involve idle when it delegates only to Git Ops', () => {
     renderPanel([user('u1'), started('s1', 'GIT_OPS', 'Git Ops', 'Open the pull request')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['GIT_OPS', 'working']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'working']]);
     expect(station(/Git Ops/)).toHaveTextContent('Open the pull request');
     expect(station(/Product Owner/)).toHaveTextContent('Figures out what to build');
     expect(screen.getByText('1 working')).toBeInTheDocument();
   });
 
-  it('reads Coordinating the squad while delegates work and Thinking when it works itself', () => {
+  it('should read Coordinating the squad while delegates work and Thinking when it works itself', () => {
     const delegating = renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
-    expect(station(/Coordinator/)).toHaveTextContent('Coordinating the squad');
-    expect(station(/Coordinator/)).toHaveAttribute('data-state', 'working');
+    expect(station(/CEO/)).toHaveTextContent('Coordinating the squad');
+    expect(station(/CEO/)).toHaveAttribute('data-state', 'working');
     delegating.unmount();
 
     renderPanel([user('u1')], true);
-    expect(station(/Coordinator/)).toHaveTextContent('Thinking');
+    expect(station(/CEO/)).toHaveTextContent('Thinking');
   });
 
-  it('shows the latest action as one ticker line, and finished work with its duration', () => {
+  it('should show the latest action as one ticker line, and finished work with its duration', () => {
     const entries: ConversationEntry[] = [
       user('u1'),
       started('s1', 'DEVELOPER', 'Developer'),
@@ -102,7 +117,7 @@ describe('SquadPanel', () => {
     expect(station(/Git Ops/)).toHaveTextContent('4 s');
   });
 
-  it('marks the asker as waiting for the user', () => {
+  it('should mark the asker as waiting for the user', () => {
     renderPanel([
       user('u1'),
       { id: 'q1', at: AT, type: 'question', askerRole: 'PRODUCT_OWNER', askerRoleName: 'Product Owner', text: 'Which?', options: [], number: 1, total: 1, closed: false },
@@ -112,7 +127,7 @@ describe('SquadPanel', () => {
     expect(screen.getByText('needs your answer')).toBeInTheDocument();
   });
 
-  it('shows a failed delegation and a failed coordinator', () => {
+  it('should show a failed delegation and a failed CEO', () => {
     renderPanel([
       user('u1'),
       started('s1', 'DEVELOPER', 'Developer'),
@@ -121,18 +136,18 @@ describe('SquadPanel', () => {
     ], false);
 
     expect(station(/Developer/)).toHaveTextContent('Failed');
-    expect(station(/Coordinator/)).toHaveTextContent('Hit a problem');
+    expect(station(/CEO/)).toHaveTextContent('Hit a problem');
     expect(screen.getByText('Something failed')).toBeInTheDocument();
   });
 
-  it('describes a delivered turn', () => {
+  it('should describe a delivered turn', () => {
     renderPanel([user('u1'), { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'done' }], false);
 
-    expect(station(/Coordinator/)).toHaveTextContent('Answer delivered');
+    expect(station(/CEO/)).toHaveTextContent('Answer delivered');
     expect(screen.getAllByText('Answer delivered')).toHaveLength(2);
   });
 
-  it('reveals only the static responsibility of the selected station', async () => {
+  it('should reveal only the static responsibility of the selected station', async () => {
     const onSelect = vi.fn();
     const { rerender } = renderPanel([], false, { onSelect });
     expect(screen.queryByText('Responsibility')).not.toBeInTheDocument();
@@ -147,7 +162,7 @@ describe('SquadPanel', () => {
     expect(station(/Git Ops/)).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('plays the delivery moment once per delivery and then clears it', () => {
+  it('should play the delivery moment once per delivery and then clear it', () => {
     vi.useFakeTimers();
     const members = deriveTeam([], false);
     const { rerender, container } = render(<SquadPanel members={members} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={vi.fn()} />);
@@ -161,7 +176,7 @@ describe('SquadPanel', () => {
     expect(panel).not.toHaveAttribute('data-delivered');
   });
 
-  it('ticks the clock of an agent that works', () => {
+  it('should tick the clock of an agent that works', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(AT).getTime());
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
@@ -171,7 +186,7 @@ describe('SquadPanel', () => {
     expect(station(/Developer/)).toHaveTextContent('5 s');
   });
 
-  it('offers to continue an agent a restart stopped', async () => {
+  it('should offer to continue an agent a restart stopped', async () => {
     const onContinue = vi.fn();
     const work = { id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', summary: 'Build the form' };
     render(<SquadPanel members={deriveTeam([started('s', 'DEVELOPER', 'Developer')], false, [work])} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={onContinue} />);

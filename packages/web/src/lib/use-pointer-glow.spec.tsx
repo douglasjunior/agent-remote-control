@@ -29,7 +29,7 @@ describe('usePointerGlow', () => {
     mediaMatches([]);
   });
 
-  it('starts near the top center of the window', () => {
+  it('should start near the top center of the window', () => {
     mediaMatches([]);
     const { getByTestId } = render(<Glow />);
 
@@ -37,7 +37,7 @@ describe('usePointerGlow', () => {
     expect(getByTestId('glow').style.getPropertyValue('--my')).toBe('200px');
   });
 
-  it('glides toward the pointer and settles on it', () => {
+  it('should glide toward the pointer and settle on it', () => {
     mediaMatches([]);
     const { getByTestId } = render(<Glow />);
     const glow = getByTestId('glow');
@@ -53,7 +53,7 @@ describe('usePointerGlow', () => {
     expect(Number.parseFloat(glow.style.getPropertyValue('--my'))).toBeCloseTo(100, 0);
   });
 
-  it('keeps one animation going while the pointer moves', () => {
+  it('should keep one animation going while the pointer moves', () => {
     mediaMatches([]);
     const request = vi.spyOn(window, 'requestAnimationFrame');
     render(<Glow />);
@@ -64,7 +64,7 @@ describe('usePointerGlow', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it.each([['(prefers-reduced-motion: reduce)'], ['(pointer: coarse)']])('stays still when %s', (query) => {
+  it.each([['(prefers-reduced-motion: reduce)'], ['(pointer: coarse)']])('should stay still when %s', (query) => {
     mediaMatches([query]);
     const { getByTestId } = render(<Glow />);
 
@@ -74,7 +74,7 @@ describe('usePointerGlow', () => {
     expect(getByTestId('glow').style.getPropertyValue('--mx')).toBe('');
   });
 
-  it('stops listening when it unmounts', () => {
+  it('should stop listening when it unmounts', () => {
     mediaMatches([]);
     const request = vi.spyOn(window, 'requestAnimationFrame');
     const { unmount } = render(<Glow />);

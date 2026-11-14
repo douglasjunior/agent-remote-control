@@ -4,9 +4,11 @@ import { agentAuthInfoSchema, agentLoginEventSchema } from './agent-auth.js';
 import { agentOptionSchema } from './agent-option.js';
 import { roleProfileSchema } from './agent-profile.js';
 import { agentQuotaReportSchema } from './agent-quota.js';
+import { artifactDetailSchema, artifactSummarySchema } from './artifact.js';
 import { attachmentSchema } from './attachment.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
+import { skillDetailSchema, skillSummarySchema } from './skill.js';
 
 
 export const interruptedWorkSchema = z.object({
@@ -79,6 +81,30 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('upload.done'), uploadId: z.string(), attachment: attachmentSchema }),
   z.object({ type: z.literal('upload.failed'), uploadId: z.string(), reason: z.string() }),
   z.object({ type: z.literal('agents.list'), agents: z.array(agentOptionSchema) }),
+  /** The project folders of the workspace, the values an artifact's project takes. */
+  z.object({ type: z.literal('projects.list'), projects: z.array(z.string()) }),
+  /** Every skill the agents read, built-in and the user's own. */
+  z.object({ type: z.literal('skills.list'), skills: z.array(skillSummarySchema) }),
+  /** Answers `skill.get`; `skill` is `null` when no skill has that name. */
+  z.object({ type: z.literal('skill.detail'), name: z.string(), skill: skillDetailSchema.nullable() }),
+  /** Answers the requester of `skill.delete`. */
+  z.discriminatedUnion('ok', [
+    z.object({ type: z.literal('skill.result'), requestId: z.string(), ok: z.literal(true) }),
+    z.object({ type: z.literal('skill.result'), requestId: z.string(), ok: z.literal(false), error: z.string() }),
+  ]),
+  /** Broadcast when a skill is deleted, so every open skills page drops it. */
+  z.object({ type: z.literal('skill.deleted'), name: z.string() }),
+  /** The artifacts of a conversation: each conversation keeps the board of its own mission. */
+  z.object({ type: z.literal('artifacts.list'), conversationId: z.string(), artifacts: z.array(artifactSummarySchema) }),
+  z.object({ type: z.literal('artifact.detail'), conversationId: z.string(), artifact: artifactDetailSchema }),
+  /** Broadcast whenever an artifact changes, whoever changed it; a client showing its detail asks for it again. */
+  z.object({ type: z.literal('artifact.updated'), conversationId: z.string(), artifact: artifactSummarySchema }),
+  z.object({ type: z.literal('artifact.deleted'), conversationId: z.string(), id: z.string() }),
+  /** Answers the requester of `artifact.create`, `artifact.update`, `artifact.comment` and `artifact.delete`. */
+  z.discriminatedUnion('ok', [
+    z.object({ type: z.literal('artifact.result'), conversationId: z.string(), requestId: z.string(), ok: z.literal(true), id: z.string() }),
+    z.object({ type: z.literal('artifact.result'), conversationId: z.string(), requestId: z.string(), ok: z.literal(false), error: z.string() }),
+  ]),
   z.object({
     type: z.literal('quota.report'),
     reports: z.array(agentQuotaReportSchema).readonly(),

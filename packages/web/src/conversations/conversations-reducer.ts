@@ -116,6 +116,16 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'auth.status':
     case 'auth.status.failed':
     case 'auth.login':
+    case 'projects.list':
+    case 'skills.list':
+    case 'skill.detail':
+    case 'skill.result':
+    case 'skill.deleted':
+    case 'artifacts.list':
+    case 'artifact.detail':
+    case 'artifact.updated':
+    case 'artifact.deleted':
+    case 'artifact.result':
     case 'error':
       return state;
   }

@@ -207,6 +207,9 @@ For each use case, adapter or service, ensure tests for:
 ## Style conventions
 
 - Tests written in English (`describe('ClassName')`, `it('should ...', async () => ...)`).
+- Every test name (`it`, `it.each`, `it.skip`, …) starts with `should` followed by the expected behavior, with every
+  verb in its base form: `it('should keep the draft and send it on Enter')`, never `it('keeps the draft and sends it')`.
+  The `no-restricted-syntax` rule for spec files in `eslint.config.js` enforces the prefix.
 - Clear Arrange-Act-Assert (AAA) structure in each test scenario.
 - Prefix stubs with `Stub*` or `Fake*`.
 - Isolate state: no test may depend on another's result; ensure data is reset

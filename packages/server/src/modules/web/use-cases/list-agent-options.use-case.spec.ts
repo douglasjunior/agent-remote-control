@@ -6,18 +6,18 @@ import { ListAgentOptionsUseCase } from './list-agent-options.use-case.js';
 describe('ListAgentOptionsUseCase', () => {
   const setup = () => new ListAgentOptionsUseCase(createWebHarness().configuration);
 
-  it('lists the available agents', () => {
+  it('should list the available agents', () => {
     expect(setup().agents()).toEqual([{ id: 'codex', name: 'Codex' }]);
   });
 
-  it('lists the models and efforts of an available agent', async () => {
+  it('should list the models and efforts of an available agent', async () => {
     const useCase = setup();
 
     await expect(useCase.models('codex')).resolves.toEqual([{ id: 'gpt', name: 'GPT', description: 'Fast' }]);
     await expect(useCase.efforts('codex', 'gpt')).resolves.toEqual([{ id: 'high', name: 'High' }]);
   });
 
-  it('refuses an agent that is not available instead of probing it', async () => {
+  it('should refuse an agent that is not available instead of probing it', async () => {
     const { configuration } = createWebHarness();
     const useCase = new ListAgentOptionsUseCase(configuration);
 

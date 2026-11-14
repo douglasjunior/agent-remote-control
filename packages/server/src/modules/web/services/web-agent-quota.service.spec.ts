@@ -22,11 +22,11 @@ describe('WebAgentQuotaService', () => {
     vi.useRealTimers();
   });
 
-  it('returns the reports with the time they were fetched', async () => {
+  it('should return the reports with the time they were fetched', async () => {
     await expect(service.read()).resolves.toEqual({ reports: [report('first')], fetchedAt: NOW.toISOString() });
   });
 
-  it('reuses the result until it expires', async () => {
+  it('should reuse the result until it expires', async () => {
     await service.read();
     agentTurn.quotaReports = [report('second')];
 
@@ -37,14 +37,14 @@ describe('WebAgentQuotaService', () => {
     await expect(service.read()).resolves.toMatchObject({ reports: [report('second')] });
   });
 
-  it('queries again on a refresh while the result is still valid', async () => {
+  it('should query again on a refresh while the result is still valid', async () => {
     await service.read();
     agentTurn.quotaReports = [report('second')];
 
     await expect(service.read(true)).resolves.toMatchObject({ reports: [report('second')] });
   });
 
-  it('shares the query in progress, a refresh included', async () => {
+  it('should share the query in progress, a refresh included', async () => {
     const getQuota = vi.spyOn(agentTurn, 'getQuota');
 
     const [first, second] = await Promise.all([service.read(), service.read(true)]);
@@ -53,7 +53,7 @@ describe('WebAgentQuotaService', () => {
     expect(second).toBe(first);
   });
 
-  it('does not keep a failure and queries again on the next read', async () => {
+  it('should not keep a failure and query again on the next read', async () => {
     agentTurn.throwOnQuota = true;
     await expect(service.read()).rejects.toThrow('quota down');
 

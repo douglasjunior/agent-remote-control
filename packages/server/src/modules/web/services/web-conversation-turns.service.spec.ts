@@ -30,7 +30,7 @@ function setup() {
 describe('WebConversationTurnsService', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('publishes running, then idle only after the second of two overlapping turns ends', () => {
+  it('should publish running, then idle only after the second of two overlapping turns ends', () => {
     const { turns, states } = setup();
 
     const first = turns.begin('web-1');
@@ -42,7 +42,7 @@ describe('WebConversationTurnsService', () => {
     expect(states()).toEqual(['running', 'idle']);
   });
 
-  it('reports queued only while every active turn is queued', () => {
+  it('should report queued only while every active turn is queued', () => {
     const { turns, states } = setup();
 
     const first = turns.begin('web-1');
@@ -55,7 +55,7 @@ describe('WebConversationTurnsService', () => {
     expect(states()).toEqual(['running', 'queued', 'running', 'queued', 'running', 'queued']);
   });
 
-  it('ignores marks for a turn that has ended and ends a turn idempotently', () => {
+  it('should ignore marks for a turn that has ended and end a turn idempotently', () => {
     const { turns, states } = setup();
 
     const turn = turns.begin('web-1');
@@ -66,7 +66,7 @@ describe('WebConversationTurnsService', () => {
     expect(states()).toEqual(['running', 'idle']);
   });
 
-  it('tracks each conversation on its own', () => {
+  it('should track each conversation on its own', () => {
     const { turns, states } = setup();
 
     const first = turns.begin('web-1');
@@ -78,7 +78,7 @@ describe('WebConversationTurnsService', () => {
     turns.end('web-2', other);
   });
 
-  it('reports the same state in the events service that the history reads', () => {
+  it('should report the same state in the events service that the history reads', () => {
     const { turns, events } = setup();
 
     turns.begin('web-1');
@@ -86,7 +86,7 @@ describe('WebConversationTurnsService', () => {
     expect(events.stateOf('web-1')).toBe('running');
   });
 
-  it('closes the open questions before idle and flushes the store', async () => {
+  it('should close the open questions before idle and flush the store', async () => {
     const { turns, events, store, observer } = setup();
     await events.publishEntry('web-1', questionEntry);
     const turn = turns.begin('web-1');
@@ -100,7 +100,7 @@ describe('WebConversationTurnsService', () => {
     expect((await store.history('web-1'))[0]).toMatchObject({ id: 'q1', closed: true });
   });
 
-  it('survives a flush failure', async () => {
+  it('should survive a flush failure', async () => {
     const { turns, store } = setup();
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     vi.spyOn(store, 'flush').mockRejectedValue(new Error('disk full'));
@@ -110,7 +110,7 @@ describe('WebConversationTurnsService', () => {
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('disk full')));
   });
 
-  it('describes a non-Error flush failure', async () => {
+  it('should describe a non-Error flush failure', async () => {
     const { turns, store } = setup();
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     vi.spyOn(store, 'flush').mockRejectedValue('nope');
@@ -120,13 +120,13 @@ describe('WebConversationTurnsService', () => {
     await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('nope')));
   });
 
-  it('is built from the events service and the store', () => {
+  it('should be built from the events service and the store', () => {
     const { events, store, questions, agentTurn } = setup();
 
     expect(new WebConversationTurnsService(events, store, questions, agentTurn, new ConversationEntryService())).toBeInstanceOf(WebConversationTurnsService);
   });
 
-  it('leaves a restored question open when the conversation becomes idle', async () => {
+  it('should leave a restored question open when the conversation becomes idle', async () => {
     const { turns, events, store, questions } = setup();
     store.seed('web-1');
     const question = { id: 'q', at: '2026-01-01T00:00:00.000Z', type: 'question' as const, askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false };

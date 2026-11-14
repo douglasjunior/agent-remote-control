@@ -50,7 +50,7 @@ describe('useAgentAuthStatus', () => {
     vi.restoreAllMocks();
   });
 
-  it('asks when the connection opens, and again after a reconnection', () => {
+  it('should ask when the connection opens, and again after a reconnection', () => {
     renderAuth();
     expect(requests()).toEqual([{ type: 'auth.status' }]);
 
@@ -59,12 +59,12 @@ describe('useAgentAuthStatus', () => {
     expect(requests()).toHaveLength(2);
   });
 
-  it('asks nothing before the connection opens', () => {
+  it('should ask nothing before the connection opens', () => {
     renderAuth(undefined, false);
     expect(requests()).toEqual([]);
   });
 
-  it('keeps the agents the server reports', () => {
+  it('should keep the agents the server reports', () => {
     const { result } = renderAuth();
     expect(result.current.agents).toBeNull();
 
@@ -73,14 +73,14 @@ describe('useAgentAuthStatus', () => {
     expect(result.current.agents).toEqual(agents);
   });
 
-  it('asks every five minutes while the tab is visible', () => {
+  it('should ask every five minutes while the tab is visible', () => {
     renderAuth();
 
     act(() => vi.advanceTimersByTime(AUTH_REFRESH_MS));
     expect(requests()).toHaveLength(2);
   });
 
-  it('skips the timer while the tab is hidden', () => {
+  it('should skip the timer while the tab is hidden', () => {
     renderAuth();
     visibility = 'hidden';
 
@@ -89,7 +89,7 @@ describe('useAgentAuthStatus', () => {
     expect(requests()).toHaveLength(1);
   });
 
-  it('asks again when the tab becomes visible with a stale or missing answer', () => {
+  it('should ask again when the tab becomes visible with a stale or missing answer', () => {
     renderAuth();
     setVisibility('hidden');
     setVisibility('visible');
@@ -107,7 +107,7 @@ describe('useAgentAuthStatus', () => {
     expect(requests()).toHaveLength(3);
   });
 
-  it('stops asking once unmounted', () => {
+  it('should stop asking once unmounted', () => {
     const { unmount } = renderAuth();
     unmount();
 
@@ -116,7 +116,7 @@ describe('useAgentAuthStatus', () => {
     expect(requests()).toHaveLength(1);
   });
 
-  it('ignores a failed check and keeps the last answer', () => {
+  it('should ignore a failed check and keep the last answer', () => {
     const { result } = renderAuth();
     emitStatus();
 
@@ -126,7 +126,7 @@ describe('useAgentAuthStatus', () => {
   });
 
   describe('login', () => {
-    it('sends the login and shows it as starting', () => {
+    it('should send the login and show it as starting', () => {
       const { result } = renderAuth();
 
       act(() => result.current.login('claude'));
@@ -135,7 +135,7 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'starting' });
     });
 
-    it('follows the link, the prompt and a repeated link', () => {
+    it('should follow the link, the prompt and a repeated link', () => {
       const { result } = renderAuth();
 
       emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'url', url: 'https://a.example/x' } });
@@ -148,7 +148,7 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'prompt', hint: 'Paste >', url: 'https://a.example/y', code: 'AB12-CD34' });
     });
 
-    it('shows a prompt that arrives before any link', () => {
+    it('should show a prompt that arrives before any link', () => {
       const { result } = renderAuth();
 
       emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'prompt', hint: 'Paste >' } });
@@ -156,7 +156,7 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'prompt', hint: 'Paste >', url: undefined, code: undefined });
     });
 
-    it('keeps the reason a login failed', () => {
+    it('should keep the reason a login failed', () => {
       const { result } = renderAuth();
 
       emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'failed', reason: 'Invalid code.' } });
@@ -164,7 +164,7 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'failed', reason: 'Invalid code.' });
     });
 
-    it('returns to idle when the login is cancelled', () => {
+    it('should return to idle when the login is cancelled', () => {
       const { result } = renderAuth();
       emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'url', url: 'https://a.example/x' } });
 
@@ -173,7 +173,7 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'idle' });
     });
 
-    it('reports a completed login, refreshes the state and returns to idle', () => {
+    it('should report a completed login, refresh the state and return to idle', () => {
       const onCompleted = vi.fn();
       const { result } = renderAuth(onCompleted);
 
@@ -184,13 +184,13 @@ describe('useAgentAuthStatus', () => {
       expect(result.current.loginStates.claude).toEqual({ kind: 'idle' });
     });
 
-    it('completes without a listener', () => {
+    it('should complete without a listener', () => {
       renderAuth();
 
       expect(() => emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'completed' } })).not.toThrow();
     });
 
-    it('sends a pasted code and a cancellation', () => {
+    it('should send a pasted code and a cancellation', () => {
       const { result } = renderAuth();
 
       act(() => result.current.submitCode('claude', 'abc#def'));

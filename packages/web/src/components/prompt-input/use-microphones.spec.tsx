@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe('useMicrophones', () => {
-  it('lists the audio inputs without the browser virtual entries', async () => {
+  it('should list the audio inputs without the browser virtual entries', async () => {
     media.devices.push({ deviceId: 'cam', kind: 'videoinput', label: 'Camera' });
     const { result } = renderHook(() => useMicrophones());
 
@@ -36,7 +36,7 @@ describe('useMicrophones', () => {
     expect(result.current.selectedId).toBe('');
   });
 
-  it('remembers the chosen microphone', async () => {
+  it('should remember the chosen microphone', async () => {
     const { result, unmount } = renderHook(() => useMicrophones());
     await waitFor(() => expect(result.current.devices).toHaveLength(2));
 
@@ -49,7 +49,7 @@ describe('useMicrophones', () => {
     await waitFor(() => expect(again.result.current.selectedId).toBe('b'));
   });
 
-  it('falls back to the default when the remembered microphone is gone, keeping the choice', async () => {
+  it('should fall back to the default when the remembered microphone is gone, keeping the choice', async () => {
     localStorage.setItem(MICROPHONE_STORAGE_KEY, 'unplugged');
     const { result } = renderHook(() => useMicrophones());
 
@@ -59,7 +59,7 @@ describe('useMicrophones', () => {
     expect(localStorage.getItem(MICROPHONE_STORAGE_KEY)).toBe('unplugged');
   });
 
-  it('names unnamed devices, then asks for access on load to read the real names', async () => {
+  it('should name unnamed devices, then ask for access on load to read the real names', async () => {
     media.devices = [audioInput('a', ''), audioInput('b', '')];
     media.getUserMedia.mockImplementationOnce(() => {
       media.grantAccess();
@@ -74,7 +74,7 @@ describe('useMicrophones', () => {
     expect(media.stoppedTracks).toHaveBeenCalled();
   });
 
-  it('does not ask for access when every device is already named', async () => {
+  it('should not ask for access when every device is already named', async () => {
     const { result } = renderHook(() => useMicrophones());
     await waitFor(() => expect(result.current.devices).toHaveLength(2));
 
@@ -83,7 +83,7 @@ describe('useMicrophones', () => {
     expect(media.getUserMedia).not.toHaveBeenCalled();
   });
 
-  it('keeps the generic names when access is denied', async () => {
+  it('should keep the generic names when access is denied', async () => {
     media.devices = [audioInput('a', '')];
     media.getUserMedia.mockRejectedValueOnce(new DOMException('no', 'NotAllowedError'));
     const { result } = renderHook(() => useMicrophones());
@@ -94,7 +94,7 @@ describe('useMicrophones', () => {
     expect(result.current.devices).toEqual([{ id: 'a', label: 'Microphone 1' }]);
   });
 
-  it('follows devices being plugged in', async () => {
+  it('should follow devices being plugged in', async () => {
     const { result } = renderHook(() => useMicrophones());
     await waitFor(() => expect(result.current.devices).toHaveLength(2));
 
@@ -103,7 +103,7 @@ describe('useMicrophones', () => {
     await waitFor(() => expect(result.current.devices.map(device => device.id)).toEqual(['a', 'b', 'c']));
   });
 
-  it('stops following devices after unmount', async () => {
+  it('should stop following devices after unmount', async () => {
     const remove = vi.spyOn(media, 'removeEventListener');
     const { unmount } = renderHook(() => useMicrophones());
 
@@ -112,7 +112,7 @@ describe('useMicrophones', () => {
     expect(remove).toHaveBeenCalledWith('devicechange', expect.any(Function));
   });
 
-  it('survives an unreadable device list', async () => {
+  it('should survive an unreadable device list', async () => {
     media.enumerateDevices.mockRejectedValue(new Error('denied'));
     const { result } = renderHook(() => useMicrophones());
 
@@ -121,7 +121,7 @@ describe('useMicrophones', () => {
     expect(result.current.devices).toEqual([]);
   });
 
-  it('works without media devices (insecure page)', () => {
+  it('should work without media devices (insecure page)', () => {
     FakeMediaDevices.uninstall();
 
     const { result } = renderHook(() => useMicrophones());
@@ -129,7 +129,7 @@ describe('useMicrophones', () => {
     expect(result.current.devices).toEqual([]);
   });
 
-  it('still selects when the storage is blocked', async () => {
+  it('should still selects when the storage is blocked', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });

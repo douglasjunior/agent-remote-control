@@ -48,7 +48,7 @@ describe('ThemeProvider', () => {
     vi.restoreAllMocks();
   });
 
-  it('defaults to system and follows the operating system preference', () => {
+  it('should default to system and follow the operating system preference', () => {
     const media = stubMatchMedia(false);
     const { unmount } = render(<ThemeProvider><Probe /></ThemeProvider>);
 
@@ -62,7 +62,7 @@ describe('ThemeProvider', () => {
     expect(media.listenerCount()).toBe(0);
   });
 
-  it('restores a stored theme and ignores invalid values', () => {
+  it('should restore a stored theme and ignore invalid values', () => {
     stubMatchMedia(false);
     localStorage.setItem('arc.theme', 'dark');
     const first = render(<ThemeProvider><Probe /></ThemeProvider>);
@@ -75,7 +75,7 @@ describe('ThemeProvider', () => {
     expect(screen.getByTestId('theme')).toHaveTextContent('system');
   });
 
-  it('falls back to system when storage throws', async () => {
+  it('should fall back to system when storage throws', async () => {
     stubMatchMedia(false);
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
@@ -92,7 +92,7 @@ describe('ThemeProvider', () => {
   it.each([
     ['Light', 'light', false],
     ['Dark', 'dark', true],
-  ] as const)('chooses %s from the toggle and persists it', async (label, stored, dark) => {
+  ] as const)('should choose %s from the toggle and persist it', async (label, stored, dark) => {
     stubMatchMedia(!dark);
     render(<ThemeProvider><ThemeToggle /></ThemeProvider>);
 
@@ -102,7 +102,7 @@ describe('ThemeProvider', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(dark);
   });
 
-  it('chooses System from the toggle and follows the operating system again', async () => {
+  it('should choose System from the toggle and follow the operating system again', async () => {
     const media = stubMatchMedia(false);
     localStorage.setItem('arc.theme', 'dark');
     render(<ThemeProvider><ThemeToggle /></ThemeProvider>);
@@ -116,7 +116,7 @@ describe('ThemeProvider', () => {
     expect(document.documentElement).toHaveClass('dark');
   });
 
-  it('throws outside the provider', () => {
+  it('should throw outside the provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow('useTheme must be used inside ThemeProvider');
   });

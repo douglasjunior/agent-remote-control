@@ -64,7 +64,7 @@ describe('useFileMentions', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('searches on a bare @ without waiting and opens the list with the results', () => {
+  it('should search on a bare @ without waiting and open the list with the results', () => {
     const { type, searches, answer, state } = setup();
 
     type('@');
@@ -74,7 +74,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('keeps one request id while the list stays open and only changes the query', () => {
+  it('should keep one request id while the list stays open and only changes the query', () => {
     const { type, searches } = setup();
 
     type('@');
@@ -85,7 +85,7 @@ describe('useFileMentions', () => {
     expect(new Set(ids).size).toBe(1);
   });
 
-  it('closes the server search when the list is dismissed and when the @ goes away', () => {
+  it('should close the server search when the list is dismissed and when the @ goes away', () => {
     const { type, press, searches, closes, answer } = setup();
     type('@');
     answer();
@@ -96,7 +96,7 @@ describe('useFileMentions', () => {
     expect(closes()).toEqual([{ type: 'files.close', requestId: id }]);
   });
 
-  it('reports that the server is still walking until the last batch', () => {
+  it('should report that the server is still walking until the last batch', () => {
     const { type, answer } = setup();
     type('@');
 
@@ -107,7 +107,7 @@ describe('useFileMentions', () => {
     expect(screen.getByLabelText('walking')).toHaveTextContent('false');
   });
 
-  it('clears the results when the search closes', () => {
+  it('should clear the results when the search closes', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -118,7 +118,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('closed');
   });
 
-  it('starts at the first item again when the searched query changes', () => {
+  it('should start at the first item again when the searched query changes', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -131,7 +131,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('keeps the highlight while more results stream in for the same query', () => {
+  it('should keep the highlight while more results stream in for the same query', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -142,7 +142,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:1:app/,a.ts,b.ts');
   });
 
-  it('waits for a pause in typing before searching for a query', () => {
+  it('should wait for a pause in typing before searching for a query', () => {
     const { type, searches, answer } = setup();
     type('@');
     answer();
@@ -154,7 +154,7 @@ describe('useFileMentions', () => {
     expect(searches().at(-1)).toMatchObject({ query: 'ap' });
   });
 
-  it('ignores a response to an earlier request', () => {
+  it('should ignore a response to an earlier request', () => {
     const { type, connection, state } = setup();
     type('@');
 
@@ -163,7 +163,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('closed');
   });
 
-  it('stays closed without results, without an @ and without focus', () => {
+  it('should stay closed without results, without an @ and without focus', () => {
     const { type, answer, state, field } = setup();
 
     type('plain');
@@ -178,7 +178,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('closed');
   });
 
-  it('moves the highlight with the arrows and stops at the ends', () => {
+  it('should move the highlight with the arrows and stop at the ends', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -191,7 +191,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('accepts the highlighted file with Enter, adds a space and moves the caret after it', () => {
+  it('should accept the highlighted file with Enter, add a space and move the caret after it', () => {
     const { type, answer, press, field } = setup();
     type('see @');
     answer();
@@ -203,7 +203,7 @@ describe('useFileMentions', () => {
     expect(field.selectionStart).toBe('see @a.ts '.length);
   });
 
-  it('accepts a directory with Tab and leaves the list open for the next level', () => {
+  it('should accept a directory with Tab and leave the list open for the next level', () => {
     const { type, answer, press, field, searches, state } = setup();
     type('@');
     answer();
@@ -217,7 +217,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/main.ts');
   });
 
-  it('dismisses the list with Esc until the mention ends', () => {
+  it('should dismiss the list with Esc until the mention ends', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -231,7 +231,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('stays closed after Esc while the caret moves inside the same mention', () => {
+  it('should stay closed after Esc while the caret moves inside the same mention', () => {
     const { type, answer, press, field, state } = setup();
     type('@ab');
     answer();
@@ -246,7 +246,7 @@ describe('useFileMentions', () => {
   it.each([
     ['shift', { shiftKey: true }],
     ['ctrl', { ctrlKey: true }],
-  ])('leaves the arrows alone with %s', (_label, init) => {
+  ])('should leave the arrows alone with %s', (_label, init) => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -256,7 +256,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('leaves other keys alone', () => {
+  it('should leave other keys alone', () => {
     const { type, answer, press, state } = setup();
     type('@');
     answer();
@@ -267,7 +267,7 @@ describe('useFileMentions', () => {
   });
 
   describe('the mention under the caret', () => {
-    it('reads the query between the @ and the caret and replaces the whole token when accepting', () => {
+    it('should read the query between the @ and the caret and replace the whole token when accepting', () => {
       const { type, moveCaret, searches, answer, press, field } = setup();
       type('see @app/src now');
       moveCaret(8);
@@ -284,7 +284,7 @@ describe('useFileMentions', () => {
     it.each([
       ['after whitespace', 'a b @c'],
       ['after a line break', 'a\n@b'],
-    ])('finds the @ %s', (_label, value) => {
+    ])('should find the @ %s', (_label, value) => {
       const { type, searches } = setup();
 
       type(value);
@@ -299,7 +299,7 @@ describe('useFileMentions', () => {
       ['whitespace between the @ and the caret', '@a b', 4],
       ['the caret before the @', 'x @a', 1],
       ['an empty text', '', 0],
-    ])('has no mention to search for with %s', (_label, value, caret) => {
+    ])('should have no mention to search for with %s', (_label, value, caret) => {
       const { type, moveCaret, searches, closes, state } = setup();
 
       type(value);
@@ -310,7 +310,7 @@ describe('useFileMentions', () => {
       expect(closes()).toHaveLength(searches().length);
     });
 
-    it('quotes the path of a file that has whitespace', () => {
+    it('should quote the path of a file that has whitespace', () => {
       const { type, answer, field, press } = setup();
       type('@');
       answer([{ path: 'my app/a b.ts', kind: 'file', matches: [] }]);

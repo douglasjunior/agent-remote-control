@@ -7,3 +7,8 @@ export function buildPreviousTurnPrompt(notices: readonly string[]): string {
     '',
   ].join('\n');
 }
+
+/** Names a delegation in a notice: its role, project and task. */
+export function describeDelegation(role: string, projectName: string | null, taskSpec: string): string {
+  return `${role} (Project: ${projectName ?? 'none'}, Task: "${taskSpec}")`;
+}

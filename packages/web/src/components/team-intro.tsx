@@ -11,7 +11,7 @@ export function TeamIntro({ onPick }: { readonly onPick: (text: string) => void 
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col justify-center gap-6 overflow-y-auto px-4 py-8">
       <div className="flex flex-col gap-1 text-center">
         <h3 className="font-heading text-2xl font-semibold">Meet your team</h3>
-        <p className="text-sm text-muted-foreground">Tell the Coordinator what you need. It brings in whoever is best for the job.</p>
+        <p className="text-sm text-muted-foreground">Tell the CEO what you need. It brings in whoever is best for the job.</p>
       </div>
       <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {TEAM_ROLES.map((role) => {

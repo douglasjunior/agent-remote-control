@@ -10,7 +10,9 @@ describe('conversationEntrySchema', () => {
     { id: '1b', at, type: 'user_message', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
     { id: 'thought:1', at, type: 'thought', text: 'hmm', removed: true, role: 'CEO' },
     { id: 'tool:1', at, type: 'tool', title: 'Read', status: 'in_progress', result: 'r', details: 'd', role: 'DEVELOPER' },
-    { id: 'delegation:dl-1:started', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen' },
+    { id: 'skill:1', at, type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed' },
+    { id: 'skill:2', at, type: 'skill', role: 'CEO', action: 'write', names: ['electron-testing'], status: 'failed', created: false, error: 'No.' },
+    { id: 'delegation:dl-1:started', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen', artifactId: 'T-1' },
     {
       id: 'delegation:dl-1:finished',
       at,
@@ -59,11 +61,11 @@ describe('conversationEntrySchema', () => {
     },
     { id: '5', at, type: 'notice', level: 'warning', text: 'careful' },
     { id: '6', at, type: 'agent_response', status: 'failed', response: 'r', errorMessage: 'e', agentInfo },
-  ])('accepts $type', (entry) => {
+  ])('should accept $type', (entry) => {
     expect(conversationEntrySchema.safeParse(entry).success).toBe(true);
   });
 
-  it('keeps the prompt of a delegation and reads one stored without it as empty', () => {
+  it('should keep the prompt of a delegation and read one stored without it as empty', () => {
     const stored = { id: 'd', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen' };
 
     expect(conversationEntrySchema.parse({ ...stored, prompt: 'Add it' })).toMatchObject({ prompt: 'Add it' });
@@ -75,10 +77,11 @@ describe('conversationEntrySchema', () => {
     ['the removed selection entry', { id: '1', at, type: 'selection', mode: 'selection', step: 'agent', options: [] }],
     ['missing id', { at, type: 'interim', text: 'x' }],
     ['invalid tool status', { id: '1', at, type: 'tool', title: 't', status: 'done' }],
+    ['unknown skill action', { id: '1', at, type: 'skill', role: 'QA', action: 'delete', names: ['x'], status: 'completed' }],
     ['a delegation without its delegationId', { id: '1', at, type: 'delegation', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 's' }],
     ['a question without closed', { id: '1', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'q', options: [], number: 1, total: 1 }],
     ['non-object', 42],
-  ])('rejects %s', (_label, data) => {
+  ])('should reject %s', (_label, data) => {
     expect(conversationEntrySchema.safeParse(data).success).toBe(false);
   });
 });

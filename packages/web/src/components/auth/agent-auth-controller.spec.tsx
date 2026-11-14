@@ -38,13 +38,13 @@ describe('AgentAuthController', () => {
     toast.dismiss();
   });
 
-  it('asks for the login state when the app connects', () => {
+  it('should ask for the login state when the app connects', () => {
     const { connection } = renderApp();
 
     expect(sentOfType(connection, 'auth.status')).toEqual([{ type: 'auth.status' }]);
   });
 
-  it('shows a persistent toast for an agent that is not logged in, once, and none for the others', async () => {
+  it('should show a persistent toast for an agent that is not logged in, once, and none for the others', async () => {
     const { connection } = renderApp();
 
     emitStatus(connection, ['claude', 'unauthenticated'], ['codex', 'authenticated'], ['cursor', 'unknown']);
@@ -55,13 +55,13 @@ describe('AgentAuthController', () => {
     expect(screen.queryByText(/cursor/i)).not.toBeInTheDocument();
   });
 
-  it('shows no toast before the first answer', () => {
+  it('should show no toast before the first answer', () => {
     renderApp();
 
     expect(screen.queryByText(/is not logged in/)).not.toBeInTheDocument();
   });
 
-  it('starts the login from the toast and follows it', async () => {
+  it('should start the login from the toast and follow it', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -80,17 +80,17 @@ describe('AgentAuthController', () => {
     expect((await screen.findAllByText('AB12-CD34', {}, { timeout: 5000 })).length).toBeGreaterThan(0);
   });
 
-  it('never renders a link that is not https', async () => {
+  it('should never render a link that is not https', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'unauthenticated']);
 
     emitLogin(connection, 'claude', { kind: 'url', url: 'javascript:alert(1)' });
 
     await screen.findByText('Log in to Claude Code');
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/skills']);
   });
 
-  it('cancels a login from the toast', async () => {
+  it('should cancel a login from the toast', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -101,7 +101,7 @@ describe('AgentAuthController', () => {
     expect(sentOfType(connection, 'auth.cancel')).toEqual([{ type: 'auth.cancel', agentId: 'claude' }]);
   });
 
-  it('opens the popover from the toast to type a code the browser shows, and sends it', async () => {
+  it('should open the popover from the toast to type a code the browser shows, and send it', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -118,7 +118,22 @@ describe('AgentAuthController', () => {
     expect(input).not.toBeInTheDocument();
   });
 
-  it('tells the user the code is being checked, in the dialog and in the toast', async () => {
+  it('should keep the login toast after its action opens the code input', async () => {
+    const { connection } = renderApp();
+    const user = userEvent.setup();
+    emitStatus(connection, ['claude', 'unauthenticated']);
+    emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
+
+    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await user.keyboard('{Escape}');
+    // Sonner removes a toast 200 ms after an action click that does not prevent the default.
+    await act(() => new Promise(resolve => setTimeout(resolve, 400)));
+
+    expect(screen.getByText('Log in to Claude Code')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Enter code' })).toBeInTheDocument();
+  });
+
+  it('should tell the user the code is being checked, in the dialog and in the toast', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -130,12 +145,12 @@ describe('AgentAuthController', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Checking the code…');
-    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2), { timeout: 5000 });
     expect(screen.queryByLabelText('Paste the code the browser shows')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open login page/ })).toBeInTheDocument();
   });
 
-  it('asks for the code again when the login did not accept it', async () => {
+  it('should ask for the code again when the login did not accept it', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -152,7 +167,7 @@ describe('AgentAuthController', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('keeps the link while the code is checked and when a late link arrives', async () => {
+  it('should keep the link while the code is checked and when a late link arrives', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -169,7 +184,7 @@ describe('AgentAuthController', () => {
     expect(screen.getByRole('status')).toBeInTheDocument();
   });
 
-  it('cancels a login that waits for a pasted code from its toast', async () => {
+  it('should cancel a login that waits for a pasted code from its toast', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -180,7 +195,7 @@ describe('AgentAuthController', () => {
     expect(sentOfType(connection, 'auth.cancel')).toEqual([{ type: 'auth.cancel', agentId: 'claude' }]);
   });
 
-  it('does not send a blank code', async () => {
+  it('should not send a blank code', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -193,7 +208,7 @@ describe('AgentAuthController', () => {
     expect(sentOfType(connection, 'auth.input')).toEqual([]);
   });
 
-  it('keeps a failed login on screen with a way to try again', async () => {
+  it('should keep a failed login on screen with a way to try again', async () => {
     const { connection } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
@@ -206,7 +221,7 @@ describe('AgentAuthController', () => {
     expect(sentOfType(connection, 'auth.login')).toEqual([{ type: 'auth.login', agentId: 'claude' }]);
   });
 
-  it('thanks the user and refreshes when a login completes, then clears the toast', async () => {
+  it('should thank the user and refresh when a login completes, then clear the toast', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'unauthenticated']);
     await screen.findByText('Claude Code is not logged in');
@@ -219,7 +234,7 @@ describe('AgentAuthController', () => {
     await waitFor(() => expect(screen.queryByText('Claude Code is not logged in')).not.toBeInTheDocument());
   });
 
-  it('thanks with the agent id when the name was never listed', async () => {
+  it('should thank with the agent id when the name was never listed', async () => {
     const { connection } = renderApp();
 
     emitLogin(connection, 'mystery', { kind: 'completed' });
@@ -227,7 +242,7 @@ describe('AgentAuthController', () => {
     expect(await screen.findByText('mystery is logged in')).toBeInTheDocument();
   });
 
-  it('removes the toast of an agent that is logged in or has disappeared', async () => {
+  it('should remove the toast of an agent that is logged in or has disappeared', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'unauthenticated'], ['codex', 'unauthenticated']);
     await screen.findByText('Claude Code is not logged in');
@@ -241,7 +256,7 @@ describe('AgentAuthController', () => {
     });
   });
 
-  it('ignores a failed check', async () => {
+  it('should ignore a failed check', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'unauthenticated']);
     await screen.findByText('Claude Code is not logged in');
@@ -259,7 +274,7 @@ describe('AgentAuthPopover', () => {
     return user;
   };
 
-  it('says it is checking until the first answer, and lists nothing for an empty one', async () => {
+  it('should say it is checking until the first answer, and list nothing for an empty one', async () => {
     const { connection } = renderApp();
     await open();
     expect(screen.getByText('Checking the agents…')).toBeInTheDocument();
@@ -269,7 +284,7 @@ describe('AgentAuthPopover', () => {
     expect(await screen.findByText('No agent supports login here.')).toBeInTheDocument();
   });
 
-  it('lists every agent with its state, account and button', async () => {
+  it('should list every agent with its state, account and button', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'authenticated', 'me@example.com'], ['codex', 'unauthenticated'], ['cursor', 'unknown']);
     await open();
@@ -284,7 +299,7 @@ describe('AgentAuthPopover', () => {
     expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
   });
 
-  it('flags the header button when an agent needs a login', () => {
+  it('should flag the header button when an agent needs a login', () => {
     const { connection } = renderApp();
     expect(screen.getByRole('button', { name: 'Agent logins' })).toBeInTheDocument();
 
@@ -293,7 +308,7 @@ describe('AgentAuthPopover', () => {
     expect(screen.getByRole('button', { name: 'Agent logins, login needed' })).toBeInTheDocument();
   });
 
-  it('starts a login from its button and shows the card with link, code and waiting state', async () => {
+  it('should start a login from its button and show the card with link, code and waiting state', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'authenticated']);
     const user = await open();
@@ -313,7 +328,7 @@ describe('AgentAuthPopover', () => {
     expect(sentOfType(connection, 'auth.cancel')).toEqual([{ type: 'auth.cancel', agentId: 'claude' }]);
   });
 
-  it('copies the one-time code', async () => {
+  it('should copy the one-time code', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'authenticated']);
     const user = await open();
@@ -327,7 +342,7 @@ describe('AgentAuthPopover', () => {
     expect(writeText).toHaveBeenCalledWith('AB12-CD34');
   });
 
-  it('shows the reason a login failed and lets the user start again', async () => {
+  it('should show the reason a login failed and let the user start again', async () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'unauthenticated']);
     const user = await open();

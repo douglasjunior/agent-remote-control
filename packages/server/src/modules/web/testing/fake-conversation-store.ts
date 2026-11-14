@@ -34,11 +34,15 @@ export class FakeConversationStore implements IConversationStorePort {
   }
 
   async rename(id: string, title: string): Promise<ConversationSummary> {
-    return this.update(id, { title });
+    return this.update(id, current => ({ ...current, title }));
+  }
+
+  async archive(id: string, archived: boolean): Promise<ConversationSummary> {
+    return this.update(id, ({ archivedAt: _archivedAt, ...current }) => (archived ? { ...current, archivedAt: '2026-01-03T00:00:00.000Z' } : current));
   }
 
   async touch(id: string): Promise<ConversationSummary> {
-    return this.update(id, {});
+    return this.update(id, current => ({ ...current, updatedAt: '2026-01-02T00:00:00.000Z' }));
   }
 
   async exists(id: string): Promise<boolean> {
@@ -64,12 +68,12 @@ export class FakeConversationStore implements IConversationStorePort {
     this.flushed.push(id);
   }
 
-  private update(id: string, changes: Partial<ConversationSummary>): ConversationSummary {
+  private update(id: string, change: (current: ConversationSummary) => ConversationSummary): ConversationSummary {
     const current = this.conversations.get(id);
     if (!current) {
       throw new Error(`Unknown conversation: ${id}`);
     }
-    const updated = { ...current, ...changes, updatedAt: '2026-01-02T00:00:00.000Z' };
+    const updated = change(current);
     this.conversations.set(id, updated);
     return updated;
   }

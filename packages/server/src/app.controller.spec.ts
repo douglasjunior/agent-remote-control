@@ -18,7 +18,7 @@ describe('AppController', () => {
   });
 
   describe('health', () => {
-    it('reports the application as healthy', () => {
+    it('should report the application as healthy', () => {
       expect(appController.getHealth()).toEqual({ status: 'ok' });
     });
   });

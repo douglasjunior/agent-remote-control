@@ -48,7 +48,7 @@ afterEach(() => {
 });
 
 describe('useVoiceRecorder', () => {
-  it('records and finishes with a named audio file, releasing the microphone', async () => {
+  it('should record and finish with a named audio file, releasing the microphone', async () => {
     const { result } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
@@ -66,7 +66,7 @@ describe('useVoiceRecorder', () => {
     expect(result.current.status).toBe('idle');
   });
 
-  it('names the file after the container the browser produced', async () => {
+  it('should name the file after the container the browser produced', async () => {
     FakeMediaRecorder.supported = ['audio/mp4'];
     const { result } = renderHook(() => useVoiceRecorder());
 
@@ -79,7 +79,7 @@ describe('useVoiceRecorder', () => {
     expect(file!.name).toMatch(/\.m4a$/);
   });
 
-  it('falls back to webm when the browser reports no format', async () => {
+  it('should fall back to webm when the browser reports no format', async () => {
     FakeMediaRecorder.supported = [];
     const { result } = renderHook(() => useVoiceRecorder());
 
@@ -92,7 +92,7 @@ describe('useVoiceRecorder', () => {
     expect(file!.name).toMatch(/\.webm$/);
   });
 
-  it('discards the recording on cancel', async () => {
+  it('should discard the recording on cancel', async () => {
     const { result } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
@@ -104,7 +104,7 @@ describe('useVoiceRecorder', () => {
     await expect(result.current.finish()).resolves.toBeNull();
   });
 
-  it('resolves null for a recording without audio', async () => {
+  it('should resolve null for a recording without audio', async () => {
     const { result } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
@@ -117,7 +117,7 @@ describe('useVoiceRecorder', () => {
     expect(file).toBeNull();
   });
 
-  it('ignores a start while already recording', async () => {
+  it('should ignore a start while already recording', async () => {
     const { result } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
@@ -126,7 +126,7 @@ describe('useVoiceRecorder', () => {
     expect(getUserMedia).toHaveBeenCalledTimes(1);
   });
 
-  it('counts the elapsed seconds while recording', async () => {
+  it('should count the elapsed seconds while recording', async () => {
     vi.useFakeTimers();
     const { result } = renderHook(() => useVoiceRecorder());
 
@@ -138,7 +138,7 @@ describe('useVoiceRecorder', () => {
     expect(result.current.elapsedSeconds).toBe(3);
   });
 
-  it('reports a denied microphone', async () => {
+  it('should report a denied microphone', async () => {
     getUserMedia.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
     const { result } = renderHook(() => useVoiceRecorder());
 
@@ -148,7 +148,7 @@ describe('useVoiceRecorder', () => {
     expect(result.current.error).toBe('Microphone access was denied');
   });
 
-  it('reports any other failure and releases a stream already opened', async () => {
+  it('should report any other failure and release a stream already opened', async () => {
     vi.stubGlobal('MediaRecorder', class {
       static isTypeSupported = () => true;
       constructor() {
@@ -163,7 +163,7 @@ describe('useVoiceRecorder', () => {
     expect(track.stop).not.toHaveBeenCalled();
   });
 
-  it('clears the error on the next start', async () => {
+  it('should clear the error on the next start', async () => {
     getUserMedia.mockRejectedValueOnce(new Error('x'));
     const { result } = renderHook(() => useVoiceRecorder());
 
@@ -174,7 +174,7 @@ describe('useVoiceRecorder', () => {
     expect(result.current.status).toBe('recording');
   });
 
-  it('stops recording and releases the microphone on unmount', async () => {
+  it('should stop recording and release the microphone on unmount', async () => {
     const { result, unmount } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
@@ -184,7 +184,7 @@ describe('useVoiceRecorder', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
-  it('unmounts cleanly when nothing was recorded', () => {
+  it('should unmount cleanly when nothing was recorded', () => {
     const { unmount } = renderHook(() => useVoiceRecorder());
 
     expect(() => unmount()).not.toThrow();

@@ -17,7 +17,7 @@ function Probe() {
 }
 
 describe('ConnectionProvider', () => {
-  it('connects when a token is stored and disconnects on unmount', () => {
+  it('should connect when a token is stored and disconnect on unmount', () => {
     const connection = new FakeServerConnection();
     const { unmount } = render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
 
@@ -29,7 +29,7 @@ describe('ConnectionProvider', () => {
     expect(connection.disconnectCalls).toBe(1);
   });
 
-  it('waits for a token, stores the submitted one and connects', () => {
+  it('should wait for a token, store the submitted one and connect', () => {
     const connection = new FakeServerConnection();
     connection.accessToken = null;
     render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
@@ -42,7 +42,7 @@ describe('ConnectionProvider', () => {
     expect(screen.getByTestId('token')).toHaveTextContent('true');
   });
 
-  it('drops the token flag when the connection is unauthorized', () => {
+  it('should drop the token flag when the connection is unauthorized', () => {
     const connection = new FakeServerConnection();
     render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
 
@@ -50,7 +50,7 @@ describe('ConnectionProvider', () => {
     expect(screen.getByTestId('token')).toHaveTextContent('false');
   });
 
-  it('throws outside the provider', () => {
+  it('should throw outside the provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow('useConnection must be used inside ConnectionProvider');
     vi.restoreAllMocks();

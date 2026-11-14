@@ -29,7 +29,7 @@ const prompt = {
 const work = { id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: null, summary: 'Build' };
 
 describe('GetConversationHistoryUseCase', () => {
-  it('returns a question left open by an earlier process already closed, with its notice', async () => {
+  it('should return a question left open by an earlier process already closed, with its notice', async () => {
     const { store, events, questions, agentTurn } = createWebHarness();
     store.seed('web-1');
     await store.upsertEntry('web-1', question);
@@ -43,7 +43,7 @@ describe('GetConversationHistoryUseCase', () => {
     expect(state).toBe('idle');
   });
 
-  it('keeps open the card of the question the queue restored', async () => {
+  it('should keep open the card of the question the queue restored', async () => {
     const { store, events, questions, agentTurn } = createWebHarness();
     store.seed('web-1');
     await store.upsertEntry('web-1', question);
@@ -56,7 +56,7 @@ describe('GetConversationHistoryUseCase', () => {
     expect(result.interrupted).toEqual([work]);
   });
 
-  it('shows a restored question that has no card open', async () => {
+  it('should show a restored question that has no card open', async () => {
     const { store, events, questions, agentTurn } = createWebHarness();
     store.seed('web-1');
     await store.upsertEntry('web-1', { ...question, closed: true });
