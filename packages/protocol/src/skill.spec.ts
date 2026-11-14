@@ -4,7 +4,7 @@ import { skillDetailSchema, skillSummarySchema } from './skill.js';
 
 
 describe('skill schemas', () => {
-  it('accepts a summary and a detail with its content', () => {
+  it('should accept a summary and a detail with its content', () => {
     const summary = { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true };
 
     expect(skillSummarySchema.parse(summary)).toEqual(summary);

@@ -52,11 +52,11 @@ describe('parseClientCommand', () => {
     { type: 'profiles.set', conversationId: 'c', roles: ['CEO', 'DEVELOPER'], agentId: 'claude', modelId: 'opus', effortId: 'high' },
     { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 2 } },
     { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: 'my answer' } },
-  ])('accepts $type', (command) => {
+  ])('should accept $type', (command) => {
     expect(parseClientCommand(command)).toEqual({ ok: true, value: command });
   });
 
-  it('trims the message text', () => {
+  it('should trim the message text', () => {
     const result = parseClientCommand({ type: 'message.send', conversationId: 'c', text: '  hi  ' });
     expect(result).toEqual({
       ok: true,
@@ -102,18 +102,18 @@ describe('parseClientCommand', () => {
     ['unknown answer kind', { type: 'question.answer', conversationId: 'c', answer: { kind: 'voice' } }],
     ['null', null],
     ['string', 'auth'],
-  ])('rejects %s', (_label, data) => {
+  ])('should reject %s', (_label, data) => {
     const result = parseClientCommand(data);
     expect(result.ok).toBe(false);
     expect(result).toHaveProperty('error', expect.any(String));
   });
 
-  it('accepts text of exactly the maximum length', () => {
+  it('should accept text of exactly the maximum length', () => {
     const text = 'a'.repeat(MAX_MESSAGE_LENGTH);
     expect(parseClientCommand({ type: 'message.send', conversationId: 'c', text }).ok).toBe(true);
   });
 
-  it('accepts an answer with attachments only and refuses an empty one', () => {
+  it('should accept an answer with attachments only and refuse an empty one', () => {
     const command = (answer: unknown) => ({ type: 'question.answer', conversationId: 'c', answer });
 
     expect(parseClientCommand(command({ kind: 'text', text: '', attachments: [{ path: 'a', name: 'a' }] })).ok).toBe(true);

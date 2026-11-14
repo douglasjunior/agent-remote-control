@@ -21,7 +21,7 @@ describe('JsonArtifactStoreAdapter', () => {
 
   afterEach(() => rm(directory, { recursive: true, force: true }));
 
-  it('keeps one board per conversation, allocating ids per type and reading back what it saved', async () => {
+  it('should keep one board per conversation, allocating ids per type and reading back what it saved', async () => {
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(directory));
 
     const ids = await store.transaction(CONVERSATION, (transaction) => {
@@ -47,7 +47,7 @@ describe('JsonArtifactStoreAdapter', () => {
     expect(await reloaded.transaction(CONVERSATION, transaction => transaction.allocateId('task'))).toBe('T-3');
   });
 
-  it('lists a conversation it holds in memory but has not written yet, and none without the directory', async () => {
+  it('should list a conversation it holds in memory but has not written yet, and none without the directory', async () => {
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(directory));
     expect(await store.conversations()).toEqual([]);
 
@@ -56,7 +56,7 @@ describe('JsonArtifactStoreAdapter', () => {
     expect(await store.conversations()).toEqual(['web-1']);
   });
 
-  it('never reuses an id already on disk, even without counters', async () => {
+  it('should never reuse an id already on disk, even without counters', async () => {
     await writeFile(join(directory, 'artifacts'), '');
     await rm(join(directory, 'artifacts'));
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(directory));
@@ -66,7 +66,7 @@ describe('JsonArtifactStoreAdapter', () => {
     expect(await new JsonArtifactStoreAdapter(dataDirectoryAt(directory)).transaction('c', transaction => transaction.allocateId('task'))).toBe('T-3');
   });
 
-  it('runs transactions one at a time and drops the changes of one that throws', async () => {
+  it('should run transactions one at a time and drop the changes of one that throws', async () => {
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(directory));
     const failing = store.transaction('c', (transaction) => {
       transaction.save(buildArtifact({ id: 'T-1' }));
@@ -79,7 +79,7 @@ describe('JsonArtifactStoreAdapter', () => {
     expect(await store.list('c')).toEqual([]);
   });
 
-  it('keeps the previous state when the write fails', async () => {
+  it('should keep the previous state when the write fails', async () => {
     await writeFile(join(directory, 'blocker'), '');
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(join(directory, 'blocker')));
 
@@ -87,7 +87,7 @@ describe('JsonArtifactStoreAdapter', () => {
     expect(await store.list('c')).toEqual([]);
   });
 
-  it.each([['invalid JSON', '{'], ['an invalid shape', '{"artifacts": [{"id": 1}]}']])('treats %s as an empty board', async (_name, content) => {
+  it.each([['invalid JSON', '{'], ['an invalid shape', '{"artifacts": [{"id": 1}]}']])('should treat %s as an empty board', async (_name, content) => {
     const store = new JsonArtifactStoreAdapter(dataDirectoryAt(directory));
     await store.transaction('c', () => undefined);
     await writeFile(join(directory, 'artifacts', 'c.json'), content);

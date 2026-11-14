@@ -45,13 +45,13 @@ describe('QuestionCard countdown', () => {
     vi.useRealTimers();
   });
 
-  it('shows no countdown when the question never times out', () => {
+  it('should show no countdown when the question never times out', () => {
     renderCard(question());
 
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();
   });
 
-  it('counts down the time left and says the recommended answer is assumed', () => {
+  it('should count down the time left and say the recommended answer is assumed', () => {
     renderCard(question({ recommendedIndex: 2, timeout: { expiresAt: NOW + 125_000, durationMs: 300_000 } }));
 
     expect(screen.getByRole('timer')).toHaveTextContent('2:05');
@@ -64,13 +64,13 @@ describe('QuestionCard countdown', () => {
     expect(screen.getByRole('timer')).toHaveTextContent('2:00');
   });
 
-  it('says the agent carries on without an answer when no option is recommended', () => {
+  it('should say the agent carries on without an answer when no option is recommended', () => {
     renderCard(question({ timeout: { expiresAt: NOW + 60_000, durationMs: 60_000 } }));
 
     expect(screen.getByRole('timer')).toHaveTextContent('The agent carries on without an answer');
   });
 
-  it('turns urgent in the last seconds and stops at zero', () => {
+  it('should turn urgent in the last seconds and stop at zero', () => {
     renderCard(question({ timeout: { expiresAt: NOW + 31_000, durationMs: 300_000 } }));
     const clock = () => screen.getByRole('timer').querySelector('.font-mono')!;
     expect(clock()).not.toHaveClass('text-destructive');
@@ -86,14 +86,14 @@ describe('QuestionCard countdown', () => {
     expect(clock()).toHaveTextContent('0:00');
   });
 
-  it('marks the recommended option', () => {
+  it('should mark the recommended option', () => {
     renderCard(question({ recommendedIndex: 2 }));
 
     expect(screen.getAllByText('Recommended')).toHaveLength(1);
     expect(screen.getByRole('button', { name: /SQLite/ })).toHaveTextContent('Recommended');
   });
 
-  it('shows no countdown on a question that is no longer active', () => {
+  it('should show no countdown on a question that is no longer active', () => {
     renderCard(question({ closed: true, timeout: { expiresAt: NOW + 60_000, durationMs: 60_000 } }), false);
 
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();

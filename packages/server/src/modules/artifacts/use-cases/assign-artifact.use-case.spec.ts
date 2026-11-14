@@ -27,7 +27,7 @@ function setup(extra: ReturnType<typeof buildArtifact>[] = []) {
 describe('AssignArtifactUseCase', () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it('freezes an artifact that reached the maximum of delegations instead of handing it over', async () => {
+  it('should freeze an artifact that reached the maximum of delegations instead of handing it over', async () => {
     vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
     const { useCase, store, published } = setup([buildArtifact({ id: 'T-3', status: 'in_progress', history: assigned(3) })]);
 
@@ -42,7 +42,7 @@ describe('AssignArtifactUseCase', () => {
     expect(published).toHaveLength(1);
   });
 
-  it('refuses a frozen artifact and counts again from when the user unfroze it', async () => {
+  it('should refuse a frozen artifact and count again from when the user unfroze it', async () => {
     vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
     const { useCase, published } = setup([
       buildArtifact({ id: 'T-3', status: 'frozen', history: assigned(3) }),
@@ -54,14 +54,14 @@ describe('AssignArtifactUseCase', () => {
     expect(published).toHaveLength(1);
   });
 
-  it('never freezes when the limit is disabled', async () => {
+  it('should never freeze when the limit is disabled', async () => {
     vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '0');
     const { useCase } = setup([buildArtifact({ id: 'T-3', history: assigned(50) })]);
 
     expect(await useCase.execute('c1', 'T-3', developer)).toMatchObject({ ok: true });
   });
 
-  it('hands a free artifact to the delegation and records who took it', async () => {
+  it('should hand a free artifact to the delegation and record who took it', async () => {
     const { useCase, published } = setup();
 
     const outcome = await useCase.execute('c1', 'T-1', developer);
@@ -76,7 +76,7 @@ describe('AssignArtifactUseCase', () => {
     expect(published).toHaveLength(1);
   });
 
-  it('keeps an artifact the same delegation already holds, without a new event', async () => {
+  it('should keep an artifact the same delegation already holds, without a new event', async () => {
     const { useCase, published } = setup();
 
     expect(await useCase.execute('c1', 'T-2', developer)).toMatchObject({ ok: true, artifact: { id: 'T-2', assignee: held } });
@@ -86,7 +86,7 @@ describe('AssignArtifactUseCase', () => {
   it.each([
     ['T-2', { ...developer, role: 'CODE_REVIEWER', roleName: 'Code Reviewer', delegationId: 'd2' }, 'T-2 is with Developer (DEVELOPER) right now; an artifact is with one agent at a time.'],
     ['T-9', developer, 'Unknown artifact "T-9".'],
-  ])('refuses %s', async (id, assignee, error) => {
+  ])('should refuse %s', async (id, assignee, error) => {
     const { useCase } = setup();
 
     expect(await useCase.execute('c1', id, assignee)).toEqual({ ok: false, error });

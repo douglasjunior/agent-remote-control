@@ -6,7 +6,7 @@ import { AT, openConversation } from '../test/render-app.js';
 
 
 describe('ConversationView and the mission board', () => {
-  it('asks for the board with the conversation and counts its open tasks', () => {
+  it('should ask for the board with the conversation and count its open tasks', () => {
     const { connection } = openConversation();
     expect(connection.sent).toContainEqual({ type: 'artifacts.list', conversationId: 'c1' });
     act(() => connection.emitEvent({
@@ -22,7 +22,7 @@ describe('ConversationView and the mission board', () => {
     expect(screen.getByLabelText('2 open')).toBeInTheDocument();
   });
 
-  it('switches between the chat and the board, keeping the chat in place', async () => {
+  it('should switch between the chat and the board, keeping the chat in place', async () => {
     const user = userEvent.setup();
     const { router } = openConversation();
     const conversation = screen.getByRole('navigation', { name: 'Conversation' });
@@ -40,7 +40,7 @@ describe('ConversationView and the mission board', () => {
     expect(screen.queryByRole('heading', { name: 'Mission board' })).not.toBeInTheDocument();
   });
 
-  it('links a delegation to the task its agent holds', () => {
+  it('should link a delegation to the task its agent holds', () => {
     openConversation({
       entries: [
         { id: 'u1', at: AT, type: 'user_message', text: 'Build it' },

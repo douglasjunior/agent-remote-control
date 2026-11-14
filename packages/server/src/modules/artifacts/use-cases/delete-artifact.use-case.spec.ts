@@ -22,7 +22,7 @@ function setup() {
 }
 
 describe('DeleteArtifactUseCase', () => {
-  it('removes the artifact and the dependencies on it, telling why in the history of the others', async () => {
+  it('should remove the artifact and the dependencies on it, telling why in the history of the others', async () => {
     const { useCase, store, published } = setup();
 
     expect(await useCase.execute('c1', 'T-3', user)).toEqual({ ok: true });
@@ -40,7 +40,7 @@ describe('DeleteArtifactUseCase', () => {
     ['T-9', 'Unknown artifact "T-9".'],
     ['F-1', 'F-1 still has T-1 under it: move or delete them first.'],
     ['T-5', 'T-5 is with Developer; wait until it is released.'],
-  ])('refuses to delete %s', async (id, error) => {
+  ])('should refuse to delete %s', async (id, error) => {
     const { useCase, published, store } = setup();
 
     expect(await useCase.execute('c1', id, user)).toEqual({ ok: false, error });

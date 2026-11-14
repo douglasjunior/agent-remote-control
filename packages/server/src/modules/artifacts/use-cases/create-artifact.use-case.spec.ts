@@ -14,7 +14,7 @@ function setup(initial = [buildArtifact({ id: 'F-1', type: 'feature', projectNam
 }
 
 describe('CreateArtifactUseCase', () => {
-  it('creates a task that owes refinement in the backlog, taking the parent project, and publishes it', async () => {
+  it('should create a task that owes refinement in the backlog, taking the parent project, and publish it', async () => {
     const { useCase, store, published } = setup([buildArtifact({ id: 'F-1', type: 'feature', projectName: 'shop' }), buildArtifact({ id: 'T-7', parentId: 'F-1' })]);
 
     const outcome = await useCase.execute('c1', {
@@ -47,7 +47,7 @@ describe('CreateArtifactUseCase', () => {
     expect(published).toEqual([{ kind: 'saved', conversationId: 'c1', artifact: outcome.ok && outcome.artifact }]);
   });
 
-  it('makes a task that owes no refinement ready for development', async () => {
+  it('should make a task that owes no refinement ready for development', async () => {
     const { useCase } = setup();
 
     const outcome = await useCase.execute('c1', { type: 'task', title: 'Fix typo', projectName: 'web', refinement: { business: 'skipped', technical: 'done' } }, user);
@@ -55,7 +55,7 @@ describe('CreateArtifactUseCase', () => {
     expect(outcome).toMatchObject({ ok: true, artifact: { status: 'ready', projectName: 'web', parentId: null, sections: {} } });
   });
 
-  it('keeps features in the backlog, takes an explicit project and treats a blank one as the parent\'s', async () => {
+  it('should keep features in the backlog, take an explicit project and treat a blank one as the parent\'s', async () => {
     const { useCase } = setup();
 
     const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectName: ' web ', refinement: { business: 'skipped', technical: 'skipped' } }, user);
@@ -73,7 +73,7 @@ describe('CreateArtifactUseCase', () => {
     [{ type: 'task', title: 'T', projectName: 'api' }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
     [{ type: 'task', title: 'Docs', parentId: 'X-1' }, 'Unknown parent artifact "X-1".'],
     [{ type: 'task', title: 'T', projectName: 'shop', dependsOn: ['T-9'] }, 'Unknown dependency "T-9".'],
-  ] as const)('refuses an invalid artifact %#', async (input, error) => {
+  ] as const)('should refuse an invalid artifact %#', async (input, error) => {
     const { useCase, published, store } = setup();
 
     expect(await useCase.execute('c1', input, user)).toEqual({ ok: false, error });

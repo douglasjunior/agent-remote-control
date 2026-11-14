@@ -4,7 +4,7 @@ import { TitleInput } from './title-input.js';
 
 
 describe('TitleInput', () => {
-  it('ends the edit once, even when the field is left after Enter', () => {
+  it('should end the edit once, even when the field is left after Enter', () => {
     const onSave = vi.fn();
     const onDone = vi.fn();
     render(<TitleInput title="Alpha" label="Title" onSave={onSave} onDone={onDone} />);

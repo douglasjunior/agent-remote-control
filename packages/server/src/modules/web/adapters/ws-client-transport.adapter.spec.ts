@@ -47,23 +47,23 @@ describe('WsClientTransportAdapter', () => {
     await new Promise<void>(done => httpServer.close(() => done()));
   });
 
-  it('accepts a same-origin upgrade on /ws', async () => {
+  it('should accept a same-origin upgrade on /ws', async () => {
     const client = open('/ws', `http://127.0.0.1:${port}`);
 
     expect(await outcome(client)).toBe('open');
     expect(connections).toHaveLength(1);
   });
 
-  it('accepts an origin listed in WEB_ALLOWED_ORIGINS', async () => {
+  it('should accept an origin listed in WEB_ALLOWED_ORIGINS', async () => {
     expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('open');
   });
 
-  it('rejects a foreign origin with 403', async () => {
+  it('should reject a foreign origin with 403', async () => {
     expect(await outcome(open('/ws', 'http://evil.test'))).toBe('http-403');
     expect(connections).toHaveLength(0);
   });
 
-  it('rejects the same hostname on another port and a malformed origin', async () => {
+  it('should reject the same hostname on another port and a malformed origin', async () => {
     expect(await outcome(open('/ws', `http://127.0.0.1:${port + 1}`))).toBe('http-403');
     expect(await outcome(open('/ws', 'not a url'))).toBe('http-403');
   });
@@ -76,7 +76,7 @@ describe('WsClientTransportAdapter', () => {
       adapter.onModuleInit();
     };
 
-    it('ignores spaces, empty entries and trailing slashes', async () => {
+    it('should ignore spaces, empty entries and trailing slashes', async () => {
       await restartWith(' http://localhost:5173/ , ,http://other.test ');
 
       expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('open');
@@ -84,7 +84,7 @@ describe('WsClientTransportAdapter', () => {
       expect(await outcome(open('/ws', 'http://evil.test'))).toBe('http-403');
     });
 
-    it('lets only the same origin in when it is unset', async () => {
+    it('should let only the same origin in when it is unset', async () => {
       await restartWith(undefined);
 
       expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('http-403');
@@ -92,16 +92,16 @@ describe('WsClientTransportAdapter', () => {
     });
   });
 
-  it('rejects an upgrade without an origin', async () => {
+  it('should reject an upgrade without an origin', async () => {
     expect(await outcome(open('/ws'))).toBe('http-403');
   });
 
-  it('does not upgrade other paths', async () => {
+  it('should not upgrade other paths', async () => {
     expect(await outcome(open('/other', `http://127.0.0.1:${port}`))).toBe('error');
     expect(connections).toHaveLength(0);
   });
 
-  it('forwards parsed JSON and raw text, sends events and propagates close', async () => {
+  it('should forward parsed JSON and raw text, send events and propagate close', async () => {
     const client = open('/ws', `http://127.0.0.1:${port}`);
     await outcome(client);
     const connection = connections[0];
@@ -124,7 +124,7 @@ describe('WsClientTransportAdapter', () => {
     connection.send({ type: 'auth.ok' });
   });
 
-  it('closes the connection from the server with a code', async () => {
+  it('should close the connection from the server with a code', async () => {
     const client = open('/ws', `http://127.0.0.1:${port}`);
     await outcome(client);
     const closeCode = new Promise<number>(done => client.once('close', done));
@@ -134,7 +134,7 @@ describe('WsClientTransportAdapter', () => {
     expect(await closeCode).toBe(4401);
   });
 
-  it('stops notifying a listener after it unsubscribes', async () => {
+  it('should stop notifying a listener after it unsubscribes', async () => {
     const extra: IClientConnection[] = [];
     const unsubscribe = adapter.onConnection(connection => extra.push(connection));
     unsubscribe();

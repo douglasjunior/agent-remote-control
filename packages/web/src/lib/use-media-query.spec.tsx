@@ -26,7 +26,7 @@ function stubMedia(initial: boolean) {
 describe('useMediaQuery', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('follows the query as the window changes', () => {
+  it('should follow the query as the window changes', () => {
     const media = stubMedia(false);
     const { result } = renderHook(() => useMediaQuery('(max-width: 820px)'));
     expect(result.current).toBe(false);
@@ -35,7 +35,7 @@ describe('useMediaQuery', () => {
     expect(result.current).toBe(true);
   });
 
-  it('stops listening when unmounted', () => {
+  it('should stop listening when unmounted', () => {
     const media = stubMedia(true);
     const { unmount } = renderHook(() => useMediaQuery('(max-width: 820px)'));
     expect(media.listeners.size).toBe(1);

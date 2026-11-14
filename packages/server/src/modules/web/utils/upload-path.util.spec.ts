@@ -2,7 +2,7 @@ import { isUploadPathOf, uploadDirectory } from './upload-path.util.js';
 
 
 describe('upload paths', () => {
-  it('keeps the uploads of a conversation under a hidden directory of the workspace', () => {
+  it('should keep the uploads of a conversation under a hidden directory of the workspace', () => {
     expect(uploadDirectory('web-1')).toBe('.arc-uploads/web-1');
   });
 
@@ -15,7 +15,7 @@ describe('upload paths', () => {
     ['.arc-uploads/web-1/../../secret', false],
     ['/etc/passwd', false],
     ['app/a.png', false],
-  ])('judges %s as %s', (path, expected) => {
+  ])('should judge %s as %s', (path, expected) => {
     expect(isUploadPathOf('web-1', path)).toBe(expected);
   });
 });

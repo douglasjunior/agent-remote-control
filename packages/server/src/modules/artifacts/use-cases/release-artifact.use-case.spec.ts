@@ -14,7 +14,7 @@ function setup() {
 }
 
 describe('ReleaseArtifactUseCase', () => {
-  it('frees the artifact the delegation holds, recording how the work ended', async () => {
+  it('should free the artifact the delegation holds, recording how the work ended', async () => {
     const { useCase, store, published } = setup();
 
     await useCase.execute('c1', 'T-1', 'd1', 'finished');
@@ -26,7 +26,7 @@ describe('ReleaseArtifactUseCase', () => {
     expect(published).toHaveLength(1);
   });
 
-  it.each([['T-1', 'd2'], ['T-2', 'd1'], ['T-9', 'd1']])('leaves %s alone for delegation %s', async (id, delegationId) => {
+  it.each([['T-1', 'd2'], ['T-2', 'd1'], ['T-9', 'd1']])('should leave %s alone for delegation %s', async (id, delegationId) => {
     const { useCase, store, published } = setup();
 
     await useCase.execute('c1', id, delegationId, 'finished');

@@ -11,7 +11,7 @@ import { WebModule } from './web.module.js';
 
 
 describe('WebModule', () => {
-  it('binds the ports to their adapters and resolves the handler', async () => {
+  it('should bind the ports to their adapters and resolve the handler', async () => {
     const module = await Test.createTestingModule({ imports: [WebModule] }).compile();
 
     expect(module.get(IClientTransportPort)).toBeInstanceOf(WsClientTransportAdapter);

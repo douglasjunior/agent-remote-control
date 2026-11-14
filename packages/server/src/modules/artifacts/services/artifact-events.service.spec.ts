@@ -6,7 +6,7 @@ import { ArtifactEventsService } from './artifact-events.service.js';
 
 
 describe('ArtifactEventsService', () => {
-  it('delivers every event to every listener until it unsubscribes', () => {
+  it('should deliver every event to every listener until it unsubscribes', () => {
     const events = new ArtifactEventsService();
     const first = vi.fn();
     const second = vi.fn();
@@ -22,7 +22,7 @@ describe('ArtifactEventsService', () => {
     expect(second).toHaveBeenCalledTimes(3);
   });
 
-  it('keeps notifying the other listeners when one throws', () => {
+  it('should keep notifying the other listeners when one throws', () => {
     const events = new ArtifactEventsService();
     const after = vi.fn();
     events.subscribe(() => {

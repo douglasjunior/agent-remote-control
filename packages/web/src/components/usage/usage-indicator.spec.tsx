@@ -36,7 +36,7 @@ async function openPanel() {
 }
 
 describe('UsageIndicator', () => {
-  it('asks for the usage when the app connects and shows a dash until it arrives', () => {
+  it('should ask for the usage when the app connects and show a dash until it arrives', () => {
     const { connection } = renderApp();
 
     expect(connection.sent).toContainEqual({ type: 'quota.get' });
@@ -44,7 +44,7 @@ describe('UsageIndicator', () => {
     expect(trigger).toHaveTextContent('–');
   });
 
-  it('shows one meter per agent and the highest percent used', () => {
+  it('should show one meter per agent and the highest percent used', () => {
     const { connection } = renderApp();
     emitReports(connection, [
       ok('Claude Code', { window: '5h', remainingFraction: 0.8 }, { window: '7d', remainingFraction: 0.35 }),
@@ -58,7 +58,7 @@ describe('UsageIndicator', () => {
     expect(levels).toEqual(['attention', 'critical']);
   });
 
-  it('opens the limits of each agent', async () => {
+  it('should open the limits of each agent', async () => {
     const { connection } = renderApp();
     emitReports(connection, [
       ok('Claude Code', { window: '5h', remainingFraction: 0.8, resetTime: inHours(3) }, { window: '7d', remainingFraction: 0.35 }),
@@ -82,7 +82,7 @@ describe('UsageIndicator', () => {
     expect(panel.getByText('Could not read usage')).toBeInTheDocument();
   });
 
-  it('tells apart the limits of a group that share a window', async () => {
+  it('should tell apart the limits of a group that share a window', async () => {
     const { connection } = renderApp();
     emitReports(connection, [
       {
@@ -109,7 +109,7 @@ describe('UsageIndicator', () => {
     expect(panel.getByText('Week · Sonnet only').closest('li')).toHaveAttribute('data-level', 'critical');
   });
 
-  it('names a group only when the agent has more than one', async () => {
+  it('should name a group only when the agent has more than one', async () => {
     const { connection } = renderApp();
     emitReports(connection, [
       ok('Claude Code', { window: '5h', remainingFraction: 0.8 }),
@@ -136,7 +136,7 @@ describe('UsageIndicator', () => {
   it.each([
     ['a passed reset', -1, null],
     ['a reset under a minute away', 0.001, 'resets in under a minute'],
-  ])('handles %s', async (_name, hours, label) => {
+  ])('should handle %s', async (_name, hours, label) => {
     const { connection } = renderApp();
     emitReports(connection, [ok('Codex', { window: '5h', remainingFraction: 0.5, resetTime: inHours(hours) })]);
 
@@ -150,7 +150,7 @@ describe('UsageIndicator', () => {
     }
   });
 
-  it('shows the reading state and then explains that no agent exists', async () => {
+  it('should show the reading state and then explain that no agent exists', async () => {
     const { connection } = renderApp();
 
     await openPanel();
@@ -161,7 +161,7 @@ describe('UsageIndicator', () => {
     expect(screen.getByText('No agent CLI was found in the PATH.')).toBeInTheDocument();
   });
 
-  it('refreshes on demand and disables the button until the answer arrives', async () => {
+  it('should refresh on demand and disable the button until the answer arrives', async () => {
     const { connection } = renderApp();
     emitReports(connection, [ok('Codex', { window: '5h', remainingFraction: 0.5 })]);
     const user = await openPanel();
@@ -177,7 +177,7 @@ describe('UsageIndicator', () => {
     expect(within(screen.getByRole('dialog')).getByText('60%')).toBeInTheDocument();
   });
 
-  it('keeps the numbers and says so when a refresh fails', async () => {
+  it('should keep the numbers and say so when a refresh fails', async () => {
     const { connection } = renderApp();
     emitReports(connection, [ok('Codex', { window: '5h', remainingFraction: 0.5 })]);
     await openPanel();
@@ -188,7 +188,7 @@ describe('UsageIndicator', () => {
     expect(within(screen.getByRole('dialog')).getByText('50%')).toBeInTheDocument();
   });
 
-  it('leaves the reading state when the first query fails', async () => {
+  it('should leave the reading state when the first query fails', async () => {
     const { connection } = renderApp();
     act(() => connection.emitEvent({ type: 'quota.failed' }));
 

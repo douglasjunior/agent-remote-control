@@ -38,7 +38,7 @@ const as = (role: string, extra: Partial<AgentRequester> = {}): AgentRequester =
 const update = (id: string, changes: Partial<Extract<AgentRequest, { kind: 'update' }>> = {}): AgentRequest => ({ kind: 'update', id, sections: [], pullRequests: [], ...changes });
 
 describe('RunAgentRequestsUseCase', () => {
-  it('answers every request in order, inside one results block, sending the agent to its skills when one failed', async () => {
+  it('should answer every request in order, inside one results block, sending the agent to its skills when one failed', async () => {
     const { useCase } = setup();
 
     const results = await useCase.execute([
@@ -61,7 +61,7 @@ describe('RunAgentRequestsUseCase', () => {
   });
 
   describe('list and read', () => {
-    it('lists only tasks for an agent that works on tasks, with the filters of the request', async () => {
+    it('should list only tasks for an agent that works on tasks, with the filters of the request', async () => {
       const { useCase } = setup();
 
       const results = await useCase.execute([{ kind: 'list', types: ['feature'], statuses: 'all', parent: 'F-1', project: 'shop' }], as('DEVELOPER'));
@@ -71,7 +71,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(results).not.toContain('F-1 [feature]');
     });
 
-    it('lists the roots with parent none and resolves a ref of the same response', async () => {
+    it('should list the roots with parent none and resolve a ref of the same response', async () => {
       const { useCase } = setup();
 
       const results = await useCase.execute([
@@ -85,7 +85,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(results).toContain('No artifact matches.');
     });
 
-    it('reads several artifacts, a feature in full only for an agent that manages the board', async () => {
+    it('should read several artifacts, a feature in full only for an agent that manages the board', async () => {
       const { useCase } = setup();
 
       const owner = await useCase.execute([{ kind: 'read', ids: ['F-1'], tree: true }], as('PRODUCT_OWNER'));
@@ -102,7 +102,7 @@ describe('RunAgentRequestsUseCase', () => {
     it.each([
       [{ kind: 'read', ids: ['T-9'], tree: false }, 'DEVELOPER', 'Unknown artifact "T-9".'],
       [{ kind: 'read', ids: ['T-3', 'F-1'], tree: false }, 'DEVELOPER', 'F-1 is a feature; you work on tasks only.'],
-    ] as const)('refuses to read %j as %s', async (request, role, reason) => {
+    ] as const)('should refuse to read %j as %s', async (request, role, reason) => {
       const { useCase } = setup();
 
       expect(await useCase.execute([request], as(role))).toContain(`status="error">\n${reason}`);
@@ -110,7 +110,7 @@ describe('RunAgentRequestsUseCase', () => {
   });
 
   describe('create', () => {
-    it('creates with the sections and refinements of the agent, resolving refs of earlier requests', async () => {
+    it('should create with the sections and refinements of the agent, resolving refs of earlier requests', async () => {
       const { useCase, artifacts } = setup();
 
       await useCase.execute([
@@ -130,13 +130,13 @@ describe('RunAgentRequestsUseCase', () => {
       [{ kind: 'create', type: 'task', title: 'X', project: 'shop', sections: [] }, 'DEVELOPER', 'You cannot create artifacts.'],
       [{ kind: 'create', type: 'task', title: 'X', project: 'shop', sections: [{ section: 'technical_solution', content: 'x', mode: 'replace' }] }, 'PRODUCT_OWNER', 'You cannot write the sections technical_solution.'],
       [{ kind: 'create', type: 'task', title: 'X', project: 'nowhere', sections: [] }, 'TECH_LEAD', 'Unknown project "nowhere". Use one of the project folders exactly as written: shop, web, my-app.'],
-    ] as const)('refuses to create %j as %s', async (request, role, reason) => {
+    ] as const)('should refuse to create %j as %s', async (request, role, reason) => {
       const { useCase } = setup();
 
       expect(await useCase.execute([request], as(role))).toContain(`status="error">\n${reason}`);
     });
 
-    it('refuses refinement states from an agent that cannot set them, keeping the ref in the result', async () => {
+    it('should refuse refinement states from an agent that cannot set them, keeping the ref in the result', async () => {
       const { artifacts } = setup();
       const registry = new AgentRegistryService();
       registry.registerDefinition({ ...registry.getDefinition('PRODUCT_OWNER')!, artifacts: { scope: 'tree', create: true, sections: [], fields: [] } });
@@ -149,7 +149,7 @@ describe('RunAgentRequestsUseCase', () => {
   });
 
   describe('update and comment', () => {
-    it('lets the agent holding a task write what its role writes', async () => {
+    it('should let the agent holding a task write what its role writes', async () => {
       const { useCase, artifacts } = setup();
 
       const results = await useCase.execute([
@@ -164,7 +164,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ branch: 'feat/t-1', sections: { implementation_notes: 'Done.' } });
     });
 
-    it('lets the coordinator move the status and refinements of an artifact another agent holds', async () => {
+    it('should let the coordinator move the status and refinements of an artifact another agent holds', async () => {
       const { useCase, artifacts } = setup();
 
       await useCase.execute([update('T-1', { status: 'in_progress', refinement: { technical: 'done' } })], as('CEO'));
@@ -172,7 +172,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ status: 'in_progress' });
     });
 
-    it('resolves refs of the same response in the dependencies of an update', async () => {
+    it('should resolve refs of the same response in the dependencies of an update', async () => {
       const { useCase, artifacts } = setup();
 
       await useCase.execute([
@@ -184,7 +184,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(await artifacts.service.get(CONVERSATION, 'T-3')).toMatchObject({ parentId: 'F-1', dependsOn: ['T-4'] });
     });
 
-    it('resolves a ref of the same response in the id, parent and dependencies', async () => {
+    it('should resolve a ref of the same response in the id, parent and dependencies', async () => {
       const { useCase, artifacts } = setup();
 
       await useCase.execute([
@@ -207,13 +207,13 @@ describe('RunAgentRequestsUseCase', () => {
       ['a section outside the role', update('T-3', { sections: [{ section: 'overview', content: 'x', mode: 'replace' }] }), as('TECH_LEAD'), 'You cannot write the sections overview.'],
       ['pull requests outside the role', update('T-3', { pullRequests: [{ url: 'https://x/pull/1' }] }), as('TECH_LEAD'), 'You cannot change pull_requests.'],
       ['an invalid change', update('T-3', { status: 'ready', parent: 'T-2' }), as('CEO'), 'A task goes under a feature, and T-2 is a task.'],
-    ])('refuses %s', async (_name, request, requester, reason) => {
+    ])('should refuse %s', async (_name, request, requester, reason) => {
       const { useCase } = setup();
 
       expect(await useCase.execute([request], requester)).toContain(`status="error">\n${reason}`);
     });
 
-    it('leaves freezing to the server and unfreezing to the user', async () => {
+    it('should leave freezing to the server and unfreezing to the user', async () => {
       const { useCase, artifacts } = setup();
       artifacts.store.artifactsOf(CONVERSATION).set('T-9', buildArtifact({ id: 'T-9', status: 'frozen' }));
 
@@ -225,7 +225,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(await artifacts.service.get(CONVERSATION, 'T-9')).toMatchObject({ status: 'frozen', title: 'Renamed' });
     });
 
-    it('comments on any artifact the agent reads', async () => {
+    it('should comment on any artifact the agent reads', async () => {
       const { useCase, artifacts } = setup();
 
       const results = await useCase.execute([
@@ -242,7 +242,7 @@ describe('RunAgentRequestsUseCase', () => {
   });
 
   describe('skills', () => {
-    it('returns the full content of the skills of the role', async () => {
+    it('should return the full content of the skills of the role', async () => {
       const { useCase, skills } = setupSkills();
       skills.skills = {
         QA: [
@@ -267,7 +267,7 @@ describe('RunAgentRequestsUseCase', () => {
       ].join('\n'));
     });
 
-    it('names the skills of the role when one is unknown', async () => {
+    it('should name the skills of the role when one is unknown', async () => {
       const { useCase, skills } = setupSkills();
       skills.skills = { QA: [{ name: 'playwright-web', description: 'Web.', content: 'Open the browser.' }] };
 
@@ -280,7 +280,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(none).toContain('Unknown skill "cypress". Your role has no skills.');
     });
 
-    it('lists every skill with its roles for a role that writes skills, and refuses any other', async () => {
+    it('should list every skill with its roles for a role that writes skills, and refuse any other', async () => {
       const { useCase, skills } = setupSkills();
       skills.writers = ['CEO'];
       skills.listing = [
@@ -299,7 +299,7 @@ describe('RunAgentRequestsUseCase', () => {
       expect(refused).toContain('<request_result request="skill_list" status="error">\nListing the skills of every role is reserved to the agents that write skills.');
     });
 
-    it('writes a skill and reports whether it was created, updated or refused', async () => {
+    it('should write a skill and report whether it was created, updated or refused', async () => {
       const { useCase, skills } = setupSkills();
       const write = { kind: 'skill_write' as const, name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' };
 

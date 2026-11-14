@@ -108,7 +108,7 @@ describe('parseServerEvent', () => {
     },
     { type: 'error', message: 'boom', conversationId: 'c' },
     { type: 'error', message: 'boom' },
-  ])('accepts $type', (event) => {
+  ])('should accept $type', (event) => {
     expect(parseServerEvent(event)).toEqual({ ok: true, value: event });
   });
 
@@ -130,7 +130,7 @@ describe('parseServerEvent', () => {
     ['invalid entry', { type: 'conversation.entry', conversationId: 'c', entry: { type: 'x' } }],
     ['null', null],
     ['array', []],
-  ])('rejects %s', (_label, data) => {
+  ])('should reject %s', (_label, data) => {
     const result = parseServerEvent(data);
     expect(result.ok).toBe(false);
     expect(result).toHaveProperty('error', expect.any(String));

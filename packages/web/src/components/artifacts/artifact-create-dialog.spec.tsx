@@ -26,7 +26,7 @@ async function openDialog() {
 }
 
 describe('ArtifactCreateDialog', () => {
-  it('creates a feature in the project the user picks', async () => {
+  it('should create a feature in the project the user picks', async () => {
     const { user, app, dialog } = await openDialog();
     await pick(user, 'Type', 'Feature');
     expect(within(dialog).getByRole('heading', { name: 'New feature' })).toBeInTheDocument();
@@ -57,7 +57,7 @@ describe('ArtifactCreateDialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('creates a task in a feature, with its project and dependencies', async () => {
+  it('should create a task in a feature, with its project and dependencies', async () => {
     const { user, app, dialog } = await openDialog();
     expect(within(dialog).getByRole('heading', { name: 'New task' })).toBeInTheDocument();
     await pick(user, 'Feature', 'F-1 · Login');
@@ -91,7 +91,7 @@ describe('ArtifactCreateDialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('offers only siblings as dependencies and drops those a new level does not share', async () => {
+  it('should offer only siblings as dependencies and drop those a new level does not share', async () => {
     const { user, app, dialog } = await openDialog();
     await pick(user, 'Add a dependency', 'T-3 · Fix typo');
     expect(within(dialog).getByText('T-3')).toBeInTheDocument();

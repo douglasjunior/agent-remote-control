@@ -2,7 +2,7 @@ import { conversationStateSchema, conversationSummarySchema } from './conversati
 
 
 describe('conversation schemas', () => {
-  it('accepts a valid summary', () => {
+  it('should accept a valid summary', () => {
     const summary = {
       id: '1',
       title: 'T',
@@ -13,17 +13,17 @@ describe('conversation schemas', () => {
     expect(conversationSummarySchema.safeParse({ ...summary, archivedAt: '2026-01-02T00:00:00.000Z' }).success).toBe(true);
   });
 
-  it('rejects a summary with a malformed timestamp or missing fields', () => {
+  it('should reject a summary with a malformed timestamp or missing fields', () => {
     expect(conversationSummarySchema.safeParse({ id: '1', title: 'T', createdAt: 'x', updatedAt: 'y' }).success)
       .toBe(false);
     expect(conversationSummarySchema.safeParse({ id: '1' }).success).toBe(false);
   });
 
-  it.each(['idle', 'queued', 'running'])('accepts state %s', (state) => {
+  it.each(['idle', 'queued', 'running'])('should accept state %s', (state) => {
     expect(conversationStateSchema.safeParse(state).success).toBe(true);
   });
 
-  it('rejects an unknown state', () => {
+  it('should reject an unknown state', () => {
     expect(conversationStateSchema.safeParse('paused').success).toBe(false);
   });
 });

@@ -32,7 +32,7 @@ const cart = buildArtifact({ id: 'T-2', title: 'Cart', parentId: 'F-1', status: 
 const all = [feature, api, cart];
 
 describe('ArtifactPromptFormatterService', () => {
-  it('writes one line per artifact with what routes the work', () => {
+  it('should write one line per artifact with what routes the work', () => {
     expect(formatter.summaryLine(api, all)).toBe(
       '- T-1 [task] "API" · status: in_review · project: shop · parent: F-1 · depends on: T-2 (done), T-9 (deleted) · refinement: business done, technical done · with: CODE_REVIEWER · pull requests: 2',
     );
@@ -42,7 +42,7 @@ describe('ArtifactPromptFormatterService', () => {
     expect(formatter.list([feature, cart], all).split('\n')).toHaveLength(2);
   });
 
-  it('renders the full content of a task, its sections in catalog order and its comments', () => {
+  it('should render the full content of a task, its sections in catalog order and its comments', () => {
     expect(formatter.detail(api, all)).toBe([
       '# T-1 · API',
       [
@@ -63,7 +63,7 @@ describe('ArtifactPromptFormatterService', () => {
     ].join('\n\n'));
   });
 
-  it('says when the user set the current status', () => {
+  it('should say when the user set the current status', () => {
     const moved = (actor: ArtifactActor) => buildArtifact({
       id: 'T-4',
       status: 'blocked',
@@ -74,7 +74,7 @@ describe('ArtifactPromptFormatterService', () => {
     expect(formatter.detail(moved({ kind: 'agent', role: 'CEO', roleName: 'CEO' }), all)).toContain('- Status: blocked\n');
   });
 
-  it('lists the tasks of a feature, or renders each in full for a tree', () => {
+  it('should list the tasks of a feature, or render each in full for a tree', () => {
     const own = formatter.detail(feature, all);
     expect(own).toContain('- Children:\n  - T-1 [task] "API"');
     expect(own).toContain('- Blocks: none');

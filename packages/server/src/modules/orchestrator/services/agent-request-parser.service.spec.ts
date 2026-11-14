@@ -14,7 +14,7 @@ const reasonOf = (response: string) => {
 };
 
 describe('AgentRequestParserService', () => {
-  it('finds no request in plain text, quoted markup or a task written for another agent', () => {
+  it('should find no request in plain text, quoted markup or a task written for another agent', () => {
     expect(parser.parse('All done.')).toEqual({ kind: 'none' });
     expect(parser.parse('Use `<artifact_read id="T-1"/>` to read it.')).toEqual({ kind: 'none' });
     expect(parser.parse('```\n<artifact_list/>\n```')).toEqual({ kind: 'none' });
@@ -31,7 +31,7 @@ describe('AgentRequestParserService', () => {
         { kind: 'list', types: ['feature', 'task'], statuses: ['ready', 'in_progress'], parent: 'F-1', project: 'shop' },
       ],
       ['<artifact_list parent="none"/>', { kind: 'list', parent: null }],
-    ])('reads %s', (response, expected) => {
+    ])('should read %s', (response, expected) => {
       expect(requestsOf(response)).toEqual([expected]);
     });
 
@@ -40,13 +40,13 @@ describe('AgentRequestParserService', () => {
       ['<artifact_list status="wip"/>', 'Unknown status "wip". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, done, blocked, frozen, cancelled.'],
       ['<artifact_list status=","/>', 'Unknown status ",". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, done, blocked, frozen, cancelled.'],
       ['<artifact_list kind="x"/>', 'Unknown attribute "kind" in <artifact_list kind="x"/>. Use only "type", "status", "parent", "project".'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
   describe('read', () => {
-    it('reads several ids, normalized, and a whole tree', () => {
+    it('should read several ids, normalized, and a whole tree', () => {
       expect(requestsOf('<artifact_read id="t-1, T-2"/>\n<artifact_read id="F-1" tree="TRUE"/>')).toEqual([
         { kind: 'read', ids: ['T-1', 'T-2'], tree: false },
         { kind: 'read', ids: ['F-1'], tree: true },
@@ -56,13 +56,13 @@ describe('AgentRequestParserService', () => {
     it.each([
       ['<artifact_read/>', 'Name the artifact to read, as in <artifact_read id="T-1"/>.'],
       ['<artifact_read id="T-1" tree="yes"/>', 'The tree attribute is "true" or "false".'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
   describe('create', () => {
-    it('reads the attributes and sections, keeping refs and normalizing ids', () => {
+    it('should read the attributes and sections, keeping refs and normalizing ids', () => {
       const response = [
         'Creating the work.',
         '<artifact_create type="Feature" title="Checkout" project="shop" ref="checkout" business_refinement="DONE">',
@@ -89,7 +89,7 @@ describe('AgentRequestParserService', () => {
       ]);
     });
 
-    it('clears the parent and dependencies written as none', () => {
+    it('should clear the parent and dependencies written as none', () => {
       expect(requestsOf('<artifact_create type="task" title="T" parent="none" depends_on="none"/>')).toEqual([{ kind: 'create', type: 'task', title: 'T', parent: null, dependsOn: [], sections: [] }]);
     });
 
@@ -104,13 +104,13 @@ describe('AgentRequestParserService', () => {
       ['<artifact_create type="task" title="x"></section></artifact_create>', 'Found </section> without its opening <section> tag.'],
       ['<artifact_create type="task" title="x"><pull_request url="https://x"/></artifact_create>', 'Pull requests are linked with <artifact_update>, once the artifact exists.'],
       ['<artifact_create type="task" title="x">', 'Every <artifact_create> must be closed with </artifact_create> before the next <artifact_create> starts.'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
   describe('update', () => {
-    it('reads fields, sections and pull requests', () => {
+    it('should read fields, sections and pull requests', () => {
       const response = [
         '<artifact_update id="t-3" title="New" status="IN_REVIEW" parent="F-2" project="web" depends_on="T-1" branch="feat/t-3" note="PR opened">',
         '<section name="implementation_notes" mode="append">Added the endpoint.</section>',
@@ -139,7 +139,7 @@ describe('AgentRequestParserService', () => {
       ]);
     });
 
-    it('clears the branch written as none or empty', () => {
+    it('should clear the branch written as none or empty', () => {
       expect(requestsOf('<artifact_update id="T-1" branch="none"/><artifact_update id="T-1" branch=""/>')).toEqual([
         { kind: 'update', id: 'T-1', branch: null, sections: [], pullRequests: [] },
         { kind: 'update', id: 'T-1', branch: null, sections: [], pullRequests: [] },
@@ -155,69 +155,69 @@ describe('AgentRequestParserService', () => {
       ['<artifact_update id="T-1"><pull_request title="x"/></artifact_update>', 'Every <pull_request> needs its url.'],
       ['<artifact_update id="T-1"><pull_request url="https://x" state="draft"/></artifact_update>', 'The state of a <pull_request> is one of: open, merged, closed.'],
       ['<artifact_update id="T-1"><pull_request url="https://x" by="me"/></artifact_update>', 'Unknown attribute "by" in <pull_request url="https://x" by="me"/>. Use only "url", "title", "state".'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
   describe('comment', () => {
-    it('reads the comment text', () => {
+    it('should read the comment text', () => {
       expect(requestsOf('<artifact_comment id="t-1">\nApproved.\n</artifact_comment>')).toEqual([{ kind: 'comment', id: 'T-1', text: 'Approved.' }]);
     });
 
     it.each([
       ['<artifact_comment>Hi</artifact_comment>', '<artifact_comment> needs the id of the artifact, as in <artifact_comment id="T-1">.'],
       ['<artifact_comment id="T-1"> </artifact_comment>', '<artifact_comment id="T-1"> has no text.'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
   describe('skill', () => {
-    it('reads one or more skill names', () => {
+    it('should read one or more skill names', () => {
       expect(requestsOf('<skill_read name=" playwright-web , api-testing "/>')).toEqual([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }]);
       expect(requestsOf('<skill_read name="mobile-mcp"></skill_read>')).toEqual([{ kind: 'skill_read', names: ['mobile-mcp'] }]);
     });
 
-    it('rejects a request without a name', () => {
+    it('should reject a request without a name', () => {
       expect(reasonOf('<skill_read name=" , "/>')).toBe('<skill_read> needs the name of a skill, as in <skill_read name="playwright-web"/>.');
     });
 
-    it('lists every skill', () => {
+    it('should list every skill', () => {
       expect(requestsOf('<skill_list/>')).toEqual([{ kind: 'skill_list' }]);
     });
 
-    it('reads a skill to write, with its roles normalized', () => {
+    it('should read a skill to write, with its roles normalized', () => {
       expect(requestsOf('<skill_write name="electron-testing" roles="qa, Developer" description="Testing Electron apps.">\n# Electron\n\nLaunch it.\n</skill_write>')).toEqual([{ kind: 'skill_write', name: 'electron-testing', description: 'Testing Electron apps.', roles: ['QA', 'DEVELOPER'], content: '# Electron\n\nLaunch it.' }]);
     });
 
     it.each([
       ['<skill_write name="x" description="d"># X</skill_write>', '<skill_write> needs a name, a description and the roles that read the skill, as in <skill_write name="electron-testing" roles="QA" description="...">.'],
       ['<skill_write name="x" roles="QA" description="d"> </skill_write>', '<skill_write name="x"> has no content.'],
-    ])('rejects %s', (response, reason) => {
+    ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });
   });
 
-  it('keeps the rest of the response, without its requests', () => {
+  it('should keep the rest of the response, without its requests', () => {
     const parsed = parser.parse('Moving it.\n<artifact_update id="T-1" status="in_progress"/>\n\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>');
 
     expect(parsed).toMatchObject({ kind: 'requests', rest: 'Moving it.\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>' });
   });
 
-  it('drops everything from a request that never closes', () => {
+  it('should drop everything from a request that never closes', () => {
     expect(parser.parse('Before <artifact_comment id="T-1">never closed')).toMatchObject({ kind: 'requests', rest: 'Before' });
     expect(parser.parse('A </artifact_read> B')).toMatchObject({ kind: 'requests', rest: 'A  B' });
   });
 
-  it('reports a closing tag without its opening and goes on with the next request', () => {
+  it('should report a closing tag without its opening and go on with the next request', () => {
     expect(requestsOf('</artifact_read>\n<artifact_list/>')).toEqual([
       { kind: 'invalid', tag: '</artifact_read>', reason: 'Found </artifact_read> without its opening <artifact_read> tag.' },
       { kind: 'list' },
     ]);
   });
 
-  it('reports an unknown attribute of a request with a body', () => {
+  it('should report an unknown attribute of a request with a body', () => {
     expect(reasonOf('<artifact_comment id="T-1" by="me">Hi</artifact_comment>')).toBe(
       'Unknown attribute "by" in <artifact_comment id="T-1" by="me">. Use only "id".',
     );

@@ -28,11 +28,11 @@ describe('FileUserSkillStoreAdapter', () => {
     await rm(dataDir, { recursive: true, force: true });
   });
 
-  it('lists nothing without a skills folder', async () => {
+  it('should list nothing without a skills folder', async () => {
     expect(await store.list()).toEqual([]);
   });
 
-  it('reads each skill folder, sorted, with its roles in any list form', async () => {
+  it('should read each skill folder, sorted, with its roles in any list form', async () => {
     await writeSkill('zeta', '---\nname: "cypress"\ndescription: \'Testing with Cypress.\'\nroles: [QA, "developer"]\n---\n\n# Cypress\n\nRun it.\n');
     await writeSkill('alpha', '---\ndescription: >\n  Testing a web interface\n  in a real browser.\nroles:\n  - QA\n  - CEO\n# a comment\n---\nOpen the page.');
     await writeSkill('beta', '---\ndescription: |\n  Line one.\n  Line two.\nroles: QA, CODE_REVIEWER\n---\r\nBody');
@@ -44,7 +44,7 @@ describe('FileUserSkillStoreAdapter', () => {
     ]);
   });
 
-  it('skips folders without a SKILL.md and skills without a description or roles', async () => {
+  it('should skip folders without a SKILL.md and skills without a description or roles', async () => {
     await mkdir(join(dataDir, 'skills', 'empty'), { recursive: true });
     await writeSkill('no-frontmatter', 'Just text.');
     await writeSkill('no-description', '---\nroles: QA\n---\nBody');
@@ -53,7 +53,7 @@ describe('FileUserSkillStoreAdapter', () => {
     expect(await store.list()).toEqual([]);
   });
 
-  it('deletes the folder of the skill of that name, whatever the folder is called', async () => {
+  it('should delete the folder of the skill of that name, whatever the folder is called', async () => {
     await writeSkill('my-folder', '---\nname: cypress\ndescription: Cypress.\nroles: QA\n---\nBody');
     await writeSkill('other', '---\ndescription: Other.\nroles: QA\n---\nBody');
 
@@ -63,7 +63,7 @@ describe('FileUserSkillStoreAdapter', () => {
     await expect(readFile(join(dataDir, 'skills', 'my-folder', 'SKILL.md'))).rejects.toThrow();
   });
 
-  it('writes a skill it reads back, telling whether it was created', async () => {
+  it('should write a skill it reads back, telling whether it was created', async () => {
     const skill = { name: 'electron-testing', description: 'Testing\nElectron apps.', roles: ['QA', 'DEVELOPER'], content: '# Electron\n\nLaunch it.' };
 
     expect(await store.write(skill)).toBe(true);

@@ -24,18 +24,18 @@ const response = (status: 'completed' | 'failed' | 'cancelled'): ConversationEnt
 const stateOf = (team: ReturnType<typeof deriveTeam>, role: string) => team.find(member => member.role === role)!;
 
 describe('deriveTeam', () => {
-  it('lists the whole team, idle, when nothing happened', () => {
+  it('should list the whole team, idle, when nothing happened', () => {
     const team = deriveTeam([], false);
 
     expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS']);
     expect(team.every(member => member.state === 'idle')).toBe(true);
   });
 
-  it('has the coordinator working while a turn runs with nobody delegated', () => {
+  it('should have the coordinator working while a turn runs with nobody delegated', () => {
     expect(stateOf(deriveTeam([user], true), 'CEO').state).toBe('working');
   });
 
-  it('puts delegates to work and rests the coordinator while they do', () => {
+  it('should put delegates to work and rest the coordinator while they do', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER', { projectName: 'app' }), delegation('started', 'CODE_REVIEWER')], true);
 
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working', summary: 'DEVELOPER summary', projectName: 'app', startedAt: Date.parse(at) });
@@ -44,26 +44,26 @@ describe('deriveTeam', () => {
     expect(stateOf(team, 'TECH_LEAD').state).toBe('idle');
   });
 
-  it('marks a delegate done with its duration and keeps its project', () => {
+  it('should mark a delegate done with its duration and keep its project', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER', { projectName: 'app' }), delegation('finished', 'DEVELOPER', { durationMs: 5000 })], true);
 
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 5000, projectName: 'app' });
   });
 
-  it('marks a delegate that failed', () => {
+  it('should mark a delegate that failed', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER'), delegation('failed', 'DEVELOPER', { errorMessage: 'boom' })], true);
 
     expect(stateOf(team, 'DEVELOPER').state).toBe('failed');
   });
 
-  it('restarts a delegate that is delegated to again', () => {
+  it('should restart a delegate that is delegated to again', () => {
     const team = deriveTeam([user, delegation('finished', 'DEVELOPER', { durationMs: 1 }), delegation('started', 'DEVELOPER')], true);
 
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working' });
     expect(stateOf(team, 'DEVELOPER')).not.toHaveProperty('durationMs');
   });
 
-  it('shows the asker as waiting while the question is open', () => {
+  it('should show the asker as waiting while the question is open', () => {
     const question: ConversationEntry = {
       id: 'q', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which?', options: [], number: 1, total: 1, closed: false,
     };
@@ -75,7 +75,7 @@ describe('deriveTeam', () => {
     expect(stateOf(coordinatorAsks, 'CEO')).toMatchObject({ state: 'waiting', startedAt: Date.parse(at) });
   });
 
-  it('keeps the asker waiting while entries follow its open question', () => {
+  it('should keep the asker waiting while entries follow its open question', () => {
     const question: ConversationEntry = {
       id: 'q', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which?', options: [], number: 1, total: 1, closed: false,
     };
@@ -94,7 +94,7 @@ describe('deriveTeam', () => {
     expect(stateOf(askedAndClosed, 'CEO').state).toBe('working');
   });
 
-  it('tells what each agent did last and how many steps it took', () => {
+  it('should tell what each agent did last and how many steps it took', () => {
     const step = (id: string, role: string, title?: string): ConversationEntry => title
       ? { id, at, type: 'tool', role, title, status: 'completed' }
       : { id, at, type: 'thought', role, text: 'hmm' };
@@ -113,7 +113,7 @@ describe('deriveTeam', () => {
     expect(stateOf(team, 'GIT_OPS')).not.toHaveProperty('doing');
   });
 
-  it('forgets the delegations of earlier turns', () => {
+  it('should forget the delegations of earlier turns', () => {
     const team = deriveTeam([user, delegation('finished', 'DEVELOPER'), response('completed'), { ...user, id: 'u2' }], true);
 
     expect(stateOf(team, 'DEVELOPER').state).toBe('idle');
@@ -125,7 +125,7 @@ describe('deriveTeam', () => {
       id: 'q', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which?', options: [], number: 1, total: 1, closed: false,
     };
 
-    it('keeps a delegation still open working after a new user message while a turn runs', () => {
+    it('should keep a delegation still open working after a new user message while a turn runs', () => {
       const step: ConversationEntry = { id: 's', at, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' };
       const team = deriveTeam([user, delegation('started', 'DEVELOPER', { projectName: 'app' }), step, next], true);
 
@@ -133,14 +133,14 @@ describe('deriveTeam', () => {
       expect(stateOf(team, 'CEO').state).toBe('idle');
     });
 
-    it('tells that a delegated agent is reading a skill', () => {
+    it('should tell that a delegated agent is reading a skill', () => {
       const step: ConversationEntry = { id: 's', at, type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed' };
       const team = deriveTeam([user, delegation('started', 'QA'), step], true);
 
       expect(stateOf(team, 'QA')).toMatchObject({ state: 'working', steps: 1, doing: 'Reading a skill' });
     });
 
-    it('drops a closed delegation at a new user message', () => {
+    it('should drop a closed delegation at a new user message', () => {
       const step: ConversationEntry = { id: 's', at, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' };
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), step, delegation('finished', 'DEVELOPER'), next], true);
 
@@ -148,14 +148,14 @@ describe('deriveTeam', () => {
       expect(stateOf(team, 'DEVELOPER')).not.toHaveProperty('summary');
     });
 
-    it('counts only the current turn for an agent without an open delegation', () => {
+    it('should count only the current turn for an agent without an open delegation', () => {
       const step = (id: string): ConversationEntry => ({ id, at, type: 'tool', role: 'CODE_REVIEWER', title: 'Read file', status: 'completed' });
       const team = deriveTeam([user, step('a'), step('b'), next, step('c')], true);
 
       expect(stateOf(team, 'CODE_REVIEWER').steps).toBe(1);
     });
 
-    it('lets a kept delegation close in a later turn and ignores the end of a replaced one', () => {
+    it('should let a kept delegation close in a later turn and ignore the end of a replaced one', () => {
       const closed = deriveTeam([user, delegation('started', 'DEVELOPER'), next, delegation('finished', 'DEVELOPER', { durationMs: 7 })], true);
       expect(stateOf(closed, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 7 });
 
@@ -167,14 +167,14 @@ describe('deriveTeam', () => {
       expect(stateOf(replaced, 'DEVELOPER').state).toBe('working');
     });
 
-    it('drops open delegations at a new user message once no turn runs', () => {
+    it('should drop open delegations at a new user message once no turn runs', () => {
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), next], false);
 
       expect(stateOf(team, 'DEVELOPER').state).toBe('idle');
       expect(stateOf(team, 'DEVELOPER')).not.toHaveProperty('summary');
     });
 
-    it('does not show the coordinator working while another agent waits for an answer', () => {
+    it('should not show the coordinator working while another agent waits for an answer', () => {
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), next, question], true);
       expect(stateOf(team, 'DEVELOPER').state).toBe('waiting');
       expect(stateOf(team, 'CEO').state).toBe('idle');
@@ -185,25 +185,25 @@ describe('deriveTeam', () => {
     });
   });
 
-  it('rests an agent whose delegation was cancelled', () => {
+  it('should rest an agent whose delegation was cancelled', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER'), response('cancelled')], false);
 
     expect(stateOf(team, 'DEVELOPER').state).toBe('idle');
     expect(stateOf(team, 'CEO').state).toBe('idle');
   });
 
-  it('shows how the turn ended on the coordinator', () => {
+  it('should show how the turn ended on the coordinator', () => {
     expect(stateOf(deriveTeam([user, response('completed')], false), 'CEO').state).toBe('done');
     expect(stateOf(deriveTeam([user, response('failed')], false), 'CEO').state).toBe('failed');
   });
 
-  it('adds a role outside the team after the team', () => {
+  it('should add a role outside the team after the team', () => {
     const team = deriveTeam([user, delegation('started', 'DESIGNER', { roleName: 'Designer Agent' })], true);
 
     expect(team.at(-1)).toMatchObject({ role: 'DESIGNER', roleName: 'Designer Agent', state: 'working' });
   });
 
-  it('keeps an agent waiting on a question a restart left open, with no turn running', () => {
+  it('should keep an agent waiting on a question a restart left open, with no turn running', () => {
     const question: ConversationEntry = { id: 'q', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'DEVELOPER', text: 'Which?', options: [], number: 1, total: 1, closed: false };
 
     const team = deriveTeam([user, delegation('started', 'DEVELOPER'), question], false);
@@ -211,7 +211,7 @@ describe('deriveTeam', () => {
     expect(team.find(member => member.role === 'DEVELOPER')).toMatchObject({ state: 'waiting' });
   });
 
-  it('marks an agent a restart stopped, taking its summary and project', () => {
+  it('should mark an agent a restart stopped, taking its summary and project', () => {
     const work = { id: 'w', role: 'DEVELOPER', roleName: 'DEVELOPER', projectName: 'app', summary: 'Build' };
 
     const team = deriveTeam([user, delegation('started', 'DEVELOPER')], false, [work]);
@@ -219,7 +219,7 @@ describe('deriveTeam', () => {
     expect(team.find(member => member.role === 'DEVELOPER')).toMatchObject({ state: 'idle', summary: 'Build', projectName: 'app', interruptedWorkId: 'w' });
   });
 
-  it('marks a stopped coordinator, which has no summary or project of its own', () => {
+  it('should mark a stopped coordinator, which has no summary or project of its own', () => {
     const work = { id: 'c', role: 'CEO', roleName: 'CEO', projectName: null, summary: '' };
 
     const team = deriveTeam([user], false, [work]);

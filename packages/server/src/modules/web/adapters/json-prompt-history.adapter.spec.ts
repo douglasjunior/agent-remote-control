@@ -26,11 +26,11 @@ describe('JsonPromptHistoryAdapter', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('starts empty', async () => {
+  it('should start empty', async () => {
     expect(await new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir)).list()).toEqual([]);
   });
 
-  it('lists the most recent prompt first and persists it', async () => {
+  it('should list the most recent prompt first and persist it', async () => {
     const history = new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir));
 
     await history.append('first');
@@ -40,13 +40,13 @@ describe('JsonPromptHistoryAdapter', () => {
     expect(JSON.parse(readFileSync(file(), 'utf-8'))).toEqual(['second', 'first']);
   });
 
-  it('survives a restart', async () => {
+  it('should survive a restart', async () => {
     await new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir)).append('kept');
 
     expect(await new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir)).list()).toEqual(['kept']);
   });
 
-  it('does not repeat the latest prompt', async () => {
+  it('should not repeat the latest prompt', async () => {
     const history = new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir));
 
     await history.append('same');
@@ -55,7 +55,7 @@ describe('JsonPromptHistoryAdapter', () => {
     expect(await history.list()).toEqual(['same']);
   });
 
-  it('keeps only the most recent prompts', async () => {
+  it('should keep only the most recent prompts', async () => {
     const history = new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir));
 
     for (let index = 0; index <= MAX_PROMPT_HISTORY; index += 1) {
@@ -68,13 +68,13 @@ describe('JsonPromptHistoryAdapter', () => {
     expect(prompts.at(-1)).toBe('prompt 1');
   });
 
-  it('truncates an oversized stored list to the limit', async () => {
+  it('should truncate an oversized stored list to the limit', async () => {
     seedFile(JSON.stringify(Array.from({ length: MAX_PROMPT_HISTORY + 5 }, (_, index) => `p${index}`)));
 
     expect(await new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir)).list()).toHaveLength(MAX_PROMPT_HISTORY);
   });
 
-  it('ignores a stored file with the wrong shape and warns', async () => {
+  it('should ignore a stored file with the wrong shape and warn', async () => {
     const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     seedFile(JSON.stringify({ not: 'a list' }));
 
@@ -82,7 +82,7 @@ describe('JsonPromptHistoryAdapter', () => {
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('prompt_history_invalid_file'));
   });
 
-  it('logs a failed write without rejecting', async () => {
+  it('should log a failed write without rejecting', async () => {
     const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     mkdirSync(join(dataDir, 'web'), { recursive: true });
     mkdirSync(file());

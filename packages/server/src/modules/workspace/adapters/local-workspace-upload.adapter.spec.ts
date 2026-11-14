@@ -24,7 +24,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
     rmSync(baseDirectory, { recursive: true, force: true });
   });
 
-  it('assembles the pieces into one file and returns its relative path', async () => {
+  it('should assemble the pieces into one file and return its relative path', async () => {
     const writer = await uploads.begin('.arc-uploads/web-1', 'notes.txt');
 
     await writer.append(bytes('hello '));
@@ -36,7 +36,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
     expect(readdirSync(join(baseDirectory, '.arc-uploads/web-1'))).toEqual(['notes.txt']);
   });
 
-  it('numbers a name that is already taken instead of overwriting it', async () => {
+  it('should number a name that is already taken instead of overwriting it', async () => {
     const first = await uploads.begin('up', 'a.png');
     await first.append(bytes('one'));
     await first.commit();
@@ -53,7 +53,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
     expect(readFileSync(join(baseDirectory, secondPath), 'utf8')).toBe('two');
   });
 
-  it('sanitizes the name so it cannot leave the directory', async () => {
+  it('should sanitize the name so it cannot leave the directory', async () => {
     const writer = await uploads.begin('up', '../../outside.txt');
     await writer.append(bytes('x'));
 
@@ -80,24 +80,24 @@ describe('LocalWorkspaceUploadAdapter', () => {
       ['   ', 'file'],
       ['', 'file'],
       ['folder/', 'file'],
-    ])('turns %j into %j', async (name, expected) => {
+    ])('should turn %j into %j', async (name, expected) => {
       expect(await storedName(name)).toBe(expected);
     });
 
-    it('shortens a long name and keeps the extension', async () => {
+    it('should shorten a long name and keep the extension', async () => {
       const stored = await storedName(`${'a'.repeat(200)}.png`);
 
       expect(stored).toHaveLength(120);
       expect(stored.endsWith('.png')).toBe(true);
     });
 
-    it('shortens a long name that has no usable extension', async () => {
+    it('should shorten a long name that has no usable extension', async () => {
       expect(await storedName('a'.repeat(200))).toHaveLength(120);
       expect(await storedName(`${'a'.repeat(200)}.${'b'.repeat(30)}`)).toHaveLength(120);
     });
   });
 
-  it('leaves nothing behind when the upload is aborted', async () => {
+  it('should leave nothing behind when the upload is aborted', async () => {
     const writer = await uploads.begin('up', 'a.txt');
     await writer.append(bytes('partial'));
 
@@ -106,7 +106,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
     expect(readdirSync(join(baseDirectory, 'up'))).toEqual([]);
   });
 
-  it('fails the commit when the target directory is gone', async () => {
+  it('should fail the commit when the target directory is gone', async () => {
     const writer = await uploads.begin('up', 'a.txt');
     await writer.append(bytes('x'));
     rmSync(join(baseDirectory, 'up'), { recursive: true, force: true });
@@ -114,7 +114,7 @@ describe('LocalWorkspaceUploadAdapter', () => {
     await expect(writer.commit()).rejects.toThrow();
   });
 
-  it('gives up when every numbered name is taken', async () => {
+  it('should give up when every numbered name is taken', async () => {
     mkdirSync(join(baseDirectory, 'up'));
     writeFileSync(join(baseDirectory, 'up', 'a.txt'), '');
     for (let attempt = 1; attempt < 1_000; attempt += 1) {
@@ -125,11 +125,11 @@ describe('LocalWorkspaceUploadAdapter', () => {
     await expect(writer.commit()).rejects.toThrow('No free name for upload');
   });
 
-  it('refuses a directory outside the workspace', async () => {
+  it('should refuse a directory outside the workspace', async () => {
     await expect(uploads.begin('../elsewhere', 'a.txt')).rejects.toThrow('outside the workspace');
   });
 
-  it('reports the size of a file inside the workspace and nothing for anything else', async () => {
+  it('should report the size of a file inside the workspace and nothing for anything else', async () => {
     mkdirSync(join(baseDirectory, 'up'));
     writeFileSync(join(baseDirectory, 'up', 'a.txt'), 'four');
 

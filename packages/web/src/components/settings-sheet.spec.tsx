@@ -34,7 +34,7 @@ async function pick(user: User, scope: HTMLElement, combobox: string, option: st
 const sentOf = (app: AppHarness, type: string) => app.connection.sent.filter(command => command.type === type);
 
 describe('SettingsSheet', () => {
-  it('shows each role with its identity, its setup and an agent that is not installed', async () => {
+  it('should show each role with its identity, its setup and an agent that is not installed', async () => {
     const app = openConversation();
     emit(app, {
       type: 'profiles',
@@ -55,7 +55,7 @@ describe('SettingsSheet', () => {
     expect(within(dialog()).getByText('One agent, model and effort for all 2 roles.')).toBeInTheDocument();
   });
 
-  it('changes one role through agent, model and effort, loading each list', async () => {
+  it('should change one role through agent, model and effort, loading each list', async () => {
     const app = await openSettings();
     const { user, connection } = app;
 
@@ -92,7 +92,7 @@ describe('SettingsSheet', () => {
     expect(dialog()).toBeInTheDocument();
   });
 
-  it('applies to every role only through its own action, with agents that offer no model or effort', async () => {
+  it('should apply to every role only through its own action, with agents that offer no model or effort', async () => {
     const app = await openSettings();
     const { user, connection } = app;
 
@@ -109,7 +109,7 @@ describe('SettingsSheet', () => {
     expect(connection.sent.at(-1)).toEqual({ type: 'profiles.set', conversationId: 'c1', agentId: 'claude' });
   });
 
-  it('saves a model that offers no effort', async () => {
+  it('should save a model that offers no effort', async () => {
     const app = await openSettings();
     const { user, connection } = app;
     await user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
@@ -126,7 +126,7 @@ describe('SettingsSheet', () => {
     });
   });
 
-  it('starts from the current setup and keeps the lists it already loaded', async () => {
+  it('should start from the current setup and keep the lists it already loaded', async () => {
     const app = await openSettings();
     const { user } = app;
 
@@ -144,7 +144,7 @@ describe('SettingsSheet', () => {
     expect(within(editor('Developer')).getByRole('combobox', { name: 'Model' })).toBeEnabled();
   });
 
-  it('asks for the efforts of a model once', async () => {
+  it('should ask for the efforts of a model once', async () => {
     const app = await openSettings();
     const { user } = app;
     await user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
@@ -162,7 +162,7 @@ describe('SettingsSheet', () => {
     ]);
   });
 
-  it('shows errors in the open editor and asks again for the lists left loading', async () => {
+  it('should show errors in the open editor and ask again for the lists left loading', async () => {
     const app = await openSettings();
     const { user, connection } = app;
     await user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
@@ -187,7 +187,7 @@ describe('SettingsSheet', () => {
     expect(connection.sent.at(-1)).toMatchObject({ type: 'profiles.set', roles: ['DEVELOPER'] });
   });
 
-  it('keeps the editor open for profiles it did not save', async () => {
+  it('should keep the editor open for profiles it did not save', async () => {
     const app = await openSettings();
     await app.user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
 
@@ -196,7 +196,7 @@ describe('SettingsSheet', () => {
     expect(editor('Developer')).toBeInTheDocument();
   });
 
-  it('opens on the team setup when the conversation has none, and Cancel dismisses it', async () => {
+  it('should open on the team setup when the conversation has none, and Cancel dismisses it', async () => {
     const { user } = await openSettings({ configured: false });
 
     expect(within(dialog()).getByText('Choose what the team runs on to start this conversation.')).toBeInTheDocument();
@@ -206,7 +206,7 @@ describe('SettingsSheet', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('can be closed', async () => {
+  it('should close', async () => {
     const { user } = await openSettings();
     await user.click(within(dialog()).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

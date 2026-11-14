@@ -21,7 +21,7 @@ async function chooseAction(user: ReturnType<typeof userEvent.setup>, title: str
 }
 
 describe('ConversationList', () => {
-  it('keeps archived conversations in a collapsed group at the bottom, remembered per viewer', async () => {
+  it('should keep archived conversations in a collapsed group at the bottom, remembered per viewer', async () => {
     const { user, list } = await openList();
     expect(within(list).getByRole('link', { name: /Alpha/ })).toBeInTheDocument();
     expect(within(list).queryByRole('link', { name: /Beta/ })).not.toBeInTheDocument();
@@ -34,7 +34,7 @@ describe('ConversationList', () => {
     expect(within(screen.getByRole('list', { name: 'Archived conversations' })).getByRole('link', { name: /Beta/ })).toHaveAttribute('href', '/c/b');
   });
 
-  it('archives and unarchives from the row menu, following the server', async () => {
+  it('should archive and unarchive from the row menu, following the server', async () => {
     const { user, app, list } = await openList();
     await chooseAction(user, 'Alpha', 'Archive');
     expect(app.connection.sent.at(-1)).toEqual({ type: 'conversation.archive', conversationId: 'a', archived: true });
@@ -47,7 +47,7 @@ describe('ConversationList', () => {
     expect(app.connection.sent.at(-1)).toEqual({ type: 'conversation.archive', conversationId: 'b', archived: false });
   });
 
-  it('renames a conversation in place: Enter or leaving saves, Escape and blank or unchanged titles do not', async () => {
+  it('should rename a conversation in place: Enter or leaving saves, Escape and blank or unchanged titles do not', async () => {
     const { user, app } = await openList();
     const renames = () => app.connection.sent.filter(command => command.type === 'conversation.rename');
 
@@ -82,7 +82,7 @@ describe('ConversationList', () => {
     ]);
   });
 
-  it('renames the open conversation from its header', async () => {
+  it('should rename the open conversation from its header', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation();
     await user.click(screen.getByRole('button', { name: 'Rename conversation' }));

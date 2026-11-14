@@ -14,12 +14,12 @@ const all = [task10, standalone, task, otherFeature, feature];
 const byId = Object.fromEntries(all.map(artifact => [artifact.id, artifact]));
 
 describe('artifact-tree', () => {
-  it('orders features before tasks, each by its number', () => {
+  it('should order features before tasks, each by its number', () => {
     expect([...all].sort(compareArtifacts).map(artifact => artifact.id)).toEqual(['F-1', 'F-2', 'T-2', 'T-3', 'T-10']);
     expect(compareArtifacts(summary({ id: 'T-x' }), summary({ id: 'T-y' }))).toBeLessThan(0);
   });
 
-  it('tells closed statuses apart', () => {
+  it('should tell closed statuses apart', () => {
     expect(isClosed('done')).toBe(true);
     expect(isClosed('cancelled')).toBe(true);
     expect(isClosed('blocked')).toBe(false);
@@ -33,15 +33,15 @@ describe('artifact-tree', () => {
     [{ project: 'app' }, true],
     [{ type: 'task' as const }, false],
     [{ hideClosed: true }, true],
-  ])('filters by %o', (filter, expected) => {
+  ])('should filter by %o', (filter, expected) => {
     expect(matchesFilter(feature, { ...EMPTY_FILTER, ...filter })).toBe(expected);
   });
 
-  it('hides closed artifacts on request', () => {
+  it('should hide closed artifacts on request', () => {
     expect(matchesFilter(task, { ...EMPTY_FILTER, hideClosed: true })).toBe(false);
   });
 
-  it('builds one tree per project, features first and standalone tasks apart', () => {
+  it('should build one tree per project, features first and standalone tasks apart', () => {
     const [app, site] = buildTree(all, EMPTY_FILTER);
     expect(app.projectName).toBe('app');
     expect(app.features.map(node => node.artifact.id)).toEqual(['F-1']);
@@ -51,29 +51,29 @@ describe('artifact-tree', () => {
     expect(site.standalone.map(node => node.artifact.id)).toEqual(['T-3']);
   });
 
-  it('keeps the feature of a matching task and treats an unknown parent as none', () => {
+  it('should keep the feature of a matching task and treat an unknown parent as none', () => {
     const orphan = summary({ id: 'T-4', title: 'Orphan', parentId: 'F-404' });
     const [app] = buildTree([...all, orphan], { ...EMPTY_FILTER, text: 'api' });
     expect(app.features[0].children.map(node => node.artifact.id)).toEqual(['T-10']);
     expect(buildTree([orphan], EMPTY_FILTER)[0].standalone[0].artifact.id).toBe('T-4');
   });
 
-  it('lists the dependencies not done yet, unknown ones included', () => {
+  it('should list the dependencies not done yet, unknown ones included', () => {
     expect(pendingDependencies(task10, byId)).toEqual(['T-9']);
   });
 
-  it('finds dependents and children', () => {
+  it('should find dependents and children', () => {
     expect(dependentsOf('T-2', all).map(artifact => artifact.id)).toEqual(['T-10']);
     expect(childrenOf('F-1', all).map(artifact => artifact.id)).toEqual(['T-2', 'T-10']);
   });
 
-  it('offers features as the parents of a task, in its project when given', () => {
+  it('should offer features as the parents of a task, in its project when given', () => {
     expect(parentCandidates('feature', all)).toEqual([]);
     expect(parentCandidates('task', all).map(artifact => artifact.id)).toEqual(['F-1', 'F-2']);
     expect(parentCandidates('task', all, { projectName: 'site' }).map(artifact => artifact.id)).toEqual(['F-2']);
   });
 
-  it('offers the open siblings of the same type as dependencies', () => {
+  it('should offer the open siblings of the same type as dependencies', () => {
     const sibling = summary({ id: 'T-12', parentId: 'F-1' });
     const looseSibling = summary({ id: 'T-13' });
     const artifacts = [...all, sibling, looseSibling];
@@ -82,13 +82,13 @@ describe('artifact-tree', () => {
     expect(dependencyCandidates('feature', null, artifacts, 'F-1').map(artifact => artifact.id)).toEqual(['F-2']);
   });
 
-  it('counts the tasks of a feature, leaving cancelled ones out', () => {
+  it('should count the tasks of a feature, leaving cancelled ones out', () => {
     const cancelled = summary({ id: 'T-11', parentId: 'F-1', status: 'cancelled' });
     expect(taskProgress('F-1', [...all, cancelled])).toEqual({ done: 1, total: 2 });
     expect(taskProgress('T-3', all)).toEqual({ done: 0, total: 0 });
   });
 
-  it('stops the work only of a held artifact moved to a status that ends it', () => {
+  it('should stop the work only of a held artifact moved to a status that ends it', () => {
     const held = summary({ id: 'T-12', status: 'in_progress', assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd-1', since: '2026-01-01T00:00:00.000Z' } });
     expect(stopsWork(held, 'cancelled')).toBe(true);
     expect(stopsWork(held, 'blocked')).toBe(true);

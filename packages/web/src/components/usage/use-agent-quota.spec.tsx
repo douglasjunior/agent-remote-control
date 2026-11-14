@@ -43,7 +43,7 @@ describe('useAgentQuota', () => {
     vi.restoreAllMocks();
   });
 
-  it('asks when the connection opens, and again after a reconnection', () => {
+  it('should ask when the connection opens, and again after a reconnection', () => {
     renderQuota();
     expect(requests()).toEqual([{ type: 'quota.get' }]);
 
@@ -52,7 +52,7 @@ describe('useAgentQuota', () => {
     expect(requests()).toHaveLength(2);
   });
 
-  it('asks nothing before the connection opens', () => {
+  it('should ask nothing before the connection opens', () => {
     const wrapper = ({ children }: { readonly children: ReactNode }) => (
       <ConnectionProvider connection={connection}>{children}</ConnectionProvider>
     );
@@ -60,7 +60,7 @@ describe('useAgentQuota', () => {
     expect(requests()).toEqual([]);
   });
 
-  it('keeps the reported numbers', () => {
+  it('should keep the reported numbers', () => {
     const { result } = renderQuota();
     expect(result.current.reports).toBeNull();
 
@@ -70,7 +70,7 @@ describe('useAgentQuota', () => {
     expect(result.current.fetchedAt).toBe(new Date(NOW).toISOString());
   });
 
-  it('refreshes on the interval only while the tab is visible', () => {
+  it('should refresh on the interval only while the tab is visible', () => {
     renderQuota();
     act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
     expect(requests()).toHaveLength(2);
@@ -80,7 +80,7 @@ describe('useAgentQuota', () => {
     expect(requests()).toHaveLength(2);
   });
 
-  it('refreshes on returning to the tab only when the numbers are stale', () => {
+  it('should refresh on returning to the tab only when the numbers are stale', () => {
     renderQuota();
     act(() => connection.emitEvent({ type: 'quota.report', reports, fetchedAt: new Date(NOW).toISOString() }));
 
@@ -96,13 +96,13 @@ describe('useAgentQuota', () => {
     expect(requests()).toHaveLength(2);
   });
 
-  it('asks again on returning to the tab when nothing arrived yet', () => {
+  it('should ask again on returning to the tab when nothing arrived yet', () => {
     renderQuota();
     setVisibility('visible');
     expect(requests()).toHaveLength(2);
   });
 
-  it('stops asking when unmounted', () => {
+  it('should stop asking when unmounted', () => {
     const { unmount } = renderQuota();
     unmount();
     act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
@@ -110,7 +110,7 @@ describe('useAgentQuota', () => {
     expect(requests()).toHaveLength(1);
   });
 
-  it('shows a refresh in progress until its answer arrives', () => {
+  it('should show a refresh in progress until its answer arrives', () => {
     const { result } = renderQuota();
 
     act(() => result.current.refresh());
@@ -121,7 +121,7 @@ describe('useAgentQuota', () => {
     expect(result.current.refreshing).toBe(false);
   });
 
-  it('does not show a refresh in progress while the connection is down', () => {
+  it('should not show a refresh in progress while the connection is down', () => {
     const { result } = renderQuota();
     act(() => result.current.refresh());
 
@@ -129,7 +129,7 @@ describe('useAgentQuota', () => {
     expect(result.current.refreshing).toBe(false);
   });
 
-  it('keeps the numbers when a refresh fails and clears the failure with the next report', () => {
+  it('should keep the numbers when a refresh fails and clear the failure with the next report', () => {
     const { result } = renderQuota();
     act(() => connection.emitEvent({ type: 'quota.report', reports, fetchedAt: new Date(NOW).toISOString() }));
 

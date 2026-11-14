@@ -14,7 +14,7 @@ const SKILLS: SkillSummary[] = [
 const detail = (name: string): SkillDetail => ({ ...SKILLS.find(skill => skill.name === name)!, content: `# ${name}\n\nDo it well.` });
 
 describe('SkillsPage', () => {
-  it('asks for the skills once connected and lists the custom ones before the built-in ones', () => {
+  it('should ask for the skills once connected and list the custom ones before the built-in ones', () => {
     const { connection } = renderApp('/skills');
 
     expect(connection.sent).toContainEqual({ type: 'skills.list' });
@@ -29,7 +29,7 @@ describe('SkillsPage', () => {
     expect(screen.getByText('Pick a skill')).toBeInTheDocument();
   });
 
-  it('filters the skills by text and by the role that reads them', async () => {
+  it('should filter the skills by text and by the role that reads them', async () => {
     const user = userEvent.setup();
     const { connection } = renderApp('/skills');
     act(() => connection.emitEvent({ type: 'skills.list', skills: SKILLS }));
@@ -47,7 +47,7 @@ describe('SkillsPage', () => {
     expect(screen.getByText('No skill matches.')).toBeInTheDocument();
   });
 
-  it('reads a built-in skill, which is read-only', () => {
+  it('should read a built-in skill, which is read-only', () => {
     const { connection } = renderApp('/skills/api-testing');
     act(() => connection.emitEvent({ type: 'skills.list', skills: SKILLS }));
 
@@ -63,14 +63,14 @@ describe('SkillsPage', () => {
     expect(within(pane).getByText('Do it well.')).toBeInTheDocument();
   });
 
-  it('tells when no skill has the name', () => {
+  it('should tell when no skill has the name', () => {
     const { connection } = renderApp('/skills/missing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'missing', skill: null }));
 
     expect(screen.getByText('No skill is named "missing".')).toBeInTheDocument();
   });
 
-  it('opens a new conversation with a request to the Coordinator to change a custom skill', async () => {
+  it('should open a new conversation with a request to the Coordinator to change a custom skill', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp('/skills/electron-testing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
@@ -89,7 +89,7 @@ describe('SkillsPage', () => {
     expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue('Change the skill "electron-testing": ');
   });
 
-  it('deletes a custom skill after a confirmation and returns to the list', async () => {
+  it('should delete a custom skill after a confirmation and return to the list', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp('/skills/electron-testing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
@@ -112,7 +112,7 @@ describe('SkillsPage', () => {
     expect(connection.sent.filter(sent => sent.type === 'skill.get')).toHaveLength(2);
   });
 
-  it('tells why a skill could not be deleted, and refreshes a skill another page deleted', async () => {
+  it('should tell why a skill could not be deleted, and refresh a skill another page deleted', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp('/skills/electron-testing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
@@ -128,14 +128,14 @@ describe('SkillsPage', () => {
     expect(connection.sent.filter(sent => sent.type === 'skill.get')).toHaveLength(1);
   });
 
-  it('offers no delete for a built-in skill', () => {
+  it('should offer no delete for a built-in skill', () => {
     const { connection } = renderApp('/skills/api-testing');
     act(() => connection.emitEvent({ type: 'skill.detail', name: 'api-testing', skill: detail('api-testing') }));
 
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
-  it('is reached from the header and closes back to the page it was opened from, across the skills read', async () => {
+  it('should be reached from the header and close back to the page it was opened from, across the skills read', async () => {
     const user = userEvent.setup();
     const { connection, router } = openConversation();
 
@@ -151,7 +151,7 @@ describe('SkillsPage', () => {
     expect(router.state.location.pathname).toBe('/c/c1');
   });
 
-  it('closes to the start when it was opened from its address', async () => {
+  it('should close to the start when it was opened from its address', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp('/skills/api-testing');
     act(() => {

@@ -9,7 +9,7 @@ describe('buildSkillCatalogPrompt', () => {
     { name: 'api-testing', description: 'Testing an HTTP API.' },
   ];
 
-  it('lists each skill with when to use it, read through a request, besides the skills a project keeps in its files', () => {
+  it('should list each skill with when to use it, read through a request, besides the skills a project keeps in its files', () => {
     const prompt = buildSkillCatalogPrompt(skills);
 
     expect(prompt.startsWith('[SKILLS]\n')).toBe(true);
@@ -20,7 +20,7 @@ describe('buildSkillCatalogPrompt', () => {
     expect(prompt).toContain('- playwright-web: Testing a web interface.\n- api-testing: Testing an HTTP API.\n[/SKILLS]');
   });
 
-  it('tells a role that writes skills how it manages the skills of every role', () => {
+  it('should tell a role that writes skills how it manages the skills of every role', () => {
     const prompt = buildSkillCatalogPrompt(skills, true);
 
     expect(prompt).toContain('<skill_list/> lists them all with the roles that read them, <skill_read> reads any of them, and <skill_write> creates or changes one');

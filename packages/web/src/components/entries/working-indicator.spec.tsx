@@ -9,24 +9,24 @@ import { WorkingIndicator } from './working-indicator.js';
 const member = (role: string, roleName: string, state: TeamMember['state']): TeamMember => ({ role, roleName, state, steps: 0 });
 
 describe('WorkingIndicator', () => {
-  it('says the coordinator is thinking before anyone works', () => {
+  it('should say the coordinator is thinking before anyone works', () => {
     render(<WorkingIndicator members={[member('CEO', 'CEO', 'idle')]} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Coordinator is thinking…');
   });
 
-  it('names the one agent at work', () => {
+  it('should name the one agent at work', () => {
     render(<WorkingIndicator members={[member('CEO', 'CEO', 'working')]} />);
     expect(screen.getByRole('status')).toHaveTextContent('Coordinator is thinking…');
   });
 
-  it('names a delegate as working', () => {
+  it('should name a delegate as working', () => {
     render(<WorkingIndicator members={[member('DEVELOPER', 'Developer', 'working')]} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('Developer is working…');
   });
 
-  it('counts several agents at work', () => {
+  it('should count several agents at work', () => {
     render(<WorkingIndicator members={[member('DEVELOPER', 'Developer', 'working'), member('GIT_OPS', 'Git Ops', 'working')]} />);
 
     expect(screen.getByRole('status')).toHaveTextContent('2 agents are working…');

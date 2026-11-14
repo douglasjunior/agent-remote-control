@@ -34,7 +34,7 @@ function setup() {
 }
 
 describe('AnswerInputProvider', () => {
-  it('submits the text as an answer, without attachments when there are none', async () => {
+  it('should submit the text as an answer, without attachments when there are none', async () => {
     const { onAnswer } = setup();
 
     await userEvent.type(screen.getByLabelText('Your answer'), 'my own{Enter}');
@@ -43,7 +43,7 @@ describe('AnswerInputProvider', () => {
     expect(screen.getByLabelText('Your answer')).toHaveValue('');
   });
 
-  it('keeps what was written while the card is off screen', async () => {
+  it('should keep what was written while the card is off screen', async () => {
     setup();
     await userEvent.type(screen.getByLabelText('Your answer'), 'half an answer');
 
@@ -54,7 +54,7 @@ describe('AnswerInputProvider', () => {
     expect(screen.getByLabelText('Your answer')).toHaveValue('half an answer');
   });
 
-  it('forgets what was written when the question changes', async () => {
+  it('should forget what was written when the question changes', async () => {
     setup();
     await userEvent.type(screen.getByLabelText('Your answer'), 'for the first');
 
@@ -63,7 +63,7 @@ describe('AnswerInputProvider', () => {
     expect(screen.getByLabelText('Your answer')).toHaveValue('');
   });
 
-  it('refuses a field outside the provider', () => {
+  it('should refuse a field outside the provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     expect(() => render(<Field />)).toThrow('useAnswerInput needs an AnswerInputProvider');

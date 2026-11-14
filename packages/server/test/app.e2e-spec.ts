@@ -48,24 +48,24 @@ describe('AppController (e2e)', () => {
       client.on('error', fail);
     });
 
-  it('/health (GET)', () => {
+  it('should answer GET /health', () => {
     return request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' });
   });
 
-  it('authenticates over /ws and lists conversations', async () => {
+  it('should authenticate over /ws and list conversations', async () => {
     const { messages } = await authenticate('test');
 
     expect(messages).toEqual([{ type: 'auth.ok' }, { type: 'conversation.list', conversations: [] }]);
   });
 
-  it('closes a wrong token with 4401', async () => {
+  it('should close a wrong token with 4401', async () => {
     const { messages, closeCode } = await authenticate('wrong');
 
     expect(messages).toEqual([{ type: 'auth.failed' }]);
     expect(closeCode).toBe(4401);
   });
 
-  it('refuses a foreign origin with 403', async () => {
+  it('should refuse a foreign origin with 403', async () => {
     const status = await new Promise<number>((done) => {
       const client = new WebSocket(`ws://${host()}/ws`, { headers: { origin: 'http://evil.test' } });
       client.on('unexpected-response', (_req, res) => done(res.statusCode ?? 0));
@@ -75,7 +75,7 @@ describe('AppController (e2e)', () => {
     expect(status).toBe(403);
   });
 
-  it('creates a conversation, reads its history and asks for the agent configuration', async () => {
+  it('should create a conversation, read its history and ask for the agent configuration', async () => {
     const events = await new Promise<Record<string, any>[]>((done, fail) => {
       const client = new WebSocket(`ws://${host()}/ws`, { headers: { origin: `http://${host()}` } });
       const received: Record<string, any>[] = [];
@@ -115,7 +115,7 @@ describe('AppController (e2e)', () => {
     expect(profiles?.profiles.length).toBeGreaterThan(0);
   });
 
-  it('rejects an answer when no question is open', async () => {
+  it('should reject an answer when no question is open', async () => {
     const errors = await new Promise<Record<string, any>[]>((done, fail) => {
       const client = new WebSocket(`ws://${host()}/ws`, { headers: { origin: `http://${host()}` } });
       const received: Record<string, any>[] = [];

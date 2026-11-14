@@ -47,11 +47,11 @@ describe('ArtifactsService', () => {
     [{ parentId: 'F-1', statuses: 'all' as const }, ['T-1', 'T-3']],
     [{ parentId: null }, ['F-1']],
     [{ projectName: 'web', statuses: 'all' as const }, ['T-2']],
-  ])('lists the artifacts matching %j in creation order', async (filter, expected) => {
+  ])('should list the artifacts matching %j in creation order', async (filter, expected) => {
     expect(ids(await setup().service.list('c1', filter))).toEqual(expected);
   });
 
-  it('reads, creates, updates, comments, assigns, releases and removes through its use cases', async () => {
+  it('should read, create, update, comment, assign, release and remove through its use cases', async () => {
     const { service, store } = setup();
     const listener = vi.fn();
     const unsubscribe = service.onChange(listener);

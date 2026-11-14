@@ -41,7 +41,7 @@ function settle(connection: FakeServerConnection, result: { ok: true; id: string
 }
 
 describe('ArtifactsProvider and useBoard', () => {
-  it('asks for the projects whenever the connection opens and reads the board of the conversation', () => {
+  it('should ask for the projects whenever the connection opens and read the board of the conversation', () => {
     const { connection } = mount();
     expect(connection.sent).toEqual([{ type: 'projects.list' }]);
     expect(screen.getByText('0 artifacts')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('ArtifactsProvider and useBoard', () => {
     expect(screen.getByText('0 artifacts')).toBeInTheDocument();
   });
 
-  it('sends every mutation for the conversation with a request id and settles it with the matching result', async () => {
+  it('should send every mutation for the conversation with a request id and settle it with the matching result', async () => {
     const { connection, board } = mount();
     let created!: ReturnType<Board['createArtifact']>;
     act(() => {
@@ -79,7 +79,7 @@ describe('ArtifactsProvider and useBoard', () => {
     ]);
   });
 
-  it('settles pending mutations with an error when the connection drops', async () => {
+  it('should settle pending mutations with an error when the connection drops', async () => {
     const { connection, board } = mount();
     let removed!: ReturnType<Board['deleteArtifact']>;
     act(() => {
@@ -89,7 +89,7 @@ describe('ArtifactsProvider and useBoard', () => {
     await expect(removed).resolves.toEqual({ ok: false, error: 'The connection to the server was lost.' });
   });
 
-  it('refuses to be used outside its provider', () => {
+  it('should refuse to be used outside its provider', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     function Outside() {
       useArtifacts();

@@ -4,7 +4,7 @@ import { buildProtocolRepairPrompt } from './protocol-repair.prompt.js';
 
 
 describe('buildProtocolRepairPrompt', () => {
-  it('names the tags written outside the final response block and asks for the answer again', () => {
+  it('should name the tags written outside the final response block and ask for the answer again', () => {
     expect(buildProtocolRepairPrompt(['artifact_list', 'delegate'])).toBe([
       '[PROTOCOL_ERROR]',
       'Your previous response wrote <artifact_list>, <delegate> outside the <final_response> block, where text is only progress narration, so nothing was done with it.',

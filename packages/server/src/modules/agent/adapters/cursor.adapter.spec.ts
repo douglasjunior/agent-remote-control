@@ -193,7 +193,7 @@ describe('CursorAdapter quota', () => {
     vi.unstubAllEnvs();
   });
 
-  it('reads the plan usage with the token of the environment and maps the monthly cycle', async () => {
+  it('should read the plan usage with the token of the environment and map the monthly cycle', async () => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', ' token ');
     vi.stubEnv('CURSOR_API_ENDPOINT', 'https://cursor.example/');
     respond(usage());
@@ -220,14 +220,14 @@ describe('CursorAdapter quota', () => {
     [1, 'daily'],
     [7, 'weekly'],
     [3, 'cycle'],
-  ])('names a cycle of %d days %s', async (days, window) => {
+  ])('should name a cycle of %d days %s', async (days, window) => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond(usage({ billingCycleEnd: start + days * DAY }));
 
     expect((await quota())?.groups[0]?.buckets[0]?.window).toBe(window);
   });
 
-  it('derives the included usage from the spend without a percent, and reads a cycle without dates', async () => {
+  it('should derive the included usage from the spend without a percent, and read a cycle without dates', async () => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond({ planUsage: { limit: '2000', includedSpend: '500' } });
 
@@ -237,7 +237,7 @@ describe('CursorAdapter quota', () => {
     expect(auto).toEqual({ id: 'auto', name: 'Auto', window: 'cycle', remainingFraction: 1 });
   });
 
-  it('counts nothing used when the plan reports neither percent nor spend', async () => {
+  it('should count nothing used when the plan reports neither percent nor spend', async () => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond({ planUsage: {} });
 
@@ -248,21 +248,21 @@ describe('CursorAdapter quota', () => {
     ['a plan without usage', { billingCycleStart: '1' }, 200],
     ['an unexpected payload', { planUsage: { totalPercentUsed: 'x' } }, 200],
     ['a refused token', {}, 401],
-  ])('reports no quota for %s', async (_name, body, status) => {
+  ])('should report no quota for %s', async (_name, body, status) => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond(body, status);
 
     expect(await quota()).toBeUndefined();
   });
 
-  it.each([new Error('offline'), 'offline'])('reports no quota when the request fails (%#)', async (failure) => {
+  it.each([new Error('offline'), 'offline'])('should report no quota when the request fails (%#)', async (failure) => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     fetchMock.mockRejectedValue(failure);
 
     expect(await quota()).toBeUndefined();
   });
 
-  it('never sends an expired token, and sends one it cannot read the expiry of', async () => {
+  it('should never send an expired token, and send one it cannot read the expiry of', async () => {
     vi.stubEnv('CURSOR_AUTH_TOKEN', jwt({ exp: 1 }));
     expect(await quota()).toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -274,7 +274,7 @@ describe('CursorAdapter quota', () => {
     }
   });
 
-  it('reads the token from the macOS Keychain, and has none when it is missing', async () => {
+  it('should read the token from the macOS Keychain, and have none when it is missing', async () => {
     setPlatform('darwin');
     runner.runResult = async () => ({ exitCode: 0, output: 'keychain-token\n' });
     respond(usage());
@@ -293,7 +293,7 @@ describe('CursorAdapter quota', () => {
     ['darwin', 'file', '/.cursor/auth.json'],
     ['linux', '', '/xdg/cursor/auth.json'],
     ['win32', '', '/AppData/Roaming/Cursor/auth.json'],
-  ] as const)('reads the token from the auth file on %s with store %j', async (platform, store, suffix) => {
+  ] as const)('should read the token from the auth file on %s with store %j', async (platform, store, suffix) => {
     setPlatform(platform);
     vi.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
     fileSystem.text = JSON.stringify({ accessToken: ' file-token ' });
@@ -303,7 +303,7 @@ describe('CursorAdapter quota', () => {
     expect(fileSystem.reads[0]?.endsWith(suffix)).toBe(true);
   });
 
-  it('takes the auth file from APPDATA and XDG defaults', async () => {
+  it('should take the auth file from APPDATA and XDG defaults', async () => {
     fileSystem.text = JSON.stringify({ accessToken: 'file-token' });
     respond(usage());
     setPlatform('win32');
@@ -322,7 +322,7 @@ describe('CursorAdapter quota', () => {
     ['an auth file that is not JSON', 'linux', '', '{'],
     ['an auth file without a token', 'linux', '', '{"token":"x"}'],
     ['an auth file with a blank token', 'linux', '', '{"accessToken":"  "}'],
-  ] as const)('has no token with %s', async (_name, platform, store, text) => {
+  ] as const)('should have no token with %s', async (_name, platform, store, text) => {
     setPlatform(platform);
     vi.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
     fileSystem.text = text;

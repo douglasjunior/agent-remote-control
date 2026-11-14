@@ -8,12 +8,12 @@ describe('useStoredFlag', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => vi.restoreAllMocks());
 
-  it('starts with the fallback when nothing is stored', () => {
+  it('should start with the fallback when nothing is stored', () => {
     expect(renderHook(() => useStoredFlag('k', true)).result.current[0]).toBe(true);
     expect(renderHook(() => useStoredFlag('k', false)).result.current[0]).toBe(false);
   });
 
-  it('stores the value and restores it in a new mount', () => {
+  it('should store the value and restore it in a new mount', () => {
     const first = renderHook(() => useStoredFlag('k', true));
     act(() => first.result.current[1](false));
     expect(first.result.current[0]).toBe(false);
@@ -24,7 +24,7 @@ describe('useStoredFlag', () => {
     expect(renderHook(() => useStoredFlag('k', false)).result.current[0]).toBe(true);
   });
 
-  it('keeps working in memory when storage throws', () => {
+  it('should keep working in memory when storage throws', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });

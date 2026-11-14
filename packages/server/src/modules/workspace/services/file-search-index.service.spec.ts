@@ -15,14 +15,14 @@ function setup() {
 }
 
 describe('FileSearchIndex', () => {
-  it('lists the base directory without a query, folders first and alphabetical', () => {
+  it('should list the base directory without a query, folders first and alphabetical', () => {
     const { index, latest } = setup();
     index.addEntries([file('b.ts'), directory('src'), file('a.ts'), directory('src/deep'), file('src/x.ts')]);
 
     expect(latest()).toEqual(['src/', 'a.ts', 'b.ts']);
   });
 
-  it('finds a path by a subsequence that spans directories', async () => {
+  it('should find a path by a subsequence that spans directories', async () => {
     const { index, latest } = setup();
     index.addEntries([
       directory('klist-workspace-sdd'),
@@ -39,7 +39,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['klist-workspace-sdd/repositories/klist-site/app/components/']);
   });
 
-  it('matches case-insensitively and reports the matched character indexes', async () => {
+  it('should match case-insensitively and report the matched character indexes', async () => {
     const { index, published } = setup();
     index.addEntries([file('Docs/Guide.md')]);
 
@@ -49,7 +49,7 @@ describe('FileSearchIndex', () => {
     expect(published.at(-1)).toEqual([{ path: 'Docs/Guide.md', kind: 'file', matches: [5, 6, 7, 8, 9] }]);
   });
 
-  it('puts the better match first and caps the results', async () => {
+  it('should put the better match first and cap the results', async () => {
     const { index, latest } = setup();
     index.addEntries([file('src/application/main.ts'), file('app.ts'), file('a/p/p.ts')]);
 
@@ -59,7 +59,7 @@ describe('FileSearchIndex', () => {
     expect(latest()?.[0]).toBe('app.ts');
   });
 
-  it('merges a batch that arrives after the query into the results', async () => {
+  it('should merge a batch that arrives after the query into the results', async () => {
     const { index, latest } = setup();
     index.addEntries([file('one.ts')]);
     index.setQuery('two');
@@ -71,7 +71,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['two.ts']);
   });
 
-  it('does not republish for a batch without matches', async () => {
+  it('should not republish for a batch without matches', async () => {
     const { index, published } = setup();
     index.setQuery('zzz');
     await settle();
@@ -82,7 +82,7 @@ describe('FileSearchIndex', () => {
     expect(published).toHaveLength(before);
   });
 
-  it('lets the running query reach a batch added while it is slicing', async () => {
+  it('should let the running query reach a batch added while it is slicing', async () => {
     const { index, latest } = setup();
     index.addEntries([file('first.ts')]);
 
@@ -93,7 +93,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(expect.arrayContaining(['first.ts', 'second.ts']));
   });
 
-  it('scores a large index in several slices and still finds a match in the last one', async () => {
+  it('should score a large index in several slices and still finds a match in the last one', async () => {
     const { index, latest } = setup();
     index.addEntries(Array.from({ length: 5_100 }, (_, number) => file(`filler-${number}.txt`)));
     index.addEntries([file('needle.ts')]);
@@ -105,7 +105,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['needle.ts']);
   });
 
-  it('drops the results of a query that was replaced', async () => {
+  it('should drop the results of a query that was replaced', async () => {
     const { index, latest } = setup();
     index.addEntries([file('alpha.ts'), file('beta.ts')]);
 
@@ -116,7 +116,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['beta.ts']);
   });
 
-  it('returns to the base directory when the query is cleared', async () => {
+  it('should return to the base directory when the query is cleared', async () => {
     const { index, latest } = setup();
     index.addEntries([file('a.ts'), file('src/b.ts')]);
     index.setQuery('b');
@@ -127,7 +127,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['a.ts']);
   });
 
-  it('adds only base directory entries to the list while there is no query', () => {
+  it('should add only base directory entries to the list while there is no query', () => {
     const { index, latest } = setup();
     index.addEntries([file('src/deep.ts')]);
     expect(latest()).toBeUndefined();
@@ -137,7 +137,7 @@ describe('FileSearchIndex', () => {
     expect(latest()).toEqual(['top.ts']);
   });
 
-  it('publishes nothing after stop', async () => {
+  it('should publish nothing after stop', async () => {
     const { index, published } = setup();
     index.addEntries([file('a.ts')]);
     const before = published.length;

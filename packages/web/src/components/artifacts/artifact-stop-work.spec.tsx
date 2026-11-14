@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe('Stopping the agent working on a task', () => {
-  it('asks before a held card dropped on a status that ends the work stops its agent', async () => {
+  it('should ask before a held card dropped on a status that ends the work stops its agent', async () => {
     const user = userEvent.setup();
     const app = openBoard([held]);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -40,7 +40,7 @@ describe('Stopping the agent working on a task', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-8', changes: { status: 'blocked' } });
   });
 
-  it('moves a held card on without asking while the work goes on', async () => {
+  it('should move a held card on without asking while the work goes on', async () => {
     const user = userEvent.setup();
     const app = openBoard([held]);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -51,7 +51,7 @@ describe('Stopping the agent working on a task', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-8', changes: { status: 'in_review' } });
   });
 
-  it('asks on the task page before a status that ends the work stops its agent', async () => {
+  it('should ask on the task page before a status that ends the work stops its agent', async () => {
     const user = userEvent.setup();
     const app = openBoard([held], { path: `/c/${CONVERSATION_ID}/tasks/T-8` });
     showDetail(app, detail(held));

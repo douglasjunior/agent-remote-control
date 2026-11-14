@@ -3534,7 +3534,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     const records = () => openWorkStore.saved['conv-1'] ?? [];
 
-    it('keeps nothing for a turn that is not resumable', async () => {
+    it('should keep nothing for a turn that is not resumable', async () => {
       stubAgentPort.mockResponses = [delegation, 'Done.'];
       delegateStubPort.mockResponses = ['Built.'];
 
@@ -3543,7 +3543,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(openWorkStore.saved).toEqual({});
     });
 
-    it('forgets the work of a turn that ends', async () => {
+    it('should forget the work of a turn that ends', async () => {
       stubAgentPort.mockResponses = [delegation, 'Done.'];
       delegateStubPort.mockResponses = ['Built.'];
 
@@ -3552,7 +3552,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(records()).toEqual([]);
     });
 
-    it('keeps the answers on disk as they arrive and forgets the questions once answered', async () => {
+    it('should keep the answers on disk as they arrive and forget the questions once answered', async () => {
       stubAgentPort.mockResponses = [delegation, 'Done.'];
       delegateStubPort.mockResponses = ['<question>First?</question><question>Second?</question>', 'Built.'];
       const onQuestion = vi.fn();
@@ -3567,7 +3567,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(records()).toEqual([]);
     });
 
-    it('delivers the answers given after the restart like any answer and hands the delegate result to the CEO', async () => {
+    it('should deliver the answers given after the restart like any answer and hand the delegate result to the CEO', async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.mockResponses = ['<question>Which colour?<option>Red</option><option>Blue</option></question>'];
       const onQuestion = vi.fn();
@@ -3598,7 +3598,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(records()).toEqual([]);
     });
 
-    it('resumes a delegate that stopped working, without answers', async () => {
+    it('should resume a delegate that stopped working, without answers', async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.prompt = async function* () {
         await new Promise(() => undefined);
@@ -3622,7 +3622,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(records()).toEqual([]);
     });
 
-    it('resumes a CEO that asked, with the answers', async () => {
+    it('should resume a CEO that asked, with the answers', async () => {
       stubAgentPort.mockResponses = ['<question>Go on?</question>'];
       const onQuestion = vi.fn();
       void useCase.execute(turnRequest({ resumable: true, prompt: 'Plan it', onQuestion }));
@@ -3656,7 +3656,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       return { ceo, developer, restoredWork };
     };
 
-    it('gives the task along with the answers to a delegate whose session is lost', async () => {
+    it('should give the task along with the answers to a delegate whose session is lost', async () => {
       const { developer, restoredWork } = await answeredAfterRestart();
       developer.loadSessionResult = false;
 
@@ -3667,7 +3667,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(developer.promptCalls[0]).toContain('kind="other">this</answer>');
     });
 
-    it('asks again when a restart comes before the answers reach the delegate, and treats it as working after', async () => {
+    it('should ask again when a restart comes before the answers reach the delegate, and treat it as working after', async () => {
       const { developer, restoredWork } = await answeredAfterRestart();
       let connected!: () => void;
       const connecting = new Promise<void>((resolve) => {
@@ -3694,7 +3694,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(questionsWhenSent).toBeUndefined();
     });
 
-    it('gives the task along with the answers to a CEO whose session is lost', async () => {
+    it('should give the task along with the answers to a CEO whose session is lost', async () => {
       stubAgentPort.mockResponses = ['<question>Go on?</question>'];
       const onQuestion = vi.fn();
       void useCase.execute(turnRequest({ resumable: true, prompt: 'Plan it', onQuestion }));
@@ -3711,12 +3711,12 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(ceo.promptCalls[0]).toContain('Plan it');
     });
 
-    it('fails on work that is not interrupted', async () => {
+    it('should fail on work that is not interrupted', async () => {
       await expect(useCase.resume('unknown', turnRequest())).resolves.toMatchObject({ status: 'failed', errorMessage: 'No interrupted work: unknown' });
       await expect(useCase.deliverAnswers({ workId: 'unknown', answers: [] }, turnRequest())).resolves.toMatchObject({ status: 'failed' });
     });
 
-    it('replaces what a restart left stopped when the role is delegated again', async () => {
+    it('should replace what a restart left stopped when the role is delegated again', async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.mockResponses = ['<question>Which?</question>'];
       const onQuestion = vi.fn();
@@ -3734,7 +3734,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(records()).toEqual([]);
     });
 
-    it('records a steered task', async () => {
+    it('should record a steered task', async () => {
       stubAgentPort.mockResponses = [delegation, delegation.replace('Build.', 'Build more.')];
       delegateStubPort.supportsSteering = true;
       delegateStubPort.prompt = async function* () {
@@ -3772,7 +3772,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       agentRegistry.hasRole.mockImplementation((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'GIT_OPS'].includes(role));
     });
 
-    it('answers the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
+    it('should answer the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
       stubAgentPort.mockResponses = ['Creating it. <artifact_create type="task" title="Login" project="my-app"/>', 'Created T-1.'];
       const onDraft = vi.fn();
 
@@ -3784,7 +3784,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ title: 'Login', history: [{ actor: { kind: 'agent', role: 'CEO' } }] });
     });
 
-    it('runs the requests that go with a delegation and hands their results over with the agent results', async () => {
+    it('should run the requests that go with a delegation and hand their results over with the agent results', async () => {
       seed({ id: 'T-1', title: 'Login', status: 'ready' });
       stubAgentPort.mockResponses = ['<artifact_update id="T-1" status="in_progress"/>\n<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['Built.'];
@@ -3797,7 +3797,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).not.toContain('was not taken as your final answer');
     });
 
-    it('hands the results of requests that go with questions over with the answers', async () => {
+    it('should hand the results of requests that go with questions over with the answers', async () => {
       stubAgentPort.mockResponses = ['<artifact_list/>\n<question>Which project?<option>demo</option></question>', 'Ok.'];
       const onQuestion = vi.fn();
 
@@ -3809,7 +3809,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).toMatch(/^<request_results>[\s\S]*No artifact matches\.[\s\S]*<\/request_results>\n\n<user_answers>/);
     });
 
-    it('hands a delegate the results of requests that go with its questions over with the answers', async () => {
+    it('should hand a delegate the results of requests that go with its questions over with the answers', async () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="T-1">Plan T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Starting.</artifact_comment><question>Which name?</question>', 'Planned.'];
@@ -3823,7 +3823,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.promptCalls[1]).toMatch(/^<request_results>[\s\S]*Commented on T-1[\s\S]*<\/request_results>\n\n<user_answers>/);
     });
 
-    it('asks again when protocol tags were written outside the final response envelope', async () => {
+    it('should ask again when protocol tags were written outside the final response envelope', async () => {
       stubAgentPort.mockResponses = [
         '<artifact_list status="all"/>\n<final_response>Vou conferir o quadro.</final_response>',
         '<final_response><artifact_list status="all"/></final_response>',
@@ -3839,7 +3839,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(onDraft).toHaveBeenCalledWith('');
     });
 
-    it('repairs a delegate the same way, without touching the draft of the CEO', async () => {
+    it('should repair a delegate the same way, without touching the draft of the CEO', async () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_comment id="T-1">x</artifact_comment><final_response>Built.</final_response>', 'Built.'];
@@ -3851,7 +3851,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(onDraft).not.toHaveBeenCalledWith('');
     });
 
-    it('takes the last response as it is when the requests never stop', async () => {
+    it('should take the last response as it is when the requests never stop', async () => {
       stubAgentPort.mockResponses = Array.from({ length: 31 }, () => '<artifact_list/>');
 
       const result = await useCase.execute(turnRequest());
@@ -3860,7 +3860,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(result.status).toBe('completed');
     });
 
-    it('runs the delegate in the artifact project with its content, holding it until it finishes', async () => {
+    it('should run the delegate in the artifact project with its content, holding it until it finishes', async () => {
       seed({ id: 'T-1', title: 'Login', sections: { technical_solution: 'Use JWT.' } });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building the login" artifact="t-1">Implement T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_update id="T-1" branch="feat/t-1"/>', 'Built on feat/t-1.'];
@@ -3886,7 +3886,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
     });
 
-    it('reports a delegation whose artifact another delegation of the role took meanwhile as failed', async () => {
+    it('should report a delegation whose artifact another delegation of the role took meanwhile as failed', async () => {
       seed({ id: 'T-1', assignee: { role: 'DEVELOPER', roleName: 'DEVELOPER', delegationId: 'elsewhere', since: '2026-01-01T00:00:00.000Z' } });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Ok.'];
 
@@ -3896,7 +3896,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.connectCalls).toBe(0);
     });
 
-    it('tells the CEO the status of the artifact a failed delegation held', async () => {
+    it('should tell the CEO the status of the artifact a failed delegation held', async () => {
       seed({ id: 'T-1', status: 'in_progress' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Ok.'];
       delegateStubPort.promptErrorToThrow = new Error('agent crashed');
@@ -3923,7 +3923,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
     };
 
-    it('tells the CEO when the user set the status of the artifact while the agent worked on it', async () => {
+    it('should tell the CEO when the user set the status of the artifact while the agent worked on it', async () => {
       seed({ id: 'T-1', status: 'in_progress' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
       whileDelegateWorks(() => artifacts.update('conv-1', 'T-1', { status: 'in_review' }, { kind: 'user', channel: 'web' }), 'Built.');
@@ -3933,7 +3933,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="in_review" artifact_status_by="user"');
     });
 
-    it('stops the agent and reports it to the CEO when the user ends the work on its artifact', async () => {
+    it('should stop the agent and report it to the CEO when the user ends the work on its artifact', async () => {
       seed({ id: 'T-1', status: 'in_progress' });
       const stopWork = new StopArtifactWorkUseCase(artifacts, runtime);
       stopWork.onModuleInit();
@@ -3954,7 +3954,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect((await artifacts.get('conv-1', 'T-1'))?.history.at(-1)).toMatchObject({ kind: 'released', summary: 'DEVELOPER released it: stopped by the user' });
     });
 
-    it('logs a release that fails without failing the delegation', async () => {
+    it('should log a release that fails without failing the delegation', async () => {
       seed({ id: 'T-1' });
       artifacts.release = () => Promise.reject(new Error('disk full'));
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
@@ -3963,7 +3963,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect((await useCase.execute(turnRequest())).status).toBe('completed');
     });
 
-    it('lets an agent that may take an artifact work without one, in the folder it was given', async () => {
+    it('should let an agent that may take an artifact work without one, in the folder it was given', async () => {
       stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Investigating" project="my-app">Investigate.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['Found it.'];
 
@@ -3983,7 +3983,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       ['an artifact another role holds', [{ id: 'T-1', assignee: { role: 'TECH_LEAD', roleName: 'TL', delegationId: 'd', since: '2026-01-01T00:00:00.000Z' } }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is with TECH_LEAD right now, and an artifact is with one agent at a time.'],
       ['another project', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1" project="project-a">Go.</delegate>', 'T-1 belongs to project "my-app", so the work on it runs there'],
       ['the same artifact twice', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate><delegate role="TECH_LEAD" summary="y" artifact="T-1">Plan.</delegate>', 'T-1 appears in more than one delegation.'],
-    ] as const)('rejects %s', async (_name, artifactsToSeed, delegation, reason) => {
+    ] as const)('should reject %s', async (_name, artifactsToSeed, delegation, reason) => {
       seed(...artifactsToSeed);
       stubAgentPort.mockResponses = [delegation, delegation];
 

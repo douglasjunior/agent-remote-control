@@ -61,11 +61,11 @@ describe('conversationEntrySchema', () => {
     },
     { id: '5', at, type: 'notice', level: 'warning', text: 'careful' },
     { id: '6', at, type: 'agent_response', status: 'failed', response: 'r', errorMessage: 'e', agentInfo },
-  ])('accepts $type', (entry) => {
+  ])('should accept $type', (entry) => {
     expect(conversationEntrySchema.safeParse(entry).success).toBe(true);
   });
 
-  it('keeps the prompt of a delegation and reads one stored without it as empty', () => {
+  it('should keep the prompt of a delegation and read one stored without it as empty', () => {
     const stored = { id: 'd', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen' };
 
     expect(conversationEntrySchema.parse({ ...stored, prompt: 'Add it' })).toMatchObject({ prompt: 'Add it' });
@@ -81,7 +81,7 @@ describe('conversationEntrySchema', () => {
     ['a delegation without its delegationId', { id: '1', at, type: 'delegation', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 's' }],
     ['a question without closed', { id: '1', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'q', options: [], number: 1, total: 1 }],
     ['non-object', 42],
-  ])('rejects %s', (_label, data) => {
+  ])('should reject %s', (_label, data) => {
     expect(conversationEntrySchema.safeParse(data).success).toBe(false);
   });
 });

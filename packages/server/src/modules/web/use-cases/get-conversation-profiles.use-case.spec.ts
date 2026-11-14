@@ -13,7 +13,7 @@ const full = buildStubProfile('codex', {
 });
 
 describe('GetConversationProfilesUseCase', () => {
-  it('maps the role profiles to the protocol shape', async () => {
+  it('should map the role profiles to the protocol shape', async () => {
     const { configuration } = createWebHarness();
     configuration.unavailableAgentIds.add('other');
     configuration.store.byConversation.set('web-1', {
@@ -40,7 +40,7 @@ describe('GetConversationProfilesUseCase', () => {
     expect(result.profiles.find(profile => profile.role === 'DEVELOPER')).not.toHaveProperty('model');
   });
 
-  it('falls back to the ids when a stored profile has no names, and lists roles without a profile', async () => {
+  it('should fall back to the ids when a stored profile has no names, and list roles without a profile', async () => {
     const { configuration } = createWebHarness();
     configuration.store.byConversation.set('web-1', {
       profiles: { CEO: { ...full, modelName: null, effortName: null } },
@@ -52,7 +52,7 @@ describe('GetConversationProfilesUseCase', () => {
     expect(profiles[0]).toMatchObject({ model: { id: 'gpt', name: 'gpt' }, effort: { id: 'high', name: 'high' } });
   });
 
-  it('is not configured while there are no settings to run with, and reading does not change that', async () => {
+  it('should not be configured while there are no settings to run with, and reading does not change that', async () => {
     const { configuration } = createWebHarness();
 
     const result = await new GetConversationProfilesUseCase(configuration).execute('web-1');
@@ -62,7 +62,7 @@ describe('GetConversationProfilesUseCase', () => {
     expect(configuration.store.saved).toEqual([]);
   });
 
-  it('is configured through the most recent settings without copying them', async () => {
+  it('should be configured through the most recent settings without copying them', async () => {
     const { configuration } = createWebHarness();
     configuration.store.byConversation.set('other', { profiles: { CEO: full }, updatedAt: '2026-01-01T00:00:00Z' });
 

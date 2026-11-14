@@ -29,13 +29,13 @@ afterEach(() => {
 });
 
 describe('ArtifactBoard', () => {
-  it('waits for the board of the conversation, which the conversation asks for', () => {
+  it('should wait for the board of the conversation, which the conversation asks for', () => {
     const app = renderApp(`/c/${CONVERSATION_ID}/tasks`);
     expect(screen.getByText('Loading tasks…')).toBeInTheDocument();
     expect(app.connection.sent).toContainEqual({ type: 'artifacts.list', conversationId: CONVERSATION_ID });
   });
 
-  it('invites to create the first task', async () => {
+  it('should invite to create the first task', async () => {
     const user = userEvent.setup();
     openBoard([]);
     expect(screen.getByText('No tasks yet')).toBeInTheDocument();
@@ -43,7 +43,7 @@ describe('ArtifactBoard', () => {
     expect(await screen.findByRole('dialog', { name: 'New task' })).toBeInTheDocument();
   });
 
-  it('lists each project with its features, their tasks and the standalone tasks', () => {
+  it('should list each project with its features, their tasks and the standalone tasks', () => {
     openBoard(artifacts);
     const app = screen.getByRole('list', { name: 'Features of app' });
     expect(within(app).getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/c/c1/tasks/F-1');
@@ -58,7 +58,7 @@ describe('ArtifactBoard', () => {
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 
-  it('collapses and expands a feature', async () => {
+  it('should collapse and expand a feature', async () => {
     const user = userEvent.setup();
     openBoard(artifacts);
     await user.click(screen.getByRole('button', { name: 'Collapse F-1' }));
@@ -67,7 +67,7 @@ describe('ArtifactBoard', () => {
     expect(screen.getByRole('link', { name: 'Login form' })).toBeInTheDocument();
   });
 
-  it('filters by text, project, type and closed status', async () => {
+  it('should filter by text, project, type and closed status', async () => {
     const user = userEvent.setup();
     openBoard(artifacts);
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'typo');
@@ -96,7 +96,7 @@ describe('ArtifactBoard', () => {
     expect(screen.getByText('Nothing matches the filters.')).toBeInTheDocument();
   });
 
-  it('shows the tasks on a board by status and remembers the view', async () => {
+  it('should show the tasks on a board by status and remember the view', async () => {
     const user = userEvent.setup();
     openBoard(artifacts);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -122,7 +122,7 @@ describe('ArtifactBoard', () => {
     expect(screen.getByRole('list', { name: 'Features of app' })).toBeInTheDocument();
   });
 
-  it('moves a task by dropping it on a column', async () => {
+  it('should move a task by dropping it on a column', async () => {
     const app = openBoard(artifacts);
     await userEvent.setup().click(screen.getByRole('button', { name: 'Board' }));
     const card = screen.getByRole('listitem', { name: 'T-3 Fix typo' });
@@ -146,7 +146,7 @@ describe('ArtifactBoard', () => {
     expect(app.connection.sent).toHaveLength(count);
   });
 
-  it('moves a task from its menu', async () => {
+  it('should move a task from its menu', async () => {
     const user = userEvent.setup();
     const app = openBoard(artifacts);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -155,7 +155,7 @@ describe('ArtifactBoard', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-3', changes: { status: 'blocked' } });
   });
 
-  it('shows the features on the board, with their tasks and dependencies, and moves them like tasks', async () => {
+  it('should show the features on the board, with their tasks and dependencies, and move them like tasks', async () => {
     const user = userEvent.setup();
     const reports = summary({ id: 'F-2', type: 'feature', title: 'Reports', status: 'backlog', dependsOn: ['F-1'], projectName: 'site', assignee: { role: 'PRODUCT_OWNER', roleName: 'Product Owner', delegationId: 'd2', since: at } });
     const app = openBoard([...artifacts, reports]);

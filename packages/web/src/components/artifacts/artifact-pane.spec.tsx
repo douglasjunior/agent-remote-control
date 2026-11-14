@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe('ArtifactPane', () => {
-  it('asks for the artifact and again whenever it changes', () => {
+  it('should ask for the artifact and again whenever it changes', () => {
     const { app } = openArtifact();
     expect(app.connection.sent).toContainEqual({ type: 'artifact.get', conversationId: CONVERSATION_ID, id: 'T-2' });
     const asked = () => app.connection.sent.filter(command => command.type === 'artifact.get').length;
@@ -74,7 +74,7 @@ describe('ArtifactPane', () => {
     expect(screen.getAllByText('In review').length).toBeGreaterThan(0);
   });
 
-  it('shows the artifact with its feature, its holder and its properties', () => {
+  it('should show the artifact with its feature, its holder and its properties', () => {
     openArtifact();
     const crumbs = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(within(crumbs).getByRole('link', { name: 'Tasks' })).toHaveAttribute('href', '/c/c1/tasks');
@@ -95,7 +95,7 @@ describe('ArtifactPane', () => {
     expect(within(properties).getByRole('link', { name: 'https://example.com/pr/2, open' })).toHaveAttribute('target', '_blank');
   });
 
-  it('waits for the artifact, and says when it does not exist', () => {
+  it('should wait for the artifact, and say when it does not exist', () => {
     openBoard(board, { path: `/c/${CONVERSATION_ID}/tasks/T-2` });
     expect(screen.getByText('Loading…')).toBeInTheDocument();
     openBoard(board, { path: `/c/${CONVERSATION_ID}/tasks/T-404` });
@@ -103,7 +103,7 @@ describe('ArtifactPane', () => {
     expect(screen.getByRole('link', { name: 'Back to the board' })).toHaveAttribute('href', '/c/c1/tasks');
   });
 
-  it('renames the artifact', async () => {
+  it('should rename the artifact', async () => {
     const { user, app } = openArtifact();
     await user.click(screen.getByRole('button', { name: 'Rename' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -126,14 +126,14 @@ describe('ArtifactPane', () => {
     ['Business refinement', 'Not needed', { refinement: { business: 'skipped' } }],
     ['Technical refinement', 'Done', { refinement: { technical: 'done' } }],
     ['Feature', 'Standalone task', { parentId: null }],
-  ])('changes the %s', async (combobox, option, changes) => {
+  ])('should change the %s', async (combobox, option, changes) => {
     const { user, app } = openArtifact();
     await user.click(screen.getByRole('combobox', { name: combobox }));
     await user.click(await screen.findByRole('option', { name: option }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-2', changes });
   });
 
-  it('moves a standalone task to another project or into a feature of its project', async () => {
+  it('should move a standalone task to another project or into a feature of its project', async () => {
     const standalone = detail({ id: 'T-3', title: 'Fix typo', projectName: 'site' });
     const other = summary({ id: 'F-2', type: 'feature', title: 'Landing', projectName: 'site' });
     const { user, app } = openArtifact(standalone, [...board, other]);
@@ -146,7 +146,7 @@ describe('ArtifactPane', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-3', changes: { parentId: 'F-2' } });
   });
 
-  it('adds and removes dependencies', async () => {
+  it('should add and remove dependencies', async () => {
     const { user, app } = openArtifact();
     await user.click(screen.getByRole('button', { name: 'Remove dependency T-1' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ changes: { dependsOn: ['T-9'] } });
@@ -156,7 +156,7 @@ describe('ArtifactPane', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ changes: { dependsOn: ['T-1', 'T-9', 'T-5'] } });
   });
 
-  it('lets a feature depend on other features and shows the ones it blocks', async () => {
+  it('should let a feature depend on other features and show the ones it blocks', async () => {
     const later = summary({ id: 'F-9', type: 'feature', title: 'Reports', dependsOn: ['F-1'] });
     const { user, app } = openArtifact(detail({ ...feature, sections: {} }), [...board, later, summary({ id: 'F-8', type: 'feature', title: 'Search' })]);
     const properties = screen.getByRole('complementary', { name: 'Properties' });
@@ -167,7 +167,7 @@ describe('ArtifactPane', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'F-1', changes: { dependsOn: ['F-8'] } });
   });
 
-  it('edits a section and adds one', async () => {
+  it('should edit a section and add one', async () => {
     const { user, app } = openArtifact();
     await user.click(screen.getByRole('button', { name: 'Edit Overview' }));
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
@@ -190,7 +190,7 @@ describe('ArtifactPane', () => {
     expect(screen.queryByRole('textbox', { name: 'Test cases' })).not.toBeInTheDocument();
   });
 
-  it('renders the review findings like any other section, after the implementation notes', () => {
+  it('should render the review findings like any other section, after the implementation notes', () => {
     openArtifact(detail({
       ...api,
       sections: {
@@ -205,12 +205,12 @@ describe('ArtifactPane', () => {
     expect(screen.getByText('the token is logged.', { exact: false })).toBeInTheDocument();
   });
 
-  it('invites to describe an artifact without sections', () => {
+  it('should invite to describe an artifact without sections', () => {
     openArtifact(detail({ id: 'T-3', title: 'Fix typo', projectName: 'site' }));
     expect(screen.getByText(/No description yet/)).toBeInTheDocument();
   });
 
-  it('comments and shows the activity, newest first', async () => {
+  it('should comment and show the activity, newest first', async () => {
     const { user, app } = openArtifact();
     const activity = screen.getByRole('region', { name: 'Activity' });
     const items = within(activity).getAllByRole('listitem');
@@ -236,7 +236,7 @@ describe('ArtifactPane', () => {
     await vi.waitFor(() => expect(box).toHaveValue(''));
   });
 
-  it('deletes the artifact after a confirmation and returns to the board', async () => {
+  it('should delete the artifact after a confirmation and return to the board', async () => {
     const { user, app } = openArtifact();
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await user.click(await screen.findByRole('button', { name: 'Keep it' }));
@@ -255,7 +255,7 @@ describe('ArtifactPane', () => {
     await vi.waitFor(() => expect(app.router.state.location.pathname).toBe('/c/c1/tasks'));
   });
 
-  it('lists the tasks of a feature and adds one to it', async () => {
+  it('should list the tasks of a feature and add one to it', async () => {
     const { user, app } = openArtifact(detail({ ...feature, sections: {} }));
     const tasks = screen.getByRole('region', { name: 'Tasks' });
     expect(within(tasks).getByText('1/3 tasks done')).toBeInTheDocument();
@@ -271,7 +271,7 @@ describe('ArtifactPane', () => {
     expect(lastSent(app, 'artifact.create').artifact).toMatchObject({ parentId: 'F-1', title: 'Login audit' });
   });
 
-  it('says when a feature has no tasks yet', () => {
+  it('should say when a feature has no tasks yet', () => {
     openArtifact(detail({ id: 'F-9', type: 'feature', title: 'Empty' }), [...board, summary({ id: 'F-9', type: 'feature', title: 'Empty' })]);
     expect(screen.getByText('No tasks yet.')).toBeInTheDocument();
   });

@@ -12,7 +12,7 @@ import { buildArtifactProtocolBrief, buildArtifactProtocolInstructions, buildArt
 
 
 describe('artifact-protocol.prompt', () => {
-  it('describes the board and the request round trip to every role', () => {
+  it('should describe the board and the request round trip to every role', () => {
     const instructions = buildArtifactProtocolInstructions(DEVELOPER_ARTIFACT_ACCESS);
 
     expect(instructions).toContain('A feature groups the tasks of one initiative');
@@ -21,7 +21,7 @@ describe('artifact-protocol.prompt', () => {
     expect(instructions).toContain('Otherwise the results come back right away and the response is not taken as your final answer');
   });
 
-  it('gives an agent that works on tasks only the task grammar it may use', () => {
+  it('should give an agent that works on tasks only the task grammar it may use', () => {
     const instructions = buildArtifactProtocolInstructions(DEVELOPER_ARTIFACT_ACCESS);
 
     expect(instructions).toContain('`<artifact_list status="ready,in_progress"/>` lists the tasks of the board');
@@ -35,7 +35,7 @@ describe('artifact-protocol.prompt', () => {
     expect(buildArtifactProtocolReminder(DEVELOPER_ARTIFACT_ACCESS)).toContain('You read tasks and change only the task you were delegated.');
   });
 
-  it('lets the agent that handles remotes link pull requests and the reviewer write only its findings', () => {
+  it('should let the agent that handles remotes link pull requests and the reviewer write only its findings', () => {
     const gitOps = buildArtifactProtocolInstructions(GIT_OPS_ARTIFACT_ACCESS);
     expect(gitOps).toContain('Children: <pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request.');
     expect(gitOps).toContain('- You write no section. Record what the next agent must know as a comment on the artifact.');
@@ -44,7 +44,7 @@ describe('artifact-protocol.prompt', () => {
     expect(reviewer).not.toContain('Attributes you may set');
   });
 
-  it('gives the agents that manage the board creation and whole features', () => {
+  it('should give the agents that manage the board creation and whole features', () => {
     const instructions = buildArtifactProtocolInstructions(PRODUCT_OWNER_ARTIFACT_ACCESS);
 
     expect(instructions).toContain('`<artifact_read id="F-1" tree="true"/>` reads a feature with the full content of every task under it.');
@@ -55,7 +55,7 @@ describe('artifact-protocol.prompt', () => {
     expect(buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS)).toContain('An artifact another agent holds is not changed under you');
   });
 
-  it('lets the coordinator steer a held artifact through its status and refinements', () => {
+  it('should let the coordinator steer a held artifact through its status and refinements', () => {
     const instructions = buildArtifactProtocolInstructions(CEO_ARTIFACT_ACCESS);
 
     expect(instructions).toContain('Meanwhile you change only its status and refinement states; comment instead.');
@@ -63,7 +63,7 @@ describe('artifact-protocol.prompt', () => {
     expect(instructions).toContain('status="backlog|ready|in_progress|in_review|changes_requested|approved|in_testing|done|blocked|cancelled" (`frozen` is set by the server');
   });
 
-  it('leaves the refinement attributes out of creation for an agent that cannot set them', () => {
+  it('should leave the refinement attributes out of creation for an agent that cannot set them', () => {
     const instructions = buildArtifactProtocolInstructions({ scope: 'tree', create: true, sections: [], fields: [] });
 
     expect(instructions).toContain('ref="login-api">');
@@ -71,7 +71,7 @@ describe('artifact-protocol.prompt', () => {
   });
 
   describe('brief', () => {
-    it('gives an agent that works on one task the requests it uses in most tasks and the skill with the rest', () => {
+    it('should give an agent that works on one task the requests it uses in most tasks and the skill with the rest', () => {
       const developer = buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS);
 
       expect(developer).toContain('A response with nothing but requests is not your final answer');
@@ -83,7 +83,7 @@ describe('artifact-protocol.prompt', () => {
       expect(developer).not.toContain('<artifact_create');
     });
 
-    it('shows each role the writes it may make', () => {
+    it('should show each role the writes it may make', () => {
       expect(buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS)).toContain('<artifact_update id="T-1" branch="feat/t-1-login"><pull_request url="https://..." state="open"/></artifact_update>');
       expect(buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS)).toContain('You write no section; fields you change: branch, pull_requests.');
       expect(buildArtifactProtocolBrief(CEO_ARTIFACT_ACCESS)).toContain('<artifact_update id="T-1" status="in_progress"><section name="overview">Markdown</section></artifact_update>');

@@ -12,7 +12,7 @@ import { WebConversationEventsService } from './web-conversation-events.service.
 const entry: ConversationEntry = { id: 'e1', at: '2026-01-01T00:00:00.000Z', type: 'interim', text: 'x' };
 
 describe('WebConversationEventsService', () => {
-  it('persists an entry and broadcasts it', async () => {
+  it('should persist an entry and broadcast it', async () => {
     const { events, store, observer } = createWebHarness();
     store.seed('web-1');
 
@@ -22,7 +22,7 @@ describe('WebConversationEventsService', () => {
     expect(await store.history('web-1')).toEqual([entry]);
   });
 
-  it('still broadcasts when the store fails', async () => {
+  it('should still broadcast when the store fails', async () => {
     const registry = new WebConnectionRegistryService();
     const observer = new FakeClientConnection('observer');
     registry.register(observer);
@@ -35,7 +35,7 @@ describe('WebConversationEventsService', () => {
     expect(observer.sent).toHaveLength(1);
   });
 
-  it('tracks and broadcasts the state, defaulting to idle', () => {
+  it('should track and broadcast the state, defaulting to idle', () => {
     const { events, observer } = createWebHarness();
 
     expect(events.stateOf('web-1')).toBe('idle');
@@ -48,7 +48,7 @@ describe('WebConversationEventsService', () => {
   describe('draft', () => {
     const draftEvents = (observer: { sent: readonly unknown[] }) => observer.sent.filter(event => (event as { type: string }).type === 'conversation.draft');
 
-    it('broadcasts the response being written and keeps it for whoever opens the conversation later', () => {
+    it('should broadcast the response being written and keep it for whoever opens the conversation later', () => {
       const { events, observer } = createWebHarness();
 
       events.publishDraft('web-1', 'Working');
@@ -61,7 +61,7 @@ describe('WebConversationEventsService', () => {
       ]);
     });
 
-    it('has no draft by default and broadcasts a text only when it changes', () => {
+    it('should have no draft by default and broadcast a text only when it changes', () => {
       const { events, observer } = createWebHarness();
 
       events.publishDraft('web-1', '');
@@ -72,7 +72,7 @@ describe('WebConversationEventsService', () => {
       expect(draftEvents(observer)).toHaveLength(1);
     });
 
-    it('does not store the draft in the history', async () => {
+    it('should not store the draft in the history', async () => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
 
@@ -86,7 +86,7 @@ describe('WebConversationEventsService', () => {
       ['a question', { id: 'q', at: entry.at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false }],
       ['the final response', { id: 'r', at: entry.at, type: 'agent_response', status: 'completed', response: 'x' }],
       ['a cancelled response', { id: 'r', at: entry.at, type: 'agent_response', status: 'cancelled', response: 'x' }],
-    ])('is replaced by %s, with the discard sent before the entry', async (_name, delivered) => {
+    ])('should be replaced by %s, with the discard sent before the entry', async (_name, delivered) => {
       const { events, store, observer } = createWebHarness();
       store.seed('web-1');
       events.publishDraft('web-1', 'Working');
@@ -101,7 +101,7 @@ describe('WebConversationEventsService', () => {
       ]);
     });
 
-    it('is kept when a question is closed in place', async () => {
+    it('should be kept when a question is closed in place', async () => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
       events.publishDraft('web-1', 'Working');
@@ -116,7 +116,7 @@ describe('WebConversationEventsService', () => {
       ['a delegation', { id: 'd', at: entry.at, type: 'delegation', phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Doing the work' }],
       ['a notice', { id: 'n', at: entry.at, type: 'notice', level: 'info', text: 'x' }],
       ['a steered prompt', { id: 'r', at: entry.at, type: 'agent_response', status: 'steered', response: '' }],
-    ])('survives %s', async (_name, other) => {
+    ])('should survive %s', async (_name, other) => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
       events.publishDraft('web-1', 'Working');
@@ -126,7 +126,7 @@ describe('WebConversationEventsService', () => {
       expect(events.draftOf('web-1')).toBe('Working');
     });
 
-    it('is discarded when the conversation goes idle, however the turn ended', () => {
+    it('should be discarded when the conversation goes idle, however the turn ended', () => {
       const { events, observer } = createWebHarness();
       events.publishDraft('web-1', 'Working');
 
@@ -139,7 +139,7 @@ describe('WebConversationEventsService', () => {
     });
   });
 
-  it('broadcasts conversation updates except to the excluded connection', () => {
+  it('should broadcast conversation updates except to the excluded connection', () => {
     const { events, registry, observer } = createWebHarness();
     const requester = new FakeClientConnection('requester');
     registry.register(requester);
@@ -151,7 +151,7 @@ describe('WebConversationEventsService', () => {
     expect(requester.sent).toEqual([]);
   });
 
-  it('broadcasts the profiles of a conversation', () => {
+  it('should broadcast the profiles of a conversation', () => {
     const { events, observer } = createWebHarness();
 
     events.publishProfiles('web-1', true, [{ role: 'CEO', roleName: 'CEO' }]);
@@ -162,7 +162,7 @@ describe('WebConversationEventsService', () => {
   describe('closeOpenQuestions', () => {
     const question: ConversationEntry = { id: 'q', at: entry.at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false };
 
-    it('upserts each open question as closed, in place', async () => {
+    it('should upsert each open question as closed, in place', async () => {
       const { events, store, observer } = createWebHarness();
       store.seed('web-1');
       await events.publishEntry('web-1', question);
@@ -174,7 +174,7 @@ describe('WebConversationEventsService', () => {
       expect(observer.sent.at(-1)).toEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true } });
     });
 
-    it('does nothing once the questions are closed or when there were none', async () => {
+    it('should do nothing once the questions are closed or when there were none', async () => {
       const { events, store, observer } = createWebHarness();
       store.seed('web-1');
       await events.publishEntry('web-1', question);
@@ -191,7 +191,7 @@ describe('WebConversationEventsService', () => {
   describe('settleOrphanedQuestions', () => {
     const question: ConversationEntry = { id: 'q', at: entry.at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false };
 
-    it('closes a question left open by an earlier process and records one notice', async () => {
+    it('should close a question left open by an earlier process and record one notice', async () => {
       const { events, store, observer } = createWebHarness();
       store.seed('web-1');
       await store.upsertEntry('web-1', question);
@@ -205,7 +205,7 @@ describe('WebConversationEventsService', () => {
       expect(observer.sent).toContainEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true } });
     });
 
-    it('keeps a question this process is waiting on open', async () => {
+    it('should keep a question this process is waiting on open', async () => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
       await events.publishEntry('web-1', question);
@@ -215,7 +215,7 @@ describe('WebConversationEventsService', () => {
       expect(await store.history('web-1')).toEqual([question]);
     });
 
-    it('tracks a question the queue restored, leaving it open', async () => {
+    it('should track a question the queue restored, leaving it open', async () => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
       await store.upsertEntry('web-1', question);
@@ -229,7 +229,7 @@ describe('WebConversationEventsService', () => {
     });
   });
 
-  it('publishes the interrupted work', () => {
+  it('should publish the interrupted work', () => {
     const { events, observer } = createWebHarness();
     const interrupted = [{ id: 'w', role: 'DEVELOPER', roleName: 'Dev', projectName: null, summary: 'Build' }];
 
@@ -238,7 +238,7 @@ describe('WebConversationEventsService', () => {
     expect(observer.sent).toEqual([{ type: 'conversation.interrupted', conversationId: 'web-1', interrupted }]);
   });
 
-  it('records nothing once shutting down', async () => {
+  it('should record nothing once shutting down', async () => {
     const { events, store, observer } = createWebHarness();
     store.seed('web-1');
     events.onModuleDestroy();
@@ -252,7 +252,7 @@ describe('WebConversationEventsService', () => {
   describe('closeUnanswerableQuestions', () => {
     const question: ConversationEntry = { id: 'q', at: entry.at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false };
 
-    it('closes a question this process published and stops tracking it', async () => {
+    it('should close a question this process published and stop tracking it', async () => {
       const { events, store, observer } = createWebHarness();
       store.seed('web-1');
       await events.publishEntry('web-1', question);
@@ -268,7 +268,7 @@ describe('WebConversationEventsService', () => {
       expect(observer.sent).toEqual([]);
     });
 
-    it('records nothing when no question is open', async () => {
+    it('should record nothing when no question is open', async () => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
 

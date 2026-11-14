@@ -30,7 +30,7 @@ function setup() {
 }
 
 describe('UpdateArtifactUseCase', () => {
-  it('applies every change, records each field and publishes the artifact', async () => {
+  it('should apply every change, record each field and publish the artifact', async () => {
     const { useCase, published, store } = setup();
 
     const outcome = await useCase.execute('c1', 'T-1', {
@@ -90,7 +90,7 @@ describe('UpdateArtifactUseCase', () => {
     expect(published).toEqual([{ kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('T-1') }]);
   });
 
-  it('summarizes a change without status by its fields', async () => {
+  it('should summarize a change without status by its fields', async () => {
     const { useCase, store } = setup();
 
     await useCase.execute('c1', 'T-1', { parentId: null, projectName: 'web', dependsOn: [], branch: null }, ceo);
@@ -106,7 +106,7 @@ describe('UpdateArtifactUseCase', () => {
     });
   });
 
-  it('reads a status change alone as the summary', async () => {
+  it('should read a status change alone as the summary', async () => {
     const { useCase, store } = setup();
 
     await useCase.execute('c1', 'T-3', { status: 'done', branch: '  ', parentId: null }, ceo);
@@ -118,7 +118,7 @@ describe('UpdateArtifactUseCase', () => {
     ['the same values', { title: 'Artifact T-1', status: 'ready', parentId: 'F-1', projectName: 'shop', dependsOn: ['T-2'], branch: 'feat/a', refinement: { business: 'done' } }],
     ['sections that end up the same', { sections: [{ section: 'overview', content: 'Why', mode: 'replace' }, { section: 'scope', content: ' ', mode: 'append' }] }],
     ['a pull request already recorded', { pullRequests: [{ url: pr, title: 'Login' }] }],
-  ])('records nothing for %s', async (_name, changes) => {
+  ])('should record nothing for %s', async (_name, changes) => {
     const { useCase, published, store } = setup();
     const before = store.artifactsOf().get('T-1');
 
@@ -138,7 +138,7 @@ describe('UpdateArtifactUseCase', () => {
     ['a dependency outside the feature', 'T-2', { dependsOn: ['T-3'] }, 'T-3 cannot be a dependency here: a task depends only on other tasks of its feature, F-1.'],
     ['a move that leaves a dependent sibling behind', 'T-2', { parentId: null }, 'T-1 depends on T-2, and dependencies stay among siblings: remove that dependency before moving T-2.'],
     ['an invalid pull request', 'T-1', { status: 'done', pullRequests: [{ url: 'nope' }] }, '"nope" is not a pull request URL: use its full http(s) address.'],
-  ])('refuses %s, changing nothing', async (_name, id, changes, error) => {
+  ])('should refuse %s, changing nothing', async (_name, id, changes, error) => {
     const { useCase, published, store } = setup();
     const before = store.artifactsOf().get('T-1');
 

@@ -6,7 +6,7 @@ import { AT, renderApp } from '../test/render-app.js';
 
 
 describe('AppLayout', () => {
-  it('asks for the token when none is stored', async () => {
+  it('should ask for the token when none is stored', async () => {
     const { connection } = renderApp();
     act(() => connection.emitStatus('unauthorized'));
     expect(screen.getByLabelText('Access token')).toBeInTheDocument();
@@ -16,18 +16,18 @@ describe('AppLayout', () => {
     ['connecting', 'Connecting'],
     ['open', 'Connected'],
     ['closed', 'Disconnected'],
-  ] as const)('shows the %s status in the badge', (status, label) => {
+  ] as const)('should show the %s status in the badge', (status, label) => {
     const { connection } = renderApp();
     act(() => connection.emitStatus(status));
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
-  it('requests the conversation list when the connection opens', () => {
+  it('should request the conversation list when the connection opens', () => {
     const { connection } = renderApp();
     expect(connection.sent).toContainEqual({ type: 'conversation.list' });
   });
 
-  it('shows the empty state at / and creates a conversation from it', async () => {
+  it('should show the empty state at / and create a conversation from it', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp();
     const [, emptyAction] = screen.getAllByRole('button', { name: 'New conversation' });
@@ -46,7 +46,7 @@ describe('AppLayout', () => {
     expect(connection.sent).toContainEqual({ type: 'profiles.get', conversationId: 'new' });
   });
 
-  it('does not navigate for conversations created by another request', () => {
+  it('should not navigate for conversations created by another request', () => {
     const { connection, router } = renderApp();
     act(() => connection.emitEvent({
       type: 'conversation.created',
@@ -56,7 +56,7 @@ describe('AppLayout', () => {
     expect(router.state.location.pathname).toBe('/');
   });
 
-  it('lists conversations with a spinner while running or queued', async () => {
+  it('should list conversations with a spinner while running or queued', async () => {
     const user = userEvent.setup();
     const { connection } = renderApp();
     act(() => {
@@ -76,7 +76,7 @@ describe('AppLayout', () => {
     expect(within(dialog).getAllByLabelText('Running')).toHaveLength(1);
   });
 
-  it('shows when each conversation last changed and keeps the label current', async () => {
+  it('should show when each conversation last changed and keep the label current', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     try {
       const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -98,7 +98,7 @@ describe('AppLayout', () => {
     }
   });
 
-  it('keeps the drawer closed on narrow screens until the toggle opens it', async () => {
+  it('should keep the drawer closed on narrow screens until the toggle opens it', async () => {
     const user = userEvent.setup();
     renderApp();
     const toggle = screen.getByRole('button', { name: 'Show conversations' });
@@ -111,7 +111,7 @@ describe('AppLayout', () => {
     expect(within(screen.getByRole('dialog')).getByRole('navigation', { name: 'Conversations' })).toBeInTheDocument();
   });
 
-  it('closes the drawer after picking a conversation', async () => {
+  it('should close the drawer after picking a conversation', async () => {
     const user = userEvent.setup();
     const { connection, router } = renderApp();
     act(() => connection.emitEvent({
@@ -137,7 +137,7 @@ describe('AppLayout', () => {
       vi.restoreAllMocks();
     });
 
-    it('docks the list beside the page, closed by default, and toggles it with no drawer', async () => {
+    it('should dock the list beside the page, closed by default, and toggle it with no drawer', async () => {
       const user = userEvent.setup();
       renderApp();
       const toggle = screen.getByRole('button', { name: 'Show conversations' });
@@ -155,7 +155,7 @@ describe('AppLayout', () => {
       expect(dock()).not.toBeVisible();
     });
 
-    it('stays open after picking a conversation', async () => {
+    it('should stay open after picking a conversation', async () => {
       const user = userEvent.setup();
       const { connection, router } = renderApp();
       act(() => connection.emitEvent({
@@ -169,7 +169,7 @@ describe('AppLayout', () => {
       expect(dock()).toBeVisible();
     });
 
-    it('remembers the choice and renders when storage throws', async () => {
+    it('should remember the choice and render when storage throws', async () => {
       const user = userEvent.setup();
       renderApp();
       await user.click(screen.getByRole('button', { name: 'Show conversations' }));
@@ -199,7 +199,7 @@ describe('AppLayout', () => {
     });
   });
 
-  it('puts New conversation in the header, before the title, and not in the drawer', async () => {
+  it('should put New conversation in the header, before the title, and not in the drawer', async () => {
     const user = userEvent.setup();
     const { connection } = renderApp();
     const header = screen.getByRole('banner');

@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 describe('Unfreezing a task', () => {
-  it('moves a frozen task on and hands the instruction to the coordinator', async () => {
+  it('should move a frozen task on and hand the instruction to the coordinator', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
     expect(screen.getAllByText('Frozen').length).toBeGreaterThan(0);
@@ -45,7 +45,7 @@ describe('Unfreezing a task', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('shows the Frozen column only while a task is frozen and unfreezes from the card menu', async () => {
+  it('should show the Frozen column only while a task is frozen and unfreeze from the card menu', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -64,7 +64,7 @@ describe('Unfreezing a task', () => {
     expect(screen.queryByRole('region', { name: 'Frozen' })).not.toBeInTheDocument();
   });
 
-  it('asks before a frozen card dropped on another column leaves Frozen, and freezes a card dropped on Frozen', async () => {
+  it('should ask before a frozen card dropped on another column leaves Frozen, and freeze a card dropped on Frozen', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
     await user.click(screen.getByRole('button', { name: 'Board' }));
@@ -84,7 +84,7 @@ describe('Unfreezing a task', () => {
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-7', changes: { status: 'frozen' } });
   });
 
-  it('explains a frozen task on its page and unfreezes it from the banner or the status', async () => {
+  it('should explain a frozen task on its page and unfreeze it from the banner or the status', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready], { path: `/c/${CONVERSATION_ID}/tasks/T-6` });
     showDetail(app, detail(frozen));
@@ -108,7 +108,7 @@ describe('Unfreezing a task', () => {
     expect(messagesSent(app)).toEqual([]);
   });
 
-  it('changes the status of a task that is not frozen directly', async () => {
+  it('should change the status of a task that is not frozen directly', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready], { path: `/c/${CONVERSATION_ID}/tasks/T-7` });
     showDetail(app, detail(ready));

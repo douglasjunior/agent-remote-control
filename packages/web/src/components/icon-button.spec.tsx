@@ -5,7 +5,7 @@ import { IconButton } from './icon-button.js';
 
 
 describe('IconButton', () => {
-  it('names the button with the label and shows it as a tooltip on hover', async () => {
+  it('should name the button with the label and show it as a tooltip on hover', async () => {
     const user = userEvent.setup();
     const onClick = vi.fn();
     render(<IconButton label="Send" onClick={onClick}><svg /></IconButton>);
@@ -17,7 +17,7 @@ describe('IconButton', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it('shows the tooltip when focused by keyboard', async () => {
+  it('should show the tooltip when focused by keyboard', async () => {
     const user = userEvent.setup();
     render(<IconButton label="Stop"><svg /></IconButton>);
 

@@ -96,21 +96,21 @@ describe('WebConnectionHandler', () => {
     vi.unstubAllEnvs();
   });
 
-  it('authenticates a correct token and registers the connection', () => {
+  it('should authenticate a correct token and register the connection', () => {
     connection.receive({ type: 'auth', token: 'secret' });
 
     expect(connection.sent).toEqual([{ type: 'auth.ok' }]);
     expect(harness.registry.size).toBe(OBSERVER_AND_CLIENT);
   });
 
-  it('does not close an authenticated connection when the timeout elapses', () => {
+  it('should not close an authenticated connection when the timeout elapses', () => {
     connection.receive({ type: 'auth', token: 'secret' });
     vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.closedWith).toBeUndefined();
   });
 
-  it('rejects a wrong token with close code 4401', () => {
+  it('should reject a wrong token with close code 4401', () => {
     connection.receive({ type: 'auth', token: 'wrong' });
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
@@ -118,21 +118,21 @@ describe('WebConnectionHandler', () => {
     expect(harness.registry.size).toBe(OBSERVER_ONLY);
   });
 
-  it('rejects when no auth command arrives in time', () => {
+  it('should reject when no auth command arrives in time', () => {
     vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
     expect(connection.closedWith?.code).toBe(AUTH_FAILED_CLOSE_CODE);
   });
 
-  it('rejects any other first command without routing it', () => {
+  it('should reject any other first command without routing it', () => {
     connection.receive({ type: 'conversation.list' });
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
     expect(connection.closedWith?.code).toBe(AUTH_FAILED_CLOSE_CODE);
   });
 
-  it('ignores messages received after a rejection', () => {
+  it('should ignore messages received after a rejection', () => {
     connection.receive({ type: 'auth', token: 'wrong' });
     connection.receive({ type: 'auth', token: 'secret' });
 
@@ -140,14 +140,14 @@ describe('WebConnectionHandler', () => {
     expect(harness.registry.size).toBe(OBSERVER_ONLY);
   });
 
-  it('cancels the timeout when the connection closes', () => {
+  it('should cancel the timeout when the connection closes', () => {
     connection.simulateClose();
     vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.sent).toEqual([]);
   });
 
-  it('answers an invalid command from an authenticated connection with an error', () => {
+  it('should answer an invalid command from an authenticated connection with an error', () => {
     connection.receive({ type: 'auth', token: 'secret' });
     connection.receive({ type: 'nope' });
 
@@ -167,7 +167,7 @@ describe('WebConnectionHandler', () => {
       connection.receive({ type: 'auth', token: 'secret' });
     });
 
-    it('answers quota.get to the requester with the reports and their time', async () => {
+    it('should answer quota.get to the requester with the reports and their time', async () => {
       const reports = [{ agent: { id: 'cursor', name: 'Cursor' }, status: 'unsupported' as const }];
       harness.agentTurn.quotaReports = reports;
 
@@ -177,7 +177,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'quota.report', reports, fetchedAt: new Date().toISOString() }]);
     });
 
-    it('passes the refresh of quota.get on, ignoring the reports it remembers', async () => {
+    it('should pass the refresh of quota.get on, ignoring the reports it remembers', async () => {
       connection.receive({ type: 'quota.get' });
       await settle();
       const reports = [{ agent: { id: 'cursor', name: 'Cursor' }, status: 'failed' as const }];
@@ -189,7 +189,7 @@ describe('WebConnectionHandler', () => {
       expect(sent().at(-1)).toMatchObject({ type: 'quota.report', reports });
     });
 
-    it('answers quota.failed, never an error event, when the usage cannot be read', async () => {
+    it('should answer quota.failed, never an error event, when the usage cannot be read', async () => {
       const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       harness.agentTurn.throwOnQuota = true;
 
@@ -201,7 +201,7 @@ describe('WebConnectionHandler', () => {
       warn.mockRestore();
     });
 
-    it('answers auth.status to the requester with the agents and their time', async () => {
+    it('should answer auth.status to the requester with the agents and their time', async () => {
       const agents = [{ agentId: 'claude', displayName: 'Claude Code', status: 'unauthenticated' as const }];
       agentAuth.infos = agents;
 
@@ -211,7 +211,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'auth.status', agents, fetchedAt: new Date().toISOString() }]);
     });
 
-    it('passes the refresh of auth.status on, ignoring the state it remembers', async () => {
+    it('should pass the refresh of auth.status on, ignoring the state it remembers', async () => {
       connection.receive({ type: 'auth.status' });
       await settle();
       agentAuth.infos = [{ agentId: 'codex', displayName: 'OpenAI Codex', status: 'authenticated' }];
@@ -222,7 +222,7 @@ describe('WebConnectionHandler', () => {
       expect(sent().at(-1)).toMatchObject({ type: 'auth.status', agents: agentAuth.infos });
     });
 
-    it('answers auth.status.failed, never an error event, when the state cannot be read', async () => {
+    it('should answer auth.status.failed, never an error event, when the state cannot be read', async () => {
       const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       agentAuth.statusError = new Error('probe down');
 
@@ -234,7 +234,7 @@ describe('WebConnectionHandler', () => {
       warn.mockRestore();
     });
 
-    it('starts a login on auth.login and forwards its progress, logging the command type only', async () => {
+    it('should start a login on auth.login and forward its progress, logging the command type only', async () => {
       const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       connection.receive({ type: 'auth.login', agentId: 'claude' });
@@ -247,7 +247,7 @@ describe('WebConnectionHandler', () => {
       log.mockRestore();
     });
 
-    it('hands a pasted code to the login without logging it', async () => {
+    it('should hand a pasted code to the login without logging it', async () => {
       const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       connection.receive({ type: 'auth.input', agentId: 'claude', text: 'abc#def' });
@@ -259,7 +259,7 @@ describe('WebConnectionHandler', () => {
       log.mockRestore();
     });
 
-    it('fails the login on screen when no login waits for the pasted code', async () => {
+    it('should fail the login on screen when no login waits for the pasted code', async () => {
       agentAuth.inputAccepted = false;
 
       connection.receive({ type: 'auth.input', agentId: 'claude', text: 'abc#def' });
@@ -268,14 +268,14 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'auth.login', agentId: 'claude', event: { kind: 'failed', reason: 'No login is waiting for a code.' } }]);
     });
 
-    it('cancels a login on auth.cancel', async () => {
+    it('should cancel a login on auth.cancel', async () => {
       connection.receive({ type: 'auth.cancel', agentId: 'claude' });
       await settle();
 
       expect(agentAuth.cancelled).toEqual(['claude']);
     });
 
-    it('renames and archives a conversation, telling every connection, the requester included', async () => {
+    it('should rename and archive a conversation, telling every connection, the requester included', async () => {
       harness.store.seed('web-1', 'Old title');
       const other = new FakeClientConnection('other');
       transport.connect(other);
@@ -297,7 +297,7 @@ describe('WebConnectionHandler', () => {
       expect(other.sent.filter(event => event.type === 'conversation.updated')).toHaveLength(3);
     });
 
-    it('answers projects.list with the project folders of the workspace', async () => {
+    it('should answer projects.list with the project folders of the workspace', async () => {
       harness.workspace.folders = ['shop', 'web'];
 
       connection.receive({ type: 'projects.list' });
@@ -306,7 +306,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'projects.list', projects: ['shop', 'web'] }]);
     });
 
-    it('lists the skills and reads one, or tells that no skill has the name', async () => {
+    it('should list the skills and read one, or tell that no skill has the name', async () => {
       skills.listing = [{ name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true }];
       skills.skills = { QA: [{ name: 'api-testing', description: 'API.', content: '# API' }] };
 
@@ -324,7 +324,7 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('deletes a custom skill, telling every connection, and refuses one that is not custom', async () => {
+    it('should delete a custom skill, telling every connection, and refuse one that is not custom', async () => {
       skills.listing = [
         { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true },
         { name: 'electron-testing', description: 'Electron.', roles: ['QA'], builtIn: false },
@@ -343,7 +343,7 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('creates, lists, reads, updates, comments on and deletes the artifacts of a conversation', async () => {
+    it('should create, list, read, update, comment on and delete the artifacts of a conversation', async () => {
       harness.store.seed('web-1');
       const command = { conversationId: 'web-1', requestId: 'r' };
 
@@ -369,7 +369,7 @@ describe('WebConnectionHandler', () => {
       expect(events.at(-1)).toEqual({ type: 'error', message: 'Unknown artifact "T-1"', conversationId: 'web-1' });
     });
 
-    it('answers a refused artifact change to the requester', async () => {
+    it('should answer a refused artifact change to the requester', async () => {
       harness.store.seed('web-1');
 
       connection.receive({ type: 'artifact.update', conversationId: 'web-1', requestId: 'r', id: 'T-9', changes: { status: 'done' } });
@@ -378,7 +378,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'artifact.result', conversationId: 'web-1', requestId: 'r', ok: false, error: 'Unknown artifact "T-9".' }]);
     });
 
-    it('answers conversation.list to the requester', async () => {
+    it('should answer conversation.list to the requester', async () => {
       harness.store.seed('web-1');
 
       connection.receive({ type: 'conversation.list' });
@@ -387,7 +387,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'conversation.list', conversations: [expect.objectContaining({ id: 'web-1' })] }]);
     });
 
-    it('answers conversation.create to the requester and tells the others', async () => {
+    it('should answer conversation.create to the requester and tell the others', async () => {
       const other = new FakeClientConnection('other');
       transport.connect(other);
       other.receive({ type: 'auth', token: 'secret' });
@@ -399,7 +399,7 @@ describe('WebConnectionHandler', () => {
       expect(other.sent).toContainEqual({ type: 'conversation.updated', conversation: expect.objectContaining({ id: 'web-1' }) });
     });
 
-    it('answers prompts.history with the stored prompts, most recent first', async () => {
+    it('should answer prompts.history with the stored prompts, most recent first', async () => {
       await harness.promptHistory.append('older');
       await harness.promptHistory.append('latest');
       connection.sent.length = 0;
@@ -410,7 +410,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.sent).toEqual([{ type: 'prompts.list', requestId: 'r1', prompts: ['latest', 'older'] }]);
     });
 
-    it('streams files.results for files.search and only changes the query on the same request id', async () => {
+    it('should stream files.results for files.search and only changes the query on the same request id', async () => {
       connection.sent.length = 0;
 
       connection.receive({ type: 'files.search', requestId: 'r2', query: 'src' });
@@ -428,7 +428,7 @@ describe('WebConnectionHandler', () => {
       });
     });
 
-    it('stops the file search on files.close and when the connection closes', async () => {
+    it('should stop the file search on files.close and when the connection closes', async () => {
       connection.receive({ type: 'files.search', requestId: 'r2', query: '' });
       connection.receive({ type: 'files.close', requestId: 'r2' });
       connection.receive({ type: 'files.search', requestId: 'r3', query: '' });
@@ -438,7 +438,7 @@ describe('WebConnectionHandler', () => {
       expect(harness.fileSearch.sessions.map(session => session.stopped)).toEqual([true, true]);
     });
 
-    it('uploads a file in chunks through upload.start, upload.chunk and upload.finish', async () => {
+    it('should upload a file in chunks through upload.start, upload.chunk and upload.finish', async () => {
       harness.store.seed('web-1');
       connection.sent.length = 0;
 
@@ -456,7 +456,7 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('refuses upload.start for an unknown conversation', async () => {
+    it('should refuse upload.start for an unknown conversation', async () => {
       connection.sent.length = 0;
 
       connection.receive({ type: 'upload.start', uploadId: 'u1', conversationId: 'ghost', name: 'a.txt', size: 2 });
@@ -466,7 +466,7 @@ describe('WebConnectionHandler', () => {
       expect(harness.uploads.writers).toHaveLength(0);
     });
 
-    it('discards the upload on upload.abort and when the connection closes', async () => {
+    it('should discard the upload on upload.abort and when the connection closes', async () => {
       harness.store.seed('web-1');
       connection.receive({ type: 'upload.start', uploadId: 'u1', conversationId: 'web-1', name: 'a.txt', size: 2 });
       connection.receive({ type: 'upload.start', uploadId: 'u2', conversationId: 'web-1', name: 'b.txt', size: 2 });
@@ -480,7 +480,7 @@ describe('WebConnectionHandler', () => {
       expect(harness.uploads.writers.map(writer => writer.aborted)).toEqual([true, true]);
     });
 
-    it('sends message.send attachments to the use case', async () => {
+    it('should send message.send attachments to the use case', async () => {
       harness.store.seed('web-1');
       harness.configuration.store.byConversation.set('web-1', configuredSettings());
       harness.uploads.files.set('.arc-uploads/web-1/a.png', 5);
@@ -491,7 +491,7 @@ describe('WebConnectionHandler', () => {
       expect(harness.agentTurn.turnRequests[0].attachments).toEqual([expect.objectContaining({ name: 'a.png', path: '/workspaces/.arc-uploads/web-1/a.png', contentType: 'image/png', size: 5 })]);
     });
 
-    it('answers conversation.history with the entries and the state', async () => {
+    it('should answer conversation.history with the entries and the state', async () => {
       harness.store.seed('web-1');
       harness.events.publishState('web-1', 'running');
       connection.sent.length = 0;
@@ -508,7 +508,7 @@ describe('WebConnectionHandler', () => {
       });
     });
 
-    it('includes the response being written in conversation.history', async () => {
+    it('should include the response being written in conversation.history', async () => {
       harness.store.seed('web-1');
       harness.events.publishDraft('web-1', 'Working on');
       connection.sent.length = 0;
@@ -519,7 +519,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.history', draft: 'Working on' }));
     });
 
-    it('starts a turn for message.send without waiting for it', async () => {
+    it('should start a turn for message.send without waiting for it', async () => {
       harness.store.seed('web-1');
       harness.configuration.store.byConversation.set('web-1', configuredSettings());
 
@@ -530,7 +530,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.entry' }));
     });
 
-    it('cancels a turn', async () => {
+    it('should cancel a turn', async () => {
       harness.store.seed('web-1');
       harness.agentTurn.cancelResult = false;
 
@@ -540,7 +540,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'conversation.entry' }));
     });
 
-    it('lists the agents, then the models and efforts of an agent', async () => {
+    it('should list the agents, then the models and efforts of an agent', async () => {
       connection.receive({ type: 'agents.list' });
       connection.receive({ type: 'models.list', agentId: 'codex' });
       connection.receive({ type: 'efforts.list', agentId: 'codex', modelId: 'gpt' });
@@ -553,7 +553,7 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('answers the models and efforts of an unknown agent with an error', async () => {
+    it('should answer the models and efforts of an unknown agent with an error', async () => {
       connection.receive({ type: 'models.list', agentId: 'ghost' });
       connection.receive({ type: 'efforts.list', agentId: 'ghost', modelId: 'gpt' });
       await settle();
@@ -561,7 +561,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'error', message: 'Unknown agent' }, { type: 'error', message: 'Unknown agent' }]);
     });
 
-    it('answers profiles.get to the requester with the conversation profiles', async () => {
+    it('should answer profiles.get to the requester with the conversation profiles', async () => {
       harness.store.seed('web-1');
 
       connection.receive({ type: 'profiles.get', conversationId: 'web-1' });
@@ -570,7 +570,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: false, profiles: expect.any(Array) }]);
     });
 
-    it('saves profiles and lets every connection know', async () => {
+    it('should save profiles and let every connection know', async () => {
       harness.store.seed('web-1');
 
       connection.receive({ type: 'profiles.set', conversationId: 'web-1', agentId: 'codex', modelId: 'gpt' });
@@ -580,7 +580,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array) }]);
     });
 
-    it('answers an invalid profiles.set with an error', async () => {
+    it('should answer an invalid profiles.set with an error', async () => {
       harness.store.seed('web-1');
       harness.configuration.configureResult = { ok: false, error: 'Unknown agent' };
 
@@ -590,7 +590,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'error', message: 'Unknown agent', conversationId: 'web-1' }]);
     });
 
-    it('answers a question by option or by text', async () => {
+    it('should answer a question by option or by text', async () => {
       harness.store.seed('web-1');
       harness.questions.submission = { kind: 'answered', asker: { role: 'CEO', roleName: 'CEO', projectName: null } };
 
@@ -601,7 +601,7 @@ describe('WebConnectionHandler', () => {
       expect(harness.questions.answers.map(entry => entry.answer)).toEqual([{ kind: 'option', optionIndex: 2 }, { kind: 'text', text: 'my own' }]);
     });
 
-    it('resumes interrupted work', async () => {
+    it('should resume interrupted work', async () => {
       harness.store.seed('web-1');
       harness.agentTurn.interruptedWork = [{ id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: null, summary: 'Build' }];
 
@@ -610,7 +610,7 @@ describe('WebConnectionHandler', () => {
       await vi.waitFor(() => expect(harness.agentTurn.resumedWorkIds).toEqual(['w']));
     });
 
-    it('rejects an answer when no question is waiting', async () => {
+    it('should reject an answer when no question is waiting', async () => {
       harness.store.seed('web-1');
 
       connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'option', optionIndex: 1 } });
@@ -619,7 +619,7 @@ describe('WebConnectionHandler', () => {
       expect(sent()).toEqual([{ type: 'error', message: 'There is no open question', conversationId: 'web-1' }]);
     });
 
-    it('logs the command and its rejection under the conversation, without what the user wrote', async () => {
+    it('should log the command and its rejection under the conversation, without what the user wrote', async () => {
       harness.store.seed('web-1');
       const logged: (readonly [string, string | undefined])[] = [];
       const record = (message: unknown) => {
@@ -639,7 +639,7 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('answers a command for an unknown conversation with an error', async () => {
+    it('should answer a command for an unknown conversation with an error', async () => {
       connection.receive({ type: 'message.send', conversationId: 'web-missing', text: 'hi' });
       await settle();
 
@@ -647,14 +647,14 @@ describe('WebConnectionHandler', () => {
       expect(harness.agentTurn.turnRequests).toHaveLength(0);
     });
 
-    it('ignores a repeated auth command', async () => {
+    it('should ignore a repeated auth command', async () => {
       connection.receive({ type: 'auth', token: 'secret' });
       await settle();
 
       expect(sent()).toEqual([]);
     });
 
-    it('reports a failing command without closing the connection', async () => {
+    it('should report a failing command without closing the connection', async () => {
       vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
       vi.spyOn(harness.store, 'list').mockRejectedValue(new Error('disk gone'));
       connection.receive({ type: 'conversation.list' });
@@ -664,7 +664,7 @@ describe('WebConnectionHandler', () => {
       expect(connection.closedWith).toBeUndefined();
     });
 
-    it('describes a command that fails with a non-Error value', async () => {
+    it('should describe a command that fails with a non-Error value', async () => {
       const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
       vi.spyOn(harness.store, 'list').mockRejectedValue('plain');
       connection.receive({ type: 'conversation.list' });
@@ -674,7 +674,7 @@ describe('WebConnectionHandler', () => {
     });
   });
 
-  it('stops listening for connections on module destroy', () => {
+  it('should stop listening for connections on module destroy', () => {
     handler.onModuleDestroy();
 
     expect(transport.listenerCount).toBe(0);

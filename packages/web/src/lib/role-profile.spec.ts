@@ -2,7 +2,7 @@ import { profileSummary } from './role-profile.js';
 
 
 describe('profileSummary', () => {
-  it('joins the agent, model and effort the role runs on', () => {
+  it('should join the agent, model and effort the role runs on', () => {
     expect(profileSummary({
       role: 'QA',
       roleName: 'QA Agent',

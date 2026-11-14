@@ -21,13 +21,13 @@ describe('usePresence', () => {
     [[member('CEO', 'idle'), member('DEVELOPER', 'working')], '🛠 Developer working…'],
     [[member('DEVELOPER', 'working'), member('CODE_REVIEWER', 'working')], '🛠 2 agents working…'],
     [[member('DEVELOPER', 'working'), member('TECH_LEAD', 'waiting')], '❓ Needs your answer'],
-  ])('titles the tab for %j', (members, title) => {
+  ])('should title the tab for %j', (members, title) => {
     renderHook(() => usePresence(members));
 
     expect(document.title).toBe(title);
   });
 
-  it('leaves the title alone when nobody is active, and restores it afterwards', () => {
+  it('should leave the title alone when nobody is active, and restore it afterwards', () => {
     const { rerender } = renderHook(({ members }) => usePresence(members), { initialProps: { members: [member('DEVELOPER', 'working')] } });
     expect(document.title).toBe('🛠 Developer working…');
 
@@ -36,7 +36,7 @@ describe('usePresence', () => {
     expect(document.title).toBe('Agent Remote Control');
   });
 
-  it('tints the page light with the color of the agent at work and clears it afterwards', () => {
+  it('should tint the page light with the color of the agent at work and clear it afterwards', () => {
     const { unmount } = renderHook(() => usePresence([member('DEVELOPER', 'working')]));
     expect(document.documentElement.style.getPropertyValue('--glow-color')).toBe('var(--agent-developer)');
 
@@ -45,7 +45,7 @@ describe('usePresence', () => {
     expect(document.documentElement.style.getPropertyValue('--glow-color')).toBe('');
   });
 
-  it('keeps the page light untouched when nobody is active', () => {
+  it('should keep the page light untouched when nobody is active', () => {
     renderHook(() => usePresence([member('DEVELOPER', 'done')]));
 
     expect(document.documentElement.style.getPropertyValue('--glow-color')).toBe('');
@@ -65,7 +65,7 @@ describe('usePresence', () => {
       vi.stubGlobal('Notification', FakeNotification);
     });
 
-    it('announces a question while the tab is hidden', () => {
+    it('should announce a question while the tab is hidden', () => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
 
       renderHook(() => usePresence([member('TECH_LEAD', 'waiting', { summary: 'Planning the login' })]));
@@ -73,7 +73,7 @@ describe('usePresence', () => {
       expect(notify).toHaveBeenCalledWith('Needs your answer', { body: 'Planning the login' });
     });
 
-    it('names the asker when there is no summary', () => {
+    it('should name the asker when there is no summary', () => {
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
 
       renderHook(() => usePresence([member('CEO', 'waiting')]));
@@ -81,7 +81,7 @@ describe('usePresence', () => {
       expect(notify).toHaveBeenCalledWith('Needs your answer', { body: 'Coordinator' });
     });
 
-    it('stays quiet while the tab is visible, when nobody asks and when notifications are not allowed', () => {
+    it('should stay quiet while the tab is visible, when nobody asks and when notifications are not allowed', () => {
       renderHook(() => usePresence([member('TECH_LEAD', 'waiting')]));
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
       renderHook(() => usePresence([member('TECH_LEAD', 'working')]));
@@ -91,7 +91,7 @@ describe('usePresence', () => {
       expect(notify).not.toHaveBeenCalled();
     });
 
-    it('stays quiet where notifications do not exist', () => {
+    it('should stay quiet where notifications do not exist', () => {
       vi.stubGlobal('Notification', undefined);
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
 

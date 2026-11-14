@@ -6,25 +6,25 @@ import { AT, openConversation, renderApp, userEntry } from '../test/render-app.j
 
 
 describe('ConversationView', () => {
-  it('requests history, profiles and agents when opened', () => {
+  it('should request history, profiles and agents when opened', () => {
     const { connection } = openConversation();
     expect(connection.sent).toContainEqual({ type: 'conversation.history', conversationId: 'c1' });
     expect(connection.sent).toContainEqual({ type: 'profiles.get', conversationId: 'c1' });
     expect(connection.sent).toContainEqual({ type: 'agents.list' });
   });
 
-  it('shows the title and the restored history', () => {
+  it('should show the title and the restored history', () => {
     openConversation({ entries: [userEntry('u1', 'hello there')] });
     expect(screen.getByRole('heading', { name: 'My task' })).toBeInTheDocument();
     expect(screen.getByText('hello there')).toBeInTheDocument();
   });
 
-  it('falls back to a generic title for an unknown conversation', () => {
+  it('should fall back to a generic title for an unknown conversation', () => {
     openConversation();
     expect(screen.getByRole('heading', { name: 'My task' })).toBeInTheDocument();
   });
 
-  it('upserts streamed entries in place', () => {
+  it('should upsert streamed entries in place', () => {
     const { connection } = openConversation();
     act(() => {
       connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'i1', at: AT, type: 'interim', text: 'draft' } });
@@ -36,7 +36,7 @@ describe('ConversationView', () => {
     expect(screen.getByText('after')).toBeInTheDocument();
   });
 
-  it('groups activity into a collapsed section labeled by progress', async () => {
+  it('should group activity into a collapsed section labeled by progress', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation({
       entries: [
@@ -64,12 +64,12 @@ describe('ConversationView', () => {
     expect(screen.getByRole('button', { name: /Coordinator.*Show details.*\(4 steps\)/ })).toBeInTheDocument();
   });
 
-  it('uses the singular for a single step', () => {
+  it('should use the singular for a single step', () => {
     openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'One', status: 'completed' }] });
     expect(screen.getByRole('button', { name: /Show details.*\(1 step\)/ })).toBeInTheDocument();
   });
 
-  it('renders agent responses with the footer, failures and cancellations', () => {
+  it('should render agent responses with the footer, failures and cancellations', () => {
     const agentInfo = { roleName: 'Tech Lead', agentName: 'Codex', modelName: 'gpt', effortName: 'high' };
     openConversation({
       entries: [
@@ -86,7 +86,7 @@ describe('ConversationView', () => {
     expect(screen.getByText('Cancelled')).toBeInTheDocument();
   });
 
-  it('renders each delegation as one handoff card and shows notices', async () => {
+  it('should render each delegation as one handoff card and show notices', async () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
@@ -114,7 +114,7 @@ describe('ConversationView', () => {
     expect(screen.getByText('bad')).toBeInTheDocument();
   });
 
-  it('shows what a working agent does in its delegation row and keeps its steps inside', async () => {
+  it('should show what a working agent does in its delegation row and keep its steps inside', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation({
       entries: [
@@ -133,7 +133,7 @@ describe('ConversationView', () => {
     expect(feed.getByText('Looking at the router')).toBeInTheDocument();
   });
 
-  it('shows what the Coordinator asked of an agent when its delegation opens', async () => {
+  it('should show what the Coordinator asked of an agent when its delegation opens', async () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
@@ -150,7 +150,7 @@ describe('ConversationView', () => {
     expect(feed.getByText('login')).toBeInTheDocument();
   });
 
-  it('opens a delegation stored without a prompt empty', async () => {
+  it('should open a delegation stored without a prompt empty', async () => {
     const user = userEvent.setup();
     openConversation({
       entries: [
@@ -165,7 +165,7 @@ describe('ConversationView', () => {
     expect(feed.queryByText('Prompt from the Coordinator')).not.toBeInTheDocument();
   });
 
-  it('keeps a cancelled delegation stopped while a later turn runs', () => {
+  it('should keep a cancelled delegation stopped while a later turn runs', () => {
     const started = { at: AT, type: 'delegation', delegationId: '1:DEVELOPER', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Do the work', summary: 'Building the API' } as const;
     const { connection } = openConversation({
       entries: [
@@ -184,7 +184,7 @@ describe('ConversationView', () => {
     expect(screen.getByRole('region', { name: 'Your squad' }).querySelector('[data-role="DEVELOPER"]')).toHaveAttribute('data-state', 'idle');
   });
 
-  it('shows a delegation that started without steps as working', () => {
+  it('should show a delegation that started without steps as working', () => {
     const { connection } = openConversation({
       entries: [
         userEntry('u1'),
@@ -197,7 +197,7 @@ describe('ConversationView', () => {
     expect(within(screen.getByTestId('message-viewport')).getByRole('region', { name: 'Delegation' }).firstElementChild).toHaveAttribute('data-status', 'working');
   });
 
-  it('introduces the team in an empty conversation and offers a request to start from', async () => {
+  it('should introduce the team in an empty conversation and offer a request to start from', async () => {
     const user = userEvent.setup();
     openConversation();
 
@@ -209,7 +209,7 @@ describe('ConversationView', () => {
     expect(field).toHaveFocus();
   });
 
-  it('lists agents that worked together one line each and stops the clock when the turn ends', () => {
+  it('should list agents that worked together one line each and stop the clock when the turn ends', () => {
     openConversation({
       entries: [
         userEntry('u1'),
@@ -226,7 +226,7 @@ describe('ConversationView', () => {
     expect(feed.getByText(/2 agents/)).toBeInTheDocument();
   });
 
-  it('sends structured answers and keeps only the open question active', async () => {
+  it('should send structured answers and keep only the open question active', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation({
       entries: [
@@ -252,7 +252,7 @@ describe('ConversationView', () => {
     expect(activeInput).toHaveValue('');
   });
 
-  it('renders a question the server closed in its closed form', () => {
+  it('should render a question the server closed in its closed form', () => {
     openConversation({
       entries: [
         { id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Open?', options: ['A'], number: 1, total: 1, closed: true },
@@ -263,7 +263,7 @@ describe('ConversationView', () => {
     expect(screen.queryByLabelText('Your answer')).not.toBeInTheDocument();
   });
 
-  it('shows the context the agent wrote, its project and why the answer matters', () => {
+  it('should show the context the agent wrote, its project and why the answer matters', () => {
     openConversation({
       entries: [
         {
@@ -277,7 +277,7 @@ describe('ConversationView', () => {
     expect(document.body).toHaveTextContent('Why it matters: It changes the login route');
   });
 
-  it('renders a question without options', () => {
+  it('should render a question without options', () => {
     openConversation({
       entries: [{ id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Open?', options: [], number: 1, total: 1, closed: false }],
     });
@@ -286,7 +286,7 @@ describe('ConversationView', () => {
   });
 
   describe('composer', () => {
-    it('sends on Enter and keeps a newline on Shift+Enter', async () => {
+    it('should send on Enter and keep a newline on Shift+Enter', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       const box = screen.getByLabelText('Message');
@@ -299,7 +299,7 @@ describe('ConversationView', () => {
       expect(box).toHaveValue('');
     });
 
-    it('does not send blank text or while composing', async () => {
+    it('should not send blank text or while composing', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       const box = screen.getByLabelText('Message');
@@ -309,7 +309,7 @@ describe('ConversationView', () => {
       expect(connection.sent.some(command => command.type === 'message.send')).toBe(false);
     });
 
-    it('sends with the button', async () => {
+    it('should send with the button', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       await user.type(screen.getByLabelText('Message'), 'go');
@@ -317,19 +317,19 @@ describe('ConversationView', () => {
       expect(connection.sent).toContainEqual({ type: 'message.send', conversationId: 'c1', text: 'go' });
     });
 
-    it('is disabled while the connection is not open', () => {
+    it('should be disabled while the connection is not open', () => {
       const { connection } = openConversation();
       act(() => connection.emitStatus('closed'));
       expect(screen.getByLabelText('Message')).toBeDisabled();
     });
 
-    it('is disabled while the conversation is not configured and opens the settings sheet', () => {
+    it('should be disabled while the conversation is not configured and open the settings sheet', () => {
       openConversation({ configured: false });
       expect(screen.getByLabelText('Message')).toBeDisabled();
       expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
     });
 
-    it('shows Stop while running or queued, keeps the composer enabled and cancels the turn', async () => {
+    it('should show Stop while running or queued, keep the composer enabled and cancel the turn', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
@@ -345,7 +345,7 @@ describe('ConversationView', () => {
     const emitDraft = (connection: ReturnType<typeof openConversation>['connection'], text: string) =>
       act(() => connection.emitEvent({ type: 'conversation.draft', conversationId: 'c1', text }));
 
-    it('shows the response as it is written, then gives way to the one that is delivered', () => {
+    it('should show the response as it is written, then give way to the one that is delivered', () => {
       const { connection } = openConversation({ entries: [userEntry('u1', 'question')] });
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
 
@@ -364,7 +364,7 @@ describe('ConversationView', () => {
       expect(screen.getByText('The answer is 42.')).toBeInTheDocument();
     });
 
-    it('shows the draft a reopened conversation was in the middle of', () => {
+    it('should show the draft a reopened conversation was in the middle of', () => {
       const { connection } = renderApp('/c/c1');
       act(() => connection.emitEvent({
         type: 'conversation.history', conversationId: 'c1', entries: [], state: 'running', draft: 'Half way',
@@ -373,7 +373,7 @@ describe('ConversationView', () => {
       expect(screen.getByText('Half way')).toBeInTheDocument();
     });
 
-    it('stops calling the steps "Working…" once the response is being written', () => {
+    it('should stop calling the steps "Working…" once the response is being written', () => {
       const { connection } = openConversation({ entries: [{ id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'Read', status: 'completed' }] });
       act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
       expect(screen.getByRole('button', { name: /Reading files….*\(1 step\)/ })).toBeInTheDocument();
@@ -383,7 +383,7 @@ describe('ConversationView', () => {
       expect(screen.getByRole('button', { name: /Show details.*\(1 step\)/ })).toBeInTheDocument();
     });
 
-    it('shows the agents at work as soon as the turn runs, before any step', () => {
+    it('should show the agents at work as soon as the turn runs, before any step', () => {
       const { connection } = openConversation({ entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'Hi' }] });
       expect(screen.queryByRole('status', { name: '' })).not.toBeInTheDocument();
 
@@ -394,7 +394,7 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
-    it('does not show the agents at work while a question waits for the user', () => {
+    it('should not show the agents at work while a question waits for the user', () => {
       const { connection } = openConversation({
         entries: [{ id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Which?', options: ['A'], number: 1, total: 1, closed: false }],
       });
@@ -406,7 +406,7 @@ describe('ConversationView', () => {
   });
 
   describe('prompt history', () => {
-    it('recalls a previous prompt with ArrowUp and clears the navigation after sending', async () => {
+    it('should recall a previous prompt with ArrowUp and clear the navigation after sending', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       const field = screen.getByLabelText('Message');
@@ -428,7 +428,7 @@ describe('ConversationView', () => {
   });
 
   describe('file mentions', () => {
-    it('inserts the chosen path with Enter instead of sending the message', async () => {
+    it('should insert the chosen path with Enter instead of sending the message', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       const field = screen.getByLabelText('Message');
@@ -471,7 +471,7 @@ describe('ConversationView', () => {
 
     const attach = (file: File) => fireEvent.change(screen.getByLabelText('Attach files'), { target: { files: [file] } });
 
-    it('uploads a picked file and sends it with the message, with or without text', async () => {
+    it('should upload a picked file and send it with the message, with or without text', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
 
@@ -520,7 +520,7 @@ describe('ConversationView', () => {
         FakeMediaDevices.uninstall();
       });
 
-      it('attaches the recording to the message without sending it', async () => {
+      it('should attach the recording to the message without sending it', async () => {
         const user = userEvent.setup();
         const { connection } = openConversation();
 
@@ -537,7 +537,7 @@ describe('ConversationView', () => {
         expect(connection.sent.some(sent => sent.type === 'message.send')).toBe(false);
       });
 
-      it('discards the recording', async () => {
+      it('should discard the recording', async () => {
         const user = userEvent.setup();
         const { connection } = openConversation();
 
@@ -549,7 +549,7 @@ describe('ConversationView', () => {
         expect(connection.sent.some(sent => sent.type === 'upload.start')).toBe(false);
       });
 
-      it('lists the microphones with the selected one marked and records with the chosen one', async () => {
+      it('should list the microphones with the selected one marked and record with the chosen one', async () => {
         const user = userEvent.setup();
         openConversation();
 
@@ -568,7 +568,7 @@ describe('ConversationView', () => {
         expect(media.getUserMedia).toHaveBeenLastCalledWith({ audio: { deviceId: { exact: 'b' } } });
       });
 
-      it('shows why the recording could not start', async () => {
+      it('should show why the recording could not start', async () => {
         const user = userEvent.setup();
         media.getUserMedia.mockRejectedValue(new DOMException('no', 'NotAllowedError'));
         openConversation();
@@ -579,7 +579,7 @@ describe('ConversationView', () => {
       });
     });
 
-    it('opens the file picker from the attach button', async () => {
+    it('should open the file picker from the attach button', async () => {
       const user = userEvent.setup();
       openConversation();
       const click = vi.spyOn(screen.getByLabelText('Attach files'), 'click');
@@ -589,7 +589,7 @@ describe('ConversationView', () => {
       expect(click).toHaveBeenCalledOnce();
     });
 
-    it('attaches dropped files and shows the drop hint while dragging', () => {
+    it('should attach dropped files and show the drop hint while dragging', () => {
       const { connection } = openConversation();
       const zone = screen.getByLabelText('Message').closest('div[class*="flex-col"]') as HTMLElement;
 
@@ -601,7 +601,7 @@ describe('ConversationView', () => {
       expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'upload.start', name: 'dropped.txt' }));
     });
 
-    it('does not accept drops while the composer is disabled', () => {
+    it('should not accept drops while the composer is disabled', () => {
       const { connection } = openConversation({ configured: false });
       const zone = screen.getByLabelText('Message').closest('div[class*="flex-col"]') as HTMLElement;
 
@@ -610,7 +610,7 @@ describe('ConversationView', () => {
       expect(connection.sent.some(sent => sent.type === 'upload.start')).toBe(false);
     });
 
-    it('attaches an image pasted into the field', () => {
+    it('should attach an image pasted into the field', () => {
       const { connection } = openConversation();
 
       fireEvent.paste(screen.getByLabelText('Message'), { clipboardData: { files: [new File(['x'], 'image.png')] } });
@@ -618,7 +618,7 @@ describe('ConversationView', () => {
       expect(connection.sent).toContainEqual(expect.objectContaining({ type: 'upload.start', name: 'image.png' }));
     });
 
-    it('lets a failed file be removed and keeps sending blocked only while uploading', async () => {
+    it('should let a failed file be removed and keep sending blocked only while uploading', async () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       attach(new File(['x'], 'broken.bin'));
@@ -630,7 +630,7 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('list', { name: 'Attachments' })).not.toBeInTheDocument();
     });
 
-    it('shows the attachments of a user message as read-only chips', () => {
+    it('should show the attachments of a user message as read-only chips', () => {
       openConversation({
         entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'look', attachments: [stored] }],
       });
@@ -641,7 +641,7 @@ describe('ConversationView', () => {
       expect(screen.getByText('look')).toBeInTheDocument();
     });
 
-    it('shows a user message that has only attachments without an empty text block', () => {
+    it('should show a user message that has only attachments without an empty text block', () => {
       openConversation({
         entries: [{ id: 'u1', at: AT, type: 'user_message', text: '', attachments: [stored] }],
       });

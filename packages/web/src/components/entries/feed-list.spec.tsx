@@ -78,14 +78,14 @@ describe('FeedList', () => {
     return screen.getByTestId('message-viewport');
   }
 
-  it('renders the entries and the streaming draft', () => {
+  it('should render the entries and the streaming draft', () => {
     renderFeed([userEntry('a', 'hello')], 'streaming answer');
 
     expect(screen.getByText('hello')).toBeInTheDocument();
     expect(screen.getByText('streaming answer')).toBeInTheDocument();
   });
 
-  it('follows the content while the reader stays at the end', () => {
+  it('should follow the content while the reader stays at the end', () => {
     renderFeed([userEntry('a')]);
     setMetrics(viewport(), { scrollHeight: 1400, scrollTop: 1000, clientHeight: 400 });
 
@@ -94,7 +94,7 @@ describe('FeedList', () => {
     expect(scrollSpy).toHaveBeenCalledWith({ top: 1400, behavior: 'auto' });
   });
 
-  it('stops following after the reader scrolls up and resumes near the end', () => {
+  it('should stop following after the reader scrolls up and resume near the end', () => {
     renderFeed([userEntry('a')]);
     const element = viewport();
     setMetrics(element, { scrollHeight: 2000, scrollTop: 1600, clientHeight: 400 });
@@ -110,7 +110,7 @@ describe('FeedList', () => {
     expect(scrollSpy).toHaveBeenCalledWith({ top: 2000, behavior: 'auto' });
   });
 
-  it('shows the scroll-to-bottom button only away from the end and scrolls smoothly on click', async () => {
+  it('should show the scroll-to-bottom button only away from the end and scroll smoothly on click', async () => {
     const user = userEvent.setup();
     renderFeed([userEntry('a')]);
     const element = viewport();
@@ -127,7 +127,7 @@ describe('FeedList', () => {
     expect(screen.queryByRole('button', { name: 'Scroll to bottom' })).not.toBeInTheDocument();
   });
 
-  it('resumes following when the user sends a new message', () => {
+  it('should resume following when the user sends a new message', () => {
     const { update } = renderFeed([userEntry('a')]);
     const element = viewport();
     setMetrics(element, { scrollHeight: 2000, scrollTop: 1600, clientHeight: 400 });
@@ -142,7 +142,7 @@ describe('FeedList', () => {
     expect(scrollSpy).toHaveBeenCalledWith({ top: 2000, behavior: 'auto' });
   });
 
-  it('keeps an activity group open after it is expanded', async () => {
+  it('should keep an activity group open after it is expanded', async () => {
     const user = userEvent.setup();
     const { update } = renderFeed([toolEntry('t1')]);
 
@@ -156,7 +156,7 @@ describe('FeedList', () => {
     expect(screen.queryByText('tool t1')).not.toBeInTheDocument();
   });
 
-  it('shows the skills an agent read or wrote, each linking to the skill', async () => {
+  it('should show the skills an agent read or wrote, each linking to the skill', async () => {
     const user = userEvent.setup();
     const skill = (id: string, step: Partial<Extract<ConversationEntry, { type: 'skill' }>>): ConversationEntry => (
       { id, at: AT, type: 'skill', role: 'CEO', action: 'read', names: ['api-testing'], status: 'completed', ...step }
@@ -178,7 +178,7 @@ describe('FeedList', () => {
     expect(screen.getByText(/^Could not write the skill/).parentElement).toHaveAttribute('title', 'You cannot write skills.');
   });
 
-  it('dims the items of other agents when the feed is focused, and never the user or notices', () => {
+  it('should dim the items of other agents when the feed is focused, and never the user or notices', () => {
     renderFeed([
       userEntry('u1', 'hello'),
       { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'a notice' },
@@ -197,7 +197,7 @@ describe('FeedList', () => {
     expect(screen.getByRole('button', { name: /Developer/ }).closest('[data-dimmed]')).toHaveAttribute('data-dimmed', 'false');
   });
 
-  it('dims an interim message and the question of another agent, and keeps the question of the focused one', () => {
+  it('should dim an interim message and the question of another agent, and keep the question of the focused one', () => {
     renderFeed([
       { id: 'i1', at: AT, type: 'interim', text: 'working on it' },
       { id: 'q1', at: AT, type: 'question', askerRole: 'PRODUCT_OWNER', askerRoleName: 'Product Owner', text: 'Which scope?', options: [], number: 1, total: 1, closed: true },
@@ -210,7 +210,7 @@ describe('FeedList', () => {
     expect(dimmed('Which branch?')).toBe('false');
   });
 
-  it('attributes an activity group to the role of its first step', () => {
+  it('should attribute an activity group to the role of its first step', () => {
     renderFeed([
       { id: 'x1', at: AT, type: 'tool', role: 'CEO', title: 'Read file', status: 'completed' },
       { id: 'n1', at: AT, type: 'notice', level: 'info', text: 'a notice' },
@@ -221,7 +221,7 @@ describe('FeedList', () => {
     expect(flags).toEqual(['true', 'false', 'false']);
   });
 
-  it('dims nothing without a focus', () => {
+  it('should dim nothing without a focus', () => {
     renderFeed([{ id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'plain' }]);
 
     expect(screen.getByText('plain').closest('[data-dimmed]')).toHaveAttribute('data-dimmed', 'false');
@@ -242,13 +242,13 @@ describe('FeedList', () => {
       return { onAnswer, handle };
     }
 
-    it('shows no waiting line while the open question is in view', () => {
+    it('should show no waiting line while the open question is in view', () => {
       renderQuestionFeed([question(false), reply], 100_000);
 
       expect(screen.queryByRole('button', { name: 'Go to question' })).not.toBeInTheDocument();
     });
 
-    it('stays answerable after a newer entry and sends the answer', async () => {
+    it('should stay answerable after a newer entry and send the answer', async () => {
       const user = userEvent.setup();
       const { onAnswer } = renderQuestionFeed([question(false), reply], 100_000);
 
@@ -258,7 +258,7 @@ describe('FeedList', () => {
       expect(screen.queryByText('Tech Lead is waiting for your answer')).not.toBeInTheDocument();
     });
 
-    it('shows a closed question in its closed form', () => {
+    it('should show a closed question in its closed form', () => {
       renderQuestionFeed([question(true), reply], 100_000);
 
       expect(screen.getByText('Which branch?')).toBeInTheDocument();
@@ -266,7 +266,7 @@ describe('FeedList', () => {
       expect(screen.queryByLabelText('Your answer')).not.toBeInTheDocument();
     });
 
-    it('keeps the agents shown as working unless the open question is the last entry', () => {
+    it('should keep the agents shown as working unless the open question is the last entry', () => {
       const { unmount } = render(
         <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
           <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
@@ -283,7 +283,7 @@ describe('FeedList', () => {
       expect(screen.getByRole('status')).toBeInTheDocument();
     });
 
-    it('focuses the first control of the question card through the handle', () => {
+    it('should focus the first control of the question card through the handle', () => {
       const { handle } = renderQuestionFeed([question(false), reply], 100_000);
 
       act(() => handle.current?.goToQuestion());
@@ -291,7 +291,7 @@ describe('FeedList', () => {
       expect(screen.getByRole('button', { name: 'main' })).toHaveFocus();
     });
 
-    it('does nothing through the handle without an open question', () => {
+    it('should do nothing through the handle without an open question', () => {
       const { handle } = renderQuestionFeed([question(true), reply], 100_000);
 
       act(() => handle.current?.goToQuestion());

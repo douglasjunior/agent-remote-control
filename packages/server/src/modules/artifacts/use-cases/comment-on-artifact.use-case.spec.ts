@@ -9,7 +9,7 @@ import { CommentOnArtifactUseCase } from './comment-on-artifact.use-case.js';
 const actor = { kind: 'agent', role: 'CEO', roleName: 'CEO' } as const;
 
 describe('CommentOnArtifactUseCase', () => {
-  it('records the comment in the history and publishes the artifact', async () => {
+  it('should record the comment in the history and publish the artifact', async () => {
     const harness = createArtifactHarness([buildArtifact({ id: 'T-1' })]);
     const useCase = new CommentOnArtifactUseCase(harness.store, harness.history, harness.events);
 
@@ -22,7 +22,7 @@ describe('CommentOnArtifactUseCase', () => {
   it.each([
     ['T-1', ' ', 'A comment needs text.'],
     ['T-9', 'Hi', 'Unknown artifact "T-9".'],
-  ])('refuses %s with %j', async (id, text, error) => {
+  ])('should refuse %s with %j', async (id, text, error) => {
     const harness = createArtifactHarness([buildArtifact({ id: 'T-1' })]);
     const useCase = new CommentOnArtifactUseCase(harness.store, harness.history, harness.events);
 

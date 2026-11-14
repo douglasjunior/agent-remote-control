@@ -16,7 +16,7 @@ describe('DiscordTypingIndicator', () => {
     vi.useRealTimers();
   });
 
-  it('triggers sendTyping immediately on start', () => {
+  it('should trigger sendTyping immediately on start', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
@@ -27,7 +27,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('triggers sendTyping periodically at the configured interval', () => {
+  it('should trigger sendTyping periodically at the configured interval', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 8000 });
@@ -44,7 +44,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('uses default interval of 8000ms and default idle timeout of 5 minutes', () => {
+  it('should use default interval of 8000ms and default idle timeout of 5 minutes', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
@@ -62,7 +62,7 @@ describe('DiscordTypingIndicator', () => {
     expect(sendTyping).toHaveBeenCalledTimes(38);
   });
 
-  it('swallows asynchronous errors from sendTyping', async () => {
+  it('should swallow asynchronous errors from sendTyping', async () => {
     const sendTyping = vi.fn().mockRejectedValue(new Error('Discord API 429'));
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 1000 });
@@ -76,7 +76,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('swallows synchronous exceptions from sendTyping', () => {
+  it('should swallow synchronous exceptions from sendTyping', () => {
     const sendTyping = vi.fn().mockImplementation(() => {
       throw new Error('Immediate failure');
     });
@@ -89,7 +89,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('handles channels without sendTyping gracefully', () => {
+  it('should handle channels without sendTyping gracefully', () => {
     const channel: TypingChannel = {};
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 1000 });
 
@@ -99,7 +99,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('clears previous timers when start is invoked multiple times', () => {
+  it('should clear previous timers when start is invoked multiple times', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 2000 });
@@ -116,7 +116,7 @@ describe('DiscordTypingIndicator', () => {
     indicator.stop();
   });
 
-  it('resets idle watchdog timer on keepAlive', () => {
+  it('should reset idle watchdog timer on keepAlive', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
@@ -142,7 +142,7 @@ describe('DiscordTypingIndicator', () => {
     expect(sendTyping).toHaveBeenCalledTimes(10);
   });
 
-  it('does nothing when keepAlive is called while inactive', () => {
+  it('should do nothing when keepAlive is called while inactive', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
@@ -156,7 +156,7 @@ describe('DiscordTypingIndicator', () => {
     expect(sendTyping).not.toHaveBeenCalled();
   });
 
-  it('stops typing when idleTimeoutMs expires without keepAlive', () => {
+  it('should stop typing when idleTimeoutMs expires without keepAlive', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
@@ -177,7 +177,7 @@ describe('DiscordTypingIndicator', () => {
     expect(sendTyping).toHaveBeenCalledTimes(4);
   });
 
-  it('stops typing and clears all timers on stop', () => {
+  it('should stop typing and clear all timers on stop', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
@@ -194,7 +194,7 @@ describe('DiscordTypingIndicator', () => {
     expect(sendTyping).toHaveBeenCalledTimes(1);
   });
 
-  it('allows safe repeated calls to stop', () => {
+  it('should allow safe repeated calls to stop', () => {
     const sendTyping = vi.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
@@ -206,7 +206,7 @@ describe('DiscordTypingIndicator', () => {
   });
 
   describe('during', () => {
-    it('keeps typing while the work runs and stops when it resolves', async () => {
+    it('should keep typing while the work runs and stop when it resolves', async () => {
       const sendTyping = vi.fn().mockResolvedValue(undefined);
       let resolveWork: (value: string) => void = () => undefined;
       const work = new Promise<string>((resolve) => {
@@ -223,7 +223,7 @@ describe('DiscordTypingIndicator', () => {
       expect(sendTyping).toHaveBeenCalledTimes(2);
     });
 
-    it('stops typing when the work fails', async () => {
+    it('should stop typing when the work fails', async () => {
       const sendTyping = vi.fn().mockResolvedValue(undefined);
 
       await expect(

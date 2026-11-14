@@ -33,7 +33,7 @@ function setup() {
 const user = { kind: 'user', channel: 'web' } as const;
 
 describe('WebArtifactsService', () => {
-  it('lists every artifact of the conversation, closed ones included, without their content', async () => {
+  it('should list every artifact of the conversation, closed ones included, without their content', async () => {
     const { service } = setup();
 
     const listed = await service.list('web-1');
@@ -44,7 +44,7 @@ describe('WebArtifactsService', () => {
     expect(listed[1]?.pullRequests).toEqual([{ url: 'https://x/pull/1', state: 'merged', addedAt: '2026-01-01T00:00:00.000Z' }]);
   });
 
-  it('reads the detail of an artifact, or nothing for an unknown one', async () => {
+  it('should read the detail of an artifact, or nothing for an unknown one', async () => {
     const { service } = setup();
 
     expect(await service.detail('web-1', 'T-1')).toMatchObject({ id: 'T-1', sections: {}, history: [{ changes: [{ field: 'status', to: 'done' }] }] });
@@ -52,7 +52,7 @@ describe('WebArtifactsService', () => {
     expect(await service.detail('web-1', 'T-9')).toBeUndefined();
   });
 
-  it('creates an artifact as the user, the switches choosing which refinements are owed', async () => {
+  it('should create an artifact as the user, the switches choosing which refinements are owed', async () => {
     const { service, artifacts } = setup();
 
     const result = await service.create('web-1', 'r1', {
@@ -76,7 +76,7 @@ describe('WebArtifactsService', () => {
     expect(await artifacts.service.get('web-1', 'F-2')).toMatchObject({ refinement: { business: 'pending', technical: 'pending' } });
   });
 
-  it('updates fields and replaces sections, comments and deletes, answering failures with their reason', async () => {
+  it('should update fields and replace sections, comment and delete, answering failures with their reason', async () => {
     const { service, artifacts } = setup();
 
     expect(await service.update('web-1', 'r', 'F-1', { title: 'Checkout', sections: { overview: '', scope: 'All' } })).toMatchObject({ ok: true, id: 'F-1' });
@@ -89,7 +89,7 @@ describe('WebArtifactsService', () => {
     expect(await artifacts.service.get('web-1', 'F-1')).toMatchObject({ title: 'Checkout', status: 'in_progress', sections: { scope: 'All' } });
   });
 
-  it('broadcasts every change of a web conversation until it stops, leaving other channels out', async () => {
+  it('should broadcast every change of a web conversation until it stops, leaving other channels out', async () => {
     const { service, artifacts, observer } = setup();
     service.onModuleInit();
 
@@ -106,7 +106,7 @@ describe('WebArtifactsService', () => {
     ]);
   });
 
-  it.each([new Error('store down'), 'store down'])('logs a broadcast that fails (%#)', async (failure) => {
+  it.each([new Error('store down'), 'store down'])('should log a broadcast that fails (%#)', async (failure) => {
     const { service, artifacts, store, observer } = setup();
     store.exists = () => Promise.reject(failure);
     service.onModuleInit();

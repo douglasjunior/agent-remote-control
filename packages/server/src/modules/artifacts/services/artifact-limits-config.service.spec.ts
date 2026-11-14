@@ -14,7 +14,7 @@ describe('ArtifactLimitsConfigService', () => {
     ['0', 0],
     ['-1', 25],
     ['many', 25],
-  ])('reads ARTIFACT_MAX_DELEGATIONS=%j as %d', (raw, expected) => {
+  ])('should read ARTIFACT_MAX_DELEGATIONS=%j as %d', (raw, expected) => {
     if (raw !== undefined) {
       vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', raw);
     }
