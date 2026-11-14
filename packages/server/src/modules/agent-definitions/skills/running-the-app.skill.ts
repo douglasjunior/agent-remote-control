@@ -11,7 +11,7 @@ export const RUNNING_THE_APP_SKILL: AgentSkillDefinition = {
 ## Find How the Project Runs
 - Read README, AGENTS.md, CONTRIBUTING and the manifest scripts (\`package.json\`, \`Makefile\`, \`docker-compose.yml\`, \`pyproject.toml\`, Gradle or Maven files). Use the documented commands; do not reinvent them.
 - Install dependencies with the project's own command and lockfile (\`pnpm install --frozen-lockfile\`, \`npm ci\`, \`poetry install\`...). Installing never edits the manifest or the lockfile; when it would, report it instead.
-- Configuration: create or edit the files and variables the application reads (copy \`.env.example\` to the name the project reads, point URLs at your local services, turn on a flag), and note each change to undo it at the end. Never put real secrets in them; ask the caller when a test needs credentials the project does not provide for development.
+- Configuration: create or edit the files and variables the application reads (copy \`.env.example\` to the name the project reads, point the application and its clients at your local backend and services, turn on a flag), rebuild what reads a setting at build time, and note each change to undo it at the end. Never put real secrets in them; ask the caller when a test needs credentials the project does not provide for development.
 - Backing services (databases, queues, caches): bring them up with the project's compose file or documented scripts, apply its migrations and run its seeds. Never point the application at a shared or production service.
 
 ## Shape the State a Test Needs
