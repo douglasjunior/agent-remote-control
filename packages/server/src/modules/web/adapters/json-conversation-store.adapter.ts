@@ -42,11 +42,15 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
   }
 
   rename(id: string, title: string): Promise<ConversationSummary> {
-    return this.update(id, { title });
+    return this.update(id, current => ({ ...current, title }));
+  }
+
+  archive(id: string, archived: boolean): Promise<ConversationSummary> {
+    return this.update(id, ({ archivedAt: _archivedAt, ...current }) => (archived ? { ...current, archivedAt: new Date().toISOString() } : current));
   }
 
   touch(id: string): Promise<ConversationSummary> {
-    return this.update(id, {});
+    return this.update(id, current => ({ ...current, updatedAt: new Date().toISOString() }));
   }
 
   async exists(id: string): Promise<boolean> {
@@ -78,13 +82,13 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
     await this.writeChain;
   }
 
-  private async update(id: string, changes: Partial<Pick<ConversationSummary, 'title'>>): Promise<ConversationSummary> {
+  private async update(id: string, change: (current: ConversationSummary) => ConversationSummary): Promise<ConversationSummary> {
     const conversations = await this.loadConversations();
     const current = conversations.get(id);
     if (!current) {
       throw new Error(`Unknown conversation: ${id}`);
     }
-    const updated = { ...current, ...changes, updatedAt: new Date().toISOString() };
+    const updated = change(current);
     conversations.set(id, updated);
     this.scheduleWrite(CONVERSATIONS_KEY);
     return updated;

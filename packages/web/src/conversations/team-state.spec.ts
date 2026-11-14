@@ -27,7 +27,7 @@ describe('deriveTeam', () => {
   it('lists the whole team, idle, when nothing happened', () => {
     const team = deriveTeam([], false);
 
-    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'GIT_OPS']);
+    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS']);
     expect(team.every(member => member.state === 'idle')).toBe(true);
   });
 
@@ -131,6 +131,13 @@ describe('deriveTeam', () => {
 
       expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working', summary: 'DEVELOPER summary', projectName: 'app', steps: 1, doing: 'Reading files' });
       expect(stateOf(team, 'CEO').state).toBe('idle');
+    });
+
+    it('tells that a delegated agent is reading a skill', () => {
+      const step: ConversationEntry = { id: 's', at, type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed' };
+      const team = deriveTeam([user, delegation('started', 'QA'), step], true);
+
+      expect(stateOf(team, 'QA')).toMatchObject({ state: 'working', steps: 1, doing: 'Reading a skill' });
     });
 
     it('drops a closed delegation at a new user message', () => {

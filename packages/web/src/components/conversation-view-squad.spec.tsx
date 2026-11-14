@@ -1,5 +1,5 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { act, cleanup, screen, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -73,7 +73,8 @@ describe('ConversationView squad', () => {
 
       await user.click(within(squad()).getByRole('button', { name: /Developer/ }));
 
-      expect(screen.getByRole('button', { name: 'main' })).toHaveFocus();
+      // The feed moves to the question on the next frame, after the click settles.
+      await waitFor(() => expect(screen.getByRole('button', { name: 'main' })).toHaveFocus());
       expect(screen.getByRole('button', { name: 'Developer only, show everyone' })).toBeInTheDocument();
     });
 

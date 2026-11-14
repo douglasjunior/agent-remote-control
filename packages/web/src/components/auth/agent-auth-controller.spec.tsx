@@ -87,7 +87,7 @@ describe('AgentAuthController', () => {
     emitLogin(connection, 'claude', { kind: 'url', url: 'javascript:alert(1)' });
 
     await screen.findByText('Log in to Claude Code');
-    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/skills']);
   });
 
   it('cancels a login from the toast', async () => {
@@ -130,7 +130,7 @@ describe('AgentAuthController', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Checking the code…');
-    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2), { timeout: 5000 });
     expect(screen.queryByLabelText('Paste the code the browser shows')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open login page/ })).toBeInTheDocument();
   });

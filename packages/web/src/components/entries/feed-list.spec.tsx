@@ -156,6 +156,28 @@ describe('FeedList', () => {
     expect(screen.queryByText('tool t1')).not.toBeInTheDocument();
   });
 
+  it('shows the skills an agent read or wrote, each linking to the skill', async () => {
+    const user = userEvent.setup();
+    const skill = (id: string, step: Partial<Extract<ConversationEntry, { type: 'skill' }>>): ConversationEntry => (
+      { id, at: AT, type: 'skill', role: 'CEO', action: 'read', names: ['api-testing'], status: 'completed', ...step }
+    );
+    renderFeed([
+      skill('s1', { names: ['api-testing', 'web-ui-testing'] }),
+      skill('s2', { action: 'write', names: ['electron-testing'], created: true }),
+      skill('s3', { action: 'write', names: ['electron-testing'], created: false }),
+      skill('s4', { action: 'write', names: ['nope'], status: 'failed', error: 'You cannot write skills.' }),
+    ]);
+
+    expect(screen.getByRole('button', { name: /Show details/ })).toHaveTextContent('(4 steps)');
+    await user.click(screen.getByRole('button', { name: /Show details/ }));
+
+    expect(screen.getByRole('link', { name: 'web-ui-testing' })).toHaveAttribute('href', '/skills/web-ui-testing');
+    expect(screen.getByText(/^Read the skill/)).toHaveTextContent('Read the skill api-testing, web-ui-testing');
+    expect(screen.getByText(/^Created the skill/)).toBeInTheDocument();
+    expect(screen.getByText(/^Updated the skill/)).toBeInTheDocument();
+    expect(screen.getByText(/^Could not write the skill/).parentElement).toHaveAttribute('title', 'You cannot write skills.');
+  });
+
   it('dims the items of other agents when the feed is focused, and never the user or notices', () => {
     renderFeed([
       userEntry('u1', 'hello'),

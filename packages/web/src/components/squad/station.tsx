@@ -1,8 +1,10 @@
+import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { CSSProperties } from 'react';
 
 import type { TeamMember } from '../../conversations/team-state.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { formatDuration } from '../../lib/format.js';
+import { profileSummary } from '../../lib/role-profile.js';
 import { cn } from '../../lib/utils.js';
 import { AgentMark, type AgentMarkState } from '../agent/agent-mark.js';
 import { Button } from '../ui/button.js';
@@ -37,8 +39,9 @@ function timeOf(member: TeamMember, state: AgentMarkState, now: number): string 
  * One role of the squad: mark, name, stage, time, a summary clamped to two lines and one ticker line with the latest
  * action. Selecting it reveals the role's responsibility; nothing here grows with the length of the conversation.
  */
-export function Station({ member, index, now, delegating, selected, highlighted, onSelect, onContinue }: {
+export function Station({ member, profile, index, now, delegating, selected, highlighted, onSelect, onContinue }: {
   readonly member: TeamMember;
+  readonly profile?: RoleProfile;
   readonly index: number;
   readonly now: number;
   /** Whether other agents are at work, which keeps the Coordinator active although it is not itself working. */
@@ -78,6 +81,12 @@ export function Station({ member, index, now, delegating, selected, highlighted,
             <span className="text-[11.5px] tracking-[.05em] text-muted-foreground/80 uppercase">{stage}</span>
             {time && <span className="ml-auto font-mono text-[12.5px] whitespace-nowrap text-muted-foreground tabular-nums">{time}</span>}
           </span>
+          {profile && (
+            <span data-profile className="mb-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[11.5px] leading-[1.4] text-muted-foreground/80">
+              <span className="truncate">{profileSummary(profile)}</span>
+              {profile.agent && !profile.agent.available && <span className="shrink-0 font-sans font-medium text-destructive">not installed</span>}
+            </span>
+          )}
           <span className={cn('line-clamp-2 block text-sm leading-[1.4] text-muted-foreground', (state === 'working' || state === 'waiting') && 'font-medium text-foreground')}>{line}</span>
           {state === 'working' && action && (
             <span className="mt-[7px] flex min-h-[18px] items-center gap-2 font-mono text-[12.5px] leading-[1.4] text-(--c)">

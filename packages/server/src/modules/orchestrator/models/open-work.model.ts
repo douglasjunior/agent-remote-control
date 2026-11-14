@@ -13,6 +13,8 @@ export type OpenWork = {
   readonly role: string;
   readonly roleName: string;
   readonly projectName: string | null;
+  /** The artifact the delegation held, which it takes again when resumed. */
+  readonly artifactId?: string;
   readonly summary: string;
   /** The delegated task or, for the root agent, the prompt of its turn. */
   readonly taskSpec: string;

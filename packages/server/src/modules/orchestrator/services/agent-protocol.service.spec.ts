@@ -159,7 +159,23 @@ describe('AgentProtocolService', () => {
     });
   });
 
+  describe('strayTags', () => {
+    it('should name the protocol tags written outside the final response envelope, once each', () => {
+      expect(service.strayTags('<artifact_list status="all"/>\nChecking.\n<artifact_list/><DELEGATE role="X">\n<final_response>On it.</final_response>')).toEqual(['artifact_list', 'delegate']);
+    });
+
+    it('should find nothing without an envelope, inside it or in Markdown code', () => {
+      expect(service.strayTags('<artifact_list/> On it.')).toEqual([]);
+      expect(service.strayTags('Use `<delegate>` like this.\n<final_response><artifact_read id="T-1"/></final_response>')).toEqual([]);
+    });
+  });
+
   describe('visibleReply', () => {
+    it('should leave out artifact requests and their bodies', () => {
+      expect(service.visibleReply('Checking the board.\n<artifact_list/>\n<artifact_create type="task" title="x"><section name="overview">Why</section></artifact_create>')).toBe('Checking the board.');
+      expect(service.visibleReply('Checking.\n<artifact_upd')).toBe('Checking.');
+    });
+
     it('keeps a plain reply', () => {
       expect(service.visibleReply('Done. Everything works.')).toBe('Done. Everything works.');
     });

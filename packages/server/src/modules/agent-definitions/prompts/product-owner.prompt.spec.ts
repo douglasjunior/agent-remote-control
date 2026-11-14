@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { PRODUCT_OWNER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
+import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { buildPlanDocumentInstructions, buildPlanDocumentReminder } from './plan-documents.prompt.js';
 import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from './product-owner.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
@@ -37,19 +38,24 @@ describe('product-owner.prompt', () => {
   it('should block on invented rules, documentation conflicts, and divergences between system and documentation', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Never invent a business rule');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Conflict with existing documentation');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('record it under "Divergences to fix"');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('record it in `pending_decisions` as a divergence to fix');
   });
 
-  it('should keep open questions as a last resort and check the document before writing it', () => {
+  it('should keep open questions as a last resort and check the board before writing to it', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('"Open questions" is a last resort');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Every entry under "Open questions" has the user explicitly saying they do not know it');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('## Technical pending decisions');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Every entry in `open_questions` has the user explicitly saying they do not know it');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('### Before Writing to the Board');
   });
 
-  it('should write only intent.md in the plans directory and return its path', () => {
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildPlanDocumentInstructions('intent.md'));
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the absolute path of the document');
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(buildPlanDocumentReminder('intent.md'));
+  it('should consolidate the intent as a feature and its tasks on the board, not as a file', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('The initiative becomes one feature in the project it concerns, and the feature is broken into tasks');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('- `acceptance_criteria`: observable behavior');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Set `business_refinement="done"`');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Everything you write goes to the board through artifact requests');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the ids of the artifacts you created or changed');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildArtifactProtocolInstructions(PRODUCT_OWNER_ARTIFACT_ACCESS));
+    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS));
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).not.toContain('intent.md');
   });
 
   it('should include the shared orientation, boundaries, question, and final response instructions', () => {

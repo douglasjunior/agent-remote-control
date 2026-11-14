@@ -17,6 +17,12 @@ describe('groupEntries', () => {
     expect(items[3]).toMatchObject({ id: 'activity:x2', steps: [{ id: 'x2' }] });
   });
 
+  it('groups the skills an agent reads with its other steps', () => {
+    const skill: ConversationEntry = { id: 's1', at, type: 'skill', role: 'CEO', action: 'read', names: ['artifact-board'], status: 'completed' };
+
+    expect(groupEntries([tool('t1'), skill])).toEqual([{ kind: 'activity', id: 'activity:t1', steps: [tool('t1'), skill] }]);
+  });
+
   it('starts a new activity item when another agent takes over', () => {
     const items = groupEntries([tool('x1'), tool('x2', 'DEVELOPER'), tool('x3', 'DEVELOPER'), tool('x4')]);
 

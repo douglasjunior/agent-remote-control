@@ -1,7 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 
 
-export type ActivityEntry = Extract<ConversationEntry, { type: 'thought' | 'tool' }>;
+export type ActivityEntry = Extract<ConversationEntry, { type: 'thought' | 'tool' | 'skill' }>;
 type DelegationEntry = Extract<ConversationEntry, { type: 'delegation' }>;
 
 export type HandoffStatus = 'working' | 'done' | 'failed' | 'cancelled';
@@ -20,12 +20,14 @@ export interface Handoff {
   /** What the CEO wrote for the agent. */
   readonly prompt: string;
   readonly projectName?: string;
+  /** The task the agent holds while it works. */
+  readonly artifactId?: string;
   readonly status: HandoffStatus;
   readonly startedAt: number;
   readonly durationMs?: number;
   readonly response?: string;
   readonly errorMessage?: string;
-  /** The thoughts and tool calls of the agent while it worked on this delegation. */
+  /** The thoughts, tool calls and skills of the agent while it worked on this delegation. */
   readonly steps: readonly ActivityEntry[];
 }
 
@@ -53,7 +55,7 @@ function stepsByDelegation(entries: readonly ConversationEntry[]): ReadonlyMap<s
   for (const entry of entries) {
     if (entry.type === 'delegation' && entry.phase === 'started') {
       latestByRole.set(entry.role, entry.id);
-    } else if ((entry.type === 'thought' && !entry.removed) || entry.type === 'tool') {
+    } else if ((entry.type === 'thought' && !entry.removed) || entry.type === 'tool' || entry.type === 'skill') {
       const owner = isCoordinator(entry.role) ? undefined : latestByRole.get(entry.role);
       if (owner) {
         steps.set(owner, [...(steps.get(owner) ?? []), entry]);
@@ -64,7 +66,7 @@ function stepsByDelegation(entries: readonly ConversationEntry[]): ReadonlyMap<s
 }
 
 function toHandoff(started: DelegationEntry, closing: DelegationEntry | undefined, steps: readonly ActivityEntry[]): Handoff {
-  const { id, delegationId, round, role, roleName, summary, prompt, projectName, at } = started;
+  const { id, delegationId, round, role, roleName, summary, prompt, projectName, artifactId, at } = started;
   return {
     id,
     delegationId,
@@ -74,6 +76,7 @@ function toHandoff(started: DelegationEntry, closing: DelegationEntry | undefine
     summary,
     prompt,
     ...(projectName ? { projectName } : {}),
+    ...(artifactId ? { artifactId } : {}),
     status: CLOSING_STATUS[closing?.phase ?? 'started'],
     startedAt: Date.parse(at),
     steps,
@@ -102,7 +105,7 @@ function lastAnswerOfEachTurn(entries: readonly ConversationEntry[]): ReadonlySe
 }
 
 /**
- * Collapses consecutive thought and tool entries of one agent into one activity item (the steps of a delegated agent
+ * Collapses consecutive thought, tool and skill entries of one agent into one activity item (the steps of a delegated agent
  * go inside its handoff), and each delegation (its start and its
  * end) into one handoff; handoffs that start together form a squad. The answer that closes a turn that delegated carries a
  * recap of the team's work. Removed thoughts are dropped, and so are steered responses, which have no text: another
@@ -131,7 +134,7 @@ export function groupEntries(entries: readonly ConversationEntry[]): readonly En
       turnHandoffs = [];
       turnStartedAt = Date.parse(entry.at);
     }
-    if (entry.type === 'thought' || entry.type === 'tool') {
+    if (entry.type === 'thought' || entry.type === 'tool' || entry.type === 'skill') {
       if (delegatedStepIds.has(entry.id)) {
         continue;
       }

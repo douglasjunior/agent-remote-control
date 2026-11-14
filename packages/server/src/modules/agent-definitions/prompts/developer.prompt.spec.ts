@@ -1,17 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
+import { DEVELOPER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
+
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from './developer.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('developer.prompt', () => {
   it('should define developer agent role and its capabilities', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Developer Agent');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('Technical Execution');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Execute approved technical plans and specifications faithfully');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Implement the task you hold faithfully');
+  });
+
+  it('should implement the delegated task on its own branch and record it on the task', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('The task opens your prompt in a `[DELEGATED_ARTIFACT]` block');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('`<type>/<task id lowercase>-<short-slug>`');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('the branch (`branch` attribute) and the `implementation_notes` section');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS));
+    expect(DEVELOPER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(DEVELOPER_ARTIFACT_ACCESS));
   });
 
   it('should embed commit conventions directly in Developer prompt', () => {
@@ -65,7 +76,7 @@ describe('developer.prompt', () => {
   });
 
   it('should explain to the developer how to ask the user, in the prompt and in every turn', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
     expect(DEVELOPER_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
   });
 });

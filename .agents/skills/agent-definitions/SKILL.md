@@ -2,10 +2,11 @@
 name: agent-definitions
 description: >
   Standard for defining, parameterizing and registering AI agent personas in the system.
-  Governs the AgentRole roles (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD and PRODUCT_OWNER), the
+  Governs the AgentRole roles (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD, PRODUCT_OWNER and QA), the
   AgentDefinition contract with its delegation contract, the AgentRegistryService implementation (IAgentRegistryPort),
-  the specialized system prompts, the instructions for asking the user questions, the CEO's lean core prompt and
-  task routing. Use when creating, modifying or looking up agent personas and roles.
+  the specialized system prompts, the skills agents read on demand (built-in and the user's own in DATA_DIR/skills),
+  the instructions for asking the user questions, the CEO's lean core prompt and task routing. Use when creating,
+  modifying or looking up agent personas, roles or agent skills.
 ---
 
 # AI Agent Definition and Registration
@@ -34,15 +35,17 @@ export type AgentRole =
   | 'DEVELOPER'
   | 'CODE_REVIEWER'
   | 'TECH_LEAD'
-  | 'PRODUCT_OWNER';
+  | 'PRODUCT_OWNER'
+  | 'QA';
 ```
 
 - **`CEO`**: Leader of the agent team. Talks to the user, triages, delegates all hands-on work to the other agents and reviews the results.
-- **`PRODUCT_OWNER`**: Runs product discovery before any technical planning — requirements, business rules, exploration of ideas and features, flows, usability and acceptance criteria. Interviews the user directly, in rounds, and delivers the path to an intent document.
-- **`TECH_LEAD`**: Specialist in technical planning, architectural exploration, impact assessment and a decomposed specification for the DEVELOPER. Asks the user about every critical decision and design trade-off, with a justified recommendation.
+- **`PRODUCT_OWNER`**: Runs product discovery before any technical planning — requirements, business rules, exploration of ideas and features, flows, usability and acceptance criteria. Interviews the user directly, in rounds, and consolidates the intent on the board: a feature broken into tasks, with their business sections.
+- **`TECH_LEAD`**: Specialist in technical planning, architectural exploration and impact assessment: writes the technical solution of each task on the board and splits large work into dependent tasks. Asks the user about every critical decision and design trade-off, with a justified recommendation.
 - **`GIT_OPS`**: Owner of standalone Git operations that reach a remote — clone, init, fetch, pull, push, merge and rebase against remote branches, remote configuration, pull requests and SSH key setup. Maintains `workspace-manifest.json` at the workspaces root as a mapping from repository URL to project folder, and is its only writer (the CEO reads it to locate repositories). Does not run project scripts, even when they clone or fetch internally.
 - **`DEVELOPER`**: Autonomous senior software engineer, agnostic to specific stacks or architectures, focused on adapting to the target project's architecture, code implementation and automated tests. In Git it operates only on the local side: working tree inspection, local branches and committing its own work. Runs the commands the project documents (`package.json` scripts, Makefile targets, setup or init scripts from README/AGENTS.md), even when they install dependencies or clone sub-repositories.
-- **`CODE_REVIEWER`**: Critical, independent code reviewer focused on inspecting changes and proposing technical improvements, adherence to conventions and bug prevention, free of bias from previous implementations.
+- **`CODE_REVIEWER`**: Critical, independent reviewer of the pull request linked on a task, free of bias from previous implementations. Never runs the project: it reads the results of the pull request pipeline, publishes its findings on the pull request and answers APPROVED or CHANGES_REQUESTED.
+- **`QA`**: Tests the work on a task in practice after its review: runs the application from the task's branch and exercises its acceptance criteria and test cases as a user or client would (Playwright for web interfaces and HTTP APIs, mobile-mcp for mobile apps), records the test report and answers PASSED or FAILED. Never changes code or commits.
 
 ### Definition Contract (`AgentDefinition`)
 
@@ -54,19 +57,35 @@ Each agent is described by the `AgentDefinition` structure:
 - `buildSystemPrompt(team)`: builds the agent's prompt. Receives `team`, the other registered definitions, so that delegating agents can list their team. Executor agents ignore the parameter;
 - `defaultModel`: optional default language model associated with the persona;
 - `defaultSessionMode`: default session mode (`'resume' | 'new'`, default `'resume'`). When `'new'`, the orchestrator always starts a new ACP session for the agent;
-- `delegation`: the agent's delegation contract (`AgentDelegationContract`), declaring which `<delegate>` attributes it accepts. `project` is `'required'` or `'optional'`; when absent, the agent receives no project folder. `sessionMode` is `'overridable'`; when absent, the mode is fixed to `defaultSessionMode` and passing the `session` attribute is rejected. `readOnly: true` declares that the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`. The set is specific to each agent, and a new parameter is added here;
+- `delegation`: the agent's delegation contract (`AgentDelegationContract`), declaring which `<delegate>` attributes it accepts. `project` is `'required'` or `'optional'`; when absent, the agent receives no project folder. `sessionMode` is `'overridable'`; when absent, the mode is fixed to `defaultSessionMode` and passing the `session` attribute is rejected. `readOnly: true` declares that the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches and runs the project. `artifact` is `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact. `needsReviewableWork: true` (CODE_REVIEWER, QA) requires the delegated artifact to link a pull request or record a branch. The set is specific to each agent, and a new parameter is added here;
+- `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for DEVELOPER, GIT_OPS, CODE_REVIEWER and QA), `create`, the writable `sections` and the writable `fields`. The orchestrator enforces it on every artifact request, and `buildArtifactProtocolInstructions(access)` turns it into the agent's grammar;
+- `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills (see "Skills on demand");
 - `turnReminder`: optional turn reminder (`string`) appended to the prompt of each of the agent's rounds;
-- `systemPromptEveryTurn`: when `true`, the orchestrator prefixes the system prompt to every user message, including in a resumed session; delegation result rounds and repair prompts for the same message do not repeat it. It serves long-session agents, whose context is compacted and loses the prompt sent at session creation; such an agent does without `turnReminder`;
-- `plansDirectory`: when `true`, the orchestrator appends the `[PLANS_DIRECTORY]` block (`buildPlansDirectoryPrompt`, `orchestrator/prompts/plans-directory.prompt.ts`) to every round of the agent: the folder `<workspaces root>/.plans/<project folder>` (`general` when the delegation has no project) and the authorization to write there as an exception to the CWD boundary. PRODUCT_OWNER and TECH_LEAD set it;
-- `buildWorkspaceFiles(team, workspaceDir)`: optional, returns `WorkspaceFile[]` (`path` relative to the workspaces root and `content`) that the orchestrator writes to the workspaces root on every boot.
+- `systemPromptEveryTurn`: when `true`, the orchestrator prefixes the system prompt to every user message, including in a resumed session; delegation result rounds and repair prompts for the same message do not repeat it. It serves long-session agents, whose context is compacted and loses the prompt sent at session creation; such an agent does without `turnReminder`.
 
-### Plan documents (`plan-documents.prompt.ts`)
+### Where an instruction lives
 
-`buildPlanDocumentInstructions(documentName)` and `buildPlanDocumentReminder(documentName)` give PRODUCT_OWNER (`intent.md`) and TECH_LEAD (`plan.md`) the same convention:
+Every instruction sits in one of four layers, chosen so that context stays small and the information is there when
+the agent needs it:
 
-- Each initiative has a folder `<YYYY-MM-DD>-<short-slug>` inside the folder named by `[PLANS_DIRECTORY]`, holding `intent.md` and `plan.md` side by side. A task that points to a document of an initiative reuses its folder; otherwise the agent creates one;
-- The only file the agent writes is its own document, and refinements update it in place;
-- The final response carries the absolute path of the document, a short summary and what the caller must decide or do next, never the document itself, so the CEO delegates by reference ("implement step 2 of the plan at <path>") and authorizes read access to that exact path.
+1. **Core** (the system prompt): only what the role uses in nearly every task, kept short. The executors get it once
+   per session; the CEO with every user message, so its core is the most expensive and the leanest.
+2. **Turn reminder** (`turnReminder`, every round): the rules that must not fail and the skills to read again. It is
+   what survives when a long session is compacted and the system prompt is gone.
+3. **Skills** (read on demand): full grammars, guides and edge cases, always available on the server, listed by the
+   `[SKILLS]` catalog and named by the reminder.
+4. **Server validation**: every request and delegation is checked; an error comes back with its reason (and, for a
+   failed request, a pointer to the skills), so an agent that forgot a detail gets it back instead of failing silently.
+
+### The board (`artifact-protocol.prompt.ts`)
+
+Every agent writes its deliverable to the board of the conversation, never to a document. From the role's `ArtifactAccess`:
+
+- `buildArtifactProtocolInstructions(access)` writes the full protocol: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment) and its rules: the results come back as `<request_results>`, the final answer comes in a response without requests; a `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed.
+- `buildArtifactProtocolBrief(access)` writes the board in brief: what it holds, the round trip, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), what it writes, its scope, and the `board-requests` skill for everything else.
+- `buildArtifactProtocolReminder(access)` is the reminder line, which also names the `board-requests` skill.
+
+The agents that work on one task (DEVELOPER, CODE_REVIEWER, QA, GIT_OPS) get the brief in their system prompt; PRODUCT_OWNER and TECH_LEAD, whose deliverable is the board in every task, get the full protocol. The `board-requests` skill (`skills/board-requests.skill.ts`, for every executor role) holds the full protocol built for the reader's access, to read again whenever it is out of view. The CEO gets the grammar and the routing in its `artifact-board` skill.
 
 ### Executor agents' CWD boundary
 
@@ -78,11 +97,41 @@ response an access request with path, reason and mode. The CEO evaluates it, ask
 path leaves the workspace, and authorizes it by delegating again to the same role with `session="resume"`. The
 access request is the response to the caller, never a direct question to the user, so that the CEO can
 assess the risk first. GIT_OPS has `$HOME/.ssh` authorized in its own prompt for SSH key
-setup, and PRODUCT_OWNER and TECH_LEAD (`plansDirectory: true`) receive the `[PLANS_DIRECTORY]` block of the orchestrator, which authorizes writing their plan document there.
+setup.
+
+### Skills on demand
+
+Know-how an agent needs only for some tasks lives in skills instead of its system prompt. The orchestrator sends the
+catalog (`[SKILLS]`, the name and description of each skill the role may read, the same explanation for every role and
+an extra paragraph on managing skills for a role with `writesSkills`) with the system prompt, and the agent
+reads a skill's full content with `<skill_read name="a,b"/>` in its final response when the task calls for it (grammar
+and results in the `orchestrator` skill). The description is all the agent sees before reading, so it says what the
+skill covers and when to read it.
+
+Every skill is an `AgentSkillDefinition` (`models/agent-skill-definition.model.ts`): `name`, `description`, the `roles`
+that may read it, and `buildContent({ team, artifacts, workspaceDir })`, built when read with the team and the board access of the reader and the
+workspaces root.
+
+- **Built-in skills**: one `skills/<name>.skill.ts` constant each, listed in `BUILT_IN_SKILLS`
+  (`constants/built-in-skills.constant.ts`). The CEO's (`roles: ['CEO']`): `agent-team`, `artifact-board`,
+  `delegation-protocol`, `response-protocol`, `workspace-navigation` and `skill-authoring`; every executor's:
+  `board-requests`; QA's: `running-the-app`,
+  `web-ui-testing`, `api-testing` and `mobile-testing`.
+- **User skills**: `FileUserSkillStoreAdapter` (bound to `IUserSkillStorePort`) reads `DATA_DIR/skills/<skill>/SKILL.md`
+  on every call, so edits apply without a restart. The frontmatter needs a `description` and `roles` (comma-separated,
+  `[A, B]` or a `- A` list; folded `>` and `|` values are read); `name` defaults to the folder name. A skill without a
+  description or roles is skipped with a warning. `write` creates or replaces one, atomically; `delete(name)` removes the folder
+  of the skill of that name, whatever the folder is called.
+- `AgentSkillsService` (bound to `IAgentSkillsPort`) merges both, a user skill replacing a built-in one of the same
+  name (case-insensitive), roles included, and keeps for each role the skills whose `roles` name it. A role with
+  `writesSkills` (the CEO) also reads any skill, lists them all with their roles (`listAll`, also used by the web, with `readAny`, to browse them) and writes user skills
+  (`write`), which the service validates: lowercase kebab-case name up to 64 characters, not a built-in name,
+  description up to 1024 characters, content up to 30000, and known roles, stored in their canonical form. The CEO
+  learns how in its `skill-authoring` skill.
 
 ### Project orientation
 
-DEVELOPER, TECH_LEAD, CODE_REVIEWER and PRODUCT_OWNER include `PROJECT_ORIENTATION_INSTRUCTIONS` in their
+DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA and PRODUCT_OWNER include `PROJECT_ORIENTATION_INSTRUCTIONS` in their
 system prompt and `PROJECT_ORIENTATION_REMINDER` in their `turnReminder` (`prompts/project-orientation.prompt.ts`).
 Before its first action in the project during the session, the agent does a quick survey of what the project
 documents for agents and contributors (`AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`,
@@ -105,13 +154,14 @@ in the `orchestrator` skill). The instructions live in `prompts/user-questions.p
 - `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
   in the batch, options without "Other", the recommended option first and marked `<option recommended>` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
   `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
-- `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, included in the system prompt
-  of the executor agents that depend on user decisions (DEVELOPER, GIT_OPS, TECH_LEAD and
-  PRODUCT_OWNER);
-- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those same agents.
+- `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, in the system prompt of
+  PRODUCT_OWNER and TECH_LEAD, for whom asking the user is part of every task;
+- `USER_QUESTIONS_BRIEF`: the grammar in brief and the `asking-the-user` skill, in the system prompt of DEVELOPER and
+  GIT_OPS, which ask now and then; the skill (`skills/asking-the-user.skill.ts`, for the four roles) holds the guide;
+- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those four agents, which also names the skill.
 
-CODE_REVIEWER does not receive the instructions: it only audits and returns findings, with no user decision
-it depends on to finish.
+CODE_REVIEWER and QA do not receive the instructions: they audit or test and return findings, with no user
+decision they depend on to finish.
 
 The CEO does not receive `USER_QUESTIONS_INSTRUCTIONS` (see "CEO's lean core prompt"): the core prompt
 carries only the tag's shape and the fact that the answer comes back in the same turn, and the full guide lives in the
@@ -122,10 +172,8 @@ carries only the tag's shape and the fact that the answer comes back in the same
 The CEO has no primer: with `systemPromptEveryTurn`, the core prompt accompanies every user
 message to survive session compaction. Every line of it costs on every turn and dilutes the
 rules that matter, so it carries only the hard rules whose loss breaks the protocol:
-pure orchestration, answering every request the user made (a newer message never replaces an earlier request and every `<agent_result>` is reported), the three response outcomes (delegate, ask, answer) with the shape of
-each tag, the team, project folder, `session`, access requests and attachments. Examples, explanations,
-edge cases and full guides go into the `AGENTS.md` and the skills that `buildCeoWorkspaceFiles`
-generates, which the CEO consults when it needs to go deeper.
+pure orchestration, answering every request the user made (a newer message never replaces an earlier request and every `<agent_result>` is reported), the workspace and its boundaries, the conversation style, the team with the `<delegate>` forms of each role, the board in brief (list it first, delegate with `artifact`, own the statuses), the three response outcomes (delegate, ask, answer) with the shape of
+each tag, parallel work across roles, that agents ask the user directly, the user's confirmation for access outside the workspaces root, and attachments in an answer. The project folder rules, `session`, parallel limits, access requests, what each agent does, the request grammar and the routing of each status live in its skills (`delegation-protocol`, `response-protocol`, `agent-team`, `artifact-board`), which the core names, and the orchestrator's validation sends a repair when a delegation breaks one of them.
 
 When adding a rule to the CEO, write at most the sentence that makes it mandatory in the core prompt
 and put the details in the topic's skill. Never concatenate into the core prompt an instruction block
@@ -162,6 +210,7 @@ from the narration.
 - Ensures quality through comprehensive automated tests and validation with the target project's build, test and linter commands;
 - Uses the command the project documents for the task rather than reproducing its steps manually, including when the command accesses the network, such as installing dependencies or an init script that clones sub-repositories;
 - Incorporates the commit conventions (Conventional Commits in English, unless the project's own conventions say otherwise) and the commit safety rules; declares standalone Git operations against a remote as outside its own scope and returns them to the caller rather than running them, without naming who runs them;
+- Implements the task it holds (`[DELEGATED_ARTIFACT]`) on a local branch of its own (the one recorded on the task, else the project's convention or `<type>/<task id>-<slug>`), and records the branch and the `implementation_notes` on the task before its final answer; resumed to fix the findings in `review_findings` or `test_report`, it appends to the notes;
 - Has the `DEVELOPER_TURN_REMINDER` configured in its definition, reinforcing on every turn adherence to conventions, automated tests and the `<final_response>` envelope.
 
 ### 2. CEO (`ceo.prompt.ts`)
@@ -172,11 +221,12 @@ from the narration.
 - Operates confined by default to `workspaces` and its subfolders; acting outside the workspace is dangerous and requires an explicit risk warning and mandatory prior confirmation from the user before proceeding;
 - Acts as a pure orchestrator: never performs technical tasks directly, does not create or change project files, does not run tests, builds or linters, and does not commit. All hands-on technical work must be delegated to the team's specialist agents. When no agent on the team can handle the request, it reports the limitation to the user without attempting the task;
 - Triages requests and turns ambiguous requirements into tasks with a self-contained specification and acceptance criteria;
-- Receives the core prompt (`buildCeoSystemPrompt(team)`, wrapped in `[ORCHESTRATOR_INSTRUCTIONS]`) with every user message via `systemPromptEveryTurn`, with the rules that cannot be lost in compaction (see "CEO's lean core prompt"): pure orchestration, the three response outcomes — `<delegate>`, `<question>` or a response without tags —, the `<delegate>` shapes per agent, text outside the tags as a message to the user, that agents ask the user directly and the CEO receives only the final result, answering every pending request, the project folder as an existing direct subfolder, when to use `session="new"`, access requests outside the CWD and the `<attachment>` tag. The details live in the `AGENTS.md` and in the skills that `buildCeoWorkspaceFiles` generates at the workspaces root (`agent-team`, `delegation-protocol`, `response-protocol`, `workspace-navigation`). The core prompt does not index the skills, which are discovered through their own `description`;
+- Receives the core prompt (`buildCeoSystemPrompt(team)`, wrapped in `[ORCHESTRATOR_INSTRUCTIONS]`) with every user message via `systemPromptEveryTurn`, with the rules that cannot be lost in compaction (see "CEO's lean core prompt"): pure orchestration, the three response outcomes — `<delegate>`, `<question>` or a response without tags —, the `<delegate>` shapes per agent, text outside the tags as a message to the user, that agents ask the user directly and the CEO receives only the final result, answering every pending request, the project folder as an existing direct subfolder, when to use `session="new"`, access requests outside the CWD and the `<attachment>` tag. It also carries the workspace as a multi-project container, its boundaries and the conversation style. The details live in its skills (`agent-team`, `artifact-board`, `delegation-protocol`, `response-protocol`, `workspace-navigation`, `skill-authoring`), listed in the `[SKILLS]` catalog sent with the prompt and read with `<skill_read>`; the core prompt says nothing of how skills work, which the catalog explains as it does to every agent;
+- Creates and changes the skills of any role when the user asks, through `<skill_list/>` and `<skill_write>` (the `skill-authoring` skill), never writing skill files itself;
 - Knows its team through the core prompt's "Your Team" section (role, name and `<delegate>` shapes derived from `delegation`) and through the `agent-team` skill, which carries each agent's full `description`. The delegation section is agnostic to fixed roles: task routing and phase sequencing (such as planning before execution and review before completion) are driven exclusively by the specializations described dynamically in the "Your Team" catalog. A conversation runs one agent per role, so phases are ordered by dependency per item and different items overlap across roles in a pipeline (plan project 1; develop 1 while planning 2; review 1 while developing 2 while planning 3), with every independent task delegated in the same response (`delegation-protocol` skill). The CEO receives each result as its agent finishes and the `[TEAM_PROFILES]` list (every role with coding agent, model, effort and idle or working state; a working role adds project, running time, wait state and the task summary) and `<agent_result>` tagged with the coding agent, model and effort that ran it with the user's messages and when the list changes. When the coding agent of a role differs from the last list, the skill tells the CEO to restate the goal, state of the work and decisions in the next specification, because the role starts a new session; a change of model or effort alone keeps the session. That is why each definition's `description` must say when to delegate to it;
 - Copies verbatim into the next specification the recommended commands and already verified facts that come in the agents' results, and asks for the command documented by the project rather than a manual reproduction of its steps;
 - Delegates with `<delegate>` tags inside the final response envelope, using a team role, and reviews each `<agent_result>` before answering; asks the user with `<question>` and continues the turn with `<user_answers>`; a response with neither tag ends the turn;
-- Does not interview the user about requirements: the `agent-team` skill puts discovery before technical planning and leaves it to the agent that runs it. A plan or intent document under `.plans/` is attached to the response and referred to by path in the next agent's specification ("implement step 2 of the plan at <path>"), with read access to that exact path authorized and without user confirmation (`delegation-protocol` skill). The same applies to any other document an agent produces outside the workspaces root. Confirmation for access outside the workspace is requested with `<question>`;
+- Does not interview the user about requirements: the `agent-team` skill puts discovery before technical planning and leaves it to the agent that runs it. All the work goes through the board of the conversation ("### The Board" in the core prompt, details in the `artifact-board` skill): for each request it lists the board, adds the request to an open artifact or creates a task or feature with its refinement path, delegates with `artifact="T-1"` (the agent receives the content, so the specification says only what to do now), and after each `<agent_result>` sets the status and refinements the result calls for. Its artifact requests come back as `<request_results>` in the same turn and are not an outcome. A document an agent produces outside the workspaces root is attached to the response and its path authorized for the next agent. Confirmation for access outside the workspace is requested with `<question>`;
 - Requires the project folder parameter (`project-folder`) to always be the project's top-level root directory, never nested paths or internal subfolders, ensuring the specialist starts its execution at the workspace root where the governance and documentation files live; details of narrow scopes or subdirectories belong in the task specification;
 - Reads `workspace-manifest.json` to locate repositories by URL, without writing it;
 - Converses naturally and in proportion to the message, following the confinement and protocol rules without mentioning them to the user;
@@ -185,30 +235,23 @@ from the narration.
 
 ### 3. Code Reviewer Agent (`code-reviewer.prompt.ts`)
 
-- Acts as a strictly advisory senior code reviewer and auditor, focused on security, best practices, readability, conciseness and regression prevention;
-- Does not implement fixes in production code nor create commits in the repository: reports findings with severity (`CRITICAL`, `MAJOR`, `MINOR`, `SUGGESTION`), line/file and a concise suggested solution;
-- Is authorized and responsible for running MCP tools and CLI commands to inspect the repository and post comments on the PR/MR when requested;
-- When the review involves a Pull Request (PR), proactively suggests at the end of the report posting the findings as PR comments and asks the user which findings (by number, severity or all) to post;
-- When posting PR/MR comments on demand, automatically detects the provider via `git remote -v` (GitHub, GitLab, Azure DevOps or Bitbucket) and follows the strict tool hierarchy `MCP -> Official CLI -> No Fallback`:
-  1. **MCP (Model Context Protocol):** First option. Uses the MCP tools available for the provider (e.g. Azure DevOps MCP such as `repo_pull_request_thread_write`, GitHub MCP, etc.);
-  2. **Official CLI:** Second option. In the absence of MCP tools, uses authenticated official CLIs (`gh`, `glab`, `az`);
-  3. **No Arbitrary Fallback:** When neither MCP nor an official CLI is available or authenticated for the provider, does not make manual calls (`curl`, ad-hoc scripts or raw REST requests) and reports the missing tooling to the user;
-- Anchors inline comments to the exact line of the new version in the diff (`side: RIGHT` / `new_line` / `rightFileStart`, providing path and commit SHA) and general/architectural comments in the PR/MR's main discussion;
-- Does the project orientation, plus the linter configuration, before evaluating the diff, and judges the changes against the documented conventions or, lacking them, against those of the existing code;
-- Runs read, linter or test tools for inspection only, when needed;
-- Operates by default in a new session (`defaultSessionMode: 'new'`) to audit code without bias from previous implementations or accumulated prior context;
-- Has the `CODE_REVIEWER_TURN_REMINDER` configured in its definition, reinforcing the exclusive focus on auditing, the findings posting flow and the tool hierarchy.
+- Reviews the work on the task it holds (`[DELEGATED_ARTIFACT]`), against the task (acceptance criteria, technical solution, tests) and the project's conventions, with fresh eyes (`defaultSessionMode: 'new'`): its open pull request when there is one, otherwise its branch locally against the base (the default branch unless the instruction names another) with read-only Git commands (`git merge-base`, `git log`, `git diff <base>...<branch>`, `git show`), never checking out, committing, merging or changing branches;
+- Never runs the project, its tests, builds or linters: in a pull request review it reads the status and results of the checks, reporting failing checks as findings and stating checks still running or absent; a local review states that nothing was run;
+- Reports only real findings (file, line, severity high/medium/low, problem, impact, suggested fix) and modifies no file;
+- Always replaces the task's `review_findings` section with the verdict, what it reviewed (pull request URL, or branch, base and commit range), the state of the checks or that the review was local, and the numbered findings, where whoever fixes the task reads them;
+- In a pull request review also publishes every finding on the pull request without asking, detecting the provider with `git remote -v` and following `MCP -> Official CLI -> No Fallback` (no `curl` or raw REST; without tooling the findings stay on the task only), inline findings anchored to the new line (`side: RIGHT` / `new_line` / `rightFileStart`), the rest in the discussion, and submits approve or request changes when the provider supports it;
+- Verdict: APPROVED without high or medium findings and failing checks, CHANGES_REQUESTED otherwise; the final answer opens with it, then what was reviewed and the count of findings per severity;
+- Contract `project: 'required'`, `readOnly`, `artifact: 'required'` with `needsReviewableWork`; artifact access `task` writing only `review_findings`; does not receive `USER_QUESTIONS_INSTRUCTIONS`; has the `CODE_REVIEWER_TURN_REMINDER`.
 
 ### 4. Tech Lead Agent (`tech-lead.prompt.ts`)
 
 - Acts as software architect and technical lead responsible for in-depth requirements analysis, architecture exploration and up-front impact assessment in the repository;
-- Analytical, general-purpose persona: answers architectural queries, investigations, trade-off analysis of libraries/technologies and drafting of implementation plans;
-- Operates under strictly read-only discipline: does not change project files, does not generate production code and does not commit or apply patches directly. The plan document is the only file it writes;
-- Decision discipline: ambiguities, architectural trade-offs and unconfirmed technologies are user decisions, asked with `<question>` before consolidating the plan — one option per viable approach, the justified recommendation as the first option and pros and cons in the `rationale`;
+- Analytical, general-purpose persona: answers architectural queries, investigations and trade-off analysis of libraries/technologies, and refines the board technically;
+- Operates under strictly read-only discipline: does not change project files, does not generate production code, does not commit and writes no file; everything it produces goes to the board;
+- Decision discipline: ambiguities, architectural trade-offs and unconfirmed technologies are user decisions, asked with `<question>` before writing the solution — one option per viable approach, the justified recommendation as the first option and pros and cons in the `rationale`;
 - Does the project orientation, treats local skills and architectural guides as authoritative and asks which one prevails when documentation, code and request diverge;
-- Writes the plan to `plan.md` in the initiative folder of the plans directory (see "Plan documents" below), containing Overview and Goals, Technical Decisions and Architecture, Impact Analysis with real file paths, numbered `### Step N: <name>` steps for the DEVELOPER (with explicit dependencies and integrated tests in each step) and Acceptance/Verification Criteria with concrete commands. Refinements update the same file and keep the numbers of the steps that stay valid. The final response gives the absolute path, a summary and what the caller must decide or do next;
-- Operates by default in a persisted session (`defaultSessionMode: 'resume'`) to support iterative refinements and conversational alignment with the CEO or user;
-- Has the `TECH_LEAD_TURN_REMINDER` configured in its definition, reinforcing the planning role, read-only discipline, decisions asked to the user, steps with verifiable criteria and the plan file.
+- Writes the `technical_solution` of each task (design, decisions with rationale, exact files, ordered steps, tests to add, verification commands), the shared architecture on the feature, splits work too large for one pull request into dependent tasks of the same feature, complements `test_cases` and `acceptance_criteria`, settles `pending_decisions` and sets `technical_refinement="done"`; the final answer gives the ids it touched, the order between tasks and what the caller must decide;
+- Contract `project: 'optional'`, `readOnly`, `artifact: 'optional'`, `defaultSessionMode: 'resume'` for iterative refinements, and the `TECH_LEAD_TURN_REMINDER`.
 
 ### 5. Git Ops Agent (`git-ops.prompt.ts`)
 
@@ -217,19 +260,27 @@ from the narration.
 - Operates in one of two directories, decided by the caller: the workspaces root, to clone or locate a repository, and a project folder, for operations on that repository. That is why its contract declares `project: 'optional'`;
 - Sole reader and writer of `workspace-manifest.json` at the workspaces root, a JSON array of `{ url, folder, defaultBranch }` that maps repository URL to project folder. A missing file means an empty workspace;
 - Derives the folder name from the last segment of the URL without the `.git` suffix, an exact rule because the caller routes subsequent work by that name and a different name would duplicate the clone;
-- Reports in `GIT_OPS_TURN_REMINDER` the project folder used, since that is how the CEO learns where to route the follow-up.
+- Reports in `GIT_OPS_TURN_REMINDER` the project folder used, since that is how the CEO learns where to route the follow-up;
+- With a task (`artifact: 'optional'`), pushes its branch, opens its pull request (titled with the task id and title, described from the task) and links every pull request it opens, merges or closes on the task with its state.
 
 ### 6. Product Owner Agent (`product-owner.prompt.ts`)
 
 - Senior business analyst running discovery with whoever knows the business, assuming the person is not technical. Extracts and consolidates the intent, without solving it, estimating effort, assessing feasibility or choosing technology; the user is the source of truth and the code is context;
 - Hunts for the unsaid starting from an initial list that is not a limit: who executes, approves and is notified; missing or wrong data; lack of permission; interruption midway; volume and batches; retroactivity and existing data; auditing; irreversible actions; limits, deadlines, currencies, units and time zones; concurrency; what the end user sees (empty states, waiting, errors, accessibility, channels); notifications; personal data; success metric;
 - Hard language rule: no technical jargon in what it writes, with free reading of the code, whose findings are current behavior and become questions, never rules;
-- Technical boundary: technical decisions are recorded in "Technical pending decisions" (decision, business impact, who decides, what it blocks), without asking or deciding; the only exception is a choice that changes visible behavior, asked as behavior;
+- Technical boundary: technical decisions are recorded in `pending_decisions` (decision, business impact, who decides, what it blocks), without asking or deciding; the only exception is a choice that changes visible behavior, asked as behavior;
 - Runs the interview only through `<question>`, with no round limit, starting with scope and actors;
-- Blocking guardrails: read-only except for the intent document; never invent a rule; a conflict with documentation becomes a question; a divergence between system and documentation becomes a question and is recorded in "Divergences to fix"; an unreadable cited document becomes a question;
-- Intent document with a default template (empty sections omitted, user's structure), "Open questions" only with what the user declared not to know, consolidation with pending items only if the user insists, and a checklist before writing;
-- Writes the document to `intent.md` in the initiative folder of the plans directory (see "Plan documents" below), overwriting it on refinements, and returns to the caller the absolute path, a summary and the pending technical decisions;
-- Contract `project: 'optional'` (with a folder it does the project orientation and reads the code; without a folder it discusses the idea from scratch), `readOnly`, `defaultSessionMode: 'resume'`, and the `PRODUCT_OWNER_TURN_REMINDER`.
+- Blocking guardrails: read-only on files (it writes only to the board); never invent a rule; a conflict with documentation becomes a question; a divergence between system and documentation becomes a question and is recorded in `pending_decisions`; an unreadable cited document becomes a question;
+- Consolidates on the board: the initiative becomes a feature in its project broken into deliverable tasks with sibling dependencies (or a single task), each with `overview`, `scope`, `user_stories`, `business_rules`, `flows`, `acceptance_criteria`, `test_cases`, `glossary`, `pending_decisions` and, only for what the user declared not to know, `open_questions`; it refines what exists instead of duplicating it, runs a checklist before writing and sets `business_refinement="done"`; the final answer gives the ids, a line each, the dependencies and the pending technical decisions;
+- Contract `project: 'optional'` (with a folder it does the project orientation and reads the code; without a folder it discusses the idea from scratch), `artifact: 'optional'`, `readOnly`, `defaultSessionMode: 'resume'`, and the `PRODUCT_OWNER_TURN_REMINDER`.
+
+### 7. QA Agent (`qa.prompt.ts`)
+
+- Tests the task it holds (`[DELEGATED_ARTIFACT]`) in practice: its acceptance criteria and test cases are the test plan, plus the edge cases they imply;
+- Switches to the task's branch only when the working tree is clean, identifies the kind of application, reads the matching skills before testing and starts the application as the project documents it;
+- Never changes the project's code, configuration, tests or manifest and never commits; throwaway scripts go in a temporary folder of its working directory. Before its final answer it stops what it started, deletes what it created and switches back to the branch it found, leaving `git status` as it was;
+- Replaces the task's `test_report` section with the verdict, what it tested (branch, commit, how the application ran), the numbered tests with expected and actual results, the evidence of each failure and what it could not test. PASSED only when every acceptance criterion and test case passed; an untested criterion makes it FAILED. The final answer opens with the verdict;
+- Contract `project: 'required'`, `artifact: 'required'` with `needsReviewableWork`, `defaultSessionMode: 'resume'` to test again after a fix; artifact access `task` writing only `test_report`; the four testing skills; does not receive `USER_QUESTIONS_INSTRUCTIONS`; has the `QA_TURN_REMINDER`.
 
 ## Registry Service (`AgentRegistryService`)
 
@@ -240,8 +291,8 @@ The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `
 - `getDefaultSessionMode(agentRole: string)`: returns the role's default session mode (`'resume' | 'new'`), falling back to `'resume'` if not configured or unknown;
 - `getTurnReminder(agentRole: string)`: returns the turn reminder associated with the role (`turnReminder`), an empty string for a definition without a reminder, or a default fallback text for unregistered roles (always a string);
 - `isSystemPromptEveryTurn(agentRole: string)`: indicates whether the role receives the system prompt with every user message (`false` for an unknown role);
-- `usesPlansDirectory(agentRole: string)`: indicates whether the role receives the `[PLANS_DIRECTORY]` block (`plansDirectory`; `false` for an unknown role);
-- `getWorkspaceFiles(workspaceDir: string)`: aggregates the `buildWorkspaceFiles` of all definitions, each with its own team;
+- `getArtifactAccess(agentRole: string)`: returns the role's `ArtifactAccess`, read-only access to tasks for an unknown role;
+- `getTeam(agentRole: string)`: every definition but the role's own (all of them for an unknown role), the team its prompt and skills are built with;
 - `hasRole(agentRole: string)`: indicates, case-insensitively, whether the role is registered;
 - `listRoles()`: returns the role of every registered definition, in registration order;
 - `getDefinition(roleOrId: string)`: retrieves the full `AgentDefinition` entity;
@@ -249,3 +300,4 @@ The `AgentRegistryService` class implements the `IAgentRegistryPort` port from `
 - `registerDefinition(definition: AgentDefinition)`: allows dynamic inclusion or overriding at runtime. A registered agent appears in the "Your Team" section of the CEO's prompt.
 
 The `AgentDefinitionsModule` registers `IAgentRegistryPort` with `useExisting: AgentRegistryService`, guaranteeing a single instance. With `useClass`, definitions registered through the exported class would not reach the orchestrator.
+It also binds `IUserSkillStorePort` to `FileUserSkillStoreAdapter` (importing `PathsModule` for `DATA_DIR`) and exports `IAgentSkillsPort`, bound to `AgentSkillsService`.

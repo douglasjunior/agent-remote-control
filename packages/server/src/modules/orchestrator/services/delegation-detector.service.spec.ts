@@ -117,7 +117,20 @@ describe('DelegationDetectorService', () => {
 
     it('should reject an unknown attribute', () => {
       expect(reasonOf('<delegate role="DEVELOPER" summary="Doing it" folder="app">Go.</delegate>')).toBe(
-        'Unknown attribute "folder" in <delegate role="DEVELOPER" summary="Doing it" folder="app">. Use only "role", "project", "session", "summary".',
+        'Unknown attribute "folder" in <delegate role="DEVELOPER" summary="Doing it" folder="app">. Use only "role", "project", "session", "summary", "artifact".',
+      );
+    });
+
+    it('should read the artifact the agent works on, normalized to upper case', () => {
+      expect(service.detect('<delegate role="DEVELOPER" summary="Building" artifact="t-3">Implement it.</delegate>')).toMatchObject({
+        kind: 'delegate',
+        delegations: [{ delegateToRole: 'DEVELOPER', artifactId: 'T-3', taskSpec: 'Implement it.' }],
+      });
+    });
+
+    it('should reject an artifact attribute that is not one artifact id', () => {
+      expect(reasonOf('<delegate role="DEVELOPER" summary="Building" artifact="T-3,T-4">Go.</delegate>')).toBe(
+        'The artifact attribute of <delegate role="DEVELOPER"> takes one artifact id, such as artifact="T-3".',
       );
     });
 

@@ -1,41 +1,25 @@
-import type { AgentOption } from '@agent-remote-control/protocol/agent-option';
-import { LoaderCircle } from 'lucide-react';
+import { Pencil, Users } from 'lucide-react';
+import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useConnection } from '../connection/connection-context.js';
 import { useConversations } from '../conversations/conversations-context.js';
 import { emptyConversationView } from '../conversations/conversations-reducer.js';
+import { agentIdentity } from '../lib/agent-identity.js';
+import { profileSummary } from '../lib/role-profile.js';
+import { cn } from '../lib/utils.js';
 
+import { AgentMark } from './agent/agent-mark.js';
+import { type ProfileChoice, RoleEditor } from './settings/role-editor.js';
+import { useAgentOptions } from './settings/use-agent-options.js';
 import { Badge } from './ui/badge.js';
 import { Button } from './ui/button.js';
-import { Separator } from './ui/separator.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
 
 
-type Step =
-  | { readonly name: 'agent' }
-  | { readonly name: 'model'; readonly agentId: string; readonly models: readonly AgentOption[] | null }
-  | {
-    readonly name: 'effort';
-    readonly agentId: string;
-    readonly modelId: string;
-    readonly efforts: readonly AgentOption[] | null;
-  };
-
-function OptionButtons({ options, onPick }: {
-  readonly options: readonly AgentOption[];
-  readonly onPick: (option: AgentOption) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-2">
-      {options.map(option => (
-        <Button key={option.id} variant="outline" size="sm" onClick={() => onPick(option)}>
-          {option.name}
-        </Button>
-      ))}
-    </div>
-  );
-}
+/** The editor open in the sheet: one role's, or the one that applies to every role. */
+const EVERY_ROLE = '*';
 
 export function SettingsSheet({ conversationId, open, onOpenChange }: {
   readonly conversationId: string;
@@ -45,138 +29,131 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
   const { connection } = useConnection();
   const { state } = useConversations();
   const view = state.byId[conversationId] ?? emptyConversationView;
-  const [step, setStep] = useState<Step>({ name: 'agent' });
-  const [selectedRoles, setSelectedRoles] = useState<readonly string[]>([]);
+  const options = useAgentOptions();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const submitted = useRef(false);
+  const savingLabel = useRef('');
+  const firstSetup = !view.configured;
+  const openEditor = editing ?? (firstSetup ? EVERY_ROLE : null);
 
   useEffect(() => connection.onEvent((event) => {
-    if (event.type === 'models.list') {
-      setStep(current => current.name === 'model' && current.agentId === event.agentId
-        ? { ...current, models: event.models }
-        : current);
-    } else if (event.type === 'efforts.list') {
-      setStep(current => current.name === 'effort'
-        && current.agentId === event.agentId && current.modelId === event.modelId
-        ? { ...current, efforts: event.efforts }
-        : current);
-    } else if (event.type === 'error' && (!event.conversationId || event.conversationId === conversationId)) {
+    if (event.type === 'error' && (!event.conversationId || event.conversationId === conversationId)) {
       setError(event.message);
-      setStep(current => current.name === 'agent' ? current : { name: 'agent' });
-    } else if (event.type === 'profiles' && event.conversationId === conversationId && submitted.current) {
-      submitted.current = false;
-      setStep({ name: 'agent' });
-      onOpenChange(false);
+      savingLabel.current = '';
+      setSaving(false);
+    } else if (event.type === 'profiles' && event.conversationId === conversationId && savingLabel.current) {
+      toast.success(`${savingLabel.current} saved`);
+      savingLabel.current = '';
+      setSaving(false);
+      setEditing(null);
     }
-  }), [connection, conversationId, onOpenChange]);
+  }), [connection, conversationId]);
 
-  const apply = (agentId: string, modelId?: string, effortId?: string) => {
-    submitted.current = true;
-    connection.send({
-      type: 'profiles.set',
-      conversationId,
-      ...(selectedRoles.length > 0 && { roles: [...selectedRoles] }),
-      agentId,
-      ...(modelId && { modelId }),
-      ...(effortId && { effortId }),
-    });
-  };
-
-  const pickAgent = (agent: AgentOption) => {
+  const edit = (target: string | null) => {
     setError(null);
-    setStep({ name: 'model', agentId: agent.id, models: null });
-    connection.send({ type: 'models.list', agentId: agent.id });
+    setEditing(target);
   };
 
-  const pickModel = (agentId: string, model: AgentOption) => {
-    setStep({ name: 'effort', agentId, modelId: model.id, efforts: null });
-    connection.send({ type: 'efforts.list', agentId, modelId: model.id });
+  const save = (roles: readonly string[] | undefined, label: string) => (choice: ProfileChoice) => {
+    setError(null);
+    setSaving(true);
+    savingLabel.current = label;
+    connection.send({ type: 'profiles.set', conversationId, ...(roles && { roles: [...roles] }), ...choice });
   };
 
-  const toggleRole = (role: string) => setSelectedRoles(current => current.includes(role)
-    ? current.filter(item => item !== role)
-    : [...current, role]);
-
-  const renderStep = () => {
-    if (step.name === 'agent') {
-      return <OptionButtons options={state.agents} onPick={pickAgent} />;
-    }
-    if (step.name === 'model') {
-      if (step.models === null) {
-        return <Loading label="Loading models…" />;
-      }
-      return step.models.length === 0
-        ? <Button size="sm" onClick={() => apply(step.agentId)}>Use this agent</Button>
-        : <OptionButtons options={step.models} onPick={model => pickModel(step.agentId, model)} />;
-    }
-    if (step.efforts === null) {
-      return <Loading label="Loading efforts…" />;
-    }
-    return step.efforts.length === 0
-      ? <Button size="sm" onClick={() => apply(step.agentId, step.modelId)}>Use this model</Button>
-      : <OptionButtons options={step.efforts} onPick={effort => apply(step.agentId, step.modelId, effort.id)} />;
-  };
-
-  const heading = { agent: 'Choose an agent', model: 'Choose a model', effort: 'Choose an effort' }[step.name];
+  const editorFor = (target: string, label: string, initial: Partial<ProfileChoice>, roles: readonly string[] | undefined, saveLabel: string) => (
+    <RoleEditor
+      key={target}
+      label={label}
+      agents={state.agents}
+      initial={initial}
+      options={options}
+      saving={saving}
+      error={error}
+      saveLabel={saveLabel}
+      onSave={save(roles, label)}
+      onCancel={() => (target === EVERY_ROLE && firstSetup ? onOpenChange(false) : edit(null))}
+    />
+  );
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent>
+      <SheetContent className="data-[side=right]:w-full data-[side=right]:sm:max-w-xl">
         <SheetHeader>
           <SheetTitle>Settings</SheetTitle>
-          <SheetDescription>The agent, model and effort each role uses in this conversation.</SheetDescription>
+          <SheetDescription>The coding agent, model and effort each role runs on in this conversation.</SheetDescription>
         </SheetHeader>
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
-          <ul className="flex flex-col gap-2 text-sm">
-            {view.profiles.map(profile => (
-              <li key={profile.role} className="flex flex-col gap-0.5">
-                <span className="font-medium">{profile.roleName}</span>
-                <span className="text-muted-foreground">
-                  {profile.agent
-                    ? [profile.agent.name, profile.model?.name, profile.effort?.name].filter(Boolean).join(' · ')
-                    : 'Not configured'}
-                  {profile.agent && !profile.agent.available && <Badge variant="destructive" className="ml-2">not installed</Badge>}
-                </span>
-              </li>
-            ))}
-          </ul>
-          <Separator />
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Apply to</p>
-            <div className="flex flex-wrap gap-2">
-              {view.profiles.map(profile => (
-                <Button
-                  key={profile.role}
-                  size="sm"
-                  variant={selectedRoles.includes(profile.role) ? 'default' : 'outline'}
-                  aria-pressed={selectedRoles.includes(profile.role)}
-                  onClick={() => toggleRole(profile.role)}
-                >
-                  {profile.roleName}
-                </Button>
-              ))}
+        <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6">
+          <section
+            aria-label="Every role"
+            className={cn('rounded-xl border bg-card/60 p-3 transition-colors', openEditor === EVERY_ROLE && 'border-primary/50')}
+          >
+            <div className="flex items-center gap-3">
+              <span className="grid size-[26px] shrink-0 place-items-center rounded-full border bg-muted text-muted-foreground">
+                <Users className="size-3.5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Every role</p>
+                <p className="text-xs text-muted-foreground">
+                  {firstSetup
+                    ? 'Choose what the team runs on to start this conversation.'
+                    : `One agent, model and effort for all ${view.profiles.length} roles.`}
+                </p>
+              </div>
+              {openEditor !== EVERY_ROLE && (
+                <Button variant="outline" size="sm" onClick={() => edit(EVERY_ROLE)}>Set for every role</Button>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {selectedRoles.length === 0 ? 'Every role' : `${selectedRoles.length} selected`}
-            </p>
-          </div>
-          <Separator />
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">{heading}</p>
-            {renderStep()}
-            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-          </div>
+            {openEditor === EVERY_ROLE && editorFor(EVERY_ROLE, 'Every role', {}, undefined, `Apply to all ${view.profiles.length} roles`)}
+          </section>
+          <ul aria-label="Roles" className="flex flex-col gap-2">
+            {view.profiles.map((profile) => {
+              const identity = agentIdentity(profile.role, profile.roleName);
+              const isOpen = openEditor === profile.role;
+              return (
+                <li
+                  key={profile.role}
+                  style={{ '--c': identity.color } as CSSProperties}
+                  className={cn(
+                    'rounded-xl border bg-card/60 p-3 transition-colors',
+                    isOpen && 'border-[color-mix(in_oklab,var(--c)_55%,transparent)] bg-[color-mix(in_oklab,var(--c)_6%,var(--card))]',
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <AgentMark role={profile.role} roleName={profile.roleName} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium">{identity.label}</p>
+                      <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                        <span className="truncate">{profileSummary(profile)}</span>
+                        {profile.agent && !profile.agent.available && <Badge variant="destructive">not installed</Badge>}
+                      </p>
+                    </div>
+                    {!isOpen && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Change ${identity.label}`}
+                        onClick={() => edit(profile.role)}
+                      >
+                        <Pencil className="size-3.5" />
+                        <span className="hidden sm:inline">Change</span>
+                      </Button>
+                    )}
+                  </div>
+                  {isOpen && editorFor(
+                    profile.role,
+                    identity.label,
+                    { agentId: profile.agent?.id, modelId: profile.model?.id, effortId: profile.effort?.id },
+                    [profile.role],
+                    'Save',
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-function Loading({ label }: { readonly label: string }) {
-  return (
-    <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-      <LoaderCircle className="size-4 animate-spin" />
-      {label}
-    </p>
   );
 }

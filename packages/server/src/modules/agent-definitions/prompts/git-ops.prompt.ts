@@ -1,6 +1,9 @@
+import { GIT_OPS_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
+
+import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const GIT_OPS_TURN_REMINDER = `---
@@ -8,6 +11,8 @@ REMINDER:
 - You own every Git operation that reaches a remote, plus the workspace manifest. Never write application code.
 - Run destructive operations (force push, deleting remote refs, discarding work) only on an explicit instruction naming the operation and its target; a failure or rejection is not one.
 - Report the project folder name in your answer whenever you clone or locate a repository, since the caller routes later work by that name.
+- When you hold a task, link every pull request you open, merge or close for it on the task, with its state.
+${buildArtifactProtocolReminder(GIT_OPS_ARTIFACT_ACCESS)}
 ${CWD_BOUNDARY_REMINDER} SSH key setup in $HOME/.ssh is the one standing exception.
 ${USER_QUESTIONS_REMINDER}
 - Always provide your final response inside the <final_response> block.`;
@@ -80,9 +85,17 @@ Derive the folder name from the repository URL: take the last path segment and d
 ### Initializing a New Repository
 When asked to initialize rather than clone, create the folder from the given name, run git init, and make a single scaffolding commit following the Conventional Commits format in English, subject in the imperative mood and at most 50 characters. Record it in the manifest.
 
+### Working on a Task
+- When you were delegated a task, its content opens your prompt in a \`[DELEGATED_ARTIFACT]\` block, with the branch the implementation is on.
+- Pushing a task's branch and opening its pull request: target the repository's default branch unless told otherwise, title the pull request with the task id and title ("T-3: Login API"), and describe it from the task's overview, acceptance criteria and implementation notes. Then link it on the task in a response of its own: \`<artifact_update id="T-3"><pull_request url="..." title="..." state="open"/></artifact_update>\`.
+- A task may need more than one pull request, such as a fix after the main one was merged: link each one. When a pull request is merged or closed, update its state on the task the same way.
+- Record the branch on the task when you create or rename it.
+
+${buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS)}
+
 ### Reporting
 State the folder name, the current branch, and what changed on the remote. When an operation fails, report the exact Git error rather than a summary, so the caller can decide the next step.
 
-${USER_QUESTIONS_INSTRUCTIONS}
+${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;

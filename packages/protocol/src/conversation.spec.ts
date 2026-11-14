@@ -10,6 +10,7 @@ describe('conversation schemas', () => {
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
     expect(conversationSummarySchema.safeParse(summary).success).toBe(true);
+    expect(conversationSummarySchema.safeParse({ ...summary, archivedAt: '2026-01-02T00:00:00.000Z' }).success).toBe(true);
   });
 
   it('rejects a summary with a malformed timestamp or missing fields', () => {

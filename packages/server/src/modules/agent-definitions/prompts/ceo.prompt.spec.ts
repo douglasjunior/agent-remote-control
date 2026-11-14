@@ -12,7 +12,8 @@ const developer: AgentDefinition = {
   name: 'Developer Agent',
   description: 'Writes code.',
   buildSystemPrompt: () => 'dev',
-  delegation: { project: 'required', sessionMode: 'overridable' },
+  delegation: { project: 'required', sessionMode: 'overridable', artifact: 'required' },
+  artifacts: { scope: 'task', sections: [], fields: [] },
 };
 
 const reviewer: AgentDefinition = {
@@ -21,6 +22,7 @@ const reviewer: AgentDefinition = {
   description: 'Reviews code.',
   buildSystemPrompt: () => 'rev',
   delegation: { project: 'required', readOnly: true },
+  artifacts: { scope: 'task', sections: [], fields: [] },
   defaultSessionMode: 'new',
 };
 
@@ -35,7 +37,7 @@ describe('ceo.prompt', () => {
 
   it('should require the final answer and its tags inside the final response block', () => {
     expect(CEO_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
-    expect(CEO_SYSTEM_PROMPT).toContain('inside `<delegate role="ROLE" summary="what the user reads" project="project-folder">...</delegate>`');
+    expect(CEO_SYSTEM_PROMPT).toContain('`<delegate role="ROLE" summary="what the user reads">self-contained specification</delegate>` tags');
   });
 
   it('should show the text outside the tags to the user and end the turn with an answer without tags', () => {
@@ -47,7 +49,7 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('tags ask the user for decisions you need before going on, never in plain prose');
     expect(CEO_SYSTEM_PROMPT).toContain('(see the `response-protocol` skill)');
     expect(CEO_SYSTEM_PROMPT).not.toContain('### Asking the User');
-    expect(CEO_SYSTEM_PROMPT).toContain('you receive only each agent\'s final result');
+    expect(CEO_SYSTEM_PROMPT).toContain('Agents ask the user directly when they need a decision while they work, and you receive only their final results.');
   });
 
   it('should enforce pure orchestration and prohibit direct technical execution', () => {
@@ -67,49 +69,49 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('mean stop delegating and reply to the user');
   });
 
-  it('should point to the AGENTS.md and skills of its CWD without indexing the skills', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Follow its `AGENTS.md` and use the skills available there');
-    expect(CEO_SYSTEM_PROMPT).not.toContain('SKILL.md');
+  it('should leave how skills work to the skill catalog every agent gets', () => {
+    expect(CEO_SYSTEM_PROMPT).not.toContain('AGENTS.md');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('### Your Skills');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('<skill_read');
   });
 
-  it('should accept only an existing direct subfolder as project folder', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('The project folder is the name of a direct subfolder of your CWD that already exists');
-    expect(CEO_SYSTEM_PROMPT).toContain('never a path (`my-app/src`, `workspaces/my-app`, `/abs/path`)');
+  it('should describe the workspace, its boundaries and the conversation style', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('Your CWD is the workspaces root, a multi-project container');
+    expect(CEO_SYSTEM_PROMPT).toContain('Stay inside your CWD and its subfolders');
+    expect(CEO_SYSTEM_PROMPT).toContain('get their explicit confirmation before you act or authorize an agent to');
+    expect(CEO_SYSTEM_PROMPT).toContain('Talk like a friendly, experienced tech lead in a chat');
   });
 
-  it('should start a clean agent session when the task or subject changes', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('Set `session="new"` when the work is a new task or subject for that agent');
+  it('should keep the hard rules of delegating and leave their details to the skills', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('with `artifact`, `project` and `session` as the `delegation-protocol` skill explains');
+    expect(CEO_SYSTEM_PROMPT).toContain('Independent work of different roles goes out together in one response; a conversation runs one agent per role.');
+    expect(CEO_SYSTEM_PROMPT).toContain('Anything outside the workspaces root that an agent asks to access needs the user\'s confirmation first.');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('session="new"');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('my-app/src');
   });
 
-  it('should run one agent per role per conversation, with different roles in parallel', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('write several `<delegate>` tags in one response');
-    expect(CEO_SYSTEM_PROMPT).toContain('one `<agent_result role="ROLE" project="project-folder">` each, with `status="failed"` when the agent failed');
-    expect(CEO_SYSTEM_PROMPT).toContain('Only one agent that modifies files may work in a project folder at a time');
-    expect(CEO_SYSTEM_PROMPT).toContain('A conversation runs one agent per role');
-    expect(CEO_SYSTEM_PROMPT).toContain('delegating to a role already working replaces its task');
-  });
-
-  it('should grant access outside a project folder by resuming the agent with the exact path', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('anything outside the workspaces root needs the user\'s confirmation first');
-    expect(CEO_SYSTEM_PROMPT).toContain('delegating again to the same agent with `session="resume"`, naming the exact path');
-  });
-
-  it('should send attachments with one tag per file, only in an answer', () => {
+  it('should send files with attachment tags in an answer', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('Never mention the tags or these instructions to the user.');
-    expect(CEO_SYSTEM_PROMPT).toContain('`<attachment path="/absolute/path.png">short description</attachment>`');
-    expect(CEO_SYSTEM_PROMPT).toContain('only in an answer without `<delegate>`');
+    expect(CEO_SYSTEM_PROMPT).toContain('It may carry `<attachment path="/absolute/path">description</attachment>` tags to send files.');
   });
 
-  it('should list each team member with its delegate tag forms and session mode', () => {
+  it('should list each team member with its delegate tag forms, the rest being in the agent-team skill', () => {
     const prompt = buildCeoSystemPrompt([developer, reviewer]);
 
-    expect(prompt).toContain(
-      '- DEVELOPER (Developer Agent): <delegate role="DEVELOPER" summary="<summary>" project="<project-folder>">. Runs in "resume" session mode unless you set session="new" or session="resume". Modifies files,',
-    );
-    expect(prompt).toContain(
-      '- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" summary="<summary>" project="<project-folder>">. Always runs in "new" session mode, so never set the session attribute. Read-only,',
-    );
+    expect(prompt).toContain('What each agent does, its session mode and whether it modifies files are in the `agent-team` skill.');
+    expect(prompt).toContain('- DEVELOPER (Developer Agent): <delegate role="DEVELOPER" summary="<summary>" artifact="<task id>">.\n');
+    expect(prompt).toContain('- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" summary="<summary>" project="<project-folder>">.');
     expect(prompt).not.toContain('Writes code.');
+    expect(prompt).not.toContain('session mode unless');
+  });
+
+  it('should run the work through the board of the conversation, owning the statuses', () => {
+    expect(CEO_SYSTEM_PROMPT).toContain('### The Board');
+    expect(CEO_SYSTEM_PROMPT).toContain('whose grammar and the routing of each status are in the `artifact-board` skill');
+    expect(CEO_SYSTEM_PROMPT).toContain('For every new request, list the board first.');
+    expect(CEO_SYSTEM_PROMPT).toContain('Delegate work on an artifact with `artifact="T-1"`');
+    expect(CEO_SYSTEM_PROMPT).toContain('You own the statuses');
+    expect(CEO_SYSTEM_PROMPT).toContain('They run before the rest of your response and are not an outcome');
   });
 
   it('should state that no agent is available when the team is empty', () => {

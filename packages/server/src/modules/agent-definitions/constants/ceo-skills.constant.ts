@@ -1,12 +1,8 @@
-const CEO_SKILLS_DIR = '.agents/skills';
-
 export const CEO_SKILLS = {
   agentTeam: 'agent-team',
+  artifactBoard: 'artifact-board',
   delegationProtocol: 'delegation-protocol',
   responseProtocol: 'response-protocol',
+  skillAuthoring: 'skill-authoring',
   workspaceNavigation: 'workspace-navigation',
 } as const;
-
-export function ceoSkillPath(name: string): string {
-  return `${CEO_SKILLS_DIR}/${name}/SKILL.md`;
-}

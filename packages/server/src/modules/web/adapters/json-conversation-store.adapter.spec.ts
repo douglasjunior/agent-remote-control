@@ -48,6 +48,18 @@ describe('JsonConversationStoreAdapter', () => {
     expect((await store.list()).map(summary => summary.id)).toEqual([first.id, second.id]);
   });
 
+  it('renames and archives without moving the conversation in the list, and restores it', async () => {
+    vi.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
+    const { id, updatedAt } = await store.create();
+    vi.setSystemTime(new Date('2026-03-02T10:00:00.000Z'));
+
+    expect(await store.rename(id, 'Renamed')).toMatchObject({ title: 'Renamed', updatedAt });
+    expect(await store.archive(id, true)).toMatchObject({ archivedAt: '2026-03-02T10:00:00.000Z', updatedAt });
+    expect(await store.archive(id, false)).not.toHaveProperty('archivedAt');
+    expect((await store.touch(id)).updatedAt).toBe('2026-03-02T10:00:00.000Z');
+    await expect(store.archive('web-missing', true)).rejects.toThrow('Unknown conversation');
+  });
+
   it('renames a conversation and rejects unknown ones', async () => {
     const { id } = await store.create();
 

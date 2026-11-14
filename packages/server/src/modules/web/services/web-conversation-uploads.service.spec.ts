@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import { FakeWorkspaceUpload } from '../testing/fake-workspace-upload.js';
-import { StubWorkspacePort } from '../testing/stub-workspace.port.js';
 
 import { WebConversationUploadsService } from './web-conversation-uploads.service.js';
 

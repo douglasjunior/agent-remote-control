@@ -1,4 +1,4 @@
-import type { WorkspaceFile } from '../../orchestrator/models/workspace-file.model.js';
+import type { ArtifactAccess } from '../../orchestrator/ports/agent-registry.port.js';
 
 import type { AgentRole } from './agent-role.type.js';
 
@@ -9,6 +9,8 @@ export interface AgentDelegationContract {
   readonly project?: 'required' | 'optional';
   readonly sessionMode?: 'overridable';
   readonly readOnly?: true;
+  readonly artifact?: 'required' | 'optional';
+  readonly needsReviewableWork?: true;
 }
 
 export interface AgentDefinition {
@@ -18,9 +20,10 @@ export interface AgentDefinition {
   readonly defaultModel?: string;
   readonly defaultSessionMode?: AgentSessionMode;
   readonly delegation: AgentDelegationContract;
+  readonly artifacts: ArtifactAccess;
+  /** Lists every skill, reads any of them and writes the user's skills through skill requests. */
+  readonly writesSkills?: true;
   readonly turnReminder?: string;
   readonly systemPromptEveryTurn?: boolean;
-  readonly plansDirectory?: true;
   buildSystemPrompt(team: readonly AgentDefinition[]): string;
-  buildWorkspaceFiles?(team: readonly AgentDefinition[], workspaceDir: string): readonly WorkspaceFile[];
 }

@@ -6,6 +6,8 @@ export const conversationSummarySchema = z.object({
   title: z.string(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
+  /** When the user archived the conversation; absent while it is active. An archived conversation still works. */
+  archivedAt: z.iso.datetime().optional(),
 });
 export type ConversationSummary = z.infer<typeof conversationSummarySchema>;
 

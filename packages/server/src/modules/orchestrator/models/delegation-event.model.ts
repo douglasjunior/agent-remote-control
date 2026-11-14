@@ -9,6 +9,7 @@ type DelegationEventBase = {
   readonly role: string;
   readonly roleName: string;
   readonly projectName?: string;
+  readonly artifactId?: string;
   readonly summary: string;
   /** The task as the CEO wrote it for the agent. */
   readonly taskSpec: string;

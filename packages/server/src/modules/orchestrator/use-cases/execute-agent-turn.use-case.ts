@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
@@ -9,18 +9,22 @@ import {
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
+import { CLOSED_ARTIFACT_STATUSES, FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
-import { PLANS_DIRECTORY_NAME, PLANS_NO_PROJECT_FOLDER } from '../constants/plans-directory.constant.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentRequester } from '../models/agent-request.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import type { AudioTranscript } from '../models/audio-transcription.model.js';
 import type { OpenWork, OpenWorkQuestions } from '../models/open-work.model.js';
+import { PendingRequestResults, type ResolvedResponse } from '../models/pending-request-results.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
+import type { SkillActivity } from '../models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -34,14 +38,16 @@ import {
   IAgentRegistryPort,
 } from '../ports/agent-registry.port.js';
 import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
+import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
-import { buildPlansDirectoryPrompt } from '../prompts/plans-directory.prompt.js';
 import { buildPreviousTurnPrompt } from '../prompts/previous-turn.prompt.js';
+import { buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
 import { buildQuestionRepairPrompt } from '../prompts/question-repair.prompt.js';
 import { buildLostSessionTaskPrompt, buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
+import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
   buildAgentLanguagePrompt,
   buildCeoLanguagePrompt,
@@ -49,6 +55,8 @@ import {
   DEFAULT_USER_LANGUAGE,
 } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
+import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
+import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import {
   type CeoDecision,
@@ -62,6 +70,7 @@ import { resolveProfile } from '../utils/agent-profile.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
 
+import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
 
 
@@ -69,6 +78,18 @@ const UNSET_LABEL = 'default';
 const FILE_URL_PREFIX = 'file://';
 const TIMED_OUT_NOTE = '<note>The user was absent and did not reply in time. Answers with status="timed_out" are not the user\'s own: the recommended option was assumed for now, and an answer with no option had no recommendation, so decide how to proceed yourself.</note>';
 const LOG_PREVIEW_LENGTH = 100;
+/** Rounds of artifact requests one agent response may chain before its last response is taken as it is. */
+const MAX_REQUEST_ROUNDS = 30;
+const REQUEST_RESULTS_NOTE = 'Your last response had only artifact requests, so it was not taken as your final answer. Go on with your work.';
+
+/** What a result says about the agent that produced it, besides its role and project. */
+type AgentResultDetails = {
+  readonly status?: 'failed';
+  readonly agentInfo?: TurnAgentInfo;
+  readonly artifactId?: string;
+  /** The status of the artifact when the agent finished, which the CEO sets next from the result. */
+  readonly artifactStatus?: string;
+};
 
 type ValidatedDelegation = DelegationResult & {
   readonly cwd: string;
@@ -101,7 +122,6 @@ type ValidatedDecision =
   | { readonly kind: 'delegate'; readonly message: string; readonly delegations: readonly ValidatedDelegation[] };
 
 type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
-
 
 @Injectable()
 export class ExecuteAgentTurnUseCase {
@@ -137,6 +157,13 @@ export class ExecuteAgentTurnUseCase {
     @Inject(IFileSystemPort)
     private readonly fileSystem: IFileSystemPort,
     private readonly logContext: ConversationLogContextService,
+    @Inject(IArtifactsPort)
+    private readonly artifacts: IArtifactsPort,
+    private readonly agentRequestParser: AgentRequestParserService,
+    private readonly runAgentRequests: RunAgentRequestsUseCase,
+    private readonly artifactFormatter: ArtifactPromptFormatterService,
+    @Inject(IAgentSkillsPort)
+    private readonly agentSkills: IAgentSkillsPort,
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
@@ -305,7 +332,7 @@ export class ExecuteAgentTurnUseCase {
       }
       for (let round = 1; ; round++) {
         let deliveredNotices = 0;
-        const { response, decision } = await this.conversationRuntime.runOnCeo(
+        const { response, decision, requestResults } = await this.conversationRuntime.runOnCeo(
           conversationKey,
           agentId,
           async (ceoPort, turn) => {
@@ -360,7 +387,7 @@ export class ExecuteAgentTurnUseCase {
         if (results === undefined) {
           return await finish('steered', '');
         }
-        prompt = results;
+        prompt = requestResults ? `${requestResults}\n\n${results}` : results;
       }
     } finally {
       await this.stopRunningDelegations(running, conversationKey);
@@ -378,6 +405,7 @@ export class ExecuteAgentTurnUseCase {
       projectName: work.projectName ?? undefined,
       taskSpec: work.taskSpec,
       summary: work.summary,
+      ...(work.artifactId ? { artifactId: work.artifactId } : {}),
       sessionMode: 'resume',
       cwd: work.cwd,
       workId: work.id,
@@ -469,7 +497,8 @@ export class ExecuteAgentTurnUseCase {
         continue;
       }
       const waiting = this.questionQueue.isWaiting(conversationKey, role, delegation.projectName) ? 'yes' : 'no';
-      const work = `Project: ${delegation.projectName ?? 'none'}, Waiting for user: ${waiting}, Summary: "${delegation.summary}"`;
+      const artifact = delegation.artifactId ? `Artifact: ${delegation.artifactId}, ` : '';
+      const work = `Project: ${delegation.projectName ?? 'none'}, ${artifact}Waiting for user: ${waiting}, Summary: "${delegation.summary}"`;
       lines.push(`- ${role}: ${profile}, Status: working, Running: ${this.formatElapsed(Date.now() - delegation.startedAt)}, ${work}`);
       signature.push(`${role}\u0000${profile}\u0000working\u0000${work}`);
     }
@@ -513,8 +542,8 @@ export class ExecuteAgentTurnUseCase {
     isUserMessage: boolean,
     workId: string | undefined,
     answerDelivery: AnswerDelivery | undefined,
-  ): Promise<{ response: string; decision: CeoRoundDecision }> {
-    const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => this.takeUserLanguage(await this.runAgentTurn(
+  ): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> {
+    const runRound = async (text: string, isUserText = false, delivery?: AnswerDelivery) => this.takeUserLanguage(await this.runAgentTurn(
       ceoPort,
       request.workspacePath,
       request.agentRole,
@@ -526,6 +555,22 @@ export class ExecuteAgentTurnUseCase {
       undefined,
       isUserText,
       delivery,
+    ));
+    const requester: AgentRequester = {
+      role: request.agentRole,
+      roleName: this.agentRegistry.getDisplayName(request.agentRole),
+      conversationId: request.conversationId,
+    };
+    const pending = new PendingRequestResults();
+    const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => pending.keep(await this.resolveAgentRequests(
+      await runRound(pending.before(text), isUserText, delivery),
+      (results) => {
+        request.onDraft?.('');
+        return runRound(results);
+      },
+      requester,
+      rest => this.delegationDetector.detect(rest).kind !== 'reply',
+      activity => request.onActivity?.(activity, requester.role),
     ));
 
     let response = await runCeo(prompt, isUserMessage, answerDelivery);
@@ -540,7 +585,8 @@ export class ExecuteAgentTurnUseCase {
         decision = await this.decide(response, request);
       }
       if (decision.kind !== 'ask') {
-        return { response, decision };
+        const requestResults = pending.take();
+        return { response, decision, ...(requestResults ? { requestResults } : {}) };
       }
 
       const answers = await this.askUser(request, this.buildAsker(request.agentRole, undefined), decision.message, decision.questions, workId);
@@ -563,6 +609,14 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /** The CEO talks to the user on behalf of the team, so only its prompts carry the language detection. */
+  /** The system prompt of the role, followed by the catalog of its skills when it has any or writes them. */
+  private async buildSystemPrompt(role: string): Promise<string> {
+    const skills = await this.agentSkills.list(role);
+    const writesSkills = this.agentSkills.writesSkills(role);
+    const systemPrompt = this.agentRegistry.getSystemPrompt(role);
+    return skills.length > 0 || writesSkills ? `${systemPrompt}\n\n${buildSkillCatalogPrompt(skills, writesSkills)}` : systemPrompt;
+  }
+
   private async buildLanguagePrompt(role: string, ceoRole: string): Promise<string> {
     const { language } = await this.preferencesStore.load();
     if (role !== ceoRole) {
@@ -594,19 +648,72 @@ export class ExecuteAgentTurnUseCase {
     delegation: DelegationResult,
     request: TurnRequest,
   ): Promise<ValidatedDelegation | { readonly reason: string }> {
-    const { delegateToRole, projectName } = delegation;
+    const { delegateToRole } = delegation;
     if (delegateToRole === request.agentRole.toUpperCase() || !this.agentRegistry.hasRole(delegateToRole)) {
       return { reason: `Unknown role "${delegateToRole}". Delegate only to a role listed in Your Team.` };
     }
 
-    const violation = this.checkDelegationContract(
-      delegateToRole,
-      this.agentRegistry.getDelegationContract(delegateToRole),
-      delegation,
-    );
+    const contract = this.agentRegistry.getDelegationContract(delegateToRole);
+    const withArtifact = await this.applyArtifact(delegation, contract, request.conversationId);
+    if ('reason' in withArtifact) {
+      return withArtifact;
+    }
+    const violation = this.checkDelegationContract(delegateToRole, contract, withArtifact);
     if (violation) {
       return { reason: violation };
     }
+    return this.resolveDelegationFolder(withArtifact, request);
+  }
+
+  /**
+   * A delegation names the artifact its agent works on and then runs in that artifact's project: the folder may be
+   * left out, and a different one is a mistake. The artifact must be open, of a type the agent works on, ready for
+   * it and with no agent of another role holding it, because an artifact is with one agent at a time.
+   */
+  private async applyArtifact(
+    delegation: DelegationResult,
+    contract: DelegationContract,
+    conversationId: string,
+  ): Promise<DelegationResult | { readonly reason: string }> {
+    const { delegateToRole: role, artifactId, projectName } = delegation;
+    if (!artifactId) {
+      return contract.artifact === 'required'
+        ? { reason: `${role} works on a task of the board: add artifact="<task id>" to the <delegate> tag, creating the task first when it does not exist.` }
+        : delegation;
+    }
+    if (!contract.artifact) {
+      return { reason: `Role "${role}" does not take an artifact. Leave the artifact attribute out.` };
+    }
+    const artifact = await this.artifacts.get(conversationId, artifactId);
+    if (!artifact) {
+      return { reason: `Unknown artifact "${artifactId}". List the artifacts of the board to find the right id, or create it first.` };
+    }
+    if (this.agentRegistry.getArtifactAccess(role).scope === 'task' && artifact.type !== 'task') {
+      return { reason: `${role} works on tasks only, and ${artifactId} is a ${artifact.type}. Delegate one of its tasks.` };
+    }
+    if (artifact.status === FROZEN_STATUS) {
+      return { reason: `${artifactId} is frozen after too many delegations, and only the user takes it out. Tell the user what is going wrong with it instead of delegating it.` };
+    }
+    if (CLOSED_ARTIFACT_STATUSES.includes(artifact.status)) {
+      return { reason: `${artifactId} is ${artifact.status}. Set its status back to an open one before delegating work on it.` };
+    }
+    if (contract.needsReviewableWork && artifact.pullRequests.length === 0 && !artifact.branch) {
+      return { reason: `${role} inspects the work of ${artifactId}, which has neither a pull request nor a branch yet. Record the branch of its implementation first.` };
+    }
+    if (artifact.assignee && artifact.assignee.role !== role) {
+      return { reason: `${artifactId} is with ${artifact.assignee.role} right now, and an artifact is with one agent at a time. Wait for its result, or redirect that agent.` };
+    }
+    if (projectName && projectName !== artifact.projectName) {
+      return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
+    }
+    return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
+  }
+
+  private async resolveDelegationFolder(
+    delegation: DelegationResult,
+    request: TurnRequest,
+  ): Promise<ValidatedDelegation | { readonly reason: string }> {
+    const { projectName } = delegation;
 
     if (!projectName) {
       return { ...delegation, cwd: request.workspacePath };
@@ -637,11 +744,18 @@ export class ExecuteAgentTurnUseCase {
    */
   private findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): string | undefined {
     const roles = new Set<string>();
-    for (const { delegateToRole } of delegations) {
+    const artifacts = new Set<string>();
+    for (const { delegateToRole, artifactId } of delegations) {
       if (roles.has(delegateToRole)) {
         return `${delegateToRole} appears more than once. A conversation runs one agent per role: merge those tasks into a single delegation.`;
       }
+      if (artifactId && artifacts.has(artifactId)) {
+        return `${artifactId} appears in more than one delegation. An artifact is with one agent at a time: delegate it to one agent and the next one after its result.`;
+      }
       roles.add(delegateToRole);
+      if (artifactId) {
+        artifacts.add(artifactId);
+      }
     }
 
     const writers = new Map<string, string>();
@@ -717,8 +831,8 @@ export class ExecuteAgentTurnUseCase {
           if (this.isCancellation(error)) {
             return { kind: 'cancelled', reason: error };
           }
-          const { delegateToRole, projectName } = delegation;
-          return { kind: 'result', block: this.formatFailedResult(session, round, delegateToRole, projectName, error) };
+          const { delegateToRole, projectName, artifactId } = delegation;
+          return { kind: 'result', block: this.formatFailedResult(session, round, delegateToRole, projectName, error, { artifactId }) };
         },
       ),
     }));
@@ -850,15 +964,18 @@ export class ExecuteAgentTurnUseCase {
     role: string,
     projectName: string | undefined,
     body: string,
-    options: { readonly status?: 'failed'; readonly agentInfo?: TurnAgentInfo } = {},
+    options: AgentResultDetails = {},
   ): string {
     const project = projectName ? ` project="${projectName}"` : '';
+    const artifact = options.artifactId
+      ? ` artifact="${options.artifactId}"${options.artifactStatus ? ` artifact_status="${options.artifactStatus}"` : ''}`
+      : '';
     const { agentInfo } = options;
     const config = agentInfo
       ? ` agent="${escapeTagAttribute(agentInfo.agentName)}" model="${escapeTagAttribute(agentInfo.modelName ?? UNSET_LABEL)}" effort="${escapeTagAttribute(agentInfo.effortName ?? UNSET_LABEL)}"`
       : '';
     const failed = options.status ? ` status="${options.status}"` : '';
-    return `<agent_result role="${role}"${project}${config}${failed}>\n${body}\n</agent_result>`;
+    return `<agent_result role="${role}"${project}${artifact}${config}${failed}>\n${body}\n</agent_result>`;
   }
 
   private formatFailedResult(
@@ -867,11 +984,15 @@ export class ExecuteAgentTurnUseCase {
     delegateToRole: string,
     projectName: string | undefined,
     error: unknown,
-    agentInfo?: TurnAgentInfo,
+    details: Omit<AgentResultDetails, 'status'> = {},
   ): string {
     const message = error instanceof Error ? error.message : String(error);
     this.logger.error(`[Delegation Failed] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}: ${message}`);
-    return this.formatAgentResult(delegateToRole, projectName, message, { status: 'failed', agentInfo });
+    return this.formatAgentResult(delegateToRole, projectName, message, { ...details, status: 'failed' });
+  }
+
+  private async artifactStatusOf(conversationId: string, artifactId: string | undefined): Promise<string | undefined> {
+    return artifactId ? (await this.artifacts.get(conversationId, artifactId))?.status : undefined;
   }
 
   private isCancellation(error: unknown): boolean {
@@ -881,7 +1002,7 @@ export class ExecuteAgentTurnUseCase {
 
   private async delegate(
     session: SessionContext,
-    { delegateToRole, projectName, taskSpec, summary, sessionMode, cwd, workId, firstPrompt, answerDelivery }: ValidatedDelegation,
+    { delegateToRole, projectName, taskSpec, summary, sessionMode, cwd, workId, firstPrompt, answerDelivery, artifactId }: ValidatedDelegation,
     request: TurnRequest,
     round: number,
     conversationKey: string,
@@ -891,7 +1012,8 @@ export class ExecuteAgentTurnUseCase {
     if (existing) {
       const sameProject = existing.projectName === (projectName ?? null);
       const awaitingAnswers = this.questionQueue.isWaiting(conversationKey, delegateToRole, existing.projectName);
-      if (sameProject && !awaitingAnswers && existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
+      const sameArtifact = existing.artifactId === (artifactId ?? null);
+      if (sameProject && sameArtifact && !awaitingAnswers && existing.agentPort.supportsSteering && await existing.steer(taskSpec)) {
         this.logger.log(
           `[Delegation Steered] Role=${delegateToRole}, NewTask="${this.preview(taskSpec)}"`,
         );
@@ -911,16 +1033,29 @@ export class ExecuteAgentTurnUseCase {
 
     await this.replaceInterruptedWork(conversationKey, delegateToRole, workId);
 
+    const delegationId = workId ?? randomUUID();
+    const roleName = this.agentRegistry.getDisplayName(delegateToRole);
+    if (artifactId) {
+      const assigned = await this.artifacts.assign(request.conversationId, artifactId, { role: delegateToRole, roleName, delegationId });
+      if (!assigned.ok) {
+        return this.formatFailedResult(session, round, delegateToRole, projectName, new Error(assigned.error), {
+          artifactId,
+          artifactStatus: await this.artifactStatusOf(request.conversationId, artifactId),
+        });
+      }
+    }
+
     const delegatePort = this.agentPortFactory.create(
       await this.resolveRoleAgentId(request.conversationId, delegateToRole),
     );
     const agentInfo = await this.buildAgentInfo(delegatePort, delegateToRole, request.conversationId);
     const event = {
-      delegationId: workId ?? randomUUID(),
+      delegationId,
       round,
       role: delegateToRole,
-      roleName: this.agentRegistry.getDisplayName(delegateToRole),
+      roleName,
       projectName,
+      ...(artifactId ? { artifactId } : {}),
       summary,
       taskSpec,
     };
@@ -941,6 +1076,7 @@ export class ExecuteAgentTurnUseCase {
       roleName: event.roleName,
       agentInfo,
       projectName: projectName ?? null,
+      artifactId: artifactId ?? null,
       summary,
       get taskSpec() {
         return currentTaskSpec;
@@ -967,6 +1103,7 @@ export class ExecuteAgentTurnUseCase {
         role: delegateToRole,
         roleName: event.roleName,
         projectName: projectName ?? null,
+        ...(artifactId ? { artifactId } : {}),
         summary,
         taskSpec,
         cwd,
@@ -976,8 +1113,9 @@ export class ExecuteAgentTurnUseCase {
       });
     }
 
+    let outcome = 'stopped';
     try {
-      const runDelegate = (text: string, delivery?: AnswerDelivery) => this.runAgentTurn(
+      const runRound = (text: string, delivery?: AnswerDelivery) => this.runAgentTurn(
         delegatePort,
         cwd,
         delegateToRole,
@@ -990,8 +1128,24 @@ export class ExecuteAgentTurnUseCase {
         false,
         delivery,
       );
+      const requester: AgentRequester = {
+        role: delegateToRole,
+        roleName,
+        conversationId: request.conversationId,
+        delegationId,
+        ...(artifactId ? { artifactId } : {}),
+      };
+      const pending = new PendingRequestResults();
+      const runDelegate = async (text: string, delivery?: AnswerDelivery) => pending.keep(await this.resolveAgentRequests(
+        await runRound(pending.before(text), delivery),
+        results => runRound(results),
+        requester,
+        rest => this.questionParser.parse(rest).kind !== 'none',
+        activity => request.onActivity?.(activity, requester.role),
+      ));
+      const opening = firstPrompt ?? await this.withDelegatedArtifact(request.conversationId, artifactId, currentTaskSpec);
       const response = await this.answerQuestions(
-        await runDelegate(firstPrompt ?? currentTaskSpec, answerDelivery),
+        await runDelegate(opening, answerDelivery),
         text => runDelegate(text),
         this.buildAsker(delegateToRole, projectName),
         request,
@@ -1009,14 +1163,21 @@ export class ExecuteAgentTurnUseCase {
         usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
         durationMs,
       });
-      return this.formatAgentResult(delegateToRole, projectName, response, { agentInfo });
+      outcome = 'finished';
+      return this.formatAgentResult(delegateToRole, projectName, response, {
+        agentInfo,
+        artifactId,
+        artifactStatus: await this.artifactStatusOf(request.conversationId, artifactId),
+      });
     } catch (error) {
       // Closing a replaced agent's session can surface as any error, none of which is a failure of its task.
       if (this.replacedDelegations.has(activeDelegation)) {
+        outcome = 'replaced';
         request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
         return undefined;
       }
       if (this.isCancellation(error)) {
+        outcome = 'cancelled';
         request.onDelegation?.({ ...event, phase: 'cancelled', durationMs: Date.now() - startedAt });
         this.conversationRuntime.addCeoNotice(conversationKey, `${this.describeDelegation(delegateToRole, activeDelegation.projectName, currentTaskSpec)} was stopped before finishing.`);
         throw error;
@@ -1027,15 +1188,64 @@ export class ExecuteAgentTurnUseCase {
         errorMessage: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startedAt,
       });
-      return this.formatFailedResult(session, round, delegateToRole, projectName, error, agentInfo);
+      outcome = 'failed';
+      return this.formatFailedResult(session, round, delegateToRole, projectName, error, {
+        agentInfo,
+        artifactId,
+        artifactStatus: await this.artifactStatusOf(request.conversationId, artifactId),
+      });
     } finally {
       if (openWorkId) {
         await this.openWork.close(conversationKey, openWorkId);
+      }
+      if (artifactId) {
+        await this.artifacts.release(request.conversationId, artifactId, delegationId, outcome).catch((error: unknown) => {
+          this.logger.error(`[Artifact Release Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
+        });
       }
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
+  }
+
+  /**
+   * Carries out the artifact requests of each response before anything else reads it, so the content an agent reads
+   * never passes through the CEO. A response that also has an outcome (`hasOutcome`: a delegation or questions) goes on
+   * with it, without its requests, and the results wait for the agent's next prompt; any other response gets the
+   * results right away, until a response carries no request.
+   */
+  private async resolveAgentRequests(
+    response: string,
+    runAgent: (results: string) => Promise<string>,
+    requester: AgentRequester,
+    hasOutcome: (rest: string) => boolean,
+    onSkill: (activity: SkillActivity) => void,
+  ): Promise<ResolvedResponse> {
+    let current = response;
+    for (let round = 0; round < MAX_REQUEST_ROUNDS; round++) {
+      const parsed = this.agentRequestParser.parse(current);
+      if (parsed.kind === 'none') {
+        return { response: current };
+      }
+      const results = await this.runAgentRequests.execute(parsed.requests, requester, onSkill);
+      if (hasOutcome(parsed.rest)) {
+        return { response: parsed.rest, requestResults: results };
+      }
+      current = await runAgent(`${results}\n${REQUEST_RESULTS_NOTE}`);
+    }
+    this.logger.warn(`[Artifact Requests Exceeded] Role=${requester.role}, Rounds=${MAX_REQUEST_ROUNDS}`);
+    return { response: current };
+  }
+
+  /** The agent starts from the content of the artifact it holds, read when it starts, so the specification only says what to do with it. */
+  private async withDelegatedArtifact(conversationId: string, artifactId: string | undefined, taskSpec: string): Promise<string> {
+    if (!artifactId) {
+      return taskSpec;
+    }
+    const all = await this.artifacts.list(conversationId, { statuses: 'all' });
+    const artifact = all.find(candidate => candidate.id === artifactId)!;
+    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${this.artifactFormatter.detail(artifact, all)}\n[/DELEGATED_ARTIFACT]\n\n${taskSpec}`;
   }
 
   /** A new delegation of a role takes the place of whatever a restart left stopped for it. */
@@ -1062,7 +1272,6 @@ export class ExecuteAgentTurnUseCase {
     answerDelivery?: AnswerDelivery,
   ): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
-    let accumulatedChunks = '';
 
     turn.activate(agentPort);
 
@@ -1073,10 +1282,7 @@ export class ExecuteAgentTurnUseCase {
 
       const reminder = this.agentRegistry.getTurnReminder(role);
       const languagePrompt = await this.buildLanguagePrompt(role, request.agentRole);
-      const plansPrompt = this.agentRegistry.usesPlansDirectory(role)
-        ? buildPlansDirectoryPrompt(join(this.workspacePort.getBaseDirectory(), PLANS_DIRECTORY_NAME, projectName ?? PLANS_NO_PROJECT_FOLDER))
-        : undefined;
-      let fullPrompt = [prompt, reminder, languagePrompt, plansPrompt].filter(Boolean).join('\n\n');
+      let fullPrompt = [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n');
       let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
@@ -1105,7 +1311,7 @@ export class ExecuteAgentTurnUseCase {
       }
 
       if (systemPromptPending) {
-        fullPrompt = `${this.agentRegistry.getSystemPrompt(role)}\n\n${fullPrompt}`;
+        fullPrompt = `${await this.buildSystemPrompt(role)}\n\n${fullPrompt}`;
       }
 
       await this.applyAgentConfig(agentPort, role, request.conversationId);
@@ -1121,16 +1327,32 @@ export class ExecuteAgentTurnUseCase {
       if (answerDelivery) {
         await this.openWork.update(request.conversationId, answerDelivery.workId, { questions: undefined });
       }
-      for await (const update of agentPort.prompt(fullPrompt)) {
-        accumulatedChunks += update.text;
+      let written = await this.promptAgent(agentPort, fullPrompt);
+      const stray = this.agentProtocol.strayTags(written.all);
+      if (stray.length > 0) {
+        this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
+        if (role === request.agentRole) {
+          request.onDraft?.('');
+        }
+        turn.throwIfCancelled();
+        written = await this.promptAgent(agentPort, buildProtocolRepairPrompt(stray));
       }
 
-      const response = this.agentProtocol.finalResponse(agentPort.lastAgentMessage || accumulatedChunks);
+      const response = this.agentProtocol.finalResponse(written.last);
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${this.preview(response)}"`);
       return response;
     } finally {
       unsubscribeActivity?.();
     }
+  }
+
+  /** `last` is the agent's final message, falling back to everything it wrote; `all` is everything it wrote. */
+  private async promptAgent(agentPort: IAgentPort, prompt: string): Promise<{ readonly last: string; readonly all: string }> {
+    let all = '';
+    for await (const update of agentPort.prompt(prompt)) {
+      all += update.text;
+    }
+    return { last: agentPort.lastAgentMessage || all, all };
   }
 
   private preview(text: string): string {
