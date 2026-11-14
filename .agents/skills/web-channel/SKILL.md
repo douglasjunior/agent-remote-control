@@ -101,13 +101,23 @@ Each area has a reference with the exact commands, events, limits and edge cases
 
 ## Health
 
-`GET /health` belongs to `AppController`. The server does not serve the web interface: it is a separate
-app (Vite dev server or preview locally, nginx in production) that reaches the server through the
-WebSocket, so its origin must be listed in `WEB_ALLOWED_ORIGINS` unless a proxy in front of both makes
-the upgrade same-origin.
+`GET /health` belongs to `AppController`.
+
+## Serving the web app
+
+`WebStaticModule` (imported by `WebModule`) configures `ServeStaticModule` from `WEB_STATIC_DIR`: when it
+is set, the server serves that directory (the build of `packages/web`) on `PORT` and answers every other
+`GET` with its `index.html`, so the client-side routes of React Router resolve. The page and `/ws` then share
+one origin. When it is empty nothing is served. `SERVER_ROUTES` in `web-static.module.ts` lists the paths the
+server answers itself (`/health`, `/ws`); a new HTTP route of the server is added there, or the fallback
+shadows it. The Docker image sets `WEB_STATIC_DIR`.
+
+Without it, the web app is a separate app (Vite dev server or preview locally, any static host otherwise)
+that reaches the server through the WebSocket, so its origin must be listed in `WEB_ALLOWED_ORIGINS` unless
+a proxy in front of both makes the upgrade same-origin.
 
 ## Environment
 
-`WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`), `WEB_ACCESS_TOKEN`
-and `WEB_ALLOWED_ORIGINS`. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`), `WEB_ACCESS_TOKEN`,
+`WEB_ALLOWED_ORIGINS` and `WEB_STATIC_DIR`. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
 `AGENT_AUTH_STATUS_TIMEOUT_MS`.

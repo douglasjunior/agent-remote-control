@@ -12,14 +12,15 @@ COPY packages/server/package.json ./packages/server/package.json
 COPY packages/web/package.json ./packages/web/package.json
 RUN pnpm install --frozen-lockfile
 
-# Compiles the protocol and the server with the installed dependencies; the web app is not part of the image
+# Compiles the protocol, the server and the web app with the installed dependencies
 FROM base AS build
 RUN corepack enable
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules
 COPY --from=deps /app/packages/server/node_modules ./packages/server/node_modules
-RUN pnpm --filter @agent-remote-control/server... build
+COPY --from=deps /app/packages/web/node_modules ./packages/web/node_modules
+RUN pnpm --filter @agent-remote-control/server... --filter @agent-remote-control/web... build
 
 # Extracts the server with only its production dependencies into a self-contained directory
 FROM build AS prod-deps
@@ -51,11 +52,13 @@ ENV NODE_ENV=production \
   PORT=3000 \
   DATA_DIR=/app/data \
   WORKSPACE_DIR=/app/workspaces \
+  WEB_STATIC_DIR=/app/packages/web/dist \
   PATH=/home/node/.local/bin:/app/node_modules/.bin:/app/node_modules/.pnpm/node_modules/.bin:$PATH
 
 COPY --chown=node:node --from=prod-deps /deploy/node_modules ./node_modules
 COPY --chown=node:node --from=prod-deps /deploy/package.json ./packages/server/package.json
 COPY --chown=node:node --from=build /app/packages/server/dist ./packages/server/dist
+COPY --chown=node:node --from=build /app/packages/web/dist ./packages/web/dist
 COPY --from=whisper /whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 

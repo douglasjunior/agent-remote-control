@@ -49,7 +49,7 @@ Moving the server is a pure relocation: no behavior change, every test still gre
 
 **Transport port.** The `web` module depends on `IClientTransportPort`, which accepts client connections and exchanges `protocol` messages with them. The first adapter is a WebSocket server (`ws`) on the existing NestJS HTTP port (`PORT`, default `3000`), at `/ws`. Plain `ws` with JSON frames is chosen over Socket.IO because a WebRTC DataChannel carries the same frames, so the Stage 3 adapter implements the same port without touching the module.
 
-**Serving the interface locally.** The web package is a separate app: the Vite dev server or `vite preview` locally, nginx in production. Each proxies `/ws` to the server, so the browser sees a single origin. The server prints its access token at startup and the interface asks for it on first use.
+**Serving the interface.** The web package is a separate app: the Vite dev server or `vite preview` locally, proxying `/ws` to the server. In production the server itself serves the build from `WEB_STATIC_DIR` (the Docker image does), so the browser sees a single origin. The server prints its access token at startup and the interface asks for it on first use.
 
 ## Stage 2: Simple mode
 
