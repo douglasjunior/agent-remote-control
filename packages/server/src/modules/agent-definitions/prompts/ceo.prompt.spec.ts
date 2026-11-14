@@ -69,11 +69,10 @@ describe('ceo.prompt', () => {
     expect(CEO_SYSTEM_PROMPT).toContain('mean stop delegating and reply to the user');
   });
 
-  it('should read its skills from the catalog that follows the instructions', () => {
-    expect(CEO_SYSTEM_PROMPT).toContain('The details behind these essentials live in your skills, listed in the `[SKILLS]` block');
+  it('should leave how skills work to the skill catalog every agent gets', () => {
     expect(CEO_SYSTEM_PROMPT).not.toContain('AGENTS.md');
-    expect(CEO_SYSTEM_PROMPT).toContain('live on the server, never in the workspace, so never search files for them');
-    expect(CEO_SYSTEM_PROMPT).toContain('a request to create, change or review one starts by reading the `skill-authoring` skill');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('### Your Skills');
+    expect(CEO_SYSTEM_PROMPT).not.toContain('<skill_read');
   });
 
   it('should describe the workspace, its boundaries and the conversation style', () => {

@@ -609,11 +609,12 @@ export class ExecuteAgentTurnUseCase {
   }
 
   /** The CEO talks to the user on behalf of the team, so only its prompts carry the language detection. */
-  /** The system prompt of the role, followed by the catalog of its skills when it has any. */
+  /** The system prompt of the role, followed by the catalog of its skills when it has any or writes them. */
   private async buildSystemPrompt(role: string): Promise<string> {
     const skills = await this.agentSkills.list(role);
+    const writesSkills = this.agentSkills.writesSkills(role);
     const systemPrompt = this.agentRegistry.getSystemPrompt(role);
-    return skills.length > 0 ? `${systemPrompt}\n\n${buildSkillCatalogPrompt(skills)}` : systemPrompt;
+    return skills.length > 0 || writesSkills ? `${systemPrompt}\n\n${buildSkillCatalogPrompt(skills, writesSkills)}` : systemPrompt;
   }
 
   private async buildLanguagePrompt(role: string, ceoRole: string): Promise<string> {

@@ -649,6 +649,15 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(stubAgentPort.promptCalls[1]).not.toContain('[SKILLS]');
   });
 
+  it('should tell a role that writes skills how it manages them, even before it has any', async () => {
+    agentSkills.writers = ['CEO'];
+    stubAgentPort.mockResponses = ['Hello.'];
+
+    await useCase.execute(turnRequest());
+
+    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([], true)}\n\n`);
+  });
+
   it('should answer a skill request with the skill content in the next prompt', async () => {
     agentSkills.skills = { CEO: [{ name: 'board', description: 'Routing the board.', content: 'Route it.' }] };
     stubAgentPort.mockResponses = ['<final_response><skill_read name="board"/></final_response>', 'Done.'];

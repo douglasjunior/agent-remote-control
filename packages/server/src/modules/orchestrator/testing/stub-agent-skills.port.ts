@@ -11,7 +11,7 @@ import type { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 export class StubAgentSkillsPort implements IAgentSkillsPort {
   skills: Record<string, readonly AgentSkill[]> = {};
   listing: readonly AgentSkillListing[] = [];
-  writers: readonly string[] = ['CEO'];
+  writers: readonly string[] = [];
   writeResult: AgentSkillWriteResult = { ok: true, created: true };
   readonly written: AgentSkillInput[] = [];
   readonly deleted: string[] = [];

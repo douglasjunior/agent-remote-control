@@ -280,6 +280,7 @@ describe('RunAgentRequestsUseCase', () => {
 
     it('lists every skill with its roles for a role that writes skills, and refuses any other', async () => {
       const { useCase, skills } = setupSkills();
+      skills.writers = ['CEO'];
       skills.listing = [
         { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true },
         { name: 'electron-testing', description: 'Electron.', roles: ['QA', 'DEVELOPER'], builtIn: false },
