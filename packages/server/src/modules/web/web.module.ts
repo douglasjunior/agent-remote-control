@@ -26,6 +26,7 @@ import { WebConversationTurnsService } from './services/web-conversation-turns.s
 import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
 import { WebSkillsService } from './services/web-skills.service.js';
+import { WebStaticAssetsService } from './services/web-static-assets.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
 import { ArchiveConversationUseCase } from './use-cases/archive-conversation.use-case.js';
@@ -53,6 +54,7 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     WebAgentAuthService,
     WebArtifactsService,
     WebSkillsService,
+    WebStaticAssetsService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,
@@ -75,6 +77,6 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     ArchiveConversationUseCase,
     WebConnectionHandler,
   ],
-  exports: [WebConnectionRegistryService],
+  exports: [WebConnectionRegistryService, WebStaticAssetsService],
 })
 export class WebModule {}
