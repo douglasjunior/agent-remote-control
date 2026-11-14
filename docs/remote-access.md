@@ -54,19 +54,20 @@ public addresses only, so nobody reaches the network of its machine through it.
 
 ## Deploying with CapRover
 
-CapRover builds from the repository root. Each app points at its own definition in its **Deployment** tab
-(**Captain Definition Path**).
+Each app points at its own definition in its **Deployment** tab (**Captain Definition Path**). Both definitions sit
+at the repository root, since CapRover reads the Dockerfile path from the folder of the definition and the
+Dockerfiles copy from the root.
 
 **Signaling server (`arc.example.com`)**
 
 1. Create an app with **Websocket Support** on, connect your domain and enable HTTPS.
-2. Set the Captain Definition Path to `./deploy/p2p-server/captain-definition` and the **Container HTTP Port** to `3100`.
+2. Set the Captain Definition Path to `./captain-definition-p2p-server` and the **Container HTTP Port** to `3100`.
 3. Set `P2P_TURN_URLS` and `P2P_TURN_SECRET` once the relay is up.
 
 **TURN relay (`turn.example.com`)**
 
 1. Point `turn.example.com` straight at the machine: TURN does not go through CapRover's HTTP proxy.
-2. Create an app with **Do not expose as web-app** checked and the Captain Definition Path `./deploy/coturn/captain-definition`.
+2. Create an app with **Do not expose as web-app** checked and the Captain Definition Path `./captain-definition-coturn`.
 3. Set `TURN_SECRET`, `TURN_REALM` and `TURN_EXTERNAL_IP` (the public IP of the machine).
 4. Publish the ports in host mode through **Service Update Override**: CapRover's port mapping takes no ranges, and
    host mode keeps the client addresses coturn needs.

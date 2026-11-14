@@ -92,8 +92,9 @@ or to stand in for a host.
   network of its machine.
 - Limits come from the entrypoint: `TURN_MAX_BPS` (256 KiB/s per session), `TURN_BPS_CAPACITY` (2 MiB/s in all),
   `TURN_USER_QUOTA` (4 allocations per credential) and `TURN_TOTAL_QUOTA` (20).
-- CapRover builds both images from the repository root through `deploy/p2p-server/captain-definition`
-  (`Dockerfile.p2p`) and `deploy/coturn/captain-definition`; coturn's ports go in host mode through a service
+- CapRover reads `dockerfilePath` from the folder of the captain definition, so both definitions sit at the
+  repository root, which every Dockerfile copies from: `captain-definition-p2p-server` (`Dockerfile.p2p`) and
+  `captain-definition-coturn` (`deploy/coturn/Dockerfile`). coturn's ports go in host mode through a service
   override. [docs/remote-access.md](../../../docs/remote-access.md) holds the deployment steps.
 - `.github/workflows/deploy-remote-access.yml` calls the CapRover build webhooks of both apps on every published
   release (pre-releases excepted) and on manual dispatch. The webhook URLs carry a token, so they live only in the

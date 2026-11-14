@@ -58,7 +58,8 @@ agent-remote-control/
 │       ├── vitest.config.e2e.ts    # Vitest configuration for e2e tests
 │       └── package.json            # Server dependencies and scripts
 ├── .github/workflows/              # CI (type check, lint and tests) on pull requests; publishes the multi-platform Docker image to Docker Hub and deploys the p2p-server and coturn on CapRover on every GitHub release
-├── deploy/                         # CapRover definitions of the p2p-server and of the coturn TURN relay (Dockerfile and configuration)
+├── captain-definition-*            # CapRover definitions of the p2p-server and of the coturn TURN relay
+├── deploy/coturn/                  # Image and configuration of the coturn TURN relay
 ├── docs/                           # Roadmap, delivery plans and the remote access guide
 ├── Dockerfile                      # Production image (Debian-based) with the app and Codex
 ├── Dockerfile.p2p                  # Image of the p2p-server with the hosted web app
