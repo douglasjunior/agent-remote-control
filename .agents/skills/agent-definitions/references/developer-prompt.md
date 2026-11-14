@@ -14,5 +14,8 @@
 - A decision only the user can make ends its turn with the decision and its options in its final answer; it never asks the user;
 - Has the `DEVELOPER_TURN_REMINDER` configured in its definition, reinforcing on every turn adherence to conventions, automated tests and the `<final_response>` envelope.
 
+Its `description` leaves out of its work the preparation of an environment, data or a build only so a task can be
+tested, which belongs to the testing, so the CEO routes it there.
+
 Contract `project: 'required'`, `sessionMode: 'overridable'`, `artifact: 'required'`, `defaultSessionMode: 'resume'`;
 artifact access `task` writing the `implementation_notes` section and the `branch` field.

@@ -52,7 +52,7 @@ export type AgentRole =
 | `GIT_OPS` | Git operations that reach a remote, pull requests and SSH keys; sole writer of `workspace-manifest.json`. | [git-ops-prompt.md](references/git-ops-prompt.md) |
 | `DEVELOPER` | Implements a task with tests, adapting to the project; local Git only. | [developer-prompt.md](references/developer-prompt.md) |
 | `CODE_REVIEWER` | Independent review of a task's pull request or branch without running it; APPROVED or CHANGES_REQUESTED. | [code-reviewer-prompt.md](references/code-reviewer-prompt.md) |
-| `QA` | Tests a reviewed task by running the application; PASSED or FAILED; never changes code. | [qa-prompt.md](references/qa-prompt.md) |
+| `QA` | Tests a reviewed task by running the application, preparing its own environment with local changes it never commits; PASSED or FAILED. | [qa-prompt.md](references/qa-prompt.md) |
 
 ## Definition Contract (`AgentDefinition`)
 
@@ -65,7 +65,7 @@ export type AgentRole =
 - `delegation`: the agent's delegation contract (`AgentDelegationContract`), declaring which `<delegate>` attributes it accepts. The set is specific to each agent, and a new parameter is added here:
   - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder;
   - `sessionMode`: `'overridable'`; when absent, the mode is fixed to `defaultSessionMode` and passing the `session` attribute is rejected;
-  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches and runs the project;
+  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test;
   - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
   - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD): the agent asks the user directly; the questions of any other delegate are sent back to it, for its result to carry the decision, and the `agent-team` skill tells the CEO which agents ask;

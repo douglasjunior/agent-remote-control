@@ -16,7 +16,8 @@ breaks the protocol:
   every `<agent_result>` is reported);
 - the workspace and its boundaries, and the conversation style;
 - the team with the `<delegate>` forms of each role;
-- the board in brief (list it first, delegate with `artifact`, own the statuses);
+- the board in brief (list it first, delegate with `artifact`, own the statuses), and that preparing a test environment
+  belongs to the agent that tests, the agent that implements coming back only for a change to commit;
 - the three response outcomes — `<delegate>`, `<question>` or a response without tags — with the shape of each tag,
   and text outside the tags as a message to the user;
 - parallel work across roles, that agents ask the user directly and the CEO receives only the final result;

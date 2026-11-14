@@ -22,7 +22,10 @@ describe('artifact-board skill', () => {
 
   it('should test approved work in practice, recording every verdict as its own status', () => {
     expect(skill).toContain('| `approved` | Review passed, ready for testing | Set `in_testing` and delegate to the agent that tests in practice');
-    expect(skill).toContain('| `in_testing` | Being tested in practice | Its verdict FAILED sets `changes_requested`.');
+    expect(skill).toContain('| `in_testing` | Being tested in practice | Its verdict FAILED sets `changes_requested` when the report calls for a change to commit.');
+    expect(skill).toContain('It prepares its own environment');
+    expect(skill).toContain('never delegate that preparation to the agent that implements');
+    expect(skill).toContain('When only the environment blocked the tests');
     expect(skill).toContain('`<artifact_update id="T-3" status="approved"/>` comes before `<artifact_update id="T-3" status="in_testing"/>`');
     expect(skill).toContain('`review_findings` or `test_report` section');
   });
