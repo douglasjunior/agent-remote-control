@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import type { ConnectionStatus, IServerConnection } from './server-connection.js';
+import type { ConnectionStatus, ConnectionTransport, IServerConnection } from './server-connection.js';
 
 
 type ConnectionContextValue = {
   readonly connection: IServerConnection;
   readonly status: ConnectionStatus;
+  readonly transport: ConnectionTransport;
   readonly hasToken: boolean;
   readonly submitToken: (token: string) => void;
 };
@@ -17,7 +18,10 @@ export function ConnectionProvider({ connection, children }: {
   readonly children: ReactNode;
 }) {
   const [status, setStatus] = useState<ConnectionStatus>('closed');
+  const [transport, setTransport] = useState(() => connection.transport);
   const [hasToken, setHasToken] = useState(() => connection.hasAccessToken());
+
+  useEffect(() => connection.onTransport(setTransport), [connection]);
 
   useEffect(() => {
     const unsubscribe = connection.onStatus((next) => {
@@ -41,8 +45,8 @@ export function ConnectionProvider({ connection, children }: {
   }, [connection]);
 
   const value = useMemo(
-    () => ({ connection, status, hasToken, submitToken }),
-    [connection, status, hasToken, submitToken],
+    () => ({ connection, status, transport, hasToken, submitToken }),
+    [connection, status, transport, hasToken, submitToken],
   );
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;
 }

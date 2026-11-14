@@ -1,0 +1,40 @@
+import { instanceIdFromPath } from '@agent-remote-control/protocol/remote-link';
+
+import { takeFragmentParam } from './url-fragment.js';
+
+
+/** The host the hosted web app reaches, and the fingerprint of the certificate it must present. */
+export type RemoteLink = {
+  readonly instanceId: string;
+  readonly fingerprint: string;
+};
+
+/**
+ * The host of this page: its instance id from the path (`/i/<instance id>`) and the fingerprint the link pinned in
+ * the `fp` fragment parameter, kept per instance so a reload or a later visit still checks it. Null without both.
+ */
+export function readRemoteLink(): RemoteLink | null {
+  const instanceId = instanceIdFromPath(location.pathname);
+  if (!instanceId) {
+    return null;
+  }
+  const storageKey = `arc.remote.${instanceId}.fingerprint`;
+  const fromLink = takeFragmentParam('fp');
+  if (fromLink) {
+    try {
+      localStorage.setItem(storageKey, fromLink);
+    } catch {
+      return { instanceId, fingerprint: fromLink };
+    }
+  }
+  const fingerprint = fromLink || readStored(storageKey);
+  return fingerprint ? { instanceId, fingerprint } : null;
+}
+
+function readStored(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}

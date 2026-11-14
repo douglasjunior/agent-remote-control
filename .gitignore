@@ -1,6 +1,7 @@
 # compiled output
 /dist
 /packages/*/dist
+/packages/*/dist-p2p
 node_modules
 /build
 

@@ -1,5 +1,3 @@
-import { createBrowserRouter } from 'react-router';
-
 import { AppLayout } from './components/app-layout.js';
 import { ConversationPage } from './pages/conversation-page.js';
 import { SkillsPage } from './pages/skills-page.js';
@@ -19,5 +17,3 @@ export const routes = [
     ],
   },
 ];
-
-export const router = createBrowserRouter(routes);

@@ -41,6 +41,22 @@ describe('AccessTokenStore', () => {
     expect(location.hash).toBe('');
   });
 
+  it('should keep the token of each storage key apart', () => {
+    const remote = new AccessTokenStore('arc.accessToken.instance');
+    tokens.store('local');
+    remote.store('remote');
+
+    expect(tokens.read()).toBe('local');
+    expect(remote.read()).toBe('remote');
+  });
+
+  it('should take the token of a remote link and leave its fingerprint', () => {
+    history.replaceState(null, '', '/i/x#fp=abc&token=t');
+
+    expect(tokens.load()).toBe('t');
+    expect(location.hash).toBe('#fp=abc');
+  });
+
   it('should return null without a token', () => {
     expect(tokens.load()).toBeNull();
   });

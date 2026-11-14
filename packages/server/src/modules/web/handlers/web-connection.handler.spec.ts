@@ -5,6 +5,7 @@ import { createArtifactsService } from '../../artifacts/testing/artifacts-servic
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { StubAgentSkillsPort } from '../../orchestrator/testing/stub-agent-skills.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { RemoteIdentityService } from '../../remote/services/remote-identity.service.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
@@ -61,7 +62,7 @@ describe('WebConnectionHandler', () => {
     handler = new WebConnectionHandler(
       transport,
       store,
-      new WebAccessTokenService(dataDirectoryAt('/unused')),
+      new WebAccessTokenService(dataDirectoryAt('/unused'), new RemoteIdentityService(dataDirectoryAt('/unused'))),
       harness.registry,
       events,
       new ListConversationsUseCase(store),

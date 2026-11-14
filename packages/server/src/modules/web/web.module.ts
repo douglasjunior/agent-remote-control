@@ -6,8 +6,11 @@ import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
 import { PathsModule } from '../paths/paths.module.js';
+import { RemoteClientTransportAdapter } from '../remote/adapters/remote-client-transport.adapter.js';
+import { RemoteModule } from '../remote/remote.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
+import { CombinedClientTransportAdapter } from './adapters/combined-client-transport.adapter.js';
 import { JsonConversationStoreAdapter } from './adapters/json-conversation-store.adapter.js';
 import { JsonPromptHistoryAdapter } from './adapters/json-prompt-history.adapter.js';
 import { WsClientTransportAdapter } from './adapters/ws-client-transport.adapter.js';
@@ -44,9 +47,15 @@ import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WebStaticModule, WorkspaceModule],
+  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, WebStaticModule, WorkspaceModule],
   providers: [
-    { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
+    WsClientTransportAdapter,
+    {
+      provide: IClientTransportPort,
+      useFactory: (local: WsClientTransportAdapter, remote: RemoteClientTransportAdapter) =>
+        new CombinedClientTransportAdapter([local, remote]),
+      inject: [WsClientTransportAdapter, RemoteClientTransportAdapter],
+    },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
     { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
     WebAccessTokenService,

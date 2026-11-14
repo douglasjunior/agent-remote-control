@@ -17,6 +17,7 @@ export default defineConfig({
     include: ['test/**/*.e2e-spec.ts'],
     env: {
       DISCORD_BOT_TOKEN: '',
+      REMOTE_ENABLED: 'false',
     },
   },
 });

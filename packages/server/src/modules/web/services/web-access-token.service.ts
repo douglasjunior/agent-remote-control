@@ -1,3 +1,4 @@
+import { buildRemoteLink } from '@agent-remote-control/protocol/remote-link';
 import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -5,6 +6,7 @@ import { dirname, join } from 'node:path';
 
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { RemoteIdentityService } from '../../remote/services/remote-identity.service.js';
 
 
 @Injectable()
@@ -12,10 +14,18 @@ export class WebAccessTokenService implements OnApplicationBootstrap {
   private readonly logger = new Logger(WebAccessTokenService.name);
   private token?: string;
 
-  constructor(private readonly dataDirectory: DataDirectoryService) {}
+  constructor(
+    private readonly dataDirectory: DataDirectoryService,
+    private readonly remoteIdentity: RemoteIdentityService,
+  ) {}
 
-  onApplicationBootstrap(): void {
+  /** Logs the token, and the remote link that carries it; this logger's context stays out of the log files. */
+  async onApplicationBootstrap(): Promise<void> {
     this.logger.log(`Web interface access token: ${this.getToken()}`);
+    if (this.remoteIdentity.isEnabled()) {
+      const { instanceId, fingerprint } = await this.remoteIdentity.identity();
+      this.logger.log(`Remote access link: ${buildRemoteLink(this.remoteIdentity.baseUrl(), instanceId, fingerprint, this.getToken())}`);
+    }
   }
 
   verify(candidate: string): boolean {
