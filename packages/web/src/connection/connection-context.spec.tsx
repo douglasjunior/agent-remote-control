@@ -6,10 +6,11 @@ import { ConnectionProvider, useConnection } from './connection-context.js';
 
 
 function Probe() {
-  const { status, hasToken, submitToken } = useConnection();
+  const { status, transport, hasToken, submitToken } = useConnection();
   return (
     <div>
       <span data-testid="status">{status}</span>
+      <span data-testid="transport">{transport}</span>
       <span data-testid="token">{String(hasToken)}</span>
       <button onClick={() => submitToken('  new  ')}>submit</button>
     </div>
@@ -17,6 +18,16 @@ function Probe() {
 }
 
 describe('ConnectionProvider', () => {
+  it('should follow the transport of the connection', () => {
+    const connection = new FakeServerConnection();
+    connection.transport = 'webrtc';
+    render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
+
+    expect(screen.getByTestId('transport')).toHaveTextContent('webrtc');
+    act(() => connection.emitTransport('turn'));
+    expect(screen.getByTestId('transport')).toHaveTextContent('turn');
+  });
+
   it('should connect when a token is stored and disconnect on unmount', () => {
     const connection = new FakeServerConnection();
     const { unmount } = render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);

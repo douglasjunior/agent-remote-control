@@ -13,6 +13,7 @@ export default defineConfig([
   globalIgnores([
     '**/node_modules/',
     'packages/*/dist/',
+    'packages/*/dist-p2p/',
     'packages/*/coverage/',
     '**/.eslintcache/',
     '**/.tsbuildinfo/',

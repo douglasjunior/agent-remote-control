@@ -1,11 +1,16 @@
-const STORAGE_KEY = 'arc.accessToken';
-const FRAGMENT_PREFIX = '#token=';
+import { takeFragmentParam } from './url-fragment.js';
+
+
+const DEFAULT_STORAGE_KEY = 'arc.accessToken';
 
 /** The access token in the browser's `localStorage`, which may be blocked (private windows). */
 export class AccessTokenStore {
+  /** Each remote host has its own token, so the hosted web app keeps one key per instance. */
+  constructor(private readonly storageKey = DEFAULT_STORAGE_KEY) {}
+
   read(): string | null {
     try {
-      return localStorage.getItem(STORAGE_KEY);
+      return localStorage.getItem(this.storageKey);
     } catch {
       return null;
     }
@@ -13,7 +18,7 @@ export class AccessTokenStore {
 
   store(token: string): void {
     try {
-      localStorage.setItem(STORAGE_KEY, token);
+      localStorage.setItem(this.storageKey, token);
     } catch {
       // The token then lives only until reload.
     }
@@ -21,27 +26,18 @@ export class AccessTokenStore {
 
   clear(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(this.storageKey);
     } catch {
       // Nothing to clear when storage is unavailable.
     }
   }
 
-  /** Takes a `#token=` URL fragment into storage first, so a link carrying the token signs the user in. */
+  /** Takes a `token` parameter of the URL fragment into storage first, so a link carrying the token signs the user in. */
   load(): string | null {
-    this.consumeFragmentToken();
-    return this.read();
-  }
-
-  /** Reads the `#token=` fragment into storage and strips it from the address bar. */
-  private consumeFragmentToken(): void {
-    if (!location.hash.startsWith(FRAGMENT_PREFIX)) {
-      return;
-    }
-    const token = decodeURIComponent(location.hash.slice(FRAGMENT_PREFIX.length));
-    history.replaceState(null, '', location.pathname + location.search);
+    const token = takeFragmentParam('token');
     if (token) {
       this.store(token);
     }
+    return this.read();
   }
 }

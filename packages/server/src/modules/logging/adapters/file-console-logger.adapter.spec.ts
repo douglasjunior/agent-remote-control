@@ -66,8 +66,9 @@ describe('FileConsoleLoggerAdapter', () => {
     expect(records()[0]).toMatchObject({ context: 'Service', message: 'through nest' });
   });
 
-  it('should keep the startup access token out of the file', () => {
-    logger.log('Web interface access token: secret', 'WebAccessTokenService');
+  it('should keep the startup access token and remote link out of the file', () => {
+    logger.log('Web interface access token: secret', 'AccessTokenService');
+    logger.log('Remote access link: https://arc.example.com/i/x#token=secret', 'RemoteAccessLink');
 
     expect(existsSync(file())).toBe(false);
     expect(process.stdout.write).toHaveBeenCalled();

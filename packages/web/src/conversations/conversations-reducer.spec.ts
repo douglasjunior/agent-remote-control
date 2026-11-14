@@ -104,6 +104,7 @@ describe('conversationsReducer', () => {
   it.each<ServerEvent>([
     { type: 'auth.ok' },
     { type: 'auth.failed' },
+    { type: 'pong' },
     { type: 'models.list', agentId: 'a', models: [] },
     { type: 'efforts.list', agentId: 'a', modelId: 'm', efforts: [] },
     { type: 'error', message: 'boom' },

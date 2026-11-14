@@ -18,7 +18,7 @@ description: >
 - To change the provider, bind another `LoggerService` to `IAppLoggerPort` in `logging.module.ts`. Nothing else changes.
 - `ConversationLogContextService.run(conversationId, work)` (`logging/services/conversation-log-context.service.ts`, exported by `LoggingModule`) tags everything logged inside `work`, across awaits, through `AsyncLocalStorage`. It wraps `ExecuteAgentTurnUseCase.execute` for every channel and each web command with a `conversationId`. A provider reads the tag with `current()`. Do not repeat the id by hand in new log messages.
 - What the user wrote stays out of log messages: log the command type or a short preview at most. Commands are logged by type.
-- A message that carries a secret goes through a context in `CONSOLE_ONLY_CONTEXTS`, because log files get shared. The startup access token does.
+- A message that carries a secret goes through a context in `CONSOLE_ONLY_CONTEXTS`, because log files get shared. The startup access token and the remote link, which carries it, do.
 
 ## Files
 

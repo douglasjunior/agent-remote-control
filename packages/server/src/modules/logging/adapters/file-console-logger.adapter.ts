@@ -8,7 +8,7 @@ import type { ConversationLogContextService } from '../services/conversation-log
 const FILE_PATTERN = /^server-(\d{4}-\d{2}-\d{2})\.jsonl$/;
 const DAY_MS = 86_400_000;
 /** Contexts that print secrets the operator needs at startup, which must not reach a file that gets shared. */
-const CONSOLE_ONLY_CONTEXTS: ReadonlySet<string> = new Set(['WebAccessTokenService']);
+const CONSOLE_ONLY_CONTEXTS: ReadonlySet<string> = new Set(['AccessTokenService', 'RemoteAccessLink']);
 
 function textOf(message: unknown): string {
   if (message instanceof Error) {

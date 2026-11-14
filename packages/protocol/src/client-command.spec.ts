@@ -5,6 +5,7 @@ import { MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_UPLO
 describe('parseClientCommand', () => {
   it.each([
     { type: 'auth', token: 't' },
+    { type: 'ping' },
     { type: 'conversation.list' },
     { type: 'conversation.create', requestId: 'r' },
     { type: 'conversation.history', conversationId: 'c' },

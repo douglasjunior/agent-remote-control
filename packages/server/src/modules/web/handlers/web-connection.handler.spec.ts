@@ -1,12 +1,12 @@
 import { Logger } from '@nestjs/common';
 
+import { AccessTokenService } from '../../access-token/services/access-token.service.js';
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { StubAgentSkillsPort } from '../../orchestrator/testing/stub-agent-skills.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
-import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebArtifactsService } from '../services/web-artifacts.service.js';
@@ -61,7 +61,7 @@ describe('WebConnectionHandler', () => {
     handler = new WebConnectionHandler(
       transport,
       store,
-      new WebAccessTokenService(dataDirectoryAt('/unused')),
+      new AccessTokenService(dataDirectoryAt('/unused')),
       harness.registry,
       events,
       new ListConversationsUseCase(store),
@@ -101,6 +101,14 @@ describe('WebConnectionHandler', () => {
 
     expect(connection.sent).toEqual([{ type: 'auth.ok' }]);
     expect(harness.registry.size).toBe(OBSERVER_AND_CLIENT);
+  });
+
+  it('should answer the heartbeat of an authenticated connection', async () => {
+    connection.receive({ type: 'auth', token: 'secret' });
+    connection.receive({ type: 'ping' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(connection.sent).toEqual([{ type: 'auth.ok' }, { type: 'pong' }]);
   });
 
   it('should not close an authenticated connection when the timeout elapses', () => {

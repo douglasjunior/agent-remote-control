@@ -1,7 +1,7 @@
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
 
-import type { ConnectionStatus, IServerConnection } from '../connection/server-connection.js';
+import type { ConnectionStatus, ConnectionTransport, IServerConnection } from '../connection/server-connection.js';
 
 
 export class FakeServerConnection implements IServerConnection {
@@ -10,8 +10,10 @@ export class FakeServerConnection implements IServerConnection {
   disconnectCalls = 0;
   /** Starts with a token, so a spec mounts signed in unless it clears it. */
   accessToken: string | null = 'token';
+  transport: ConnectionTransport = 'websocket';
   private readonly eventListeners = new Set<(event: ServerEvent) => void>();
   private readonly statusListeners = new Set<(status: ConnectionStatus) => void>();
+  private readonly transportListeners = new Set<(transport: ConnectionTransport) => void>();
 
   connect(): void {
     this.connectCalls += 1;
@@ -43,11 +45,21 @@ export class FakeServerConnection implements IServerConnection {
     return () => this.statusListeners.delete(listener);
   }
 
+  onTransport(listener: (transport: ConnectionTransport) => void): () => void {
+    this.transportListeners.add(listener);
+    return () => this.transportListeners.delete(listener);
+  }
+
   emitEvent(event: ServerEvent): void {
     this.eventListeners.forEach(listener => listener(event));
   }
 
   emitStatus(status: ConnectionStatus): void {
     this.statusListeners.forEach(listener => listener(status));
+  }
+
+  emitTransport(transport: ConnectionTransport): void {
+    this.transport = transport;
+    this.transportListeners.forEach(listener => listener(transport));
   }
 }
