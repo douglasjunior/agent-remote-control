@@ -75,7 +75,8 @@ Conversations are listed in the left sidebar, where each one can be renamed or a
 |---|---|---|
 | Development | `pnpm dev:web` | `http://localhost:5173` |
 | Production build | `pnpm build && pnpm preview:web` | `http://localhost:4173` |
-| Production | nginx serving `packages/web/dist` | your domain |
+| Production (server) | `WEB_STATIC_DIR=packages/web/dist`, the server serves the build on `PORT` (the Docker image does) | `http://localhost:3000` |
+| Production (nginx) | nginx serving `packages/web/dist` | your domain |
 
 Vite (`dev` and `preview`) proxies `/ws` and `/health` to the server, using the `PORT` from the root `.env` (default `3000`), so the browser sees a single origin and the server's origin check passes. If the web app reaches the server directly instead, list its origin in `WEB_ALLOWED_ORIGINS`.
 
@@ -113,6 +114,7 @@ server {
 | `WEB_ENABLED` | Set to `false` to leave the web channel out of the server | `true` |
 | `WEB_ACCESS_TOKEN` | Access token; generated into `DATA_DIR/web/access-token` when empty | *(generated)* |
 | `WEB_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open the WebSocket | *(same origin only)* |
+| `WEB_STATIC_DIR` | Directory with the built web app (`packages/web/dist`); the server serves it on `PORT`, at the same origin as `/ws`. The Docker image sets it | *(not served)* |
 
 ## 🤖 Supported Agents
 
@@ -329,7 +331,7 @@ docker run -d --name agent-remote-control \
 
 Create `~/.claude.json` beforehand if it does not exist; otherwise Docker creates a directory with that name.
 
-**Web interface in Docker.** The image contains the server only. Publish the port (`-p 3000:3000`) and read the access token with `docker logs agent-remote-control`; the published port is protected by that token and by the origin check, but anyone who obtains the token can run agents on the container, so bind it to `127.0.0.1` (`-p 127.0.0.1:3000:3000`) unless a reverse proxy sits in front. Serve `packages/web/dist` with [nginx](#-web-interface) or run `pnpm preview:web` on the host.
+**Web interface in Docker.** The image serves the web app on the same port as the server (`WEB_STATIC_DIR=/app/packages/web/dist`). Publish the port (`-p 3000:3000`), open `http://localhost:3000` and read the access token with `docker logs agent-remote-control`; the published port is protected by that token and by the origin check, but anyone who obtains the token can run agents on the container, so bind it to `127.0.0.1` (`-p 127.0.0.1:3000:3000`) unless a reverse proxy sits in front. Set `WEB_ENABLED=false` to leave the web interface out.
 
 **Rootless Docker**
 

@@ -40,10 +40,11 @@ import { RenameConversationUseCase } from './use-cases/rename-conversation.use-c
 import { ResumeConversationWorkUseCase } from './use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from './use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from './use-cases/set-conversation-profiles.use-case.js';
+import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
+  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WebStaticModule, WorkspaceModule],
   providers: [
     { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
