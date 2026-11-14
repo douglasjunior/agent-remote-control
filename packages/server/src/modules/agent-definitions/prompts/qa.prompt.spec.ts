@@ -18,10 +18,21 @@ describe('qa.prompt', () => {
     expect(QA_TURN_REMINDER).toContain('<skill_read name="..."/>');
   });
 
-  it('should never change the project and leave it as it found it', () => {
-    expect(QA_SYSTEM_PROMPT).toContain('Never change the project\'s code, configuration, tests or dependencies manifest, and never commit');
-    expect(QA_SYSTEM_PROMPT).toContain('`git status` must show what it showed when you started');
-    expect(QA_TURN_REMINDER).toContain('Leave the project as you found it');
+  it('should prepare its own test environment, changing data, configuration and code locally', () => {
+    expect(QA_SYSTEM_PROMPT).toContain('### Preparing the Environment');
+    expect(QA_SYSTEM_PROMPT).toContain('Setting up what the tests need is part of your task, so do it yourself instead of returning it to the caller');
+    expect(QA_SYSTEM_PROMPT).toContain('insert or edit rows and documents in local databases');
+    expect(QA_SYSTEM_PROMPT).toContain('never point the application at, or change, a shared or production service');
+    expect(QA_TURN_REMINDER).toContain('You prepare the environment you test in yourself');
+  });
+
+  it('should never commit or push its changes and leave the project as it found it', () => {
+    expect(QA_SYSTEM_PROMPT).toContain('Never commit, stage, push or open pull requests, whatever you changed');
+    expect(QA_SYSTEM_PROMPT).toContain('A defect in what the task delivers is a finding, never something you fix.');
+    expect(QA_SYSTEM_PROMPT).toContain('`git status` must show what it showed when you started, so none of your changes reaches a commit');
+    expect(QA_SYSTEM_PROMPT).toContain('your final answer says what stayed');
+    expect(QA_TURN_REMINDER).toContain('Never commit, push or open pull requests with any of it');
+    expect(QA_TURN_REMINDER).toContain('Leave the project as you found it: revert your changes to the project\'s files');
   });
 
   it('should record the test report and open the final answer with the verdict', () => {

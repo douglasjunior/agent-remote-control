@@ -14,6 +14,7 @@ export const MOBILE_TESTING_SKILL: AgentSkillDefinition = {
 
 ## Build, Install and Launch
 - Build a debug build with the project's documented command (\`npx react-native run-ios\`, \`npx expo run:android\`, \`flutter run\`, \`./gradlew installDebug\`, \`xcodebuild\` with a simulator destination). Start the bundler or dev server it needs, as described in the skill about running the application.
+- To reach a backend running on the host, an Android emulator goes through \`adb reverse tcp:<port> tcp:<port>\` (remove it with \`adb reverse --remove tcp:<port>\` at the end) or the host alias \`10.0.2.2\`; an iOS simulator reaches \`localhost\` directly.
 - Launch the app by its bundle id or package name, found in \`app.json\`, \`Info.plist\`, \`build.gradle\` or \`AndroidManifest.xml\`.
 
 ## Drive It Like a User
