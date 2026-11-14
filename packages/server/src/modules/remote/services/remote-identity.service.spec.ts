@@ -1,6 +1,7 @@
 import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { deriveInstanceId } from '@agent-remote-control/protocol/remote-link';
-import { X509Certificate } from 'node:crypto';
+import { registrationPayload } from '@agent-remote-control/protocol/signaling';
+import { verify, X509Certificate } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,10 +24,12 @@ describe('RemoteIdentityService', () => {
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('should be enabled unless REMOTE_ENABLED is false', () => {
-    expect(service().isEnabled()).toBe(true);
-    vi.stubEnv('REMOTE_ENABLED', 'false');
+  it('should be enabled only when REMOTE_ENABLED is true', () => {
     expect(service().isEnabled()).toBe(false);
+    vi.stubEnv('REMOTE_ENABLED', 'yes');
+    expect(service().isEnabled()).toBe(false);
+    vi.stubEnv('REMOTE_ENABLED', 'true');
+    expect(service().isEnabled()).toBe(true);
   });
 
   it('should reach the default signaling server, or REMOTE_URL over the matching WebSocket scheme', () => {
@@ -37,7 +40,7 @@ describe('RemoteIdentityService', () => {
     expect(service().signalingUrl()).toBe('ws://localhost:3100/signal/host');
   });
 
-  it('should create the secret and the certificate once, readable by the owner only', async () => {
+  it('should create the certificate and its key once, readable by the owner only', async () => {
     const created = await service().identity();
     const reloaded = await service().identity();
     const directory = join(dataDir, 'remote');
@@ -47,11 +50,14 @@ describe('RemoteIdentityService', () => {
       certificatePath: join(directory, 'certificate.pem'),
       keyPath: join(directory, 'key.pem'),
     });
-    for (const file of ['secret', 'certificate.pem', 'key.pem']) {
+    expect(statSync(directory).mode & 0o777).toBe(0o700);
+    for (const file of ['certificate.pem', 'key.pem']) {
       expect(statSync(join(directory, file)).mode & 0o777).toBe(0o600);
     }
-    expect(created.instanceId).toBe(await deriveInstanceId(readFileSync(join(directory, 'secret'), 'utf8')));
-    expect(created.fingerprint).toBe(encodeFingerprint(new X509Certificate(readFileSync(created.certificatePath)).fingerprint256));
+    const x509 = new X509Certificate(readFileSync(created.certificatePath));
+    expect(created.fingerprint).toBe(encodeFingerprint(x509.fingerprint256));
+    expect(created.instanceId).toBe(deriveInstanceId(created.fingerprint));
+    expect(created.certificate).toBe(x509.raw.toString('base64'));
     expect(readFileSync(created.keyPath, 'utf8')).toMatch(/^-----BEGIN PRIVATE KEY-----\n/);
   });
 
@@ -61,5 +67,18 @@ describe('RemoteIdentityService', () => {
 
     expect(identities.identity()).toBe(loading);
     await loading;
+  });
+
+  it('should sign a challenge with the key of the certificate', async () => {
+    const identities = service();
+    const signature = await identities.signChallenge('nonce-1');
+    const { certificatePath } = await identities.identity();
+
+    expect(verify(
+      'sha256',
+      Buffer.from(registrationPayload('nonce-1')),
+      { key: new X509Certificate(readFileSync(certificatePath)).publicKey, dsaEncoding: 'ieee-p1363' },
+      Buffer.from(signature, 'base64url'),
+    )).toBe(true);
   });
 });

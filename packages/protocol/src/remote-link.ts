@@ -1,11 +1,22 @@
+import { decodeBase64Url } from './base64url.js';
+import { FINGERPRINT_PATTERN } from './fingerprint.js';
+
+
 /** The path of the hosted web app for one host: `/i/<instance id>`, the base of every route of the app. */
 export const REMOTE_INSTANCE_PATH_PREFIX = '/i/';
-const INSTANCE_ID_LENGTH = 20;
+const INSTANCE_ID_BYTES = 10;
 
-/** The public id of a host: derived from its secret, so registering an instance proves holding its secret. */
-export async function deriveInstanceId(secret: string): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(secret)));
-  return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('').slice(0, INSTANCE_ID_LENGTH);
+/**
+ * The public id of a host: the first 10 bytes of the SHA-256 fingerprint of its certificate, in hex. Registering an
+ * instance then takes the certificate's key, and a link cannot pair an instance with another certificate.
+ */
+export function deriveInstanceId(fingerprint: string): string {
+  return Array.from(decodeBase64Url(fingerprint).subarray(0, INSTANCE_ID_BYTES), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** Whether the base64url fingerprint is one of the certificate that derives the instance id. */
+export function isFingerprintOf(instanceId: string, fingerprint: string): boolean {
+  return FINGERPRINT_PATTERN.test(fingerprint) && deriveInstanceId(fingerprint) === instanceId;
 }
 
 /**

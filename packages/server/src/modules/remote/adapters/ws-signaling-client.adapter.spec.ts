@@ -8,7 +8,9 @@ import type { HostRegistration } from '../ports/signaling-client.port.js';
 import { WsSignalingClientAdapter } from './ws-signaling-client.adapter.js';
 
 
-const registration: HostRegistration = { type: 'host.register', instanceId: '0123456789abcdef0123', secret: 's', protocolVersion: 1 };
+const NONCE = 'n'.repeat(43);
+const registration = (nonce: string): HostRegistration =>
+  ({ type: 'host.register', instanceId: '0123456789abcdef0123', certificate: 'cert', signature: `signed:${nonce}`, protocolVersion: 1 });
 
 describe('WsSignalingClientAdapter', () => {
   let server: WebSocketServer;
@@ -25,7 +27,9 @@ describe('WsSignalingClientAdapter', () => {
     await vi.waitFor(() => expect(sockets.length).toBeGreaterThan(index));
     return sockets[index]!;
   };
-  const start = () => client.start({ url, registration, onSignal: signal => signals.push(signal) });
+  let onSignal: (signal: ToHostSignal) => void;
+  let register: (nonce: string) => Promise<HostRegistration>;
+  const start = () => client.start({ url, register: nonce => register(nonce), onSignal: signal => onSignal(signal) });
 
   beforeEach(async () => {
     log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
@@ -34,9 +38,12 @@ describe('WsSignalingClientAdapter', () => {
     sockets = [];
     received = [];
     signals = [];
+    onSignal = signal => signals.push(signal);
+    register = nonce => Promise.resolve(registration(nonce));
     server = new WebSocketServer({ port: 0, host: '127.0.0.1' });
     server.on('connection', (socket) => {
       sockets.push(socket);
+      socket.send(JSON.stringify({ type: 'host.challenge', nonce: NONCE }));
       socket.on('message', data => received.push(JSON.parse(String(data))));
     });
     await new Promise(done => server.once('listening', done));
@@ -51,10 +58,10 @@ describe('WsSignalingClientAdapter', () => {
     await new Promise(done => server.close(done));
   });
 
-  it('should register on connecting and hand the signals it receives', async () => {
+  it('should answer the challenge with the registration and hand the signals it receives', async () => {
     start();
     const socket = await connection(0);
-    await vi.waitFor(() => expect(received).toEqual([registration]));
+    await vi.waitFor(() => expect(received).toEqual([registration(NONCE)]));
 
     socket.send('{"type":"host.registered"}');
     socket.send('{"type":"unknown"}');
@@ -109,8 +116,26 @@ describe('WsSignalingClientAdapter', () => {
     expect(await connection(1)).toBeDefined();
   });
 
+  it('should log a registration that fails and a signal its handler cannot take, and keep going', async () => {
+    register = () => Promise.reject(new Error('no key'));
+    onSignal = () => {
+      throw new Error('boom');
+    };
+    start();
+    const socket = await connection(0);
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: no key'));
+    socket.send('{"type":"session.closed","sessionId":"00000000-0000-4000-8000-000000000001"}');
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_handler_failed: session.closed: boom'));
+    register = () => Promise.reject('plain');
+    socket.send(JSON.stringify({ type: 'host.challenge', nonce: NONCE }));
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: plain'));
+
+    expect(socket.readyState).toBe(1);
+  });
+
   it.each([
-    [4400, 'Remote access refused: the signaling server did not accept this instance'],
+    [4400, 'Remote access refused: the signaling server did not accept the registration of this instance'],
+    [4403, 'Remote access refused: the signaling server does not serve this instance'],
     [4409, 'Remote access stopped: another server registered the same instance (same DATA_DIR)'],
   ])('should stop reconnecting after the close code %i', async (code, message) => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });

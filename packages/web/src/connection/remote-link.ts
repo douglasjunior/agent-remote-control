@@ -1,4 +1,4 @@
-import { instanceIdFromPath } from '@agent-remote-control/protocol/remote-link';
+import { instanceIdFromPath, isFingerprintOf } from '@agent-remote-control/protocol/remote-link';
 
 import { takeFragmentParam } from './url-fragment.js';
 
@@ -11,7 +11,8 @@ export type RemoteLink = {
 
 /**
  * The host of this page: its instance id from the path (`/i/<instance id>`) and the fingerprint the link pinned in
- * the `fp` fragment parameter, kept per instance so a reload or a later visit still checks it. Null without both.
+ * the `fp` fragment parameter, kept per instance so a reload or a later visit still checks it. The instance id
+ * derives from the fingerprint, so a link pairing an instance with another certificate is ignored. Null without both.
  */
 export function readRemoteLink(): RemoteLink | null {
   const instanceId = instanceIdFromPath(location.pathname);
@@ -19,7 +20,8 @@ export function readRemoteLink(): RemoteLink | null {
     return null;
   }
   const storageKey = `arc.remote.${instanceId}.fingerprint`;
-  const fromLink = takeFragmentParam('fp');
+  const linked = takeFragmentParam('fp');
+  const fromLink = linked && isFingerprintOf(instanceId, linked) ? linked : null;
   if (fromLink) {
     try {
       localStorage.setItem(storageKey, fromLink);
@@ -27,7 +29,8 @@ export function readRemoteLink(): RemoteLink | null {
       return { instanceId, fingerprint: fromLink };
     }
   }
-  const fingerprint = fromLink || readStored(storageKey);
+  const stored = readStored(storageKey);
+  const fingerprint = fromLink ?? (stored && isFingerprintOf(instanceId, stored) ? stored : null);
   return fingerprint ? { instanceId, fingerprint } : null;
 }
 

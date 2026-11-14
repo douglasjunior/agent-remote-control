@@ -22,6 +22,7 @@ agent-remote-control/
 │   └── server/                     # @agent-remote-control/server: the NestJS application
 │       ├── src/                    # NestJS application source code
 │       │   ├── modules/                    # Vertical modules segregated by domain
+│       │   │   ├── access-token/           # The access token of the web channel, local and remote alike
 │       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, demux and the CLI login (IAgentAuthPort)
 │       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA), their access to the board, prompts, skills and registry
 │       │   │   ├── artifacts/              # Board of each conversation: features and tasks, statuses, dependencies, holders and history (IArtifactsPort)

@@ -59,7 +59,8 @@ packages/web/src/
   'incompatible' | 'untrusted'`; transport is `'websocket' | 'webrtc' | 'turn'`. The `on*` methods return an unsubscribe function.
   `hasAccessToken()` says whether a token is at hand (in storage or in a link the page was opened with)
   and `setAccessToken(token)` keeps the one the user typed.
-- `ChannelServerConnection` holds the rules every transport shares; a subclass only opens one attempt (`openChannel`) and
+- `ChannelServerConnection` holds the rules every transport shares; a subclass only opens one attempt (`openChannel`,
+  given the stored token) and
   reports through `ChannelHandlers` (`onOpen`, `onMessage` with one whole JSON text, `onClose` with a reason, `onTransport`).
   It sends `auth` first and reports `open` on `auth.ok`. `auth.failed` or an `unauthorized` close clears the stored token,
   reports `unauthorized` and stops; `incompatible` and `untrusted` stop too. Other closes reconnect with exponential
@@ -70,11 +71,15 @@ packages/web/src/
   invalid ones are dropped with `console.warn`. Reports of a replaced attempt are ignored.
 - `WebSocketServerConnection` always connects to the relative `/ws` (`wss` on https); close code `4401` is `unauthorized`.
 - `WebRtcServerConnection` reaches a host through the signaling server of the page and a data channel, both ways in
-  frames. It refuses an answer whose certificate fingerprint is not the pinned one (`untrusted`) and a host of another
+  frames. Each attempt generates an ECDSA certificate (`RTCPeerConnection.generateCertificate`), reads its fingerprint
+  from a throwaway offer and sends `client.connect` with `sessionProof(token, instance id, fingerprint)`; the offer, made
+  with that certificate, waits for `client.accepted`. `client.rejected` (the host refused the proof) is `unauthorized`.
+  It refuses an answer whose certificate fingerprint is not the pinned one (`untrusted`) and a host of another
   `PROTOCOL_VERSION` (`incompatible`), and turns its transport to `turn` when the selected candidate pair is relayed.
 - `createAppConnection(import.meta.env.MODE)` picks the transport in `main.tsx`: the `p2p` mode (`vite --mode p2p`,
   `build:p2p` into `dist-p2p`) is the hosted web app, which reads the remote link (`readRemoteLink`: instance id from
-  `/i/<instance id>`, fingerprint from the `fp` fragment parameter, kept as `arc.remote.<id>.fingerprint`), uses the
+  `/i/<instance id>`, fingerprint from the `fp` fragment parameter, kept as `arc.remote.<id>.fingerprint`, and ignored,
+  from the link or from storage, unless it derives the instance id), uses the
   router basename `/i/<instance id>` and a token store per instance, and renders `RemoteLinkMissingPage` without a link.
   Every other mode reaches the server that serves the page over WebSocket.
 - `ConnectionProvider` owns the token state and the connection lifecycle: it asks the connection for the token

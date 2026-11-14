@@ -20,7 +20,7 @@ describe('IceServersService', () => {
     expect(log).toHaveBeenCalledWith('TURN relay: off');
   });
 
-  it('should hand TURN credentials of coturn\'s REST API that expire with the TTL', () => {
+  it('should hand the same TURN credential of coturn\'s REST API within a window, valid until the end of the next one', () => {
     vi.useFakeTimers({ now: 1_000_000 });
     vi.stubEnv('P2P_STUN_URLS', ' stun:a.test:3478 , ');
     vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478?transport=udp,turn:t.test:3478?transport=tcp');
@@ -30,7 +30,9 @@ describe('IceServersService', () => {
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     service.onModuleInit();
 
-    const username = '1060:inst';
+    const username = '1080:inst';
+    vi.setSystemTime(1_019_999);
+    expect(service.forInstance('inst')[1]?.username).toBe(username);
     expect(service.forInstance('inst')).toEqual([
       { urls: ['stun:a.test:3478'] },
       {
@@ -40,15 +42,17 @@ describe('IceServersService', () => {
       },
     ]);
     expect(log).toHaveBeenCalledWith('TURN relay: turn:t.test:3478?transport=udp, turn:t.test:3478?transport=tcp');
+    vi.setSystemTime(1_020_000);
+    expect(service.forInstance('inst')[1]?.username).toBe('1140:inst');
   });
 
-  it.each(['', '0', '-5', '1.5', 'abc'])('should keep TURN credentials for a day when the TTL is %j', (ttl) => {
+  it.each(['', '0', '-5', '1.5', 'abc'])('should count windows of an hour when the TTL is %j', (ttl) => {
     vi.useFakeTimers({ now: 0 });
     vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
     vi.stubEnv('P2P_TURN_SECRET', 'secret');
     vi.stubEnv('P2P_TURN_TTL_SECONDS', ttl);
 
-    expect(new IceServersService().forInstance('i')[1]?.username).toBe('86400:i');
+    expect(new IceServersService().forInstance('i')[1]?.username).toBe('7200:i');
   });
 
   it('should leave TURN out without a secret', () => {

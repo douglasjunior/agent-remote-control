@@ -3,17 +3,15 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, mkdirSync }
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
-import { RemoteIdentityService } from '../../remote/services/remote-identity.service.js';
 
-import { WebAccessTokenService } from './web-access-token.service.js';
+import { AccessTokenService } from './access-token.service.js';
 
 
-describe('WebAccessTokenService', () => {
+describe('AccessTokenService', () => {
   let dataDir: string;
   const tokenFile = () => join(dataDir, 'web', 'access-token');
-  const createService = () => new WebAccessTokenService(dataDirectoryAt(dataDir), new RemoteIdentityService(dataDirectoryAt(dataDir)));
+  const createService = () => new AccessTokenService(dataDirectoryAt(dataDir));
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'web-token-'));
@@ -31,6 +29,7 @@ describe('WebAccessTokenService', () => {
     const service = createService();
 
     expect(service.verify('from-env')).toBe(true);
+    expect(service.token()).toBe('from-env');
     expect(() => readFileSync(tokenFile())).toThrow();
   });
 
@@ -65,23 +64,12 @@ describe('WebAccessTokenService', () => {
     expect(service.verify('')).toBe(false);
   });
 
-  it('should log only the token on bootstrap without remote access', async () => {
+  it('should log the token on bootstrap', () => {
     vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
-    vi.stubEnv('REMOTE_ENABLED', 'false');
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-    await createService().onApplicationBootstrap();
+    createService().onApplicationBootstrap();
 
     expect(log.mock.calls).toEqual([['Web interface access token: secret']]);
-  });
-
-  it('should log the remote link that carries the token on bootstrap', async () => {
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
-    vi.stubEnv('REMOTE_URL', 'https://arc.example.com');
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-    await createService().onApplicationBootstrap();
-
-    expect(log).toHaveBeenLastCalledWith(expect.stringMatching(/^Remote access link: https:\/\/arc\.example\.com\/i\/[0-9a-f]{20}#fp=[\w-]{43}&token=secret$/));
   });
 });

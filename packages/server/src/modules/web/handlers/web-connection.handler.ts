@@ -2,11 +2,11 @@ import { parseClientCommand } from '@agent-remote-control/protocol/client-comman
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
+import { AccessTokenService } from '../../access-token/services/access-token.service.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { type IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
-import { WebAccessTokenService } from '../services/web-access-token.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
 import { WebArtifactsService } from '../services/web-artifacts.service.js';
@@ -54,7 +54,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(IClientTransportPort) private readonly transport: IClientTransportPort,
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
-    private readonly accessToken: WebAccessTokenService,
+    private readonly accessToken: AccessTokenService,
     private readonly registry: WebConnectionRegistryService,
     private readonly events: WebConversationEventsService,
     private readonly listConversations: ListConversationsUseCase,

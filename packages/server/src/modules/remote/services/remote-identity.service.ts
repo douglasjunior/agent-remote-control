@@ -1,9 +1,9 @@
 import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { deriveInstanceId } from '@agent-remote-control/protocol/remote-link';
-import { SIGNALING_HOST_PATH } from '@agent-remote-control/protocol/signaling';
+import { registrationPayload, SIGNALING_HOST_PATH } from '@agent-remote-control/protocol/signaling';
 import { Injectable } from '@nestjs/common';
 import * as x509 from '@peculiar/x509';
-import { randomBytes, X509Certificate } from 'node:crypto';
+import { randomBytes, sign, X509Certificate } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -16,9 +16,9 @@ const CERTIFICATE_YEARS = 20;
 const SIGNING_ALGORITHM = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
 
 /**
- * The settings of remote access and the identity of this host, kept in `<DATA_DIR>/remote`: a secret that derives
- * the instance id, and the DTLS certificate whose fingerprint the remote link pins. Both are created once, so the
- * link stays the same across restarts.
+ * The settings of remote access and the identity of this host: the DTLS certificate whose fingerprint the remote link
+ * pins and derives the instance id, with its key, kept in `<DATA_DIR>/remote`. They are created once, so the link
+ * stays the same across restarts.
  */
 @Injectable()
 export class RemoteIdentityService {
@@ -26,8 +26,12 @@ export class RemoteIdentityService {
 
   constructor(private readonly dataDirectory: DataDirectoryService) {}
 
+  /**
+   * Off unless `REMOTE_ENABLED` is `true`: whoever operates the signaling server serves the page that holds the
+   * access token, so reaching this host through one is a choice of trust.
+   */
   isEnabled(): boolean {
-    return process.env.REMOTE_ENABLED !== 'false';
+    return process.env.REMOTE_ENABLED === 'true';
   }
 
   /** `REMOTE_URL`: the signaling server, which also serves the web app that opens the remote link. */
@@ -44,25 +48,28 @@ export class RemoteIdentityService {
     return this.loading;
   }
 
+  /** Signs the nonce of the signaling server's challenge with the certificate's key, once the identity is loaded. */
+  async signChallenge(nonce: string): Promise<string> {
+    const { keyPath } = await this.identity();
+    return sign('sha256', Buffer.from(registrationPayload(nonce)), { key: readFileSync(keyPath), dsaEncoding: 'ieee-p1363' }).toString('base64url');
+  }
+
   private async loadOrCreate(): Promise<RemoteIdentity> {
     const directory = join(this.dataDirectory.resolve(), 'remote');
-    const secretPath = join(directory, 'secret');
     const certificatePath = join(directory, 'certificate.pem');
     const keyPath = join(directory, 'key.pem');
-    mkdirSync(directory, { recursive: true });
-    if (!existsSync(secretPath)) {
-      writeFileSync(secretPath, randomBytes(32).toString('base64url'), { mode: 0o600 });
-    }
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
     if (!existsSync(certificatePath) || !existsSync(keyPath)) {
       const { certificate, key } = await this.createCertificate();
       writeFileSync(keyPath, key, { mode: 0o600 });
       writeFileSync(certificatePath, certificate, { mode: 0o600 });
     }
-    const secret = readFileSync(secretPath, 'utf8').trim();
+    const x509 = new X509Certificate(readFileSync(certificatePath));
+    const fingerprint = encodeFingerprint(x509.fingerprint256);
     return {
-      instanceId: await deriveInstanceId(secret),
-      secret,
-      fingerprint: encodeFingerprint(new X509Certificate(readFileSync(certificatePath)).fingerprint256),
+      instanceId: deriveInstanceId(fingerprint),
+      fingerprint,
+      certificate: x509.raw.toString('base64'),
       certificatePath,
       keyPath,
     };

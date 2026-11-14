@@ -4,11 +4,15 @@ import type { RegisteredHost, SignalingSession } from '../models/signaling-sessi
 import type { HostSocket } from '../ports/signaling-transport.port.js';
 
 
+type SessionChange = Partial<Pick<SignalingSession, 'state' | 'candidates'>>;
+
 /** The hosts online and the sessions being negotiated, in memory: a restart only makes hosts and browsers reconnect. */
 @Injectable()
 export class SignalingRegistryService {
   private readonly hosts = new Map<string, RegisteredHost>();
+  private readonly instanceBySocket = new Map<HostSocket, string>();
   private readonly sessions = new Map<string, SignalingSession>();
+  private readonly sessionsByInstance = new Map<string, Set<string>>();
 
   host(instanceId: string): RegisteredHost | undefined {
     return this.hosts.get(instanceId);
@@ -16,17 +20,19 @@ export class SignalingRegistryService {
 
   setHost(host: RegisteredHost): void {
     this.hosts.set(host.instanceId, host);
+    this.instanceBySocket.set(host.socket, host.instanceId);
   }
 
   /** Removes the host and returns its sessions, when the socket still holds its instance. */
   removeHost(socket: HostSocket): readonly SignalingSession[] {
-    const host = [...this.hosts.values()].find(candidate => candidate.socket === socket);
-    if (!host) {
+    const instanceId = this.instanceBySocket.get(socket);
+    this.instanceBySocket.delete(socket);
+    if (instanceId === undefined || this.hosts.get(instanceId)?.socket !== socket) {
       return [];
     }
-    this.hosts.delete(host.instanceId);
-    const sessions = [...this.sessions.values()].filter(session => session.instanceId === host.instanceId);
-    sessions.forEach(session => this.sessions.delete(session.id));
+    this.hosts.delete(instanceId);
+    const sessions = [...this.sessionsByInstance.get(instanceId) ?? []].map(id => this.sessions.get(id)!);
+    sessions.forEach(session => this.removeSession(session.id));
     return sessions;
   }
 
@@ -36,22 +42,33 @@ export class SignalingRegistryService {
 
   addSession(session: SignalingSession): void {
     this.sessions.set(session.id, session);
+    const ids = this.sessionsByInstance.get(session.instanceId) ?? new Set<string>();
+    ids.add(session.id);
+    this.sessionsByInstance.set(session.instanceId, ids);
   }
 
-  markOffered(id: string): void {
+  updateSession(id: string, change: SessionChange): void {
     const session = this.sessions.get(id);
     if (session) {
-      this.sessions.set(id, { ...session, offered: true });
+      this.sessions.set(id, { ...session, ...change });
     }
   }
 
   removeSession(id: string): SignalingSession | undefined {
     const session = this.sessions.get(id);
+    if (!session) {
+      return undefined;
+    }
     this.sessions.delete(id);
+    const ids = this.sessionsByInstance.get(session.instanceId)!;
+    ids.delete(id);
+    if (ids.size === 0) {
+      this.sessionsByInstance.delete(session.instanceId);
+    }
     return session;
   }
 
   sessionCount(instanceId: string): number {
-    return [...this.sessions.values()].filter(session => session.instanceId === instanceId).length;
+    return this.sessionsByInstance.get(instanceId)?.size ?? 0;
   }
 }

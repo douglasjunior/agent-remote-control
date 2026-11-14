@@ -61,8 +61,8 @@ export abstract class ChannelServerConnection implements IServerConnection {
     this.currentTransport = transport;
   }
 
-  /** Opens one attempt, reporting through the handlers. */
-  protected abstract openChannel(handlers: ChannelHandlers): ServerChannel;
+  /** Opens one attempt with the access token it authenticates with, reporting through the handlers. */
+  protected abstract openChannel(token: string, handlers: ChannelHandlers): ServerChannel;
 
   get transport(): ConnectionTransport {
     return this.currentTransport;
@@ -122,7 +122,7 @@ export abstract class ChannelServerConnection implements IServerConnection {
     this.setStatus('connecting');
     const id = ++this.attemptId;
     const live = () => id === this.attemptId && this.channel !== null;
-    this.channel = this.openChannel({
+    this.channel = this.openChannel(token, {
       onOpen: () => live() && this.channel!.send(JSON.stringify({ type: 'auth', token })),
       onMessage: text => live() && this.handleMessage(text),
       onClose: reason => live() && this.handleClose(reason),

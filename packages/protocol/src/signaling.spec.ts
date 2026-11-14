@@ -1,13 +1,17 @@
-import { parseClientSignal, parseHostSignal, parseToClientSignal, parseToHostSignal } from './signaling.js';
+import { parseClientSignal, parseHostSignal, parseToClientSignal, parseToHostSignal, registrationPayload } from './signaling.js';
 
 
 const instanceId = '0123456789abcdef0123';
+const fingerprint = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+const proof = 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDvCgg';
 const sessionId = '6f1c0f0e-1f53-4c1e-9d55-6bb1f6c2a1a7';
 const iceServers = [{ urls: ['stun:stun.example.com:3478'] }, { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'c' }];
 
 describe('signaling', () => {
   it.each([
-    { type: 'host.register', instanceId, secret: 's', protocolVersion: 1 },
+    { type: 'host.register', instanceId, certificate: 'MIIB', signature: 'c2ln', protocolVersion: 1 },
+    { type: 'host.accept', sessionId },
+    { type: 'host.reject', sessionId },
     { type: 'host.answer', sessionId, sdp: 'v=0' },
     { type: 'host.candidate', sessionId, candidate: 'candidate:1', mid: '0' },
     { type: 'host.close', sessionId },
@@ -16,7 +20,9 @@ describe('signaling', () => {
   });
 
   it.each([
+    { type: 'host.challenge', nonce: 'n'.repeat(43) },
     { type: 'host.registered' },
+    { type: 'session.request', sessionId, fingerprint, proof },
     { type: 'session.offer', sessionId, sdp: 'v=0', iceServers },
     { type: 'session.candidate', sessionId, candidate: 'candidate:1', mid: '0' },
     { type: 'session.closed', sessionId },
@@ -25,7 +31,7 @@ describe('signaling', () => {
   });
 
   it.each([
-    { type: 'client.connect', instanceId },
+    { type: 'client.connect', instanceId, fingerprint, proof },
     { type: 'client.offer', sdp: 'v=0' },
     { type: 'client.candidate', candidate: 'candidate:1', mid: '0' },
   ])('should accept the client signal $type', (signal) => {
@@ -35,6 +41,7 @@ describe('signaling', () => {
   it.each([
     { type: 'client.accepted', iceServers, protocolVersion: 1 },
     { type: 'client.unavailable' },
+    { type: 'client.rejected' },
     { type: 'session.answer', sdp: 'v=0' },
     { type: 'session.candidate', candidate: 'candidate:1', mid: '0' },
     { type: 'session.closed' },
@@ -43,12 +50,19 @@ describe('signaling', () => {
   });
 
   it.each([
-    ['an instance id that is not hex', parseHostSignal, { type: 'host.register', instanceId: 'ZZ', secret: 's', protocolVersion: 1 }],
+    ['an instance id that is not hex', parseHostSignal, { type: 'host.register', instanceId: 'ZZ', certificate: 'c', signature: 's', protocolVersion: 1 }],
+    ['a fingerprint that is not base64url', parseClientSignal, { type: 'client.connect', instanceId, fingerprint: 'AB:CD', proof }],
+    ['a proof that is not an HMAC', parseClientSignal, { type: 'client.connect', instanceId, fingerprint, proof: 'short' }],
+    ['a short nonce', parseToHostSignal, { type: 'host.challenge', nonce: 'n' }],
     ['a session id that is not a uuid', parseHostSignal, { type: 'host.close', sessionId: '1' }],
     ['an unknown type', parseClientSignal, { type: 'client.other' }],
     ['an empty SDP', parseToClientSignal, { type: 'session.answer', sdp: '' }],
     ['an ICE server without urls', parseToHostSignal, { type: 'session.offer', sessionId, sdp: 'v=0', iceServers: [{ urls: [] }] }],
   ])('should refuse %s', (_name, parse, signal) => {
     expect(parse(signal)).toMatchObject({ ok: false });
+  });
+
+  it('should bind the registration payload to the nonce', () => {
+    expect(registrationPayload('nonce-1')).toBe('arc-host-register:nonce-1');
   });
 });

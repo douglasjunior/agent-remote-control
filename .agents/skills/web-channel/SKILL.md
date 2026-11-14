@@ -43,11 +43,11 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 
 ## Access token and auth gate
 
-- `WebAccessTokenService` takes the token from `WEB_ACCESS_TOKEN`, otherwise from
-  `<DATA_DIR>/web/access-token`, generated once with `randomBytes(24).toString('base64url')` and file
-  mode `0o600`. `verify` compares with `timingSafeEqual` and returns false on a length mismatch.
-- On bootstrap it logs `Web interface access token: <token>` and, when remote access is on, `Remote access link: <link>`,
-  the link carrying the token in its fragment.
+- `AccessTokenService` (module `access-token`, imported by the web and remote modules) takes the token from
+  `WEB_ACCESS_TOKEN`, otherwise from `<DATA_DIR>/web/access-token`, generated once with
+  `randomBytes(24).toString('base64url')` and file mode `0o600`. `token()` returns it; `verify` compares with
+  `timingSafeEqual` and returns false on a length mismatch.
+- On bootstrap it logs `Web interface access token: <token>` from a context the log files leave out.
 - `WebConnectionHandler` waits at most 5 s for an `auth` command on each connection. A wrong token, any
   other first command or a timeout sends `auth.failed` and closes with code `4401`. Commands from a
   connection that has not authenticated are never routed.

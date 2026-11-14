@@ -44,7 +44,8 @@ export class SignalingConnectionHandler implements OnModuleInit, OnModuleDestroy
   }
 
   private handleHost(socket: HostSocket): void {
-    let state: 'new' | 'registering' | 'registered' | 'closed' = 'new';
+    let state: 'new' | 'registered' | 'refused' = 'new';
+    const nonce = this.registerHost.challenge(socket);
     const timer = setTimeout(() => this.reject(socket, 'no registration'), FIRST_SIGNAL_TIMEOUT_MS);
 
     socket.onMessage((data) => {
@@ -60,14 +61,7 @@ export class SignalingConnectionHandler implements OnModuleInit, OnModuleDestroy
           return;
         }
         clearTimeout(timer);
-        state = 'registering';
-        void this.registerHost.execute(socket, signal).then((registered) => {
-          if (state === 'closed') {
-            this.disconnectHost.execute(socket);
-            return;
-          }
-          state = registered ? 'registered' : 'closed';
-        });
+        state = this.registerHost.execute(socket, nonce, signal) ? 'registered' : 'refused';
         return;
       }
       if (state !== 'registered') {
@@ -82,7 +76,6 @@ export class SignalingConnectionHandler implements OnModuleInit, OnModuleDestroy
       if (state === 'registered') {
         this.disconnectHost.execute(socket);
       }
-      state = 'closed';
     });
   }
 
@@ -106,7 +99,7 @@ export class SignalingConnectionHandler implements OnModuleInit, OnModuleDestroy
         }
         connected = true;
         clearTimeout(firstSignal);
-        session = this.openClientSession.execute(socket, signal.instanceId);
+        session = this.openClientSession.execute(socket, signal);
         return;
       }
       if (!session || !this.relayClientSignal.execute(session.id, signal)) {

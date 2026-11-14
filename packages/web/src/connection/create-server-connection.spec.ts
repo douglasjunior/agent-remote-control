@@ -3,7 +3,8 @@ import { WebRtcServerConnection } from './webrtc-server-connection.js';
 import { WebSocketServerConnection } from './websocket-server-connection.js';
 
 
-const INSTANCE = '0123456789abcdef0123';
+const FINGERPRINT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
+const INSTANCE = '00010203040506070809';
 
 describe('createAppConnection', () => {
   beforeEach(() => {
@@ -22,7 +23,7 @@ describe('createAppConnection', () => {
   });
 
   it('should reach the host of the remote link over WebRTC under its instance path', () => {
-    history.replaceState(null, '', `/i/${INSTANCE}#fp=pinned&token=t`);
+    history.replaceState(null, '', `/i/${INSTANCE}#fp=${FINGERPRINT}&token=t`);
     const app = createAppConnection('p2p');
 
     expect(app?.connection).toBeInstanceOf(WebRtcServerConnection);

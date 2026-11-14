@@ -25,7 +25,10 @@ class TestConnection extends ChannelServerConnection {
     super(tokens, 'webrtc');
   }
 
-  protected openChannel(handlers: ChannelHandlers): ServerChannel {
+  readonly openedWith: string[] = [];
+
+  protected openChannel(token: string, handlers: ChannelHandlers): ServerChannel {
+    this.openedWith.push(token);
     const channel = new TestChannel(handlers);
     this.channels.push(channel);
     return channel;
@@ -57,6 +60,12 @@ describe('ChannelServerConnection', () => {
     connection.disconnect();
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('should open each channel with the stored access token', () => {
+    connection.connect();
+
+    expect(connection.openedWith).toEqual(['secret']);
   });
 
   it('should report the transport it starts with and the one the channel finds, once each', () => {

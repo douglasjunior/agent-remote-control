@@ -1,7 +1,7 @@
 # Remote access: signaling server and TURN relay
 
-A server with remote access on (`REMOTE_ENABLED`, on by default) keeps a WebSocket open to the signaling server at
-`REMOTE_URL` and prints a link at startup. The browser that opens the link loads the web app from the signaling
+A server with remote access on (`REMOTE_ENABLED=true`, off by default) keeps a WebSocket open to the signaling server
+at `REMOTE_URL` and prints a link at startup. The browser that opens the link loads the web app from the signaling
 server, which introduces it to the server; from then on they talk over a WebRTC data channel, encrypted end to end.
 
 ```text
@@ -17,6 +17,19 @@ Two pieces run on a machine with a public address:
 - **coturn** (`deploy/coturn`): the TURN relay for the networks where no direct path exists, such as a mobile carrier
   or a corporate firewall on both ends. Optional: without it those connections fail.
 
+## Trust model
+
+- **The signaling server never holds what controls a host.** A host registers by signing a random challenge with the
+  key of its DTLS certificate, whose fingerprint derives the instance id; it never sends a secret. A browser proves it
+  holds the access token with an HMAC bound to its own certificate before the host creates any peer connection, so the
+  signaling server relays the proof without learning the token, and the host answers nobody else.
+- **The data channel is end to end.** The link pins the host's certificate, so neither the signaling server nor the
+  TURN relay can read the messages or stand in for the host.
+- **The page is the exception.** The browser runs the web app the signaling server serves, and that page reads the
+  access token. Whoever operates the signaling server (or controls its deployment, domain or repository) could serve a
+  page that sends the token elsewhere. That is why remote access is off by default: turning it on trusts the operator of
+  `REMOTE_URL`, and self-hosting this server removes that trust.
+
 ## p2p-server
 
 | Variable | Description | Default |
@@ -26,11 +39,23 @@ Two pieces run on a machine with a public address:
 | `P2P_STUN_URLS` | STUN servers handed to both peers (comma-separated) | Google and Cloudflare |
 | `P2P_TURN_URLS` | TURN URLs (comma-separated), such as `turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp` | *(no relay)* |
 | `P2P_TURN_SECRET` | Secret shared with coturn (`TURN_SECRET`); TURN is off without it | *(no relay)* |
-| `P2P_TURN_TTL_SECONDS` | How long a TURN credential stays valid | `86400` |
+| `P2P_TURN_TTL_SECONDS` | Window of the TURN credentials: each one lasts until the end of the window after the one it was issued in | `3600` |
 | `P2P_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open `/signal/client` | *(same origin only)* |
+| `P2P_ALLOWED_INSTANCES` | Instance ids (comma-separated) this server introduces browsers to; any other host is refused | *(any instance)* |
+| `P2P_TRUSTED_PROXY_HOPS` | Proxies in front of the server, whose `X-Forwarded-For` entries give the client's address for the limits per address | `0` |
 
-A browser gets the ICE servers, with a TURN credential, only when the host of its link is online. Each credential is
-`<expiry>:<instance id>` signed with the shared secret, so it expires by itself and coturn needs no user list.
+A browser gets the ICE servers, with a TURN credential, only once the host of its link accepted its proof of the
+access token. Each credential is `<expiry>:<instance id>` signed with the shared secret, so it expires by itself and
+coturn needs no user list; every peer of an instance gets the same one within a window, so coturn's quota per user
+counts per instance. A relayed connection drops when its credential expires, and the web app reconnects with a new one.
+
+`P2P_ALLOWED_INSTANCES` turns a public server into a private one: with it, nobody else can register a host and get
+relay credentials. A host prints its instance id in its remote link (`/i/<instance id>`).
+
+The server caps the sockets it holds (2 000 in all, 20 per address), the sockets an address opens in a burst and the
+messages each socket sends. Behind a proxy every socket comes from the proxy's address, so `P2P_TRUSTED_PROXY_HOPS`
+must count the proxies that append to `X-Forwarded-For`: `1` behind CapRover, `2` with a CDN proxy in front of it.
+Every page goes out with a strict Content Security Policy, no framing and `index.html` uncached.
 
 Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` serves the web app in `p2p` mode with
 `/signal` proxied to it; a server with `REMOTE_URL=http://localhost:5173` prints a link to that page.
@@ -43,7 +68,7 @@ Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` ser
 |---|---|---|
 | `TURN_SECRET` | Same value as `P2P_TURN_SECRET` | *(required)* |
 | `TURN_REALM` | Domain of the relay, such as `turn.example.com` | *(required)* |
-| `TURN_EXTERNAL_IP` | Public IP of the machine, when coturn runs behind NAT or in a container | *(detected)* |
+| `TURN_EXTERNAL_IP` | Public IP of the machine, when coturn runs behind NAT or in a container; the relay never forwards to it | *(detected)* |
 | `TURN_RELAY_IP` | Address coturn relays from, mapped to `TURN_EXTERNAL_IP` | The address of the default route's interface |
 | `TURN_MAX_BPS` | Bytes per second each session may relay | `262144` (256 KiB/s) |
 | `TURN_BPS_CAPACITY` | Bytes per second the whole relay may carry | `2097152` (2 MiB/s) |
@@ -53,7 +78,8 @@ Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` ser
 The relay listens on 3478 (UDP and TCP) and relays through ports 49160–49179 (UDP), one per allocation, from a
 single address: the one of the default route's interface, which under Docker Swarm is `docker_gwbridge`, where the
 ports published in host mode arrive. The log shows it as `Relay address to use`. It relays to
-public addresses only, so nobody reaches the network of its machine through it.
+public addresses only, and never to `TURN_EXTERNAL_IP`, so nobody reaches the network of its machine, nor the services
+its firewall hides, through it.
 
 ## Deploying with CapRover
 
@@ -63,9 +89,11 @@ Dockerfiles copy from the root.
 
 **Signaling server (`arc.example.com`)**
 
-1. Create an app with **Websocket Support** on, connect your domain and enable HTTPS.
+1. Create an app with **Websocket Support** on, connect your domain, enable HTTPS and **Force HTTPS**.
 2. Set the Captain Definition Path to `./captain-definition-p2p-server` and the **Container HTTP Port** to `3100`.
-3. Set `P2P_TURN_URLS` and `P2P_TURN_SECRET` once the relay is up.
+3. Set `P2P_TRUSTED_PROXY_HOPS=1` (CapRover's nginx), or `2` when a CDN proxy sits in front of it.
+4. For a private server, set `P2P_ALLOWED_INSTANCES` to the instance ids of your hosts.
+5. Set `P2P_TURN_URLS` and `P2P_TURN_SECRET` once the relay is up.
 
 **TURN relay (`turn.example.com`)**
 

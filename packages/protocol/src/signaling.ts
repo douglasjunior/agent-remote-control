@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { FINGERPRINT_PATTERN } from './fingerprint.js';
+
 
 /** Where a host keeps its signaling socket open on the signaling server. */
 export const SIGNALING_HOST_PATH = '/signal/host';
@@ -9,16 +11,28 @@ export const SIGNALING_CLIENT_PATH = '/signal/client';
 export const MAX_SIGNAL_BYTES = 64 * 1024;
 /** The one data channel a browser opens to a host. */
 export const DATA_CHANNEL_LABEL = 'arc';
+/** Candidates a browser may send in one session; a few per network interface is the norm. */
+export const MAX_CANDIDATES_PER_SESSION = 32;
 
 /** Close codes of a host signaling socket that tell the host to stop reconnecting. */
 export const SIGNALING_CLOSE_CODES = {
-  /** The secret does not derive the instance id it registers. */
+  /** The registration does not prove holding the certificate of the instance. */
   invalid: 4400,
+  /** The signaling server serves a list of instances that leaves this one out. */
+  forbidden: 4403,
   /** Another process registered the same instance. */
   replaced: 4409,
 } as const;
 
+/** What a host signs with the key of its certificate to register: the nonce of the server's `host.challenge`. */
+export function registrationPayload(nonce: string): string {
+  return `arc-host-register:${nonce}`;
+}
+
 export const instanceIdSchema = z.string().regex(/^[0-9a-f]{20}$/);
+const fingerprintSchema = z.string().regex(FINGERPRINT_PATTERN);
+/** A base64url HMAC-SHA256 from `sessionProof`. */
+const proofSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 
 export const iceServerSchema = z.object({
   urls: z.array(z.string().min(1).max(500)).min(1).max(10),
@@ -36,9 +50,16 @@ export const hostSignalSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('host.register'),
     instanceId: instanceIdSchema,
-    secret: z.string().min(1).max(200),
+    /** The DER certificate, base64. */
+    certificate: z.string().min(1).max(4096),
+    /** `registrationPayload(nonce)` signed with the certificate's key, base64url (IEEE P1363 for ECDSA). */
+    signature: z.string().min(1).max(1024),
     protocolVersion: z.number().int(),
   }),
+  /** The proof of the session's request holds: the browser gets the ICE servers and may offer. */
+  z.object({ type: z.literal('host.accept'), sessionId: sessionIdSchema }),
+  /** The proof of the session's request does not hold: the browser's access token is wrong. */
+  z.object({ type: z.literal('host.reject'), sessionId: sessionIdSchema }),
   z.object({ type: z.literal('host.answer'), sessionId: sessionIdSchema, sdp: sdpSchema }),
   z.object({ type: z.literal('host.candidate'), sessionId: sessionIdSchema, ...candidateFields }),
   /** The host gives up a session it will not or can no longer negotiate. */
@@ -48,7 +69,11 @@ export type HostSignal = z.infer<typeof hostSignalSchema>;
 
 /** What the signaling server sends to a host. */
 export const toHostSignalSchema = z.discriminatedUnion('type', [
+  /** The first signal of every host socket; the host answers with `host.register`. */
+  z.object({ type: z.literal('host.challenge'), nonce: z.string().min(16).max(100) }),
   z.object({ type: z.literal('host.registered') }),
+  /** A browser asks for a session, proving its access token for the certificate it will offer. */
+  z.object({ type: z.literal('session.request'), sessionId: sessionIdSchema, fingerprint: fingerprintSchema, proof: proofSchema }),
   z.object({
     type: z.literal('session.offer'),
     sessionId: sessionIdSchema,
@@ -62,7 +87,8 @@ export type ToHostSignal = z.infer<typeof toHostSignalSchema>;
 
 /** What a browser sends to the signaling server. */
 export const clientSignalSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('client.connect'), instanceId: instanceIdSchema }),
+  z.object({ type: z.literal('client.connect'), instanceId: instanceIdSchema, fingerprint: fingerprintSchema, proof: proofSchema }),
+  /** Only after `client.accepted`, announcing the certificate of `client.connect`. */
   z.object({ type: z.literal('client.offer'), sdp: sdpSchema }),
   z.object({ type: z.literal('client.candidate'), ...candidateFields }),
 ]);
@@ -70,9 +96,12 @@ export type ClientSignal = z.infer<typeof clientSignalSchema>;
 
 /** What the signaling server sends to a browser. */
 export const toClientSignalSchema = z.discriminatedUnion('type', [
+  /** The host accepted the proof of `client.connect`. */
   z.object({ type: z.literal('client.accepted'), iceServers: z.array(iceServerSchema), protocolVersion: z.number().int() }),
-  /** No host holds the instance right now. */
+  /** No host holds the instance right now, or it takes no more sessions for now. */
   z.object({ type: z.literal('client.unavailable') }),
+  /** The host refused the proof of `client.connect`: the access token is wrong. */
+  z.object({ type: z.literal('client.rejected') }),
   z.object({ type: z.literal('session.answer'), sdp: sdpSchema }),
   z.object({ type: z.literal('session.candidate'), ...candidateFields }),
   z.object({ type: z.literal('session.closed') }),

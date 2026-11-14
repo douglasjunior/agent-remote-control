@@ -5,7 +5,9 @@ export type HostRegistration = Extract<HostSignal, { type: 'host.register' }>;
 
 export type SignalingClientOptions = {
   readonly url: string;
-  readonly registration: HostRegistration;
+  /** The registration answering the nonce of the challenge each new socket gets. */
+  readonly register: (nonce: string) => Promise<HostRegistration>;
+  /** Every signal after the challenge. */
   readonly onSignal: (signal: ToHostSignal) => void;
 };
 

@@ -1,4 +1,5 @@
-import type { ClientSignal } from '@agent-remote-control/protocol/signaling';
+import { sdpFingerprint } from '@agent-remote-control/protocol/fingerprint';
+import { type ClientSignal, MAX_CANDIDATES_PER_SESSION } from '@agent-remote-control/protocol/signaling';
 import { Injectable } from '@nestjs/common';
 
 import { IceServersService } from '../services/ice-servers.service.js';
@@ -15,8 +16,9 @@ export class RelayClientSignalUseCase {
   ) {}
 
   /**
-   * Hands the browser's offer, then its candidates, to the host of the session. Returns false for a signal out of
-   * that order or for a session that is over, which ends the browser's socket.
+   * Hands the host of the session the browser's offer, once the host accepted the session and only when it announces
+   * the certificate the browser proved its token for, then up to `MAX_CANDIDATES_PER_SESSION` candidates. Returns
+   * false for any other signal, which ends the browser's socket.
    */
   execute(sessionId: string, signal: NegotiationSignal): boolean {
     const session = this.registry.session(sessionId);
@@ -25,16 +27,17 @@ export class RelayClientSignalUseCase {
       return false;
     }
     if (signal.type === 'client.offer') {
-      if (session.offered) {
+      if (session.state !== 'accepted' || sdpFingerprint(signal.sdp) !== session.fingerprint) {
         return false;
       }
-      this.registry.markOffered(sessionId);
+      this.registry.updateSession(sessionId, { state: 'offered' });
       host.socket.send({ type: 'session.offer', sessionId, sdp: signal.sdp, iceServers: this.iceServers.forInstance(session.instanceId) });
       return true;
     }
-    if (!session.offered) {
+    if (session.state !== 'offered' || session.candidates >= MAX_CANDIDATES_PER_SESSION) {
       return false;
     }
+    this.registry.updateSession(sessionId, { candidates: session.candidates + 1 });
     host.socket.send({ type: 'session.candidate', sessionId, candidate: signal.candidate, mid: signal.mid });
     return true;
   }

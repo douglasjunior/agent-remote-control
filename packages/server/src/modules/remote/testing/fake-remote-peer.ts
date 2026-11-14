@@ -56,6 +56,9 @@ export class FakeRemotePeer implements IRemotePeer {
   }
 
   addCandidate(candidate: string, mid: string): void {
+    if (candidate === 'malformed') {
+      throw new Error('Invalid candidate format');
+    }
     this.candidates.push([candidate, mid]);
   }
 
@@ -99,8 +102,13 @@ export class FakeRemotePeer implements IRemotePeer {
 export class FakeRemotePeerFactory implements IRemotePeerFactoryPort {
   readonly peers: FakeRemotePeer[] = [];
   failNextAnswer = false;
+  failNextCreate = false;
 
   create(options: RemotePeerOptions): FakeRemotePeer {
+    if (this.failNextCreate) {
+      this.failNextCreate = false;
+      throw new Error('bad ICE server');
+    }
     const peer = new FakeRemotePeer(options);
     peer.failAnswer = this.failNextAnswer;
     this.failNextAnswer = false;

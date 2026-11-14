@@ -10,7 +10,8 @@ export class WebSocketServerConnection extends ChannelServerConnection {
     super(tokens, 'websocket');
   }
 
-  protected openChannel({ onOpen, onMessage, onClose }: ChannelHandlers): ServerChannel {
+  /** The token goes in the `auth` message once the socket opens. */
+  protected openChannel(_token: string, { onOpen, onMessage, onClose }: ChannelHandlers): ServerChannel {
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
     const socket = new WebSocket(`${protocol}://${location.host}/ws`);
     socket.onopen = onOpen;

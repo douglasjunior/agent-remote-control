@@ -1,6 +1,7 @@
 import { FrameAssembler, toFrames } from '@agent-remote-control/protocol/data-channel-frames';
 import { sdpFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { PROTOCOL_VERSION } from '@agent-remote-control/protocol/protocol-version';
+import { sessionProof } from '@agent-remote-control/protocol/session-proof';
 import {
   type ClientSignal,
   DATA_CHANNEL_LABEL,
@@ -18,6 +19,8 @@ import type { RemoteLink } from './remote-link.js';
 /** A conversation history arrives as one event, so a message from the host may be large. */
 const MAX_EVENT_LENGTH = 64 * 1024 * 1024;
 
+const CERTIFICATE_ALGORITHM: EcKeyGenParams = { name: 'ECDSA', namedCurve: 'P-256' };
+
 /**
  * Reaches a host from anywhere: the signaling server of the page introduces the browser to the host and a WebRTC
  * data channel carries the messages, in frames. The host must present the certificate the link pinned.
@@ -27,22 +30,27 @@ export class WebRtcServerConnection extends ChannelServerConnection {
     super(tokens, 'webrtc');
   }
 
-  protected openChannel(handlers: ChannelHandlers): ServerChannel {
-    return new PeerChannel(this.link, handlers);
+  protected openChannel(token: string, handlers: ChannelHandlers): ServerChannel {
+    return new PeerChannel(this.link, token, handlers);
   }
 }
 
+/**
+ * One attempt: a fresh certificate, the proof of the access token for it in `client.connect`, then, once the host
+ * accepts the proof, the offer made with that certificate and the ICE servers that came with the acceptance.
+ */
 class PeerChannel implements ServerChannel {
   private readonly signaling: WebSocket;
   private readonly assembler = new FrameAssembler(MAX_EVENT_LENGTH);
+  private certificate: RTCCertificate | null = null;
   private peer: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
   private ended = false;
 
-  constructor(private readonly link: RemoteLink, private readonly handlers: ChannelHandlers) {
+  constructor(private readonly link: RemoteLink, private readonly token: string, private readonly handlers: ChannelHandlers) {
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
     this.signaling = new WebSocket(`${protocol}://${location.host}${SIGNALING_CLIENT_PATH}`);
-    this.signaling.onopen = () => this.signal({ type: 'client.connect', instanceId: link.instanceId });
+    this.signaling.onopen = () => this.connect().catch(() => this.fail('closed'));
     this.signaling.onmessage = message => this.handleSignal(String(message.data)).catch(() => this.fail('closed'));
     this.signaling.onclose = () => {
       if (!this.isOpen()) {
@@ -58,6 +66,29 @@ class PeerChannel implements ServerChannel {
   close(): void {
     this.ended = true;
     this.release();
+  }
+
+  private async connect(): Promise<void> {
+    const certificate = await RTCPeerConnection.generateCertificate(CERTIFICATE_ALGORITHM);
+    const fingerprint = await this.fingerprintOf(certificate);
+    if (!fingerprint) {
+      this.fail('closed');
+      return;
+    }
+    this.certificate = certificate;
+    const proof = await sessionProof(this.token, this.link.instanceId, fingerprint);
+    this.signal({ type: 'client.connect', instanceId: this.link.instanceId, fingerprint, proof });
+  }
+
+  /** The fingerprint an offer made with the certificate announces, read from a throwaway offer that gathers nothing. */
+  private async fingerprintOf(certificate: RTCCertificate): Promise<string | null> {
+    const probe = new RTCPeerConnection({ certificates: [certificate] });
+    try {
+      probe.createDataChannel(DATA_CHANNEL_LABEL);
+      return sdpFingerprint((await probe.createOffer()).sdp ?? '');
+    } finally {
+      probe.close();
+    }
   }
 
   private async handleSignal(text: string): Promise<void> {
@@ -86,6 +117,9 @@ class PeerChannel implements ServerChannel {
       case 'session.candidate':
         await this.peer?.addIceCandidate({ candidate: signal.candidate, sdpMid: signal.mid });
         return;
+      case 'client.rejected':
+        this.fail('unauthorized');
+        return;
       default:
         if (!this.isOpen()) {
           this.fail('closed');
@@ -98,7 +132,7 @@ class PeerChannel implements ServerChannel {
       this.fail('incompatible');
       return;
     }
-    const peer = new RTCPeerConnection({ iceServers });
+    const peer = new RTCPeerConnection({ iceServers, certificates: [this.certificate!] });
     const channel = peer.createDataChannel(DATA_CHANNEL_LABEL);
     this.peer = peer;
     this.dataChannel = channel;

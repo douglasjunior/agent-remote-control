@@ -2,6 +2,7 @@ import { toFrames } from '@agent-remote-control/protocol/data-channel-frames';
 import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { PROTOCOL_VERSION } from '@agent-remote-control/protocol/protocol-version';
 import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
+import { sessionProof } from '@agent-remote-control/protocol/session-proof';
 
 import { AccessTokenStore } from './access-token-store.js';
 import type { ConnectionStatus, ConnectionTransport } from './server-connection.js';
@@ -13,6 +14,9 @@ const HEX = Array.from({ length: 32 }, (_, index) => index.toString(16).padStart
 const OTHER_HEX = HEX.replace('00', 'FF');
 const iceServers = [{ urls: ['stun:stun.example.com:3478'] }];
 const answerSdp = (hex = HEX) => `v=0\r\na=fingerprint:sha-256 ${hex}\r\n`;
+const BROWSER_HEX = HEX.replace('00', 'AA');
+const OFFER_SDP = answerSdp(BROWSER_HEX);
+const CERTIFICATE = { kind: 'certificate' };
 
 class FakeSignalingSocket {
   static readonly OPEN = 1;
@@ -80,6 +84,8 @@ class FakeDataChannel {
 class FakePeerConnection {
   static instances: FakePeerConnection[] = [];
   static failOffer = false;
+  static offerSdp = OFFER_SDP;
+  static failCertificate = false;
   connectionState = 'new';
   channel?: FakeDataChannel;
   remote?: unknown;
@@ -94,6 +100,14 @@ class FakePeerConnection {
     FakePeerConnection.instances.push(this);
   }
 
+  static async generateCertificate(algorithm: unknown) {
+    if (FakePeerConnection.failCertificate) {
+      throw new Error('no certificate');
+    }
+    expect(algorithm).toEqual({ name: 'ECDSA', namedCurve: 'P-256' });
+    return CERTIFICATE;
+  }
+
   createDataChannel(label: string) {
     this.channel = new FakeDataChannel(label);
     return this.channel;
@@ -103,7 +117,7 @@ class FakePeerConnection {
     if (FakePeerConnection.failOffer) {
       throw new Error('no offer');
     }
-    return { type: 'offer', sdp: 'offer-sdp' };
+    return { type: 'offer', sdp: FakePeerConnection.offerSdp };
   }
 
   async setLocalDescription(description: unknown) {
@@ -142,9 +156,14 @@ describe('WebRtcServerConnection', () => {
   const peer = () => FakePeerConnection.instances.at(-1)!;
   const flush = () => vi.advanceTimersByTimeAsync(0);
 
-  const accept = async (protocolVersion = PROTOCOL_VERSION) => {
+  /** Opens the signaling socket and waits for the browser's proof, which WebCrypto computes off the timers. */
+  const request = async () => {
     connection.connect();
     socket().open();
+    await vi.waitFor(() => expect(socket().sent.length > 0 || statuses.includes('closed')).toBe(true));
+  };
+  const accept = async (protocolVersion = PROTOCOL_VERSION) => {
+    await request();
     socket().receive({ type: 'client.accepted', iceServers, protocolVersion });
     await flush();
   };
@@ -166,6 +185,8 @@ describe('WebRtcServerConnection', () => {
     FakeSignalingSocket.instances = [];
     FakePeerConnection.instances = [];
     FakePeerConnection.failOffer = false;
+    FakePeerConnection.offerSdp = OFFER_SDP;
+    FakePeerConnection.failCertificate = false;
     localStorage.clear();
     const tokens = new AccessTokenStore('arc.accessToken.remote');
     tokens.store('secret');
@@ -185,13 +206,44 @@ describe('WebRtcServerConnection', () => {
     vi.restoreAllMocks();
   });
 
-  it('should ask the signaling server of the page for the instance', () => {
-    connection.connect();
-    socket().open();
+  it('should ask the signaling server of the page for the instance, proving the token for a fresh certificate', async () => {
+    await request();
+    const fingerprint = encodeFingerprint(BROWSER_HEX);
 
     expect(connection.transport).toBe('webrtc');
     expect(socket().url).toBe(`ws://${location.host}/signal/client`);
-    expect(socket().sent).toEqual([{ type: 'client.connect', instanceId: INSTANCE }]);
+    expect(socket().sent).toEqual([{ type: 'client.connect', instanceId: INSTANCE, fingerprint, proof: await sessionProof('secret', INSTANCE, fingerprint) }]);
+    expect(FakePeerConnection.instances).toEqual([expect.objectContaining({ config: { certificates: [CERTIFICATE] }, closed: true })]);
+  });
+
+  it('should ask for the token again when the host rejects the proof, without retrying', async () => {
+    await request();
+    socket().receive({ type: 'client.rejected' });
+    await flush();
+    vi.advanceTimersByTime(60_000);
+
+    expect(statuses).toEqual(['connecting', 'unauthorized']);
+    expect(connection.hasAccessToken()).toBe(false);
+    expect(FakeSignalingSocket.instances).toHaveLength(1);
+  });
+
+  it.each([
+    [
+      'the certificate cannot be made', () => {
+        FakePeerConnection.failCertificate = true;
+      },
+    ],
+    [
+      'its offer announces no fingerprint', () => {
+        FakePeerConnection.offerSdp = 'v=0\r\n';
+      },
+    ],
+  ])('should retry with backoff when %s', async (_name, arrange) => {
+    arrange();
+    await request();
+
+    expect(socket().sent).toEqual([]);
+    expect(statuses.at(-1)).toBe('closed');
   });
 
   it('should use wss on https pages', () => {
@@ -207,10 +259,10 @@ describe('WebRtcServerConnection', () => {
     peer().onicecandidate!({ candidate: { candidate: 'c2', sdpMid: null } });
     peer().onicecandidate!({ candidate: null });
 
-    expect(peer().config).toEqual({ iceServers });
+    expect(peer().config).toEqual({ iceServers, certificates: [CERTIFICATE] });
     expect(peer().channel!.label).toBe('arc');
     expect(socket().sent.slice(1)).toEqual([
-      { type: 'client.offer', sdp: 'offer-sdp' },
+      { type: 'client.offer', sdp: OFFER_SDP },
       { type: 'client.candidate', candidate: 'c1', mid: '0' },
       { type: 'client.candidate', candidate: 'c2', mid: '0' },
     ]);
@@ -292,7 +344,7 @@ describe('WebRtcServerConnection', () => {
     vi.advanceTimersByTime(60_000);
 
     expect(statuses).toEqual(['connecting', 'incompatible']);
-    expect(FakePeerConnection.instances).toHaveLength(0);
+    expect(FakePeerConnection.instances).toHaveLength(1);
   });
 
   it.each([

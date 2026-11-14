@@ -18,11 +18,13 @@ describe('WsSignalingTransportAdapter', () => {
   let clients: ISignalingSocket<ToClientSignal>[];
   const sockets: WebSocket[] = [];
 
-  const open = (path: string, origin?: string) => {
-    const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers: origin ? { origin } : {} });
+  const open = (path: string, origin?: string, forwardedFor?: string) => {
+    const headers = { ...origin ? { origin } : {}, ...forwardedFor ? { 'x-forwarded-for': forwardedFor } : {} };
+    const socket = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers });
     sockets.push(socket);
     return socket;
   };
+  const closed = (socket: WebSocket) => new Promise<number>(done => socket.once('close', code => done(code)));
   const outcome = (socket: WebSocket) =>
     new Promise<string>((done) => {
       socket.once('open', () => done('open'));
@@ -38,8 +40,10 @@ describe('WsSignalingTransportAdapter', () => {
     adapter.onModuleInit();
   };
 
+  let warn: ReturnType<typeof vi.spyOn>;
+
   beforeEach(async () => {
-    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     vi.stubEnv('P2P_ALLOWED_ORIGINS', ' http://localhost:5173/ , ');
     httpServer = createServer((_req, res) => res.end());
     await new Promise<void>(done => httpServer.listen(0, '127.0.0.1', done));
@@ -116,5 +120,81 @@ describe('WsSignalingTransportAdapter', () => {
 
     await terminated;
     expect(answering.readyState).toBe(WebSocket.OPEN);
+  });
+
+  it('should survive a frame over the payload limit, closing only that socket', async () => {
+    const offender = open('/signal/host');
+    await outcome(offender);
+    const code = closed(offender);
+    offender.send('x'.repeat(70 * 1024));
+
+    expect(await code).toBe(1009);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('signal_socket_error'));
+    expect(await outcome(open('/signal/host'))).toBe('open');
+  });
+
+  it('should close a socket that sends more messages than its rate allows', async () => {
+    const client = open('/signal/client', 'http://localhost:5173');
+    await outcome(client);
+    const code = closed(client);
+    Array.from({ length: 65 }, () => client.send('{}'));
+
+    expect(await code).toBe(1008);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('signal_rate_limited'));
+  });
+
+  it('should refuse sockets past the limit of one address', async () => {
+    const opened = Array.from({ length: 20 }, () => open('/signal/host'));
+    expect(await Promise.all(opened.map(outcome))).toEqual(Array.from({ length: 20 }, () => 'open'));
+
+    expect(await outcome(open('/signal/host'))).toBe('http-429');
+  });
+
+  it('should refuse a new socket once the total is reached', async () => {
+    const tracked = adapter['server'].clients as Set<WebSocket>;
+    const fillers = Array.from({ length: 2_000 }, () => ({}) as WebSocket);
+    fillers.forEach(filler => tracked.add(filler));
+
+    expect(await outcome(open('/signal/host'))).toBe('http-503');
+    fillers.forEach(filler => tracked.delete(filler));
+  });
+
+  it('should limit the sockets an address opens in a burst', async () => {
+    for (let index = 0; index < 30; index += 1) {
+      const socket = open('/signal/host');
+      await outcome(socket);
+      const code = closed(socket);
+      socket.close();
+      await code;
+    }
+
+    expect(await outcome(open('/signal/host'))).toBe('http-429');
+  });
+
+  it('should count the address the trusted proxies saw, whatever the client put before it', async () => {
+    vi.stubEnv('P2P_TRUSTED_PROXY_HOPS', '1');
+    await adapter.onModuleDestroy();
+    start();
+    const crowded = Array.from({ length: 20 }, (_, index) => open('/signal/host', undefined, `10.0.0.${index}, 203.0.113.1`));
+    await Promise.all(crowded.map(outcome));
+
+    expect(await outcome(open('/signal/host', undefined, '203.0.113.1'))).toBe('http-429');
+    expect(await outcome(open('/signal/host', undefined, '203.0.113.2'))).toBe('open');
+    expect(await outcome(open('/signal/host', undefined, ' , '))).toBe('open');
+  });
+
+  it('should forget an address once it has no socket and its whole allowance back', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    await adapter.onModuleDestroy();
+    start();
+    const socket = open('/signal/host');
+    await outcome(socket);
+
+    vi.advanceTimersByTime(25_000);
+    expect(adapter['addresses'].size).toBe(1);
+    socket.close();
+    await vi.waitFor(() => expect([...adapter['addresses'].values()][0]?.sockets).toBe(0));
+    vi.advanceTimersByTime(25_000);
+    expect(adapter['addresses'].size).toBe(0);
   });
 });

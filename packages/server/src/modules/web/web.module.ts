@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AccessTokenModule } from '../access-token/access-token.module.js';
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
@@ -19,7 +20,6 @@ import { IClientTransportPort } from './ports/client-transport.port.js';
 import { IConversationStorePort } from './ports/conversation-store.port.js';
 import { IPromptHistoryPort } from './ports/prompt-history.port.js';
 import { ConversationEntryService } from './services/conversation-entry.service.js';
-import { WebAccessTokenService } from './services/web-access-token.service.js';
 import { WebAgentAuthService } from './services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from './services/web-agent-quota.service.js';
 import { WebArtifactsService } from './services/web-artifacts.service.js';
@@ -47,7 +47,7 @@ import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, WebStaticModule, WorkspaceModule],
+  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, WebStaticModule, WorkspaceModule],
   providers: [
     WsClientTransportAdapter,
     {
@@ -58,7 +58,6 @@ import { WebStaticModule } from './web-static.module.js';
     },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
     { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
-    WebAccessTokenService,
     WebAgentQuotaService,
     WebAgentAuthService,
     WebArtifactsService,
