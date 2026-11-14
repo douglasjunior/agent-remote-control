@@ -16,7 +16,7 @@ describe('IceServersService', () => {
     const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     service.onModuleInit();
 
-    expect(service.forInstance('i')).toEqual([{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }]);
+    expect(service.forBrowser('i')).toEqual([{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }]);
     expect(log).toHaveBeenCalledWith('TURN relay: off');
   });
 
@@ -32,8 +32,8 @@ describe('IceServersService', () => {
 
     const username = '1080:inst';
     vi.setSystemTime(1_019_999);
-    expect(service.forInstance('inst')[1]?.username).toBe(username);
-    expect(service.forInstance('inst')).toEqual([
+    expect(service.forBrowser('inst')[1]?.username).toBe(username);
+    expect(service.forBrowser('inst')).toEqual([
       { urls: ['stun:a.test:3478'] },
       {
         urls: ['turn:t.test:3478?transport=udp', 'turn:t.test:3478?transport=tcp'],
@@ -42,8 +42,9 @@ describe('IceServersService', () => {
       },
     ]);
     expect(log).toHaveBeenCalledWith('TURN relay: turn:t.test:3478?transport=udp, turn:t.test:3478?transport=tcp');
+    expect(service.forHost()).toEqual([{ urls: ['stun:a.test:3478'] }]);
     vi.setSystemTime(1_020_000);
-    expect(service.forInstance('inst')[1]?.username).toBe('1140:inst');
+    expect(service.forBrowser('inst')[1]?.username).toBe('1140:inst');
   });
 
   it.each(['', '0', '-5', '1.5', 'abc'])('should count windows of an hour when the TTL is %j', (ttl) => {
@@ -52,12 +53,12 @@ describe('IceServersService', () => {
     vi.stubEnv('P2P_TURN_SECRET', 'secret');
     vi.stubEnv('P2P_TURN_TTL_SECONDS', ttl);
 
-    expect(new IceServersService().forInstance('i')[1]?.username).toBe('7200:i');
+    expect(new IceServersService().forBrowser('i')[1]?.username).toBe('7200:i');
   });
 
   it('should leave TURN out without a secret', () => {
     vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
 
-    expect(new IceServersService().forInstance('i')).toHaveLength(1);
+    expect(new IceServersService().forBrowser('i')).toHaveLength(1);
   });
 });

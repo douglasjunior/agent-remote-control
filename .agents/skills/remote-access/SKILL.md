@@ -73,7 +73,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   proof, hands it to the host with the ICE servers, then at most 32 candidates. `CloseClientSessionUseCase` and
   `DisconnectHostUseCase` tell the other side with `session.closed`. The registry indexes hosts by socket and
   sessions by instance.
-- `IceServersService`: STUN from `P2P_STUN_URLS` (Google and Cloudflare by default); TURN when `P2P_TURN_URLS` and
+- `IceServersService`: `forHost()` gives STUN only, since a relay on the browser's side is enough, and
+  `forBrowser(instanceId)` adds TURN. STUN comes from `P2P_STUN_URLS` (Google and Cloudflare by default); TURN when `P2P_TURN_URLS` and
   `P2P_TURN_SECRET` are set, with coturn REST credentials: username `<expiry>:<instance id>`, password base64
   HMAC-SHA1 of the username under the secret. Time runs in windows of `P2P_TURN_TTL_SECONDS` (default an hour) and a
   credential expires at the end of the window after its own, so every peer of an instance gets the same credential
@@ -116,7 +117,10 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 - `WebRtcServerConnection` negotiates through `/signal/client` of the page's origin with a fresh certificate per
   attempt and the proof of the token for it, treats `client.rejected` as `unauthorized`, refuses an answer whose
   fingerprint differs from the pinned one (`untrusted`) and a host of another protocol version (`incompatible`),
-  none retried, and reports `turn` when the selected candidate pair has a relayed end.
+  none retried, and reports `turn` when the selected candidate pair has a relayed end. Attempts leave the TURN URLs
+  out until one fails to connect (its peer connection fails, or no channel 8 s after its offer); from then on, for
+  the life of the page, they take the relay. A TURN allocation holds a relay port for as long as its connection lives,
+  even a direct one.
 
 ## Relay (`deploy/coturn`)
 
@@ -128,7 +132,7 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   (`docker_gwbridge` under Swarm, where host-mode ports arrive), or `TURN_RELAY_IP`, and maps `TURN_EXTERNAL_IP` to it.
   coturn would otherwise also relay from the overlay address, unreachable from outside.
 - Limits come from the entrypoint: `TURN_MAX_BPS` (256 KiB/s per session), `TURN_BPS_CAPACITY` (2 MiB/s in all),
-  `TURN_USER_QUOTA` (4 allocations per credential) and `TURN_TOTAL_QUOTA` (20).
+  `TURN_USER_QUOTA` (8 allocations per credential, that is per instance) and `TURN_TOTAL_QUOTA` (20).
 - CapRover reads `dockerfilePath` from the folder of the captain definition, so both definitions sit at the
   repository root, which every Dockerfile copies from: `captain-definition-p2p-server` (`Dockerfile.p2p`) and
   `captain-definition-coturn` (`deploy/coturn/Dockerfile`). coturn's ports go in host mode through a service

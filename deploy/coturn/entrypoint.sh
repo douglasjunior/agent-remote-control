@@ -41,6 +41,6 @@ exec turnserver -c /etc/coturn/turnserver.conf \
   ${TURN_EXTERNAL_IP:+--denied-peer-ip="$TURN_EXTERNAL_IP"} \
   --max-bps="${TURN_MAX_BPS:-262144}" \
   --bps-capacity="${TURN_BPS_CAPACITY:-2097152}" \
-  --user-quota="${TURN_USER_QUOTA:-4}" \
+  --user-quota="${TURN_USER_QUOTA:-8}" \
   --total-quota="${TURN_TOTAL_QUOTA:-20}" \
   "$@"

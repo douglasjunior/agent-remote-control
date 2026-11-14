@@ -12,7 +12,11 @@ import { WebRtcServerConnection } from './webrtc-server-connection.js';
 const INSTANCE = '0123456789abcdef0123';
 const HEX = Array.from({ length: 32 }, (_, index) => index.toString(16).padStart(2, '0').toUpperCase()).join(':');
 const OTHER_HEX = HEX.replace('00', 'FF');
-const iceServers = [{ urls: ['stun:stun.example.com:3478'] }];
+const STUN = { urls: ['stun:stun.example.com:3478'] };
+const iceServers = [
+  STUN,
+  { urls: ['stun:turn.example.com:3478', 'turn:turn.example.com:3478?transport=udp', 'turns:turn.example.com:5349'], username: 'u', credential: 'c' },
+];
 const answerSdp = (hex = HEX) => `v=0\r\na=fingerprint:sha-256 ${hex}\r\n`;
 const BROWSER_HEX = HEX.replace('00', 'AA');
 const OFFER_SDP = answerSdp(BROWSER_HEX);
@@ -259,13 +263,58 @@ describe('WebRtcServerConnection', () => {
     peer().onicecandidate!({ candidate: { candidate: 'c2', sdpMid: null } });
     peer().onicecandidate!({ candidate: null });
 
-    expect(peer().config).toEqual({ iceServers, certificates: [CERTIFICATE] });
+    expect(peer().config).toEqual({ iceServers: [STUN, { urls: ['stun:turn.example.com:3478'] }], certificates: [CERTIFICATE] });
     expect(peer().channel!.label).toBe('arc');
     expect(socket().sent.slice(1)).toEqual([
       { type: 'client.offer', sdp: OFFER_SDP },
       { type: 'client.candidate', candidate: 'c1', mid: '0' },
       { type: 'client.candidate', candidate: 'c2', mid: '0' },
     ]);
+  });
+
+  it.each([
+    [
+      'opens no channel in time', async () => {
+        vi.advanceTimersByTime(7_999);
+        expect(statuses.at(-1)).toBe('connecting');
+        vi.advanceTimersByTime(1);
+      },
+    ],
+    ['fails to connect', async () => peer().changeState('failed')],
+  ])('should take the TURN relay, from then on, once an attempt without it %s', async (_name, fail) => {
+    await accept();
+    await fail();
+    expect(statuses.at(-1)).toBe('closed');
+    vi.advanceTimersByTime(500);
+    socket().open();
+    await vi.waitFor(() => expect(socket().sent).toHaveLength(1));
+    socket().receive({ type: 'client.accepted', iceServers, protocolVersion: PROTOCOL_VERSION });
+    await flush();
+    vi.advanceTimersByTime(60_000);
+
+    expect(peer().config).toEqual({ iceServers, certificates: [CERTIFICATE] });
+    expect(statuses.at(-1)).toBe('connecting');
+  });
+
+  it('should retry without the relay when a connection that was open fails', async () => {
+    await openChannel();
+    peer().changeState('failed');
+    vi.advanceTimersByTime(500);
+    socket().open();
+    await vi.waitFor(() => expect(socket().sent).toHaveLength(1));
+    socket().receive({ type: 'client.accepted', iceServers, protocolVersion: PROTOCOL_VERSION });
+    await flush();
+
+    expect(statuses).toEqual(['connecting', 'closed', 'connecting']);
+    expect(peer().config).toEqual({ iceServers: [STUN, { urls: ['stun:turn.example.com:3478'] }], certificates: [CERTIFICATE] });
+  });
+
+  it('should keep going without the relay once the channel opens in time', async () => {
+    await openChannel();
+    vi.advanceTimersByTime(60_000);
+    peer().channel!.receive({ type: 'auth.ok' });
+
+    expect(statuses.at(-1)).toBe('open');
   });
 
   it('should take the pinned answer and the candidates of the host', async () => {

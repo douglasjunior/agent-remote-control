@@ -31,7 +31,7 @@ export class RelayClientSignalUseCase {
         return false;
       }
       this.registry.updateSession(sessionId, { state: 'offered' });
-      host.socket.send({ type: 'session.offer', sessionId, sdp: signal.sdp, iceServers: this.iceServers.forInstance(session.instanceId) });
+      host.socket.send({ type: 'session.offer', sessionId, sdp: signal.sdp, iceServers: this.iceServers.forHost() });
       return true;
     }
     if (session.state !== 'offered' || session.candidates >= MAX_CANDIDATES_PER_SESSION) {

@@ -34,7 +34,7 @@ export class RelayHostSignalUseCase {
           this.registry.updateSession(session.id, { state: 'accepted' });
           session.client.send({
             type: 'client.accepted',
-            iceServers: this.iceServers.forInstance(session.instanceId),
+            iceServers: this.iceServers.forBrowser(session.instanceId),
             protocolVersion: registered.protocolVersion,
           });
         }

@@ -6,7 +6,7 @@ import { createHmac } from 'node:crypto';
 const DEFAULT_STUN_URLS = ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'];
 const DEFAULT_TURN_TTL_SECONDS = 60 * 60;
 
-/** The STUN and TURN servers handed to both peers of a session. */
+/** The STUN servers handed to both peers of a session, and the TURN relay handed to browsers only. */
 @Injectable()
 export class IceServersService implements OnModuleInit {
   private readonly logger = new Logger(IceServersService.name);
@@ -19,15 +19,20 @@ export class IceServersService implements OnModuleInit {
     this.logger.log(this.turnEnabled() ? `TURN relay: ${this.turnUrls.join(', ')}` : 'TURN relay: off');
   }
 
+  /** STUN only: a relay on the browser's side is enough to reach the host, which then spends no allocation. */
+  forHost(): IceServer[] {
+    return [{ urls: this.stunUrls }];
+  }
+
   /**
-   * STUN for everyone, plus TURN with a credential of coturn's REST API (`use-auth-secret`): the username is
+   * STUN, plus TURN with a credential of coturn's REST API (`use-auth-secret`): the username is
    * `<expiry>:<instance id>` and the password its HMAC-SHA1 under the shared secret, so it expires on its own. Time
    * runs in windows of the TTL and a credential expires at the end of the window after the one it was issued in: it
    * lasts at least one TTL, and every peer of an instance gets the same one within a window, so coturn's quota per
    * user is a quota per instance.
    */
-  forInstance(instanceId: string): IceServer[] {
-    const servers: IceServer[] = [{ urls: this.stunUrls }];
+  forBrowser(instanceId: string): IceServer[] {
+    const servers = this.forHost();
     if (this.turnEnabled()) {
       const window = Math.floor(Date.now() / 1000 / this.turnTtlSeconds);
       const username = `${(window + 2) * this.turnTtlSeconds}:${instanceId}`;

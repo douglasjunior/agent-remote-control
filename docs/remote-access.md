@@ -45,9 +45,15 @@ Two pieces run on a machine with a public address:
 | `P2P_TRUSTED_PROXY_HOPS` | Proxies in front of the server, whose `X-Forwarded-For` entries give the client's address for the limits per address | `0` |
 
 A browser gets the ICE servers, with a TURN credential, only once the host of its link accepted its proof of the
-access token. Each credential is `<expiry>:<instance id>` signed with the shared secret, so it expires by itself and
-coturn needs no user list; every peer of an instance gets the same one within a window, so coturn's quota per user
-counts per instance. A relayed connection drops when its credential expires, and the web app reconnects with a new one.
+access token; the host gets STUN only, since a relay on one side is enough. Each credential is
+`<expiry>:<instance id>` signed with the shared secret, so it expires by itself and coturn needs no user list; every
+browser of an instance gets the same one within a window, so coturn's quota per user counts per instance. A relayed
+connection drops when its credential expires, and the web app reconnects with a new one.
+
+Every TURN allocation holds a relay port for as long as its connection lives, even when the connection ends up
+direct, so the web app first tries without the relay and takes it only after an attempt fails to connect (8 s from
+its offer). Most connections then hold no relay port at all, and one that needs the relay holds about two (browsers
+allocate once per TURN URL).
 
 `P2P_ALLOWED_INSTANCES` turns a public server into a private one: with it, nobody else can register a host and get
 relay credentials. A host prints its instance id in its remote link (`/i/<instance id>`).
@@ -72,7 +78,7 @@ Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` ser
 | `TURN_RELAY_IP` | Address coturn relays from, mapped to `TURN_EXTERNAL_IP` | The address of the default route's interface |
 | `TURN_MAX_BPS` | Bytes per second each session may relay | `262144` (256 KiB/s) |
 | `TURN_BPS_CAPACITY` | Bytes per second the whole relay may carry | `2097152` (2 MiB/s) |
-| `TURN_USER_QUOTA` | Allocations at once per credential | `4` |
+| `TURN_USER_QUOTA` | Allocations at once per credential, that is per instance: about two per relayed browser | `8` |
 | `TURN_TOTAL_QUOTA` | Allocations at once on the relay | `20` |
 
 The relay listens on 3478 (UDP and TCP) and relays through ports 49160–49179 (UDP), one per allocation, from a

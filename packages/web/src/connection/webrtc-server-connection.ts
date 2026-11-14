@@ -20,24 +20,42 @@ import type { RemoteLink } from './remote-link.js';
 const MAX_EVENT_LENGTH = 64 * 1024 * 1024;
 
 const CERTIFICATE_ALGORITHM: EcKeyGenParams = { name: 'ECDSA', namedCurve: 'P-256' };
+/** How long an attempt without the relay may take to open its channel, from its offer, before the relay is needed. */
+const DIRECT_TIMEOUT_MS = 8_000;
 
 /**
  * Reaches a host from anywhere: the signaling server of the page introduces the browser to the host and a WebRTC
  * data channel carries the messages, in frames. The host must present the certificate the link pinned.
+ *
+ * Attempts go without the TURN relay until one fails to connect directly; from then on, for the life of the page,
+ * they take the relay. Every TURN allocation holds a port of the shared relay for as long as its connection lives,
+ * so the connections that reach the host directly hold none.
  */
 export class WebRtcServerConnection extends ChannelServerConnection {
+  private relay = false;
+
   constructor(tokens: AccessTokenStore, private readonly link: RemoteLink) {
     super(tokens, 'webrtc');
   }
 
   protected openChannel(token: string, handlers: ChannelHandlers): ServerChannel {
-    return new PeerChannel(this.link, token, handlers);
+    return new PeerChannel(this.link, token, this.relay, () => {
+      this.relay = true;
+    }, handlers);
   }
+}
+
+/** The servers without their TURN URLs. */
+function withoutRelay(servers: IceServer[]): IceServer[] {
+  return servers
+    .map(server => ({ urls: server.urls.filter(url => !/^turns?:/.test(url)) }))
+    .filter(server => server.urls.length > 0);
 }
 
 /**
  * One attempt: a fresh certificate, the proof of the access token for it in `client.connect`, then, once the host
- * accepts the proof, the offer made with that certificate and the ICE servers that came with the acceptance.
+ * accepts the proof, the offer made with that certificate and the ICE servers that came with the acceptance, without
+ * the TURN ones unless `relay`. An attempt without them that does not connect reports `onDirectFailed`.
  */
 class PeerChannel implements ServerChannel {
   private readonly signaling: WebSocket;
@@ -45,9 +63,16 @@ class PeerChannel implements ServerChannel {
   private certificate: RTCCertificate | null = null;
   private peer: RTCPeerConnection | null = null;
   private dataChannel: RTCDataChannel | null = null;
+  private directTimer: ReturnType<typeof setTimeout> | null = null;
   private ended = false;
 
-  constructor(private readonly link: RemoteLink, private readonly token: string, private readonly handlers: ChannelHandlers) {
+  constructor(
+    private readonly link: RemoteLink,
+    private readonly token: string,
+    private readonly relay: boolean,
+    private readonly onDirectFailed: () => void,
+    private readonly handlers: ChannelHandlers,
+  ) {
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
     this.signaling = new WebSocket(`${protocol}://${location.host}${SIGNALING_CLIENT_PATH}`);
     this.signaling.onopen = () => this.connect().catch(() => this.fail('closed'));
@@ -132,7 +157,7 @@ class PeerChannel implements ServerChannel {
       this.fail('incompatible');
       return;
     }
-    const peer = new RTCPeerConnection({ iceServers, certificates: [this.certificate!] });
+    const peer = new RTCPeerConnection({ iceServers: this.relay ? iceServers : withoutRelay(iceServers), certificates: [this.certificate!] });
     const channel = peer.createDataChannel(DATA_CHANNEL_LABEL);
     this.peer = peer;
     this.dataChannel = channel;
@@ -142,11 +167,17 @@ class PeerChannel implements ServerChannel {
       }
     };
     peer.onconnectionstatechange = () => {
-      if (peer.connectionState === 'failed' || peer.connectionState === 'closed') {
-        this.fail('closed');
+      if (peer.connectionState !== 'failed' && peer.connectionState !== 'closed') {
+        return;
       }
+      if (this.isOpen()) {
+        this.fail('closed');
+        return;
+      }
+      this.failToConnect();
     };
     channel.onopen = () => {
+      this.clearDirectTimer();
       this.signaling.close();
       this.handlers.onOpen();
       void this.reportTransport(peer);
@@ -156,6 +187,24 @@ class PeerChannel implements ServerChannel {
     const description = await peer.createOffer();
     await peer.setLocalDescription(description);
     this.signal({ type: 'client.offer', sdp: description.sdp ?? '' });
+    if (!this.relay) {
+      this.directTimer = setTimeout(() => this.failToConnect(), DIRECT_TIMEOUT_MS);
+    }
+  }
+
+  /** Fails an attempt whose channel never opened; one without the relay makes the next ones take it. */
+  private failToConnect(): void {
+    if (!this.relay) {
+      this.onDirectFailed();
+    }
+    this.fail('closed');
+  }
+
+  private clearDirectTimer(): void {
+    if (this.directTimer) {
+      clearTimeout(this.directTimer);
+      this.directTimer = null;
+    }
   }
 
   /** Refuses an answer whose certificate is not the pinned one: whoever answers would read the access token. */
@@ -207,6 +256,7 @@ class PeerChannel implements ServerChannel {
   }
 
   private release(): void {
+    this.clearDirectTimer();
     this.signaling.close();
     this.dataChannel?.close();
     this.peer?.close();

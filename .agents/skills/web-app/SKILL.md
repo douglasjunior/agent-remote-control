@@ -74,6 +74,8 @@ packages/web/src/
   frames. Each attempt generates an ECDSA certificate (`RTCPeerConnection.generateCertificate`), reads its fingerprint
   from a throwaway offer and sends `client.connect` with `sessionProof(token, instance id, fingerprint)`; the offer, made
   with that certificate, waits for `client.accepted`. `client.rejected` (the host refused the proof) is `unauthorized`.
+  Attempts leave the TURN URLs out until one fails to connect (no channel 8 s after its offer, or a failed peer
+  connection); from then on, for the life of the page, they take the relay.
   It refuses an answer whose certificate fingerprint is not the pinned one (`untrusted`) and a host of another
   `PROTOCOL_VERSION` (`incompatible`), and turns its transport to `turn` when the selected candidate pair is relayed.
 - `createAppConnection(import.meta.env.MODE)` picks the transport in `main.tsx`: the `p2p` mode (`vite --mode p2p`,
