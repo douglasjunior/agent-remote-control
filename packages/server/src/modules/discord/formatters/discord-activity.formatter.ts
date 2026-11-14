@@ -8,7 +8,7 @@ import type { AudioTranscript } from '../../orchestrator/models/audio-transcript
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { QuestionTimedOut } from '../../orchestrator/models/question-event.model.js';
 import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
-import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
+import type { SkillActivity, TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
@@ -23,6 +23,7 @@ const CLOSE_FENCE = '\n```';
 const DEFAULT_LABEL = 'default';
 const MAX_TOOL_DETAILS_LENGTH = 1800;
 const QUOTA_BAR_LENGTH = 10;
+const SKILL_ERROR_LENGTH = 200;
 const QUOTA_WINDOW_LABELS: Readonly<Record<string, string>> = {
   '5h': '5h',
   '7d': 'Week',
@@ -32,7 +33,12 @@ const QUOTA_WINDOW_LABELS: Readonly<Record<string, string>> = {
 
 @Injectable()
 export class DiscordActivityFormatter {
-  formatActivity(activity: TurnActivity): string | null {
+  /** `role` names the agent behind a skill activity. */
+  formatActivity(activity: TurnActivity, role?: string): string | null {
+    if (activity.kind === 'skill') {
+      return this.formatSkill(activity, role);
+    }
+
     if (activity.kind === 'thought') {
       const text = activity.text.trim();
       if (!text) {
@@ -64,6 +70,23 @@ export class DiscordActivityFormatter {
     }
 
     return null;
+  }
+
+  private formatSkill(activity: SkillActivity, role = 'Agent'): string {
+    const names = activity.names.map(name => `\`${name}\``).join(', ');
+    if (activity.status === 'failed') {
+      const verb = activity.action === 'read' ? 'read' : 'write';
+      const reason = activity.error ? ` — ${this.truncate(activity.error, SKILL_ERROR_LENGTH)}` : '';
+      return `⚠️ **${role}** could not ${verb} the skill ${names}${reason}`;
+    }
+    if (activity.action === 'read') {
+      return `📘 **${role}** read the skill ${names}`;
+    }
+    return `📝 **${role}** ${activity.created ? 'created' : 'updated'} the skill ${names}`;
+  }
+
+  private truncate(text: string, length: number): string {
+    return text.length > length ? `${text.slice(0, length - 1)}…` : text;
   }
 
   private formatToolDetails(details?: string): string | null {

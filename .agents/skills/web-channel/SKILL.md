@@ -82,10 +82,12 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `projects.list` answers the project folders of the workspace (`IWorkspacePort.listProjectFolders`), the values an artifact's project takes.
 - **Skills** (`WebSkillsService` over `IAgentSkillsPort`, from `AgentDefinitionsModule`): `skills.list` answers every skill with its roles
   and whether it is built-in (`listAll`); `skill.get { name }` answers `skill.detail { name, skill }`, the skill with its content built for
-  the first role that reads it (`readAny`), or `skill: null` for an unknown name. The web only reads skills: the user changes a custom one
-  by asking the CEO, which writes it with `<skill_write>`.
+  the first role that reads it (`readAny`), or `skill: null` for an unknown name. `skill.delete { requestId, name }` deletes a custom skill
+  (`deleteUserSkill`), broadcasts `skill.deleted { name }` to every connection and answers `skill.result { requestId, ok, error? }`; a
+  built-in or unknown name fails. The web never writes skills: the user changes a custom one by asking the CEO, which writes it with
+  `<skill_write>`.
   The artifact mutations are logged by type. A `delegation` entry carries `artifactId` when the agent held one.
-- Turn callbacks become entries: `onActivity` → `thought` or `tool` (always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`),
+- Turn callbacks become entries: `onActivity` → `thought`, `tool` or `skill` (a skill read or written: `action`, `names`, `status`, `created`, `error`; always carrying the `role` of the agent that produced it, the CEO included), `onDelegation` → `delegation` (with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`),
   `onInterimMessage` → `interim`, `onQuestion` → `question` (with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply), and, when a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`; the `TurnResult` becomes `agent_response`.
   Steering and cancellation markers have no entry.
 - `ConversationEntryService` (`web/services/conversation-entry.service.ts`) builds every entry. It owns the clock and the random ids, so the use cases and services that publish entries receive it through their constructors.

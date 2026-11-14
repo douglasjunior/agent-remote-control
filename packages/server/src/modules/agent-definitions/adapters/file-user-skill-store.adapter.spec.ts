@@ -52,6 +52,16 @@ describe('FileUserSkillStoreAdapter', () => {
     expect(await store.list()).toEqual([]);
   });
 
+  it('deletes the folder of the skill of that name, whatever the folder is called', async () => {
+    await writeSkill('my-folder', '---\nname: cypress\ndescription: Cypress.\nroles: QA\n---\nBody');
+    await writeSkill('other', '---\ndescription: Other.\nroles: QA\n---\nBody');
+
+    expect(await store.delete('CYPRESS')).toBe(true);
+    expect(await store.delete('cypress')).toBe(false);
+    expect((await store.list()).map(skill => skill.name)).toEqual(['other']);
+    await expect(readFile(join(dataDir, 'skills', 'my-folder', 'SKILL.md'))).rejects.toThrow();
+  });
+
   it('writes a skill it reads back, telling whether it was created', async () => {
     const skill = { name: 'electron-testing', description: 'Testing\nElectron apps.', roles: ['QA', 'DEVELOPER'], content: '# Electron\n\nLaunch it.' };
 

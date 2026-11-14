@@ -652,10 +652,12 @@ describe('ExecuteAgentTurnUseCase', () => {
   it('should answer a skill request with the skill content in the next prompt', async () => {
     agentSkills.skills = { CEO: [{ name: 'board', description: 'Routing the board.', content: 'Route it.' }] };
     stubAgentPort.mockResponses = ['<final_response><skill_read name="board"/></final_response>', 'Done.'];
+    const onActivity = vi.fn();
 
-    const result = await useCase.execute(turnRequest());
+    const result = await useCase.execute(turnRequest({ onActivity }));
 
     expect(result.response).toBe('Done.');
+    expect(onActivity).toHaveBeenCalledWith(expect.objectContaining({ kind: 'skill', action: 'read', names: ['board'], status: 'completed' }), 'CEO');
     expect(stubAgentPort.promptCalls[1]).toContain('<request_result request="skill_read" name="board" status="ok">\n# Skill: board\n\nRoute it.\n</request_result>');
   });
 

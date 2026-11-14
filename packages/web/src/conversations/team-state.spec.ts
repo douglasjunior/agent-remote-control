@@ -133,6 +133,13 @@ describe('deriveTeam', () => {
       expect(stateOf(team, 'CEO').state).toBe('idle');
     });
 
+    it('tells that a delegated agent is reading a skill', () => {
+      const step: ConversationEntry = { id: 's', at, type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed' };
+      const team = deriveTeam([user, delegation('started', 'QA'), step], true);
+
+      expect(stateOf(team, 'QA')).toMatchObject({ state: 'working', steps: 1, doing: 'Reading a skill' });
+    });
+
     it('drops a closed delegation at a new user message', () => {
       const step: ConversationEntry = { id: 's', at, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' };
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), step, delegation('finished', 'DEVELOPER'), next], true);

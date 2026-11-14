@@ -12,6 +12,17 @@ describe('DiscordActivityFormatter', () => {
   const formatter = new DiscordActivityFormatter();
 
   describe('formatActivity', () => {
+    it.each([
+      [{ action: 'read', names: ['api-testing', 'web-ui-testing'], status: 'completed' }, 'QA', '📘 **QA** read the skill `api-testing`, `web-ui-testing`'],
+      [{ action: 'write', names: ['x'], status: 'completed', created: true }, 'CEO', '📝 **CEO** created the skill `x`'],
+      [{ action: 'write', names: ['x'], status: 'completed', created: false }, 'CEO', '📝 **CEO** updated the skill `x`'],
+      [{ action: 'read', names: ['x'], status: 'failed', error: 'Unknown skill "x".' }, 'QA', '⚠️ **QA** could not read the skill `x` — Unknown skill "x".'],
+      [{ action: 'write', names: ['x'], status: 'failed', error: 'e'.repeat(250) }, undefined, `⚠️ **Agent** could not write the skill \`x\` — ${'e'.repeat(199)}…`],
+      [{ action: 'write', names: ['x'], status: 'failed' }, 'CEO', '⚠️ **CEO** could not write the skill `x`'],
+    ] as const)('should format the skill activity %o of %s', (skill, role, expected) => {
+      expect(formatter.formatActivity({ kind: 'skill', id: 's', ...skill, names: [...skill.names] }, role)).toBe(expected);
+    });
+
     it('should format single-line thought activity as a blockquote with emoji', () => {
       const activity: AgentActivity = {
         kind: 'thought',

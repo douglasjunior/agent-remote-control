@@ -38,6 +38,21 @@ describe('SquadPanel', () => {
     expect(stationStates().every(([, state]) => state === 'idle')).toBe(true);
   });
 
+  it('shows what each role runs on, and an agent that is not installed', () => {
+    renderPanel([], false, {
+      profiles: [
+        { role: 'CEO', roleName: 'CEO', agent: { id: 'copilot', name: 'GitHub Copilot', available: true }, model: { id: 'auto', name: 'Auto' } },
+        { role: 'QA', roleName: 'QA Agent', agent: { id: 'codex', name: 'Codex', available: false }, model: { id: 'm', name: 'GPT' }, effort: { id: 'h', name: 'High' } },
+        { role: 'DEVELOPER', roleName: 'Developer Agent' },
+      ],
+    });
+
+    expect(station(/Coordinator/)).toHaveTextContent('GitHub Copilot · Auto');
+    expect(station(/QA/)).toHaveTextContent('Codex · GPT · Highnot installed');
+    expect(station(/Developer/)).toHaveTextContent('Not configured');
+    expect(within(station(/Reviewer/)).queryByText(/·|Not configured/)).not.toBeInTheDocument();
+  });
+
   it('keeps the same size however many delegations the conversation accumulates', () => {
     const turn = (index: number): ConversationEntry[] => [
       user(`u${index}`),

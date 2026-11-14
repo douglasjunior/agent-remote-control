@@ -1,4 +1,3 @@
-import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import { Pencil, Users } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -8,6 +7,7 @@ import { useConnection } from '../connection/connection-context.js';
 import { useConversations } from '../conversations/conversations-context.js';
 import { emptyConversationView } from '../conversations/conversations-reducer.js';
 import { agentIdentity } from '../lib/agent-identity.js';
+import { profileSummary } from '../lib/role-profile.js';
 import { cn } from '../lib/utils.js';
 
 import { AgentMark } from './agent/agent-mark.js';
@@ -20,12 +20,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '
 
 /** The editor open in the sheet: one role's, or the one that applies to every role. */
 const EVERY_ROLE = '*';
-
-function summaryOf(profile: RoleProfile) {
-  return profile.agent
-    ? [profile.agent.name, profile.model?.name, profile.effort?.name].filter(Boolean).join(' · ')
-    : 'Not configured';
-}
 
 export function SettingsSheet({ conversationId, open, onOpenChange }: {
   readonly conversationId: string;
@@ -131,7 +125,7 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{identity.label}</p>
                       <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                        <span className="truncate">{summaryOf(profile)}</span>
+                        <span className="truncate">{profileSummary(profile)}</span>
                         {profile.agent && !profile.agent.available && <Badge variant="destructive">not installed</Badge>}
                       </p>
                     </div>

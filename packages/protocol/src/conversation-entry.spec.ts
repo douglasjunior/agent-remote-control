@@ -10,6 +10,8 @@ describe('conversationEntrySchema', () => {
     { id: '1b', at, type: 'user_message', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
     { id: 'thought:1', at, type: 'thought', text: 'hmm', removed: true, role: 'CEO' },
     { id: 'tool:1', at, type: 'tool', title: 'Read', status: 'in_progress', result: 'r', details: 'd', role: 'DEVELOPER' },
+    { id: 'skill:1', at, type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed' },
+    { id: 'skill:2', at, type: 'skill', role: 'CEO', action: 'write', names: ['electron-testing'], status: 'failed', created: false, error: 'No.' },
     { id: 'delegation:dl-1:started', at, type: 'delegation', delegationId: 'dl-1', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 'Adding the login screen', artifactId: 'T-1' },
     {
       id: 'delegation:dl-1:finished',
@@ -75,6 +77,7 @@ describe('conversationEntrySchema', () => {
     ['the removed selection entry', { id: '1', at, type: 'selection', mode: 'selection', step: 'agent', options: [] }],
     ['missing id', { at, type: 'interim', text: 'x' }],
     ['invalid tool status', { id: '1', at, type: 'tool', title: 't', status: 'done' }],
+    ['unknown skill action', { id: '1', at, type: 'skill', role: 'QA', action: 'delete', names: ['x'], status: 'completed' }],
     ['a delegation without its delegationId', { id: '1', at, type: 'delegation', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 's' }],
     ['a question without closed', { id: '1', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'q', options: [], number: 1, total: 1 }],
     ['non-object', 42],

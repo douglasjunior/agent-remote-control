@@ -1,10 +1,12 @@
 import type { SkillDetail as Skill, SkillSummary } from '@agent-remote-control/protocol/skill';
 import { BookOpenText } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useParams } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router';
+import { toast } from 'sonner';
 
 import { SkillDetail } from '../components/skills/skill-detail.js';
 import { SkillList } from '../components/skills/skill-list.js';
+import { skillsPath, type SkillsState } from '../components/skills/skill-paths.js';
 import { useConnection } from '../connection/connection-context.js';
 import { cn } from '../lib/utils.js';
 
@@ -13,6 +15,10 @@ import { cn } from '../lib/utils.js';
 export function SkillsPage() {
   const { connection, status } = useConnection();
   const { skillName } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const close = () => void navigate((location.state as SkillsState | null)?.returnTo ?? '/');
+  const pendingDeletes = useRef(new Map<string, string>());
   const [skills, setSkills] = useState<readonly SkillSummary[] | null>(null);
   const [details, setDetails] = useState<Readonly<Record<string, Skill | null>>>({});
 
@@ -21,8 +27,30 @@ export function SkillsPage() {
       setSkills(event.skills);
     } else if (event.type === 'skill.detail') {
       setDetails(current => ({ ...current, [event.name]: event.skill }));
+    } else if (event.type === 'skill.deleted') {
+      // A deleted custom skill may have replaced a built-in one, which comes back: the list and the detail are asked for again.
+      setDetails(({ [event.name]: _deleted, ...rest }) => rest);
+      connection.send({ type: 'skills.list' });
+      if (event.name === skillName) {
+        connection.send({ type: 'skill.get', name: event.name });
+      }
+    } else if (event.type === 'skill.result' && pendingDeletes.current.has(event.requestId)) {
+      const name = pendingDeletes.current.get(event.requestId)!;
+      pendingDeletes.current.delete(event.requestId);
+      if (event.ok) {
+        toast.success(`${name} deleted`);
+        void navigate(skillsPath(), { state: location.state });
+      } else {
+        toast.error(event.error);
+      }
     }
-  }), [connection]);
+  }), [connection, skillName, navigate, location.state]);
+
+  const deleteSkill = (name: string) => {
+    const requestId = crypto.randomUUID();
+    pendingDeletes.current.set(requestId, name);
+    connection.send({ type: 'skill.delete', requestId, name });
+  };
 
   useEffect(() => {
     if (status === 'open') {
@@ -53,7 +81,7 @@ export function SkillsPage() {
       return <p role="status" className="p-6 text-sm text-muted-foreground">Loading…</p>;
     }
     return detail
-      ? <SkillDetail key={detail.name} skill={detail} />
+      ? <SkillDetail key={detail.name} skill={detail} onDelete={() => deleteSkill(detail.name)} />
       : <p className="p-6 text-sm text-muted-foreground">{`No skill is named "${skillName}".`}</p>;
   };
 
@@ -62,7 +90,7 @@ export function SkillsPage() {
       <aside aria-label="Skills" className={cn('min-h-0 border-r', skillName && 'hidden md:block')}>
         {skills === null
           ? <p role="status" className="p-6 text-sm text-muted-foreground">Loading skills…</p>
-          : <SkillList skills={skills} />}
+          : <SkillList skills={skills} onClose={close} />}
       </aside>
       <section aria-label="Skill" className={cn('@container min-h-0 overflow-y-auto', !skillName && 'hidden md:block')}>
         {renderDetail()}

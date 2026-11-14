@@ -66,6 +66,10 @@ export class AgentSkillsService implements IAgentSkillsPort {
     return { ok: true, created: await this.userSkills.write({ ...skill, roles }) };
   }
 
+  deleteUserSkill(name: string): Promise<boolean> {
+    return this.userSkills.delete(name);
+  }
+
   private writeRefusal(role: string, { name, description, roles, content }: AgentSkillInput): string | undefined {
     if (!this.writesSkills(role)) {
       return 'You cannot write skills.';

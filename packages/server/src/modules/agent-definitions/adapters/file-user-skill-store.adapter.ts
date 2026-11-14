@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { AgentSkillInput } from '../../orchestrator/models/agent-skill.model.js';
@@ -27,14 +27,27 @@ export class FileUserSkillStoreAdapter implements IUserSkillStorePort {
   }
 
   async list(): Promise<readonly AgentSkillDefinition[]> {
-    const skills: AgentSkillDefinition[] = [];
+    return (await this.entries()).map(entry => entry.skill);
+  }
+
+  async delete(name: string): Promise<boolean> {
+    const entry = (await this.entries()).find(candidate => candidate.skill.name.toLowerCase() === name.toLowerCase());
+    if (!entry) {
+      return false;
+    }
+    await rm(join(this.directory, entry.folder), { recursive: true, force: true });
+    return true;
+  }
+
+  private async entries(): Promise<{ folder: string; skill: AgentSkillDefinition }[]> {
+    const entries: { folder: string; skill: AgentSkillDefinition }[] = [];
     for (const folder of (await this.folders()).sort()) {
       const skill = await this.readSkill(join(this.directory, folder, SKILL_FILE), folder);
       if (skill) {
-        skills.push(skill);
+        entries.push({ folder, skill });
       }
     }
-    return skills;
+    return entries;
   }
 
   async write(skill: AgentSkillInput): Promise<boolean> {

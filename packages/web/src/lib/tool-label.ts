@@ -1,3 +1,6 @@
+import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
+
+
 const LABELS: readonly (readonly [RegExp, string])[] = [
   [/\b(test|tests|vitest|jest|pytest|spec)\b/i, 'Running tests'],
   [/\b(git|commit|push|pull|rebase|merge|checkout|branch)\b/i, 'Working with Git'],
@@ -12,4 +15,17 @@ const LABELS: readonly (readonly [RegExp, string])[] = [
 /** What a tool call means in plain words; the title itself when nothing matches. */
 export function toolLabel(title: string): string {
   return LABELS.find(([pattern]) => pattern.test(title))?.[1] ?? title;
+}
+
+/** What reading or writing a skill means in plain words. */
+export function skillLabel(action: 'read' | 'write'): string {
+  return action === 'read' ? 'Reading a skill' : 'Writing a skill';
+}
+
+/** What a step of an agent says it is doing, in plain words. */
+export function stepLabel(step: Extract<ConversationEntry, { type: 'thought' | 'tool' | 'skill' }>): string {
+  if (step.type === 'tool') {
+    return toolLabel(step.title);
+  }
+  return step.type === 'skill' ? skillLabel(step.action) : 'Thinking';
 }

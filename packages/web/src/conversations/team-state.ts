@@ -3,7 +3,7 @@ import type { InterruptedWork } from '@agent-remote-control/protocol/server-even
 
 import type { AgentMarkState } from '../components/agent/agent-mark.js';
 import { agentIdentity, TEAM_ROLES } from '../lib/agent-identity.js';
-import { toolLabel } from '../lib/tool-label.js';
+import { stepLabel } from '../lib/tool-label.js';
 
 import { openQuestion } from './open-question.js';
 
@@ -19,7 +19,7 @@ export interface TeamMember {
   readonly startedAt?: number;
   /** Present once the agent has stopped. */
   readonly durationMs?: number;
-  /** Thoughts and tool calls the agent produced in the current turn. */
+  /** Thoughts, tool calls and skills the agent produced in the current turn. */
   readonly steps: number;
   /** What the agent did last, in plain words. */
   readonly doing?: string;
@@ -58,10 +58,10 @@ export function deriveTeam(
           activity.delete(role);
         }
       }
-    } else if ((entry.type === 'thought' && !entry.removed) || entry.type === 'tool') {
+    } else if ((entry.type === 'thought' && !entry.removed) || entry.type === 'tool' || entry.type === 'skill') {
       activity.set(entry.role, {
         steps: (activity.get(entry.role)?.steps ?? 0) + 1,
-        doing: entry.type === 'tool' ? toolLabel(entry.title) : 'Thinking',
+        doing: stepLabel(entry),
       });
     } else if (entry.type === 'delegation') {
       const previous = delegates.get(entry.role);

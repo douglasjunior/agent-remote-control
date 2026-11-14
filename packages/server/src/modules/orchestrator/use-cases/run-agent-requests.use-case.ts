@@ -1,9 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 
 import { FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor, ArtifactChanges, ArtifactOutcome } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import type { AgentRequest, AgentRequester } from '../models/agent-request.model.js';
+import type { SkillActivity } from '../models/turn-activity.model.js';
 import { type ArtifactAccess, type ArtifactField, IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
@@ -16,6 +18,8 @@ type Result = {
   readonly ref?: string;
   readonly name?: string;
   readonly failed?: boolean;
+  /** Whether a skill write created the skill. */
+  readonly created?: boolean;
   readonly body: string;
 };
 
@@ -40,12 +44,17 @@ export class RunAgentRequestsUseCase {
     @Inject(IAgentSkillsPort) private readonly skills: IAgentSkillsPort,
   ) {}
 
-  async execute(requests: readonly AgentRequest[], requester: AgentRequester): Promise<string> {
+  /** `onSkill` hears each skill read or written, for the channel to show it. */
+  async execute(requests: readonly AgentRequest[], requester: AgentRequester, onSkill?: (activity: SkillActivity) => void): Promise<string> {
     const access = this.agentRegistry.getArtifactAccess(requester.role);
     const refs = new Map<string, string>();
     const results: Result[] = [];
     for (const request of requests) {
-      results.push(await this.run(request, requester, access, refs));
+      const result = await this.run(request, requester, access, refs);
+      results.push(result);
+      if (request.kind === 'skill_read' || request.kind === 'skill_write') {
+        onSkill?.(this.skillActivity(request, result));
+      }
     }
     this.logger.log(`[Agent Requests] Conversation=${requester.conversationId}, Role=${requester.role}, Requests=${requests.length}, Failed=${results.filter(result => result.failed).length}`);
     return [
@@ -78,6 +87,14 @@ export class RunAgentRequestsUseCase {
     }
   }
 
+  private skillActivity(request: Extract<AgentRequest, { kind: 'skill_read' | 'skill_write' }>, result: Result): SkillActivity {
+    const base = { kind: 'skill' as const, id: randomUUID() };
+    const outcome = result.failed ? { status: 'failed' as const, error: result.body } : { status: 'completed' as const };
+    return request.kind === 'skill_read'
+      ? { ...base, action: 'read', names: request.names, ...outcome }
+      : { ...base, action: 'write', names: [request.name], ...outcome, ...(result.created !== undefined ? { created: result.created } : {}) };
+  }
+
   private async readSkills({ names }: Extract<AgentRequest, { kind: 'skill_read' }>, { role }: AgentRequester): Promise<Result> {
     const name = names.join(',');
     const bodies: string[] = [];
@@ -108,7 +125,7 @@ export class RunAgentRequestsUseCase {
       return { request: 'skill_write', name, failed: true, body: result.error };
     }
     const action = result.created ? 'Created' : 'Updated';
-    return { request: 'skill_write', name, body: `${action} skill "${name}" for ${roles.join(', ')}. Agents of those roles see it in their skill catalog from their next session, and its content applies the next time it is read.` };
+    return { request: 'skill_write', name, created: result.created, body: `${action} skill "${name}" for ${roles.join(', ')}. Agents of those roles see it in their skill catalog from their next session, and its content applies the next time it is read.` };
   }
 
   private async list(request: Extract<AgentRequest, { kind: 'list' }>, { conversationId }: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {

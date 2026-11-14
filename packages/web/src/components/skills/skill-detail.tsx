@@ -1,9 +1,13 @@
 import type { SkillDetail as Skill } from '@agent-remote-control/protocol/skill';
-import { ArrowLeft, Lock, MessageSquarePlus } from 'lucide-react';
-import { Link } from 'react-router';
+import { ArrowLeft, Lock, MessageSquarePlus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useLocation } from 'react-router';
 
 import { useConversations } from '../../conversations/conversations-context.js';
 import { Markdown } from '../entries/markdown.js';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '../ui/alert-dialog.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 
@@ -11,13 +15,48 @@ import { changeSkillPrompt, skillsPath } from './skill-paths.js';
 import { SkillRoles } from './skill-roles.js';
 
 
-/** A skill in full; a custom one can be changed by asking the Coordinator in a new conversation. */
-export function SkillDetail({ skill }: { readonly skill: Skill }) {
+function DeleteSkillButton({ name, onDelete }: { readonly name: string; readonly onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button size="sm" variant="ghost" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setOpen(true)}>
+        <Trash2 />
+        Delete
+      </Button>
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{`Delete the skill ${name}?`}</AlertDialogTitle>
+            <AlertDialogDescription>
+              It is removed from the server for good, and the agents that read it stop seeing it from their next session.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                setOpen(false);
+                onDelete();
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+/** A skill in full; a custom one can be changed by asking the Coordinator in a new conversation, or deleted. */
+export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readonly onDelete: () => void }) {
   const { startConversation } = useConversations();
+  const { state } = useLocation();
 
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-6">
-      <Link to={skillsPath()} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground md:hidden">
+      <Link to={skillsPath()} state={state} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground md:hidden">
         <ArrowLeft aria-hidden className="size-4" />
         All skills
       </Link>
@@ -45,10 +84,13 @@ export function SkillDetail({ skill }: { readonly skill: Skill }) {
         : (
           <div className="flex flex-col gap-3 rounded-xl border bg-muted/40 px-4 py-3 @lg:flex-row @lg:items-center @lg:justify-between">
             <p className="text-[13px] text-muted-foreground">Want it to say something else? The Coordinator rewrites it for you.</p>
-            <Button size="sm" className="shrink-0" onClick={() => startConversation(changeSkillPrompt(skill.name))}>
-              <MessageSquarePlus />
-              Ask the Coordinator
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              <DeleteSkillButton name={skill.name} onDelete={onDelete} />
+              <Button size="sm" className="shrink-0" onClick={() => startConversation(changeSkillPrompt(skill.name))}>
+                <MessageSquarePlus />
+                Ask the Coordinator
+              </Button>
+            </div>
           </div>
         )}
       <div className="rounded-2xl border bg-card px-5 py-4">

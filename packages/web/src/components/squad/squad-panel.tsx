@@ -1,3 +1,4 @@
+import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import { useRef } from 'react';
 
 import type { TeamMember } from '../../conversations/team-state.js';
@@ -16,8 +17,10 @@ const COORDINATOR = 'CEO';
  * The present moment of the squad: one station per role, joined by a neutral spine. It describes the
  * current turn only and never grows; the feed is the history.
  */
-export function SquadPanel({ members, focus, highlight, delivery, onSelect, onContinue }: {
+export function SquadPanel({ members, profiles = [], focus, highlight, delivery, onSelect, onContinue }: {
   readonly members: readonly TeamMember[];
+  /** What each role runs on in this conversation. */
+  readonly profiles?: readonly RoleProfile[];
   readonly focus: string | null;
   readonly highlight: string | null;
   /** Counts the deliveries seen live; each increment plays the delivery moment once. */
@@ -59,6 +62,7 @@ export function SquadPanel({ members, focus, highlight, delivery, onSelect, onCo
               <Station
                 key={member.role}
                 member={member}
+                profile={profiles.find(profile => profile.role === member.role)}
                 index={index}
                 now={now}
                 delegating={delegating}

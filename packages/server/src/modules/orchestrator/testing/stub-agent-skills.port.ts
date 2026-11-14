@@ -14,6 +14,7 @@ export class StubAgentSkillsPort implements IAgentSkillsPort {
   writers: readonly string[] = ['CEO'];
   writeResult: AgentSkillWriteResult = { ok: true, created: true };
   readonly written: AgentSkillInput[] = [];
+  readonly deleted: string[] = [];
 
   async list(role: string): Promise<readonly AgentSkillSummary[]> {
     return (this.skills[role] ?? []).map(({ name, description }) => ({ name, description }));
@@ -35,6 +36,14 @@ export class StubAgentSkillsPort implements IAgentSkillsPort {
 
   writesSkills(role: string): boolean {
     return this.writers.includes(role);
+  }
+
+  async deleteUserSkill(name: string): Promise<boolean> {
+    const custom = this.listing.some(skill => skill.name === name && !skill.builtIn);
+    if (custom) {
+      this.deleted.push(name);
+    }
+    return custom;
   }
 
   async write(_role: string, skill: AgentSkillInput): Promise<AgentSkillWriteResult> {

@@ -15,6 +15,8 @@ export interface IAgentSkillsPort {
   readAny(name: string): Promise<(AgentSkill & AgentSkillListing) | undefined>;
   writesSkills(role: string): boolean;
   write(role: string, skill: AgentSkillInput): Promise<AgentSkillWriteResult>;
+  /** Deletes the user skill of that name, for a channel acting for the user; `false` when there is none. */
+  deleteUserSkill(name: string): Promise<boolean>;
 }
 
 export const IAgentSkillsPort = Symbol('IAgentSkillsPort');

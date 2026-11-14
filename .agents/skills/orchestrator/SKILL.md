@@ -48,7 +48,7 @@ Encapsulates the parameters for running an interaction round:
 - `workspacePath`: local working directory associated with the turn;
 - `agentRole`: root role that receives the prompt (e.g. `'CEO'`);
 - `attachments`: optional list of `TurnAttachment` (`turn-attachment.model.ts`: `name`, `path`, `contentType`, `size`, `url?`) with files received and downloaded locally;
-- `onActivity`: optional callback `(activity: TurnActivity, role: string) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts and tools, with the role of the agent that produced each one, with the response protocol already read (a `thought` may carry `removed`);
+- `onActivity`: optional callback `(activity: TurnActivity, role: string) => void` (`turn-activity.model.ts`) for reactive consumption of thoughts, tools and skills, with the role of the agent that produced each one, with the response protocol already read (a `thought` may carry `removed`; a `skill` activity, `SkillActivity`, is a skill the agent read or wrote through a request: `action` `read` or `write`, the `names`, `status` `completed` or `failed`, `created` for a write and the `error` of a failure);
 - `onDraft`: optional callback `(text: string) => void` with the part of the CEO's response that the user reads, as far as it is written: whole at every call (replaced by the next one, so a channel keeps only the last), empty when discarded. The protocol tags (`<delegate>`, `<question>`, `<attachment>`, `<user_language>`) and a tag still being typed are left out (`AgentProtocolService.visibleReply`). The finished response reaches the channel through the result, `onInterimMessage` or `onQuestion`; the orchestrator discards the draft (`''`) before asking the CEO to repair a response. Answers written by delegated agents never reach it;
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
@@ -178,6 +178,7 @@ The skills each role reads on demand (`models/agent-skill.model.ts`: `AgentSkill
 - `listAll(): Promise<readonly AgentSkillListing[]>`: every skill with its roles and whether it is built-in, for a role that writes skills (checked with `writesSkills`) and for a channel acting for the user
 - `readAny(name)`: any skill with its listing, built for the first role that reads it, for a channel
 - `writesSkills(role): boolean`: whether the role lists every skill, reads any of them and writes user skills
+- `deleteUserSkill(name): Promise<boolean>`: deletes a user skill for a channel acting for the user, `false` when there is none (a built-in skill is never deleted; deleting a user skill that replaced one brings it back)
 - `write(role, skill: AgentSkillInput): Promise<AgentSkillWriteResult>`: creates or replaces a user skill, `{ ok: false, error }` when refused
 
 The implementation is `AgentSkillsService` from `AgentDefinitionsModule` (built-in skills plus the user's own; see the
@@ -432,7 +433,7 @@ reads the agent requests and the response without them, and `RunAgentRequestsUse
 under the access of the role (`IAgentRegistryPort.getArtifactAccess`), and the skill requests through `IAgentSkillsPort`:
 `<skill_read name="a,b"/>` (`read(role, name)`, the content returned as `<request_result request="skill_read" name="a,b">` with one `# Skill: <name>` block per skill; an unknown
 name fails the request and lists the skills of the role), and, for a role that writes skills (`writesSkills`), `<skill_list/>` (`listAll`, one line per skill with whether it is built-in, its roles and description)
-and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
+and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). Each `<skill_read>` and `<skill_write>` also reaches the channel as a `skill` activity of the agent (`execute`'s `onSkill`, wired to `TurnRequest.onActivity`). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
 for the CEO, questions for a delegate) is classified from that rest and its `<request_results>` open the agent's next prompt
 (`PendingRequestResults`); any other one gets the results right away, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). A delegation with `artifact="T-1"` is validated against the board (`applyArtifact`): known, of a type the
 role works on, neither frozen nor closed, with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, and in its project,

@@ -7,6 +7,8 @@ export interface IUserSkillStorePort {
   list(): Promise<readonly AgentSkillDefinition[]>;
   /** Creates or replaces the skill of the same name; `true` when it did not exist. */
   write(skill: AgentSkillInput): Promise<boolean>;
+  /** Deletes the folder of the skill of that name; `false` when there is none. */
+  delete(name: string): Promise<boolean>;
 }
 
 export const IUserSkillStorePort = Symbol('IUserSkillStorePort');

@@ -2,7 +2,7 @@ import type { SkillDetail, SkillSummary } from '@agent-remote-control/protocol/s
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AT, renderApp } from '../test/render-app.js';
+import { AT, openConversation, renderApp } from '../test/render-app.js';
 
 
 const SKILLS: SkillSummary[] = [
@@ -89,12 +89,79 @@ describe('SkillsPage', () => {
     expect(screen.getByRole('textbox', { name: /message/i })).toHaveValue('Change the skill "electron-testing": ');
   });
 
-  it('is reached from the header', async () => {
+  it('deletes a custom skill after a confirmation and returns to the list', async () => {
     const user = userEvent.setup();
-    const { router } = renderApp('/');
+    const { connection, router } = renderApp('/skills/electron-testing');
+    act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
 
-    await user.click(screen.getByRole('link', { name: 'Skills' }));
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Delete the skill electron-testing?');
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+    const command = connection.sent.find(sent => sent.type === 'skill.delete') as { requestId: string; name: string };
+    expect(command.name).toBe('electron-testing');
+
+    act(() => {
+      connection.emitEvent({ type: 'skill.result', requestId: 'someone-else', ok: true });
+      connection.emitEvent({ type: 'skill.deleted', name: 'electron-testing' });
+      connection.emitEvent({ type: 'skill.result', requestId: command.requestId, ok: true });
+    });
 
     expect(router.state.location.pathname).toBe('/skills');
+    expect(await screen.findByText('electron-testing deleted')).toBeInTheDocument();
+    expect(connection.sent.filter(sent => sent.type === 'skills.list')).toHaveLength(2);
+    expect(connection.sent.filter(sent => sent.type === 'skill.get')).toHaveLength(2);
+  });
+
+  it('tells why a skill could not be deleted, and refreshes a skill another page deleted', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = renderApp('/skills/electron-testing');
+    act(() => connection.emitEvent({ type: 'skill.detail', name: 'electron-testing', skill: detail('electron-testing') }));
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    await user.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+    const command = connection.sent.find(sent => sent.type === 'skill.delete') as { requestId: string };
+    act(() => connection.emitEvent({ type: 'skill.result', requestId: command.requestId, ok: false, error: 'No custom skill is named "electron-testing".' }));
+
+    expect(await screen.findByText('No custom skill is named "electron-testing".')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/skills/electron-testing');
+    act(() => connection.emitEvent({ type: 'skill.deleted', name: 'api-testing' }));
+    expect(connection.sent.filter(sent => sent.type === 'skill.get')).toHaveLength(1);
+  });
+
+  it('offers no delete for a built-in skill', () => {
+    const { connection } = renderApp('/skills/api-testing');
+    act(() => connection.emitEvent({ type: 'skill.detail', name: 'api-testing', skill: detail('api-testing') }));
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('is reached from the header and closes back to the page it was opened from, across the skills read', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = openConversation();
+
+    await user.click(screen.getByRole('link', { name: 'Skills' }));
+    expect(router.state.location.pathname).toBe('/skills');
+    act(() => connection.emitEvent({ type: 'skills.list', skills: SKILLS }));
+    await user.click(screen.getByRole('link', { name: /api-testing/ }));
+    await user.click(screen.getByRole('link', { name: 'Skills' }));
+    expect(router.state.location.pathname).toBe('/skills');
+
+    await user.click(screen.getByRole('button', { name: 'Close skills' }));
+
+    expect(router.state.location.pathname).toBe('/c/c1');
+  });
+
+  it('closes to the start when it was opened from its address', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = renderApp('/skills/api-testing');
+    act(() => {
+      connection.emitEvent({ type: 'skills.list', skills: SKILLS });
+      connection.emitEvent({ type: 'skill.detail', name: 'api-testing', skill: detail('api-testing') });
+    });
+
+    await user.click(screen.getByRole('link', { name: 'All skills' }));
+    await user.click(screen.getByRole('button', { name: 'Close skills' }));
+
+    expect(router.state.location.pathname).toBe('/');
   });
 });

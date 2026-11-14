@@ -67,6 +67,19 @@ export class ConversationEntryService {
         role,
       };
     }
+    if (activity.kind === 'skill') {
+      return {
+        id: `skill:${turnId}:${role}:${activity.id}`,
+        ...this.stamp(),
+        type: 'skill',
+        role,
+        action: activity.action,
+        names: [...activity.names],
+        status: activity.status,
+        ...(activity.created !== undefined ? { created: activity.created } : {}),
+        ...(activity.error !== undefined ? { error: activity.error } : {}),
+      };
+    }
     return null;
   }
 

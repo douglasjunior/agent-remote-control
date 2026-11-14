@@ -36,6 +36,18 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     details: z.string().optional(),
     role: z.string(),
   }),
+  /** A skill an agent read or wrote. */
+  z.object({
+    ...entryBase,
+    type: z.literal('skill'),
+    role: z.string(),
+    action: z.enum(['read', 'write']),
+    names: z.array(z.string()),
+    status: z.enum(['completed', 'failed']),
+    /** Whether a write created the skill rather than replacing it. */
+    created: z.boolean().optional(),
+    error: z.string().optional(),
+  }),
   z.object({
     ...entryBase,
     type: z.literal('delegation'),

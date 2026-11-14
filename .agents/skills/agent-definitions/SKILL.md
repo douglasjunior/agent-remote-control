@@ -98,7 +98,8 @@ workspaces root.
 - **User skills**: `FileUserSkillStoreAdapter` (bound to `IUserSkillStorePort`) reads `DATA_DIR/skills/<skill>/SKILL.md`
   on every call, so edits apply without a restart. The frontmatter needs a `description` and `roles` (comma-separated,
   `[A, B]` or a `- A` list; folded `>` and `|` values are read); `name` defaults to the folder name. A skill without a
-  description or roles is skipped with a warning. `write` creates or replaces one, atomically.
+  description or roles is skipped with a warning. `write` creates or replaces one, atomically; `delete(name)` removes the folder
+  of the skill of that name, whatever the folder is called.
 - `AgentSkillsService` (bound to `IAgentSkillsPort`) merges both, a user skill replacing a built-in one of the same
   name (case-insensitive), roles included, and keeps for each role the skills whose `roles` name it. A role with
   `writesSkills` (the CEO) also reads any skill, lists them all with their roles (`listAll`, also used by the web, with `readAny`, to browse them) and writes user skills

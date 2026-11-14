@@ -249,7 +249,12 @@ describe('RunAgentRequestsUseCase', () => {
         ],
       };
 
-      const results = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }], as('QA'));
+      const onSkill = vi.fn();
+      const results = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }], as('QA'), onSkill);
+      await useCase.execute([{ kind: 'list' }], as('QA'), onSkill);
+
+      expect(onSkill).toHaveBeenCalledTimes(1);
+      expect(onSkill).toHaveBeenCalledWith({ kind: 'skill', id: expect.any(String), action: 'read', names: ['playwright-web', 'api-testing'], status: 'completed' });
 
       expect(results).toBe([
         '<request_results>',
@@ -264,7 +269,9 @@ describe('RunAgentRequestsUseCase', () => {
       const { useCase, skills } = setupSkills();
       skills.skills = { QA: [{ name: 'playwright-web', description: 'Web.', content: 'Open the browser.' }] };
 
-      const unknown = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'cypress'] }], as('QA'));
+      const onSkill = vi.fn();
+      const unknown = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'cypress'] }], as('QA'), onSkill);
+      expect(onSkill).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: 'Unknown skill "cypress". Your skills are: playwright-web.' }));
       const none = await useCase.execute([{ kind: 'skill_read', names: ['cypress'] }], as('CEO'));
 
       expect(unknown).toContain('<request_result request="skill_read" name="playwright-web,cypress" status="error">\nUnknown skill "cypress". Your skills are: playwright-web.');
@@ -293,11 +300,18 @@ describe('RunAgentRequestsUseCase', () => {
       const { useCase, skills } = setupSkills();
       const write = { kind: 'skill_write' as const, name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' };
 
-      const created = await useCase.execute([write], as('CEO'));
+      const onSkill = vi.fn();
+      const created = await useCase.execute([write], as('CEO'), onSkill);
       skills.writeResult = { ok: true, created: false };
-      const updated = await useCase.execute([write], as('CEO'));
+      const updated = await useCase.execute([write], as('CEO'), onSkill);
       skills.writeResult = { ok: false, error: 'You cannot write skills.' };
-      const refused = await useCase.execute([write], as('QA'));
+      const refused = await useCase.execute([write], as('QA'), onSkill);
+
+      expect(onSkill.mock.calls.map(([activity]) => [activity.status, activity.created, activity.error])).toEqual([
+        ['completed', true, undefined],
+        ['completed', false, undefined],
+        ['failed', undefined, 'You cannot write skills.'],
+      ]);
 
       expect(skills.written[0]).toEqual({ name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' });
       expect(created).toContain('<request_result request="skill_write" name="electron-testing" status="ok">\nCreated skill "electron-testing" for QA. Agents of those roles see it in their skill catalog from their next session');

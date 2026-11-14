@@ -17,6 +17,12 @@ class StubUserSkillStore implements IUserSkillStorePort {
     return this.skills;
   }
 
+  async delete(name: string): Promise<boolean> {
+    const before = this.skills.length;
+    this.skills = this.skills.filter(skill => skill.name !== name);
+    return this.skills.length < before;
+  }
+
   async write(skill: AgentSkillInput): Promise<boolean> {
     this.written.push(skill);
     return !this.skills.some(existing => existing.name === skill.name);
@@ -90,6 +96,15 @@ describe('AgentSkillsService', () => {
     expect((await service.readAny('agent-team'))?.content).not.toContain('### CEO');
     expect(await service.readAny('cypress')).toEqual({ name: 'cypress', description: 'cypress skill.', roles: ['QA'], builtIn: false, content: 'Run it.' });
     expect(await service.readAny('missing')).toBeUndefined();
+  });
+
+  it('should delete a user skill, bringing back the built-in one it replaced', async () => {
+    const { service, userSkills } = setup();
+    userSkills.skills = [userSkill('api-testing', ['DEVELOPER'])];
+
+    expect(await service.deleteUserSkill('api-testing')).toBe(true);
+    expect(await service.deleteUserSkill('api-testing')).toBe(false);
+    expect((await service.list('QA')).map(skill => skill.name)).toContain('api-testing');
   });
 
   it('should write a skill for known roles, in their canonical form', async () => {

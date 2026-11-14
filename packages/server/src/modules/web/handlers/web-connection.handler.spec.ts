@@ -84,7 +84,7 @@ describe('WebConnectionHandler', () => {
       workspace,
       new RenameConversationUseCase(store, events),
       new ArchiveConversationUseCase(store, events),
-      new WebSkillsService(skills),
+      new WebSkillsService(skills, harness.registry),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -321,6 +321,25 @@ describe('WebConnectionHandler', () => {
         { type: 'skills.list', skills: [{ name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true }] },
         { type: 'skill.detail', name: 'api-testing', skill: { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true, content: '# API' } },
         { type: 'skill.detail', name: 'missing', skill: null },
+      ]);
+    });
+
+    it('deletes a custom skill, telling every connection, and refuses one that is not custom', async () => {
+      skills.listing = [
+        { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true },
+        { name: 'electron-testing', description: 'Electron.', roles: ['QA'], builtIn: false },
+      ];
+
+      connection.receive({ type: 'skill.delete', requestId: 'r1', name: 'electron-testing' });
+      await settle();
+      connection.receive({ type: 'skill.delete', requestId: 'r2', name: 'api-testing' });
+      await settle();
+
+      expect(skills.deleted).toEqual(['electron-testing']);
+      expect(sent()).toEqual([
+        { type: 'skill.deleted', name: 'electron-testing' },
+        { type: 'skill.result', requestId: 'r1', ok: true },
+        { type: 'skill.result', requestId: 'r2', ok: false, error: 'No custom skill is named "api-testing".' },
       ]);
     });
 

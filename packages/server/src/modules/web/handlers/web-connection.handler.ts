@@ -177,6 +177,9 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'skill.get':
         connection.send({ type: 'skill.detail', name: command.name, skill: await this.skills.get(command.name) });
         return;
+      case 'skill.delete':
+        connection.send({ type: 'skill.result', requestId: command.requestId, ...await this.skills.delete(command.name) });
+        return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);
       case 'auth.status':

@@ -246,7 +246,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
       {pane.kind === 'artifact' && <div className="min-h-0 flex-1"><ArtifactPane conversationId={conversationId} artifactId={pane.artifactId} /></div>}
     </div>
   );
-  const squad = <SquadPanel members={team} focus={focus} highlight={hovered} delivery={delivery} onSelect={selectStation} onContinue={handleContinue} />;
+  const squad = <SquadPanel members={team} profiles={view.profiles} focus={focus} highlight={hovered} delivery={delivery} onSelect={selectStation} onContinue={handleContinue} />;
 
   return (
     <div className="h-full">

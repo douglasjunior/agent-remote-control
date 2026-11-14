@@ -87,6 +87,13 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('skills.list'), skills: z.array(skillSummarySchema) }),
   /** Answers `skill.get`; `skill` is `null` when no skill has that name. */
   z.object({ type: z.literal('skill.detail'), name: z.string(), skill: skillDetailSchema.nullable() }),
+  /** Answers the requester of `skill.delete`. */
+  z.discriminatedUnion('ok', [
+    z.object({ type: z.literal('skill.result'), requestId: z.string(), ok: z.literal(true) }),
+    z.object({ type: z.literal('skill.result'), requestId: z.string(), ok: z.literal(false), error: z.string() }),
+  ]),
+  /** Broadcast when a skill is deleted, so every open skills page drops it. */
+  z.object({ type: z.literal('skill.deleted'), name: z.string() }),
   /** The artifacts of a conversation: each conversation keeps the board of its own mission. */
   z.object({ type: z.literal('artifacts.list'), conversationId: z.string(), artifacts: z.array(artifactSummarySchema) }),
   z.object({ type: z.literal('artifact.detail'), conversationId: z.string(), artifact: artifactDetailSchema }),

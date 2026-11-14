@@ -1,6 +1,6 @@
 import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
 import { useState } from 'react';
-import { Link, Outlet } from 'react-router';
+import { Link, Outlet, useLocation } from 'react-router';
 
 import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
 import { useConnection } from '../connection/connection-context.js';
@@ -14,6 +14,7 @@ import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { IconButton } from './icon-button.js';
+import { skillsPath, skillsState } from './skills/skill-paths.js';
 import { ThemeToggle } from './theme-toggle.js';
 import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
@@ -46,6 +47,7 @@ const CONVERSATION_LIST_ID = 'conversation-list';
 
 function AppShell() {
   const { status } = useConnection();
+  const location = useLocation();
   const { createConversation } = useConversations();
   const docked = useMediaQuery(DOCKED_QUERY);
   const [dockOpen, setDockOpen] = useStoredFlag('arc.conversationListOpen', false);
@@ -80,7 +82,7 @@ function AppShell() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <Tooltip>
-              <TooltipTrigger render={<Link to="/skills" aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
+              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
                 <BookOpenText />
               </TooltipTrigger>
               <TooltipContent>Skills</TooltipContent>

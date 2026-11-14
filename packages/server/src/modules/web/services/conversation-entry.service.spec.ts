@@ -88,6 +88,18 @@ describe('ConversationEntryService', () => {
       expect(entries.activity({ kind: 'tool', toolCallId: 'c', title: 'T', status: 'pending' }, 'CEO', 'turn-1')).not.toHaveProperty('result');
     });
 
+    it('maps a skill read or written by an agent', () => {
+      expect(entries.activity({ kind: 'skill', id: 's1', action: 'read', names: ['api-testing'], status: 'completed' }, 'QA', 'turn-1')).toMatchObject({
+        id: 'skill:turn-1:QA:s1', type: 'skill', role: 'QA', action: 'read', names: ['api-testing'], status: 'completed',
+      });
+      const written = entries.activity({ kind: 'skill', id: 's2', action: 'write', names: ['x'], status: 'completed', created: true }, 'CEO', 'turn-1');
+      const failed = entries.activity({ kind: 'skill', id: 's3', action: 'write', names: ['x'], status: 'failed', error: 'No.' }, 'CEO', 'turn-1');
+      expect(written).toMatchObject({ created: true });
+      expect(written).not.toHaveProperty('error');
+      expect(failed).toMatchObject({ status: 'failed', error: 'No.' });
+      expect(failed).not.toHaveProperty('created');
+    });
+
     it('has no entry for steering or cancellation markers', () => {
       expect(entries.activity({ kind: 'steering', id: 's', text: 'x' }, 'CEO', 'turn-1')).toBeNull();
       expect(entries.activity({ kind: 'cancelled', id: 'c' }, 'CEO', 'turn-1')).toBeNull();

@@ -24,6 +24,7 @@ import type { OpenWork, OpenWorkQuestions } from '../models/open-work.model.js';
 import { PendingRequestResults, type ResolvedResponse } from '../models/pending-request-results.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
+import type { SkillActivity } from '../models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnAttachment } from '../models/turn-attachment.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -569,6 +570,7 @@ export class ExecuteAgentTurnUseCase {
       },
       requester,
       rest => this.delegationDetector.detect(rest).kind !== 'reply',
+      activity => request.onActivity?.(activity, requester.role),
     ));
 
     let response = await runCeo(prompt, isUserMessage, answerDelivery);
@@ -1138,6 +1140,7 @@ export class ExecuteAgentTurnUseCase {
         results => runRound(results),
         requester,
         rest => this.questionParser.parse(rest).kind !== 'none',
+        activity => request.onActivity?.(activity, requester.role),
       ));
       const opening = firstPrompt ?? await this.withDelegatedArtifact(request.conversationId, artifactId, currentTaskSpec);
       const response = await this.answerQuestions(
@@ -1216,6 +1219,7 @@ export class ExecuteAgentTurnUseCase {
     runAgent: (results: string) => Promise<string>,
     requester: AgentRequester,
     hasOutcome: (rest: string) => boolean,
+    onSkill: (activity: SkillActivity) => void,
   ): Promise<ResolvedResponse> {
     let current = response;
     for (let round = 0; round < MAX_REQUEST_ROUNDS; round++) {
@@ -1223,7 +1227,7 @@ export class ExecuteAgentTurnUseCase {
       if (parsed.kind === 'none') {
         return { response: current };
       }
-      const results = await this.runAgentRequests.execute(parsed.requests, requester);
+      const results = await this.runAgentRequests.execute(parsed.requests, requester, onSkill);
       if (hasOutcome(parsed.rest)) {
         return { response: parsed.rest, requestResults: results };
       }
