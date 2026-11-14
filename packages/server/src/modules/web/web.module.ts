@@ -26,7 +26,6 @@ import { WebConversationTurnsService } from './services/web-conversation-turns.s
 import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
 import { WebSkillsService } from './services/web-skills.service.js';
-import { WebStaticAssetsService } from './services/web-static-assets.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
 import { ArchiveConversationUseCase } from './use-cases/archive-conversation.use-case.js';
@@ -41,10 +40,11 @@ import { RenameConversationUseCase } from './use-cases/rename-conversation.use-c
 import { ResumeConversationWorkUseCase } from './use-cases/resume-conversation-work.use-case.js';
 import { SendConversationMessageUseCase } from './use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from './use-cases/set-conversation-profiles.use-case.js';
+import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WorkspaceModule],
+  imports: [AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, WebStaticModule, WorkspaceModule],
   providers: [
     { provide: IClientTransportPort, useClass: WsClientTransportAdapter },
     { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
@@ -54,7 +54,6 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     WebAgentAuthService,
     WebArtifactsService,
     WebSkillsService,
-    WebStaticAssetsService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,
@@ -77,6 +76,6 @@ import { SetConversationProfilesUseCase } from './use-cases/set-conversation-pro
     ArchiveConversationUseCase,
     WebConnectionHandler,
   ],
-  exports: [WebConnectionRegistryService, WebStaticAssetsService],
+  exports: [WebConnectionRegistryService],
 })
 export class WebModule {}

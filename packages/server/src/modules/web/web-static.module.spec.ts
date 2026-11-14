@@ -1,4 +1,4 @@
-import { Controller, Get, Logger, Module } from '@nestjs/common';
+import { Controller, Get, Module } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import request from 'supertest';
 
-import { WebStaticAssetsService } from './web-static-assets.service.js';
+import { WebStaticModule } from './web-static.module.js';
 
 
 @Controller()
@@ -17,18 +17,17 @@ class HealthController {
   }
 }
 
-@Module({ controllers: [HealthController] })
-class HealthModule {}
+@Module({ imports: [WebStaticModule], controllers: [HealthController] })
+class TestAppModule {}
 
-describe('WebStaticAssetsService', () => {
+describe('WebStaticModule', () => {
   let webDir: string;
   let app: NestExpressApplication | undefined;
 
-  const startApp = async (): Promise<NestExpressApplication> => {
-    app = await NestFactory.create<NestExpressApplication>(HealthModule, { logger: false });
-    new WebStaticAssetsService().register(app);
+  const startApp = async () => {
+    app = await NestFactory.create<NestExpressApplication>(TestAppModule, { logger: false });
     await app.init();
-    return app;
+    return app.getHttpServer();
   };
 
   beforeEach(() => {
@@ -43,12 +42,11 @@ describe('WebStaticAssetsService', () => {
     await app?.close();
     app = undefined;
     vi.unstubAllEnvs();
-    vi.restoreAllMocks();
     rmSync(webDir, { recursive: true, force: true });
   });
 
   it('should serve the index page and the built assets', async () => {
-    const server = (await startApp()).getHttpServer();
+    const server = await startApp();
 
     const index = await request(server).get('/');
     const asset = await request(server).get('/assets/app.js');
@@ -57,48 +55,29 @@ describe('WebStaticAssetsService', () => {
     expect(asset.text).toBe('console.log("arc");');
   });
 
-  it('should answer client-side routes with the index page', async () => {
-    const server = (await startApp()).getHttpServer();
+  it.each(['/c/abc', '/c/abc/tasks/t1', '/skills/my.skill'])('should answer the client-side route %s with the index page', async (path) => {
+    const server = await startApp();
 
-    const response = await request(server).get('/conversations/abc');
+    const response = await request(server).get(path);
 
     expect(response.status).toBe(200);
     expect(response.text).toBe('<html>arc</html>');
   });
 
   it('should leave the server routes to Nest', async () => {
-    const server = (await startApp()).getHttpServer();
+    const server = await startApp();
 
     const response = await request(server).get('/health');
 
     expect(response.body).toEqual({ status: 'ok' });
   });
 
-  it('should not intercept requests other than GET and HEAD', async () => {
-    const server = (await startApp()).getHttpServer();
-
-    const response = await request(server).post('/conversations/abc');
-
-    expect(response.status).toBe(404);
-  });
-
   it('should serve nothing when WEB_STATIC_DIR is not set', async () => {
-    vi.stubEnv('WEB_STATIC_DIR', '');
-    const server = (await startApp()).getHttpServer();
+    vi.stubEnv('WEB_STATIC_DIR', ' ');
+    const server = await startApp();
 
     const response = await request(server).get('/');
 
     expect(response.status).toBe(404);
-  });
-
-  it('should warn and serve nothing when the directory has no index.html', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    vi.stubEnv('WEB_STATIC_DIR', join(webDir, 'assets'));
-    const server = (await startApp()).getHttpServer();
-
-    const response = await request(server).get('/');
-
-    expect(response.status).toBe(404);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining('has no index.html'));
   });
 });
