@@ -7,7 +7,7 @@ import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from './product-owner.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('product-owner.prompt', () => {
@@ -61,7 +61,7 @@ describe('product-owner.prompt', () => {
   it('should include the shared orientation, boundaries, question, and final response instructions', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);

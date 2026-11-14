@@ -10,7 +10,7 @@ import {
   TECH_LEAD_SYSTEM_PROMPT,
   TECH_LEAD_TURN_REMINDER,
 } from './tech-lead.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 describe('tech-lead.prompt', () => {
@@ -44,7 +44,7 @@ describe('tech-lead.prompt', () => {
   });
 
   it('should explain how to ask the user in the prompt and in every turn', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(USER_QUESTIONS_INSTRUCTIONS);
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
     expect(TECH_LEAD_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
   });
 

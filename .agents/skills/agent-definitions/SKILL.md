@@ -149,16 +149,17 @@ rest. GIT_OPS does not receive the block: it does not work on the code and also 
 
 The CEO, PRODUCT_OWNER and TECH_LEAD ask the user directly when they need a decision from them to proceed, with
 `<question rationale="…">text<option>…</option></question>` tags in its final response (grammar and queue
-in the `orchestrator` skill). The instructions live in `prompts/user-questions.prompt.ts`:
+in the `orchestrator` skill). The instructions:
 
-- `USER_QUESTIONS_GUIDE`: the body of the rules — when to ask, one independent question per item
-  in the batch, options without "Other", the recommended option first and marked `<option recommended>` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the context (task, findings, why blocked) so each question stands on its own among several agents, a `rationale` always filled with the impact of the answer, and the `<user_answers>` format, including
-  `<attachment path="…"/>` for files the user attaches to the answer and `status="timed_out"` for an answer assumed because the user was absent;
-- `USER_QUESTIONS_INSTRUCTIONS`: the guide under the `### Asking the User` heading, in the system prompt of
-  PRODUCT_OWNER and TECH_LEAD, for whom asking the user is part of every task;
-- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those two agents, which also names the
-  `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER and TECH_LEAD), the guide to
-  read again when it is out of view.
+- the guide lives only in the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER
+  and TECH_LEAD): when to ask, the grammar, options without "Other", the recommended option first and marked
+  `recommended` (assumed when the user does not reply within `QUESTION_TIMEOUT_MS`), the text outside the tags as the
+  context so each question stands on its own among several agents, a `rationale` always filled, one independent
+  question per item of a batch, and the `<user_answers>` format, with `<attachment path="…"/>` for files the user
+  attaches and `status="timed_out"` for an answer assumed because the user was absent;
+- `USER_QUESTIONS_BRIEF` (`prompts/user-questions.prompt.ts`): the tag in brief under `### Asking the User` and the
+  skill to read before the first question of a session, in the system prompt of PRODUCT_OWNER and TECH_LEAD;
+- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those two agents, which also names the skill.
 
 Only the CEO, PRODUCT_OWNER and TECH_LEAD ask the user. DEVELOPER and GIT_OPS never do: a decision only the user can
 make ends their turn with the decision and its options in their final answer (their turn reminder says so), and the
@@ -167,7 +168,7 @@ CEO asks the user and delegates again with the answer (`delegation-protocol` ski
 CODE_REVIEWER and QA do not ask either: they audit or test and return findings, with no user decision they
 depend on to finish.
 
-The CEO does not receive `USER_QUESTIONS_INSTRUCTIONS` (see "CEO's lean core prompt"): the core prompt
+The CEO does not receive `USER_QUESTIONS_BRIEF` (see "CEO's lean core prompt"): the core prompt
 carries only the tag's shape and the fact that the answer comes back in the same turn, and the full guide is the
 `asking-the-user` skill, which its `response-protocol` skill also names.
 
@@ -181,7 +182,7 @@ each tag, parallel work across roles, that agents ask the user directly, the use
 
 When adding a rule to the CEO, write at most the sentence that makes it mandatory in the core prompt
 and put the details in the topic's skill. Never concatenate into the core prompt an instruction block
-shared with the executor agents, such as `USER_QUESTIONS_INSTRUCTIONS`.
+shared with the executor agents, such as `USER_QUESTIONS_BRIEF`.
 
 ### Who can name whom
 
@@ -245,7 +246,7 @@ from the narration.
 - Always replaces the task's `review_findings` section with the verdict, what it reviewed (pull request URL, or branch, base and commit range), the state of the checks or that the review was local, and the numbered findings, where whoever fixes the task reads them;
 - In a pull request review also publishes every finding on the pull request without asking, detecting the provider with `git remote -v` and following `MCP -> Official CLI -> No Fallback` (no `curl` or raw REST; without tooling the findings stay on the task only), inline findings anchored to the new line (`side: RIGHT` / `new_line` / `rightFileStart`), the rest in the discussion, and submits approve or request changes when the provider supports it;
 - Verdict: APPROVED without high or medium findings and failing checks, CHANGES_REQUESTED otherwise; the final answer opens with it, then what was reviewed and the count of findings per severity;
-- Contract `project: 'required'`, `readOnly`, `artifact: 'required'` with `needsReviewableWork`; artifact access `task` writing only `review_findings`; does not receive `USER_QUESTIONS_INSTRUCTIONS`; has the `CODE_REVIEWER_TURN_REMINDER`.
+- Contract `project: 'required'`, `readOnly`, `artifact: 'required'` with `needsReviewableWork`; artifact access `task` writing only `review_findings`; never asks the user; has the `CODE_REVIEWER_TURN_REMINDER`.
 
 ### 4. Tech Lead Agent (`tech-lead.prompt.ts`)
 
@@ -284,7 +285,7 @@ from the narration.
 - Switches to the task's branch only when the working tree is clean, identifies the kind of application, reads the matching skills before testing and starts the application as the project documents it;
 - Never changes the project's code, configuration, tests or manifest and never commits; throwaway scripts go in a temporary folder of its working directory. Before its final answer it stops what it started, deletes what it created and switches back to the branch it found, leaving `git status` as it was;
 - Replaces the task's `test_report` section with the verdict, what it tested (branch, commit, how the application ran), the numbered tests with expected and actual results, the evidence of each failure and what it could not test. PASSED only when every acceptance criterion and test case passed; an untested criterion makes it FAILED. The final answer opens with the verdict;
-- Contract `project: 'required'`, `artifact: 'required'` with `needsReviewableWork`, `defaultSessionMode: 'resume'` to test again after a fix; artifact access `task` writing only `test_report`; the four testing skills; does not receive `USER_QUESTIONS_INSTRUCTIONS`; has the `QA_TURN_REMINDER`.
+- Contract `project: 'required'`, `artifact: 'required'` with `needsReviewableWork`, `defaultSessionMode: 'resume'` to test again after a fix; artifact access `task` writing only `test_report`; the four testing skills; never asks the user; has the `QA_TURN_REMINDER`.
 
 ## Registry Service (`AgentRegistryService`)
 

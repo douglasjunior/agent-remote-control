@@ -4,7 +4,7 @@ import { buildArtifactProtocolInstructions, buildArtifactProtocolReminder } from
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_INSTRUCTIONS, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
 export const PRODUCT_OWNER_TURN_REMINDER = `---
@@ -115,6 +115,6 @@ ${PROJECT_ORIENTATION_INSTRUCTIONS}
 
 ${CWD_BOUNDARY_INSTRUCTIONS}
 
-${USER_QUESTIONS_INSTRUCTIONS}
+${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
