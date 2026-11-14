@@ -152,11 +152,12 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
     this.signaling.send({ type: 'host.accept', sessionId });
   }
 
+  /** Compares the canonical base64url text, so an encoding that differs only in its padding bits is refused too. */
   private provesToken(fingerprint: string, proof: string): boolean {
-    const expected = createHmac('sha256', this.accessToken.token())
+    const expected = Buffer.from(createHmac('sha256', this.accessToken.token())
       .update(sessionProofMessage(this.identity!.instanceId, fingerprint))
-      .digest();
-    const received = Buffer.from(proof, 'base64url');
+      .digest('base64url'));
+    const received = Buffer.from(proof);
     return received.length === expected.length && timingSafeEqual(received, expected);
   }
 

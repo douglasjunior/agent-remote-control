@@ -114,7 +114,7 @@ describe('RemoteClientTransportAdapter', () => {
 
   it('should reject a wrong proof and check no request until the backoff, which doubles per rejection', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    const wrong = `${proof.slice(0, -1)}${proof.endsWith('A') ? 'B' : 'A'}`;
+    const wrong = `${proof[0] === 'A' ? 'B' : 'A'}${proof.slice(1)}`;
     request(1, wrong);
     request(2);
     vi.advanceTimersByTime(1_000);
@@ -137,6 +137,14 @@ describe('RemoteClientTransportAdapter', () => {
       { type: 'host.accept', sessionId: sessionId(7) },
     ]);
     expect(warn).toHaveBeenCalledWith('remote_session_rejected: rejections=2');
+  });
+
+  it('should reject a proof that decodes to the right bytes through another encoding of its padding bits', () => {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    const last = alphabet.indexOf(proof.at(-1)!);
+    request(1, `${proof.slice(0, -1)}${alphabet[last ^ 1]}`);
+
+    expect(signaling.sent).toEqual([{ type: 'host.reject', sessionId: sessionId(1) }]);
   });
 
   it('should refuse a request past the sessions it negotiates at once and a repeated session', () => {
