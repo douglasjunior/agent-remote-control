@@ -25,6 +25,13 @@ agents, a `rationale` always filled, one independent question per item of a batc
 with `<attachment path="…"/>` for files the user attaches and `status="timed_out"` for an answer assumed because the
 user was absent.
 
+### `running-the-app` and `mobile-testing`
+
+The QA prepares its own environment with them: `running-the-app` brings up local services with migrations and seeds,
+points the application and its clients at them, rebuilding what reads a setting at build time, shapes the state a test needs in local data or, when data cannot reach it, in code, and undoes it
+all at shutdown (tracked files reverted, `git status` as found, kept local data listed); `mobile-testing` adds how a
+device reaches the host, with `adb reverse` for an Android emulator. Nothing either skill changes is ever committed.
+
 ## User skills
 
 `FileUserSkillStoreAdapter` (bound to `IUserSkillStorePort`) reads `DATA_DIR/skills/<skill>/SKILL.md` on every call, so
