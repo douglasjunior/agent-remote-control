@@ -90,6 +90,9 @@ or to stand in for a host.
 - coturn with `use-auth-secret` (secret `TURN_SECRET`, same as `P2P_TURN_SECRET`), relay ports 49160–49179, peers
   reached over UDP only and private, loopback and link-local peer addresses denied, so the relay never reaches the
   network of its machine.
+- The entrypoint relays from one address only, the IPv4 of the default route's interface read from `/proc/net/route`
+  (`docker_gwbridge` under Swarm, where host-mode ports arrive), or `TURN_RELAY_IP`, and maps `TURN_EXTERNAL_IP` to it.
+  coturn would otherwise also relay from the overlay address, unreachable from outside.
 - Limits come from the entrypoint: `TURN_MAX_BPS` (256 KiB/s per session), `TURN_BPS_CAPACITY` (2 MiB/s in all),
   `TURN_USER_QUOTA` (4 allocations per credential) and `TURN_TOTAL_QUOTA` (20).
 - CapRover reads `dockerfilePath` from the folder of the captain definition, so both definitions sit at the
