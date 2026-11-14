@@ -22,6 +22,9 @@ describe('fingerprint', () => {
     ['no fingerprint', 'v=0\r\n'],
     ['only another algorithm', `a=fingerprint:sha-1 ${HEX}\r\n`],
     ['two different fingerprints', `a=fingerprint:sha-256 ${HEX}\na=fingerprint:sha-256 ${HEX.replace('00', 'FF')}\n`],
+    ['another algorithm before the sha-256 one', `a=fingerprint:sha-512 ${HEX}:${HEX}\r\na=fingerprint:sha-256 ${HEX}\r\n`],
+    ['another algorithm after the sha-256 one', `a=fingerprint:sha-256 ${HEX}\r\nm=application\r\na=fingerprint:sha-384 ${HEX}\r\n`],
+    ['a malformed sha-256 line', `a=fingerprint:sha-256 ${HEX}\na=fingerprint:sha-256 ${HEX}:00\n`],
   ])('should give no fingerprint for an SDP with %s', (_name, sdp) => {
     expect(sdpFingerprint(sdp)).toBeNull();
   });

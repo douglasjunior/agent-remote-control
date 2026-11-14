@@ -5,6 +5,7 @@ const instanceId = '0123456789abcdef0123';
 const fingerprint = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
 const proof = 'n4bQgYhMfWWaL-qgxVrQFaO_TxsrC4Is0V1sFbDvCgg';
 const sessionId = '6f1c0f0e-1f53-4c1e-9d55-6bb1f6c2a1a7';
+const source = 'AAECAwQFBgcICQoLDA0ODw';
 const iceServers = [{ urls: ['stun:stun.example.com:3478'] }, { urls: ['turn:turn.example.com:3478'], username: 'u', credential: 'c' }];
 
 describe('signaling', () => {
@@ -22,7 +23,7 @@ describe('signaling', () => {
   it.each([
     { type: 'host.challenge', nonce: 'n'.repeat(43) },
     { type: 'host.registered' },
-    { type: 'session.request', sessionId, fingerprint, proof },
+    { type: 'session.request', sessionId, source, fingerprint, proof },
     { type: 'session.offer', sessionId, sdp: 'v=0', iceServers },
     { type: 'session.candidate', sessionId, candidate: 'candidate:1', mid: '0' },
     { type: 'session.closed', sessionId },
@@ -53,6 +54,7 @@ describe('signaling', () => {
     ['an instance id that is not hex', parseHostSignal, { type: 'host.register', instanceId: 'ZZ', certificate: 'c', signature: 's', protocolVersion: 1 }],
     ['a fingerprint that is not base64url', parseClientSignal, { type: 'client.connect', instanceId, fingerprint: 'AB:CD', proof }],
     ['a proof that is not an HMAC', parseClientSignal, { type: 'client.connect', instanceId, fingerprint, proof: 'short' }],
+    ['a session request without a source', parseToHostSignal, { type: 'session.request', sessionId, fingerprint, proof }],
     ['a short nonce', parseToHostSignal, { type: 'host.challenge', nonce: 'n' }],
     ['a session id that is not a uuid', parseHostSignal, { type: 'host.close', sessionId: '1' }],
     ['an unknown type', parseClientSignal, { type: 'client.other' }],

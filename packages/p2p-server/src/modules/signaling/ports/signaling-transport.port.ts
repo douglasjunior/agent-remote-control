@@ -3,6 +3,8 @@ import type { ToClientSignal, ToHostSignal } from '@agent-remote-control/protoco
 
 export interface ISignalingSocket<TSignal> {
   readonly id: string;
+  /** The address the socket comes from, the client's when trusted proxies stand in front of the server. */
+  readonly address: string;
   send(signal: TSignal): void;
   /** Delivers each message as parsed JSON, or as the raw text when it is not JSON. */
   onMessage(listener: (data: unknown) => void): () => void;

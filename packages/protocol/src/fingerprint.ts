@@ -10,12 +10,13 @@ export function encodeFingerprint(hex: string): string {
 }
 
 /**
- * The SHA-256 certificate fingerprint an SDP announces, as base64url. Null when it announces none or more than one,
- * since the DTLS handshake then cannot be pinned to a single certificate.
+ * The SHA-256 certificate fingerprint an SDP announces, as base64url. Null unless every `a=fingerprint` line names
+ * that same SHA-256 fingerprint: a DTLS stack may pin the handshake to any of the lines, whatever their algorithm
+ * (libdatachannel takes the first one).
  */
 export function sdpFingerprint(sdp: string): string | null {
-  const values = new Set(
-    Array.from(sdp.matchAll(/^a=fingerprint:sha-256 ((?:[0-9a-f]{2}:){31}[0-9a-f]{2})\s*$/gim), match => match[1].toUpperCase()),
-  );
-  return values.size === 1 ? encodeFingerprint([...values][0]) : null;
+  const values = new Set(Array.from(sdp.matchAll(/^a=fingerprint:.*$/gim), ([line]) =>
+    /^a=fingerprint:sha-256 ((?:[0-9a-f]{2}:){31}[0-9a-f]{2})\s*$/i.exec(line)?.[1].toUpperCase()));
+  const [value] = values;
+  return values.size === 1 && value !== undefined ? encodeFingerprint(value) : null;
 }

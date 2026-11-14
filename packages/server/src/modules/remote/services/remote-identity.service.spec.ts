@@ -32,12 +32,28 @@ describe('RemoteIdentityService', () => {
     expect(service().isEnabled()).toBe(true);
   });
 
-  it('should reach the default signaling server, or REMOTE_URL over the matching WebSocket scheme', () => {
-    expect(service().baseUrl()).toBe('https://arc-p2p-server.arc.douglasjunior.work');
-    expect(service().signalingUrl()).toBe('wss://arc-p2p-server.arc.douglasjunior.work/signal/host');
-    vi.stubEnv('REMOTE_URL', ' http://localhost:3100/ ');
-    expect(service().baseUrl()).toBe('http://localhost:3100');
-    expect(service().signalingUrl()).toBe('ws://localhost:3100/signal/host');
+  it.each([
+    ['https://arc.example.com/', 'https://arc.example.com', 'wss://arc.example.com/signal/host'],
+    [' http://localhost:3100/ ', 'http://localhost:3100', 'ws://localhost:3100/signal/host'],
+    ['http://127.0.0.1:5173', 'http://127.0.0.1:5173', 'ws://127.0.0.1:5173/signal/host'],
+    ['http://[::1]:3100', 'http://[::1]:3100', 'ws://[::1]:3100/signal/host'],
+  ])('should reach REMOTE_URL %s over the matching WebSocket scheme', (remoteUrl, baseUrl, signalingUrl) => {
+    vi.stubEnv('REMOTE_URL', remoteUrl);
+
+    expect(service().baseUrl()).toBe(baseUrl);
+    expect(service().signalingUrl(baseUrl)).toBe(signalingUrl);
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['blank', '  '],
+    ['not a URL', 'arc.example.com'],
+    ['plain HTTP to another machine', 'http://arc.example.com'],
+    ['of another scheme', 'ftp://arc.example.com'],
+  ])('should have no signaling server when REMOTE_URL is %s', (_name, remoteUrl) => {
+    vi.stubEnv('REMOTE_URL', remoteUrl);
+
+    expect(service().baseUrl()).toBeNull();
   });
 
   it('should create the certificate and its key once, readable by the owner only', async () => {

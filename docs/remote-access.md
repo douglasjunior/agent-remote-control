@@ -1,7 +1,8 @@
 # Remote access: signaling server and TURN relay
 
 A server with remote access on (`REMOTE_ENABLED=true`, off by default) keeps a WebSocket open to the signaling server
-at `REMOTE_URL` and prints a link at startup. The browser that opens the link loads the web app from the signaling
+at `REMOTE_URL`, which has no default and must be HTTPS (plain HTTP only for `localhost`), and prints a link at
+startup. The browser that opens the link loads the web app from the signaling
 server, which introduces it to the server; from then on they talk over a WebRTC data channel, encrypted end to end.
 
 ```text
@@ -61,6 +62,8 @@ relay credentials. A host prints its instance id in its remote link (`/i/<instan
 The server caps the sockets it holds (2 000 in all, 20 per address), the sockets an address opens in a burst and the
 messages each socket sends. Behind a proxy every socket comes from the proxy's address, so `P2P_TRUSTED_PROXY_HOPS`
 must count the proxies that append to `X-Forwarded-For`: `1` behind CapRover, `2` with a CDN proxy in front of it.
+Each session request reaches the host with a keyed hash of the browser's address, so the host backs off the addresses
+that send wrong proofs, and only them, without learning the addresses.
 Every page goes out with a strict Content Security Policy, no framing and `index.html` uncached.
 
 Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` serves the web app in `p2p` mode with

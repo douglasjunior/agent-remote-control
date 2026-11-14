@@ -58,7 +58,7 @@ class WsSignalingSocket<TSignal> implements ISignalingSocket<TSignal> {
   readonly id = randomUUID();
   private readonly messageListeners = new Set<(data: unknown) => void>();
 
-  constructor(private readonly socket: WebSocket, rate: Rate, logger: Logger) {
+  constructor(private readonly socket: WebSocket, readonly address: string, rate: Rate, logger: Logger) {
     const bucket = new TokenBucket(rate);
     socket.on('message', (raw: RawData) => {
       if (!bucket.take()) {
@@ -187,16 +187,17 @@ export class WsSignalingTransportAdapter implements ISignalingTransportPort, OnM
       return;
     }
     if (pathname === SIGNALING_HOST_PATH) {
-      this.accept(request, socket, head, usage, HOST_MESSAGE_RATE, this.hostListeners);
+      this.accept(request, socket, head, address, usage, HOST_MESSAGE_RATE, this.hostListeners);
       return;
     }
-    this.accept(request, socket, head, usage, CLIENT_MESSAGE_RATE, this.clientListeners);
+    this.accept(request, socket, head, address, usage, CLIENT_MESSAGE_RATE, this.clientListeners);
   }
 
   private accept<TSignal>(
     request: IncomingMessage,
     socket: Duplex,
     head: Buffer,
+    address: string,
     usage: AddressUsage,
     rate: Rate,
     listeners: ReadonlySet<(socket: ISignalingSocket<TSignal>) => void>,
@@ -210,7 +211,7 @@ export class WsSignalingTransportAdapter implements ISignalingTransportPort, OnM
       });
       this.alive.add(webSocket);
       webSocket.on('pong', () => this.alive.add(webSocket));
-      const signalingSocket = new WsSignalingSocket<TSignal>(webSocket, rate, this.logger);
+      const signalingSocket = new WsSignalingSocket<TSignal>(webSocket, address, rate, this.logger);
       listeners.forEach(listener => listener(signalingSocket));
     });
   }

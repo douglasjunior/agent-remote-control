@@ -22,9 +22,13 @@ const MAX_NEGOTIATING_SESSIONS = 16;
 const NEGOTIATION_TIMEOUT_MS = 30_000;
 /** The generated token holds 32 characters; a shorter one is too easy to guess from the Internet. */
 const MIN_REMOTE_TOKEN_LENGTH = 32;
-/** After a rejected proof, requests wait this long, doubled per rejection in a row, before being checked again. */
+/** After a rejected proof, its source's requests wait this long, doubled per rejection in a row, unchecked. */
 const REJECTION_BACKOFF_MS = 1_000;
 const MAX_REJECTION_BACKOFF_MS = 30_000;
+/** Sources whose rejections this host remembers; past it, the one rejected longest ago is forgotten. */
+const MAX_REJECTED_SOURCES = 1_024;
+
+type Rejections = { readonly count: number; readonly blockedUntil: number };
 
 type RemoteSession = {
   /** The certificate the browser proved the access token for; its offer must announce it. */
@@ -48,9 +52,9 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
   private readonly linkLogger = new Logger('RemoteAccessLink');
   private readonly listeners = new Set<(connection: IClientConnection) => void>();
   private readonly sessions = new Map<string, RemoteSession>();
+  /** By the source the signaling server gives each request, which stands for the browser's address. */
+  private readonly rejections = new Map<string, Rejections>();
   private identity?: RemoteIdentity;
-  private rejections = 0;
-  private blockedUntil = 0;
 
   constructor(
     private readonly remoteIdentity: RemoteIdentityService,
@@ -72,11 +76,16 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
       this.logger.error(`Remote access off: the access token must hold at least ${MIN_REMOTE_TOKEN_LENGTH} characters; leave WEB_ACCESS_TOKEN empty to generate one`);
       return;
     }
+    const baseUrl = this.remoteIdentity.baseUrl();
+    if (!baseUrl) {
+      this.logger.error('Remote access off: REMOTE_URL must hold the HTTPS URL of a signaling server you trust (HTTP only for localhost)');
+      return;
+    }
     const identity = await this.remoteIdentity.identity();
     this.identity = identity;
     const { instanceId, certificate, fingerprint } = identity;
     this.signaling.start({
-      url: this.remoteIdentity.signalingUrl(),
+      url: this.remoteIdentity.signalingUrl(baseUrl),
       register: async nonce => ({
         type: 'host.register',
         instanceId,
@@ -86,7 +95,7 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
       }),
       onSignal: signal => this.handleSignal(signal),
     });
-    this.linkLogger.log(`Remote access link: ${buildRemoteLink(this.remoteIdentity.baseUrl(), instanceId, fingerprint, this.accessToken.token())}`);
+    this.linkLogger.log(`Remote access link: ${buildRemoteLink(baseUrl, instanceId, fingerprint, this.accessToken.token())}`);
   }
 
   onModuleDestroy(): void {
@@ -131,25 +140,37 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
 
   /**
    * Accepts a session whose proof holds, while this host negotiates fewer than its limit. A wrong proof is a guess at
-   * the access token, so each rejection in a row makes the following requests wait longer before being checked.
+   * the access token, so each rejection in a row makes the following requests of its source wait longer before being
+   * checked. Backing off per source keeps whoever guesses from locking out everybody else.
    */
-  private decide({ sessionId, fingerprint, proof }: Extract<ToHostSignal, { type: 'session.request' }>): void {
+  private decide({ sessionId, source, fingerprint, proof }: Extract<ToHostSignal, { type: 'session.request' }>): void {
     const negotiating = [...this.sessions.values()].filter(session => !session.connected).length;
-    if (Date.now() < this.blockedUntil || negotiating >= MAX_NEGOTIATING_SESSIONS || this.sessions.has(sessionId)) {
+    const rejected = this.rejections.get(source);
+    if ((rejected && Date.now() < rejected.blockedUntil) || negotiating >= MAX_NEGOTIATING_SESSIONS || this.sessions.has(sessionId)) {
       this.signaling.send({ type: 'host.close', sessionId });
       return;
     }
     if (!this.provesToken(fingerprint, proof)) {
-      this.rejections += 1;
-      this.blockedUntil = Date.now() + Math.min(REJECTION_BACKOFF_MS * 2 ** (this.rejections - 1), MAX_REJECTION_BACKOFF_MS);
-      this.logger.warn(`remote_session_rejected: rejections=${this.rejections}`);
+      this.reject(source, (rejected?.count ?? 0) + 1);
       this.signaling.send({ type: 'host.reject', sessionId });
       return;
     }
-    this.rejections = 0;
+    this.rejections.delete(source);
     const timer = setTimeout(() => this.giveUp(sessionId), NEGOTIATION_TIMEOUT_MS);
     this.sessions.set(sessionId, { fingerprint, timer, candidates: 0, connected: false });
     this.signaling.send({ type: 'host.accept', sessionId });
+  }
+
+  private reject(source: string, count: number): void {
+    this.rejections.delete(source);
+    this.rejections.set(source, {
+      count,
+      blockedUntil: Date.now() + Math.min(REJECTION_BACKOFF_MS * 2 ** (count - 1), MAX_REJECTION_BACKOFF_MS),
+    });
+    if (this.rejections.size > MAX_REJECTED_SOURCES) {
+      this.rejections.delete(this.rejections.keys().next().value!);
+    }
+    this.logger.warn(`remote_session_rejected: rejections=${count}`);
   }
 
   /** Compares the canonical base64url text, so an encoding that differs only in its padding bits is refused too. */

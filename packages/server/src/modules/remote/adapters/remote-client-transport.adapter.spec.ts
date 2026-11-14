@@ -23,6 +23,8 @@ const BROWSER_HEX = Array.from({ length: 32 }, (_, index) => index.toString(16).
 const BROWSER_FINGERPRINT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
 const OFFER = `v=0\r\na=fingerprint:sha-256 ${BROWSER_HEX}\r\n`;
 const sessionId = (index: number) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
+const SOURCE = 'AAECAwQFBgcICQoLDA0ODw';
+const OTHER_SOURCE = 'DwAODQwLCgkIBwYFBAMCAQ';
 
 describe('RemoteClientTransportAdapter', () => {
   let dataDir: string;
@@ -36,8 +38,9 @@ describe('RemoteClientTransportAdapter', () => {
   let warn: ReturnType<typeof vi.spyOn>;
 
   const create = (client = signaling) => new RemoteClientTransportAdapter(identity, accessToken, client, peers);
-  const request = (index = 1, withProof = proof) =>
-    signaling.receive({ type: 'session.request', sessionId: sessionId(index), fingerprint: BROWSER_FINGERPRINT, proof: withProof });
+  const request = (index = 1, withProof = proof, source = SOURCE) =>
+    signaling.receive({ type: 'session.request', sessionId: sessionId(index), source, fingerprint: BROWSER_FINGERPRINT, proof: withProof });
+  const wrongProof = () => `${proof[0] === 'A' ? 'B' : 'A'}${proof.slice(1)}`;
   const offer = (index = 1, sdp = OFFER) => signaling.receive({ type: 'session.offer', sessionId: sessionId(index), sdp, iceServers });
   /** A session the host accepted and answered. */
   const negotiate = (index = 1) => {
@@ -94,6 +97,19 @@ describe('RemoteClientTransportAdapter', () => {
     expect(idle.options).toBeUndefined();
   });
 
+  it.each([
+    ['missing', undefined],
+    ['plain HTTP to another machine', 'http://arc.example.com'],
+  ])('should stay off with REMOTE_URL %s', async (_name, remoteUrl) => {
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    vi.stubEnv('REMOTE_URL', remoteUrl);
+    const idle = new FakeSignalingClient();
+    await create(idle).onApplicationBootstrap();
+
+    expect(idle.options).toBeUndefined();
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Remote access off: REMOTE_URL must hold the HTTPS URL'));
+  });
+
   it('should stay off with an access token too short to face the Internet', async () => {
     const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     vi.stubEnv('WEB_ACCESS_TOKEN', 'short');
@@ -112,9 +128,9 @@ describe('RemoteClientTransportAdapter', () => {
     expect(peers.peers).toHaveLength(0);
   });
 
-  it('should reject a wrong proof and check no request until the backoff, which doubles per rejection', () => {
+  it('should reject a wrong proof and check no request of its source until the backoff, which doubles per rejection', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    const wrong = `${proof[0] === 'A' ? 'B' : 'A'}${proof.slice(1)}`;
+    const wrong = wrongProof();
     request(1, wrong);
     request(2);
     vi.advanceTimersByTime(1_000);
@@ -137,6 +153,33 @@ describe('RemoteClientTransportAdapter', () => {
       { type: 'host.accept', sessionId: sessionId(7) },
     ]);
     expect(warn).toHaveBeenCalledWith('remote_session_rejected: rejections=2');
+  });
+
+  it('should keep checking the requests of other sources while one backs off', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    request(1, wrongProof());
+    request(2, wrongProof());
+    request(3, proof, OTHER_SOURCE);
+
+    expect(signaling.sent).toEqual([
+      { type: 'host.reject', sessionId: sessionId(1) },
+      { type: 'host.close', sessionId: sessionId(2) },
+      { type: 'host.accept', sessionId: sessionId(3) },
+    ]);
+  });
+
+  it('should forget the source rejected longest ago past the sources it remembers', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const sourceOf = (index: number) => `source-${String(index).padStart(15, '0')}`;
+    Array.from({ length: 1_025 }, (_, index) => request(index + 1, wrongProof(), sourceOf(index)));
+    signaling.sent.splice(0);
+    request(2_000, proof, sourceOf(0));
+    request(2_001, proof, sourceOf(1));
+
+    expect(signaling.sent).toEqual([
+      { type: 'host.accept', sessionId: sessionId(2_000) },
+      { type: 'host.close', sessionId: sessionId(2_001) },
+    ]);
   });
 
   it('should reject a proof that decodes to the right bytes through another encoding of its padding bits', () => {

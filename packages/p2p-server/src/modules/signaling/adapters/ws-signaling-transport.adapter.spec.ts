@@ -181,6 +181,7 @@ describe('WsSignalingTransportAdapter', () => {
     expect(await outcome(open('/signal/host', undefined, '203.0.113.1'))).toBe('http-429');
     expect(await outcome(open('/signal/host', undefined, '203.0.113.2'))).toBe('open');
     expect(await outcome(open('/signal/host', undefined, ' , '))).toBe('open');
+    expect(hosts.map(host => host.address)).toEqual([...Array.from({ length: 20 }, () => '203.0.113.1'), '203.0.113.2', '127.0.0.1']);
   });
 
   it('should forget an address once it has no socket and its whole allowance back', async () => {

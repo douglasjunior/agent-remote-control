@@ -33,6 +33,10 @@ export const instanceIdSchema = z.string().regex(/^[0-9a-f]{20}$/);
 const fingerprintSchema = z.string().regex(FINGERPRINT_PATTERN);
 /** A base64url HMAC-SHA256 from `sessionProof`. */
 const proofSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const sourceSchema = z.string().regex(/^[A-Za-z0-9_-]{22}$/);
+
+/** Bytes of the `source` of a `session.request`: a keyed hash of the browser's address, truncated. */
+export const SOURCE_BYTES = 16;
 
 export const iceServerSchema = z.object({
   urls: z.array(z.string().min(1).max(500)).min(1).max(10),
@@ -72,8 +76,17 @@ export const toHostSignalSchema = z.discriminatedUnion('type', [
   /** The first signal of every host socket; the host answers with `host.register`. */
   z.object({ type: z.literal('host.challenge'), nonce: z.string().min(16).max(100) }),
   z.object({ type: z.literal('host.registered') }),
-  /** A browser asks for a session, proving its access token for the certificate it will offer. */
-  z.object({ type: z.literal('session.request'), sessionId: sessionIdSchema, fingerprint: fingerprintSchema, proof: proofSchema }),
+  /**
+   * A browser asks for a session, proving its access token for the certificate it will offer. `source` stands for the
+   * browser's address without revealing it, so the host backs off the addresses that send wrong proofs.
+   */
+  z.object({
+    type: z.literal('session.request'),
+    sessionId: sessionIdSchema,
+    source: sourceSchema,
+    fingerprint: fingerprintSchema,
+    proof: proofSchema,
+  }),
   z.object({
     type: z.literal('session.offer'),
     sessionId: sessionIdSchema,

@@ -33,8 +33,8 @@ describe('SignalingConnectionHandler', () => {
     return host;
   };
 
-  const connect = (instanceId = HOST!.instanceId) => {
-    const client = transport.connectClient();
+  const connect = (instanceId = HOST!.instanceId, address?: string) => {
+    const client = transport.connectClient(address);
     client.receive({ type: 'client.connect', instanceId, fingerprint: BROWSER_FINGERPRINT, proof: PROOF });
     return client;
   };
@@ -162,8 +162,29 @@ describe('SignalingConnectionHandler', () => {
     it('should have its proof handed to the host and get nothing before the host accepts it', () => {
       const { host, client, sessionId } = requestSession();
 
-      expect(host.sent.at(-1)).toEqual({ type: 'session.request', sessionId, fingerprint: BROWSER_FINGERPRINT, proof: PROOF });
+      expect(host.sent.at(-1)).toEqual({
+        type: 'session.request',
+        sessionId,
+        source: expect.stringMatching(/^[\w-]{22}$/),
+        fingerprint: BROWSER_FINGERPRINT,
+        proof: PROOF,
+      });
       expect(client.sent).toEqual([]);
+    });
+
+    it('should hand the host the same source for the same address and another one for another address', () => {
+      const host = registerHost();
+      const sourceOf = (address: string) => {
+        connect(HOST!.instanceId, address);
+        const request = host.sent.at(-1) as Extract<ToHostSignal, { type: 'session.request' }>;
+        return request.source;
+      };
+
+      const first = sourceOf('198.51.100.7');
+
+      expect(sourceOf('198.51.100.7')).toBe(first);
+      expect(sourceOf('198.51.100.8')).not.toBe(first);
+      expect(first).not.toContain('198.51.100.7');
     });
 
     it('should get the ICE servers and the protocol version once the host accepts, only once', () => {

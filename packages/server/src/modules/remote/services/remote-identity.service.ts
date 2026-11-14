@@ -11,7 +11,8 @@ import { DataDirectoryService } from '../../paths/services/data-directory.servic
 import type { RemoteIdentity } from '../models/remote-identity.model.js';
 
 
-const DEFAULT_REMOTE_URL = 'https://arc-p2p-server.arc.douglasjunior.work';
+/** Hosts that `REMOTE_URL` may reach over plain HTTP: this machine only, for development. */
+const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 const CERTIFICATE_YEARS = 20;
 const SIGNING_ALGORITHM = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
 
@@ -34,13 +35,24 @@ export class RemoteIdentityService {
     return process.env.REMOTE_ENABLED === 'true';
   }
 
-  /** `REMOTE_URL`: the signaling server, which also serves the web app that opens the remote link. */
-  baseUrl(): string {
-    return (process.env.REMOTE_URL?.trim() || DEFAULT_REMOTE_URL).replace(/\/+$/, '');
+  /**
+   * `REMOTE_URL`: the signaling server, which also serves the web app that opens the remote link and reads the access
+   * token. It has no default, since choosing it is choosing whom to trust with the token. Null unless it is an HTTPS
+   * URL, or an HTTP one of this machine.
+   */
+  baseUrl(): string | null {
+    let url: URL;
+    try {
+      url = new URL(process.env.REMOTE_URL?.trim() ?? '');
+    } catch {
+      return null;
+    }
+    const trusted = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname));
+    return trusted ? url.href.replace(/\/+$/, '') : null;
   }
 
-  signalingUrl(): string {
-    return `${this.baseUrl().replace(/^http/, 'ws')}${SIGNALING_HOST_PATH}`;
+  signalingUrl(baseUrl: string): string {
+    return `${baseUrl.replace(/^http/, 'ws')}${SIGNALING_HOST_PATH}`;
   }
 
   identity(): Promise<RemoteIdentity> {

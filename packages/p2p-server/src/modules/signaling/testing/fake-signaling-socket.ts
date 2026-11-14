@@ -12,6 +12,8 @@ export class FakeSignalingSocket<TSignal> implements ISignalingSocket<TSignal> {
   private readonly messageListeners = new Set<(data: unknown) => void>();
   private readonly closeListeners = new Set<() => void>();
 
+  constructor(readonly address = '203.0.113.10') {}
+
   send(signal: TSignal): void {
     this.sent.push(signal);
   }
@@ -60,8 +62,8 @@ export class FakeSignalingTransport implements ISignalingTransportPort {
     return socket;
   }
 
-  connectClient(): FakeSignalingSocket<ToClientSignal> {
-    const socket = new FakeSignalingSocket<ToClientSignal>();
+  connectClient(address?: string): FakeSignalingSocket<ToClientSignal> {
+    const socket = new FakeSignalingSocket<ToClientSignal>(address);
     this.clientListeners.forEach(listener => listener(socket));
     return socket;
   }

@@ -122,27 +122,38 @@ server {
 
 ## 🛰️ Remote access
 
-Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and the server prints a link at startup:
+Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and `REMOTE_URL`, and the server prints a link at startup:
 
 ```text
-Remote access link: https://arc-p2p-server.arc.douglasjunior.work/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
+Remote access link: <REMOTE_URL>/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
 ```
 
 Opening it loads the web app from the signaling server, which only introduces your browser to your server. They then talk over a WebRTC data channel, directly when the networks allow it and through a TURN relay when they do not, encrypted end to end either way. The connection badge in the header shows which of the two carries it (or the WebSocket, for the local web interface).
 
 - **Keep the link private.** It carries the access token, like a `#token=` link.
 - **The link pins your server.** The page refuses any server that does not present the certificate whose fingerprint the link carries, and the instance id derives from that certificate, so not even the signaling server can stand in for yours.
-- **The token stays between the browser and your server.** Before your server spends anything on a browser, the browser proves it holds the token with a code bound to its own certificate, which the signaling server relays without learning the token. Each wrong proof makes the next ones wait longer.
+- **The token stays between the browser and your server.** Before your server spends anything on a browser, the browser proves it holds the token with a code bound to its own certificate, which the signaling server relays without learning the token. Each wrong proof makes the next ones from the same address wait longer.
 - **A strong token is required.** Remote access stays off when `WEB_ACCESS_TOKEN` holds fewer than 32 characters; leave it empty to use the generated one.
 - **The link survives restarts.** The certificate and its key live in `DATA_DIR/remote`; delete that folder for a new link.
 
 > [!IMPORTANT]
-> **Remote access trusts the operator of the signaling server.** The page that opens the link comes from `REMOTE_URL`, and whoever operates that server could serve a page that reads the access token. The default `REMOTE_URL` is run by the author of this project. To trust nobody else, [host your own](docs/remote-access.md) and point `REMOTE_URL` at it.
+> **Remote access trusts the operator of the signaling server.** The page that opens the link comes from `REMOTE_URL`, and whoever operates that server could serve a page that reads the access token. That is why `REMOTE_URL` has no default: point it at a server you trust, or [host your own](docs/remote-access.md).
+
+**Public signaling server.** The author of this project runs a public signaling server, with a TURN relay, that anyone may use **at their own risk**:
+
+```env
+REMOTE_URL=https://arc-p2p-server.arc.douglasjunior.work
+```
+
+It stores nothing: it has no database, it keeps the servers online and the connections being negotiated in memory only, and it never sees your conversations, which travel end to end encrypted between your browser and your server, through the relay included. Its logs record only connection events, such as instance ids and the addresses its rate limits refuse, never your access token or your messages.
+
+> [!WARNING]
+> **Disclaimer.** The public signaling server and TURN relay are provided free of charge, "as is", without warranty of any kind, express or implied, including availability, capacity, performance, security or fitness for a particular purpose. They may be changed, rate limited, suspended or shut down at any time, without notice. Using them means trusting their operator with the page that reads your access token, which controls agents that run commands on your machine. In no event shall the author be liable for any claim, damage or other liability, including unauthorized access to your machine, loss of data or interruption of service, arising from or in connection with their use. If you do not accept these terms, do not use them: [host your own](docs/remote-access.md).
 
 | Variable | Description | Default |
 |---|---|---|
 | `REMOTE_ENABLED` | Set to `true` to reach this server through the signaling server | `false` |
-| `REMOTE_URL` | Signaling server that introduces browsers to this server and serves the web app of the link | `https://arc-p2p-server.arc.douglasjunior.work` |
+| `REMOTE_URL` | HTTPS URL of the signaling server that introduces browsers to this server and serves the web app of the link; plain HTTP only for `localhost` | *(required with remote access)* |
 
 [Self-hosting the signaling server and the TURN relay](docs/remote-access.md) covers `packages/p2p-server`, coturn and their deployment with CapRover.
 
@@ -311,7 +322,7 @@ cp .env.example .env
 | `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
 | `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
-| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / `https://arc-p2p-server.arc.douglasjunior.work` |
+| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* |
 
 ## 🐳 Docker
 

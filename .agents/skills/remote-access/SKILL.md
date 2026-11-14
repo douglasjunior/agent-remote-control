@@ -26,10 +26,10 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 - `signaling.ts`: four zod unions, one per direction — `hostSignalSchema` (`host.register`, `host.accept`,
   `host.reject`, `host.answer`, `host.candidate`, `host.close`), `toHostSignalSchema` (`host.challenge`,
-  `host.registered`, `session.request` with the browser's fingerprint and proof, `session.offer` with the ICE servers,
-  `session.candidate`, `session.closed`), `clientSignalSchema` (`client.connect` with the instance, fingerprint and
-  proof, `client.offer`, `client.candidate`) and `toClientSignalSchema` (`client.accepted` with the ICE servers and the
-  host's protocol version, `client.unavailable`, `client.rejected`, `session.answer`, `session.candidate`,
+  `host.registered`, `session.request` with the browser's `source`, fingerprint and proof, `session.offer` with the ICE
+  servers, `session.candidate`, `session.closed`), `clientSignalSchema` (`client.connect` with the instance, fingerprint
+  and proof, `client.offer`, `client.candidate`) and `toClientSignalSchema` (`client.accepted` with the ICE servers and
+  the host's protocol version, `client.unavailable`, `client.rejected`, `session.answer`, `session.candidate`,
   `session.closed`). Paths `/signal/host` and `/signal/client`, a 64 KiB payload limit, the data channel label `arc`,
   `MAX_CANDIDATES_PER_SESSION` (32), `registrationPayload(nonce)` and the close codes `4400` (invalid registration),
   `4403` (instance not allowed) and `4409` (replaced) live there too.
@@ -39,7 +39,9 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   `isFingerprintOf(instanceId, fingerprint)`, `buildRemoteLink` and `instanceIdFromPath`. The link is `<REMOTE_URL>/i/<instance id>#fp=<fingerprint>&token=<access token>`; the
   fingerprint and the token must stay in the fragment, which the browser never sends to the page's server.
 - `fingerprint.ts`: `encodeFingerprint` turns `AB:CD:…` into base64url (`FINGERPRINT_PATTERN`, 43 characters);
-  `sdpFingerprint(sdp)` returns the single SHA-256 fingerprint of an SDP, or null for none or more than one.
+  `sdpFingerprint(sdp)` returns the SHA-256 fingerprint of an SDP only when every `a=fingerprint` line names that
+  same SHA-256 fingerprint, and null otherwise: a DTLS stack may pin the handshake to any of the lines, whatever
+  their algorithm (libdatachannel takes the first one).
 - `session-proof.ts`: `sessionProof(token, instanceId, fingerprint)`, a base64url HMAC-SHA256 of
   `sessionProofMessage(instanceId, fingerprint)` under the access token. It binds the proof to the browser's
   certificate, so the signaling server, which relays it, can neither learn the token nor reuse the proof.
@@ -55,7 +57,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   reports a frame it refuses that way, and without one the process ends. Limits: 2 000 sockets in all (`503`), 20 per
   address and 30 upgrades in a burst per address, back at one per 2 s (`429`), and a token bucket of messages per
   socket (host 256, 64/s; browser 64, 16/s) that closes with `1008`. The address is the socket's, or the entry
-  `P2P_TRUSTED_PROXY_HOPS` from the end of `X-Forwarded-For` behind that many proxies.
+  `P2P_TRUSTED_PROXY_HOPS` from the end of `X-Forwarded-For` behind that many proxies; every signaling socket
+  exposes it as `address`.
 - `SignalingConnectionHandler` parses every message and closes with `1008` on an invalid signal, a signal out of order
   or no first signal within 5 s. A browser socket lives at most 60 s: once connected it needs no signaling.
 - `RegisterHostUseCase.challenge` sends each host socket a random nonce (`host.challenge`). `execute` accepts the
@@ -65,7 +68,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   its sessions.
 - `OpenClientSessionUseCase` answers `client.unavailable` when the host is offline or already negotiates 16 sessions.
   Otherwise it opens a session (`requested`) and hands the host `session.request` with the browser's fingerprint and
-  proof; the browser gets nothing yet.
+  proof, and a `source`: the first `SOURCE_BYTES` (16) of an HMAC-SHA256 of the socket's address under a key the
+  server draws at startup, so the host tells addresses apart without learning them. The browser gets nothing yet.
 - `RelayHostSignalUseCase`: `host.accept` makes the session `accepted` and sends the browser `client.accepted` with
   the ICE servers, so TURN credentials go only to browsers a host accepted; `host.reject` sends `client.rejected` and
   ends the session. It ignores signals about sessions of another instance.
@@ -87,8 +91,9 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 ## Host (`packages/server/src/modules/remote`)
 
-- `RemoteIdentityService`: `isEnabled()` (only `REMOTE_ENABLED=true`), `baseUrl()` (`REMOTE_URL`, default
-  `https://arc-p2p-server.arc.douglasjunior.work`), `signalingUrl()`, `identity()`, created once in `<DATA_DIR>/remote`
+- `RemoteIdentityService`: `isEnabled()` (only `REMOTE_ENABLED=true`), `baseUrl()` (`REMOTE_URL`, with no default
+  since choosing it is trusting its operator; null unless HTTPS, or HTTP to `localhost`, `127.0.0.1` or `[::1]`),
+  `signalingUrl(baseUrl)`, `identity()`, created once in `<DATA_DIR>/remote`
   (`0o700`): a self-signed ECDSA P-256 `certificate.pem` and `key.pem`, both `0o600`, whose fingerprint derives the
   instance id, and `signChallenge(nonce)`. The link stays the same across restarts.
 - `ISignalingClientPort` → `WsSignalingClientAdapter`: answers each `host.challenge` with the registration the
@@ -98,16 +103,17 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 - `IRemotePeerFactoryPort` → `NodeDataChannelPeerAdapter` (`node-datachannel`, an external SDK): every peer uses the
   identity's certificate files, so the answer carries the pinned fingerprint. TURN URLs become libdatachannel server
   objects, since a username holds a colon. A channel closes only after its buffered messages leave.
-- `RemoteClientTransportAdapter` implements `IClientTransportPort`. On bootstrap it stays off when remote access is
-  off or the access token holds fewer than 32 characters (logged as an error), and otherwise logs `Remote access link:
-  …` from the console-only context `RemoteAccessLink`. On `session.request` it checks the proof with `timingSafeEqual`
-  before spending anything: a valid one is `host.accept`, a wrong one `host.reject`, after which requests get
-  `host.close` unchecked for 1 s, doubled per rejection in a row up to 30 s. It refuses more than 16 negotiating
-  sessions, answers only the offer announcing the proof's fingerprint, adds at most 32 candidates, gives up a session
-  without a channel 30 s after accepting it, keeps only one channel labeled `arc` and hands it to the web channel as a
-  `DataChannelClientConnection`, which frames events and refuses commands over 256 KiB. A signal that throws (a
-  candidate or ICE server libdatachannel refuses) gives up its session only. The web channel authenticates the channel
-  with the access token like any other connection.
+- `RemoteClientTransportAdapter` implements `IClientTransportPort`. On bootstrap it stays off when remote access is off,
+  the access token holds fewer than 32 characters or `REMOTE_URL` is missing or untrusted (both logged as errors), and
+  otherwise logs `Remote access link: …` from the console-only context `RemoteAccessLink`. On `session.request` it
+  checks the proof with `timingSafeEqual` before spending anything: a valid one is `host.accept`, a wrong one
+  `host.reject`, after which requests get `host.close` unchecked for 1 s, doubled per rejection in a row up to 30 s. The
+  backoff counts per `source`, so whoever guesses never locks out other addresses; the host remembers the 1 024 sources
+  rejected last. It refuses more than 16 negotiating sessions, answers only the offer announcing the proof's
+  fingerprint, adds at most 32 candidates, gives up a session without a channel 30 s after accepting it, keeps only one
+  channel labeled `arc` and hands it to the web channel as a `DataChannelClientConnection`, which frames events and
+  refuses commands over 256 KiB. A signal that throws (a candidate or ICE server libdatachannel refuses) gives up its
+  session only. The web channel authenticates the channel with the access token like any other connection.
 
 ## Browser (`packages/web`)
 
