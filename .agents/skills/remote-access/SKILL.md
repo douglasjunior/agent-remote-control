@@ -132,7 +132,7 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 - coturn with `use-auth-secret` (secret `TURN_SECRET`, same as `P2P_TURN_SECRET`), relay ports 49160–49179, peers
   reached over UDP only, and denied: private, loopback, link-local, documentation, reserved and broadcast addresses,
-  IPv4-mapped and NAT64 IPv6, and `TURN_EXTERNAL_IP` itself (from the entrypoint), so the relay never reaches the
+  IPv4-mapped and NAT64 IPv6, and `TURN_EXTERNAL_IP` itself (required by the entrypoint), so the relay never reaches the
   network of its machine nor the services its firewall hides.
 - The entrypoint relays from one address only, the IPv4 of the default route's interface read from `/proc/net/route`
   (`docker_gwbridge` under Swarm, where host-mode ports arrive), or `TURN_RELAY_IP`, and maps `TURN_EXTERNAL_IP` to it.

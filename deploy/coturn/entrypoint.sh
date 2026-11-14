@@ -5,6 +5,7 @@ set -eu
 
 : "${TURN_SECRET:?TURN_SECRET must hold the same value as P2P_TURN_SECRET of the p2p-server}"
 : "${TURN_REALM:?TURN_REALM must hold the domain of the relay, such as turn.example.com}"
+: "${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP must hold the public IP of the machine, which the relay must never forward to}"
 
 # The IPv4 address of the interface the default route leaves through. Under Docker Swarm that is docker_gwbridge,
 # where the ports published in host mode arrive; the overlay address that coturn would also relay from is
@@ -37,8 +38,8 @@ exec turnserver -c /etc/coturn/turnserver.conf \
   --static-auth-secret="$TURN_SECRET" \
   --realm="$TURN_REALM" \
   ${RELAY_IP:+--relay-ip="$RELAY_IP"} \
-  ${TURN_EXTERNAL_IP:+--external-ip="$TURN_EXTERNAL_IP${RELAY_IP:+/$RELAY_IP}"} \
-  ${TURN_EXTERNAL_IP:+--denied-peer-ip="$TURN_EXTERNAL_IP"} \
+  --external-ip="$TURN_EXTERNAL_IP${RELAY_IP:+/$RELAY_IP}" \
+  --denied-peer-ip="$TURN_EXTERNAL_IP" \
   --max-bps="${TURN_MAX_BPS:-262144}" \
   --bps-capacity="${TURN_BPS_CAPACITY:-2097152}" \
   --user-quota="${TURN_USER_QUOTA:-8}" \

@@ -77,7 +77,7 @@ Locally, `pnpm dev:p2p-server` starts it on port 3100 and `pnpm dev:web:p2p` ser
 |---|---|---|
 | `TURN_SECRET` | Same value as `P2P_TURN_SECRET` | *(required)* |
 | `TURN_REALM` | Domain of the relay, such as `turn.example.com` | *(required)* |
-| `TURN_EXTERNAL_IP` | Public IP of the machine, when coturn runs behind NAT or in a container; the relay never forwards to it | *(detected)* |
+| `TURN_EXTERNAL_IP` | Public IP of the machine, which the relay never forwards to; coturn refuses to start without it | *(required)* |
 | `TURN_RELAY_IP` | Address coturn relays from, mapped to `TURN_EXTERNAL_IP` | The address of the default route's interface |
 | `TURN_MAX_BPS` | Bytes per second each session may relay | `262144` (256 KiB/s) |
 | `TURN_BPS_CAPACITY` | Bytes per second the whole relay may carry | `2097152` (2 MiB/s) |
