@@ -5,6 +5,7 @@ import { Link, useLocation } from 'react-router';
 
 import { useConversations } from '../../conversations/conversations-context.js';
 import { Markdown } from '../entries/markdown.js';
+import { IconButton } from '../icon-button.js';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../ui/alert-dialog.js';
@@ -19,10 +20,9 @@ function DeleteSkillButton({ name, onDelete }: { readonly name: string; readonly
   const [open, setOpen] = useState(false);
   return (
     <>
-      <Button size="sm" variant="ghost" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => setOpen(true)}>
+      <IconButton variant="ghost" label="Delete" onClick={() => setOpen(true)} className="shrink-0 text-muted-foreground hover:text-destructive">
         <Trash2 />
-        Delete
-      </Button>
+      </IconButton>
       <AlertDialog open={open} onOpenChange={setOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -61,16 +61,19 @@ export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readon
         All skills
       </Link>
       <header className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-mono text-lg font-semibold break-all">{skill.name}</h2>
-          {skill.builtIn
-            ? (
-              <Badge variant="secondary">
-                <Lock aria-hidden />
-                Built-in
-              </Badge>
-            )
-            : <Badge variant="outline">Custom</Badge>}
+        <div className="flex items-start gap-2">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+            <h2 className="font-mono text-lg font-semibold break-all">{skill.name}</h2>
+            {skill.builtIn
+              ? (
+                <Badge variant="secondary">
+                  <Lock aria-hidden />
+                  Built-in
+                </Badge>
+              )
+              : <Badge variant="outline">Custom</Badge>}
+          </div>
+          {!skill.builtIn && <DeleteSkillButton name={skill.name} onDelete={onDelete} />}
         </div>
         <p className="text-sm text-muted-foreground">{skill.description}</p>
         <SkillRoles roles={skill.roles} detailed />
@@ -84,13 +87,10 @@ export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readon
         : (
           <div className="flex flex-col gap-3 rounded-xl border bg-muted/40 px-4 py-3 @lg:flex-row @lg:items-center @lg:justify-between">
             <p className="text-[13px] text-muted-foreground">Want it to say something else? The Coordinator rewrites it for you.</p>
-            <div className="flex shrink-0 items-center gap-1">
-              <DeleteSkillButton name={skill.name} onDelete={onDelete} />
-              <Button size="sm" className="shrink-0" onClick={() => startConversation(changeSkillPrompt(skill.name))}>
-                <MessageSquarePlus />
-                Ask the Coordinator
-              </Button>
-            </div>
+            <Button size="sm" className="h-auto min-h-8 w-full shrink-0 py-1.5 whitespace-normal @lg:w-auto" onClick={() => startConversation(changeSkillPrompt(skill.name))}>
+              <MessageSquarePlus />
+              Ask the Coordinator
+            </Button>
           </div>
         )}
       <div className="rounded-2xl border bg-card px-5 py-4">

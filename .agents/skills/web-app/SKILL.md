@@ -114,7 +114,7 @@ the X ("Close skills") at the top of the list returns there, or to `/` for a pag
   content as Markdown. A built-in skill is read-only. A custom one offers "Ask the Coordinator", which calls
   `startConversation(changeSkillPrompt(name))`: the conversation is created and opened with `Change the skill "<name>": `
   in its composer for the user to finish. The page lays out through a container query, since its width depends on the
-  docked conversation list. A custom skill also has Delete, confirmed in an `AlertDialog`: it sends `skill.delete`, and the
+  docked conversation list. A custom skill also has Delete (a trash `IconButton` at the right of its name), confirmed in an `AlertDialog`: it sends `skill.delete`, and the
   matching `skill.result` returns to the list with a toast (or shows the error in a toast). Any `skill.deleted` makes the page
   ask for the list again, and for the open skill when it is the deleted one, since a built-in skill it replaced comes back.
 - `startConversation(prompt)` (in `ConversationsProvider`) keeps the prompt by request id and navigates with it in the
