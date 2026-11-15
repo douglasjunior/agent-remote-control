@@ -14,7 +14,7 @@ async function openSettings(options: { configured?: boolean } = {}) {
     agents: [{ id: 'codex', name: 'Codex' }, { id: 'claude', name: 'Claude Code' }],
   });
   if (options.configured !== false) {
-    await user.click(screen.getByRole('button', { name: /Settings/ }));
+    await user.click(screen.getByRole('button', { name: 'Agent settings' }));
   }
   return { user, ...app };
 }
@@ -45,7 +45,7 @@ describe('SettingsSheet', () => {
         roleProfiles[1],
       ],
     });
-    await userEvent.click(screen.getByRole('button', { name: /Settings/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
 
     const roles = within(dialog()).getByRole('list', { name: 'Roles' });
     expect(within(roles).getByText('CEO')).toBeInTheDocument();

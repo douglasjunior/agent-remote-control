@@ -1,4 +1,4 @@
-import { ListTodo, MessagesSquare, PanelRightClose, PanelRightOpen, Pencil, Settings } from 'lucide-react';
+import { ListTodo, MessagesSquare, PanelRightClose, PanelRightOpen, Pencil } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
@@ -30,7 +30,6 @@ import { SquadPanel } from './squad/squad-panel.js';
 import { squadNeedsAttention, squadStatus } from './squad/squad-status.js';
 import { TeamIntro } from './team-intro.js';
 import { TitleInput } from './title-input.js';
-import { Button } from './ui/button.js';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs.js';
 
 
@@ -188,11 +187,6 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
             <span aria-hidden>×</span>
           </button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setSettingsRequested(true)}>
-          <Settings />
-          {' '}
-          Settings
-        </Button>
         {!tabbed && (
           <IconButton
             variant="ghost"
@@ -246,7 +240,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
       {pane.kind === 'artifact' && <div className="min-h-0 flex-1"><ArtifactPane conversationId={conversationId} artifactId={pane.artifactId} /></div>}
     </div>
   );
-  const squad = <SquadPanel members={team} profiles={view.profiles} focus={focus} highlight={hovered} delivery={delivery} onSelect={selectStation} onContinue={handleContinue} />;
+  const squad = <SquadPanel members={team} profiles={view.profiles} focus={focus} highlight={hovered} delivery={delivery} onSelect={selectStation} onContinue={handleContinue} onSettings={() => setSettingsRequested(true)} />;
 
   return (
     <div className="h-full">

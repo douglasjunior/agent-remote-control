@@ -26,8 +26,8 @@ describe('ConversationView squad', () => {
   it('should show the chat and the squad panel side by side on a wide window', () => {
     openConversation();
 
-    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     expect(squad()).toBeInTheDocument();
+    expect(within(squad()).getByRole('button', { name: 'Agent settings' })).toBeInTheDocument();
     expect(screen.queryByRole('tab')).not.toBeInTheDocument();
   });
 
