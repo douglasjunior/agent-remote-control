@@ -112,7 +112,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   rejected last. It refuses more than 16 negotiating sessions, answers only the offer announcing the proof's
   fingerprint, adds at most 32 candidates, gives up a session without a channel 30 s after accepting it, keeps only one
   channel labeled `arc` and hands it to the web channel as a `DataChannelClientConnection`, which frames events and
-  refuses commands over 256 KiB. A signal that throws (a candidate or ICE server libdatachannel refuses) gives up its
+  refuses commands over 256 KiB. libdatachannel queues what it cannot send yet, so the connection sends every frame
+  at once; the web channel keeps each event small by paging conversation histories. A signal that throws (a candidate or ICE server libdatachannel refuses) gives up its
   session only. The web channel authenticates the channel with the access token like any other connection.
 
 ## Browser (`packages/web`)
@@ -123,7 +124,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 - `WebRtcServerConnection` negotiates through `/signal/client` of the page's origin with a fresh certificate per
   attempt and the proof of the token for it, treats `client.rejected` as `unauthorized`, refuses an answer whose
   fingerprint differs from the pinned one (`untrusted`) and a host of another protocol version (`incompatible`),
-  none retried, and reports `turn` when the selected candidate pair has a relayed end. Attempts leave the TURN URLs
+  none retried, and reports `turn` when the selected candidate pair has a relayed end. Every frame of a message still
+  arriving reports progress, so a long message over a slow relay keeps the heartbeat of the connection alive. Attempts leave the TURN URLs
   out until one fails to connect (its peer connection fails, or no channel 8 s after its offer); from then on, for
   the life of the page, they take the relay. A TURN allocation holds a relay port for as long as its connection lives,
   even a direct one.

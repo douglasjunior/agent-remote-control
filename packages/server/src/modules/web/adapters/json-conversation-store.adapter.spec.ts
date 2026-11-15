@@ -71,10 +71,13 @@ describe('JsonConversationStoreAdapter', () => {
   it('should replace an entry by id keeping its position and append new ones', async () => {
     const { id } = await store.create();
 
-    await store.upsertEntry(id, note('a', 'first'));
-    await store.upsertEntry(id, note('b'));
-    await store.upsertEntry(id, note('a', 'changed'));
+    const positions = [
+      await store.upsertEntry(id, note('a', 'first')),
+      await store.upsertEntry(id, note('b')),
+      await store.upsertEntry(id, note('a', 'changed')),
+    ];
 
+    expect(positions).toEqual([0, 1, 0]);
     expect(await store.history(id)).toEqual([note('a', 'changed'), note('b')]);
   });
 

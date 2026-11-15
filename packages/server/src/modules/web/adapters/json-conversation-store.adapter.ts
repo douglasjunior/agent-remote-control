@@ -61,7 +61,7 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
     return [...await this.loadHistory(id)];
   }
 
-  async upsertEntry(id: string, entry: ConversationEntry): Promise<void> {
+  async upsertEntry(id: string, entry: ConversationEntry): Promise<number> {
     const entries = await this.loadHistory(id);
     const position = entries.findIndex(existing => existing.id === entry.id);
     if (position === -1) {
@@ -70,6 +70,7 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
       entries[position] = entry;
     }
     this.scheduleWrite(id);
+    return position === -1 ? entries.length - 1 : position;
   }
 
   async flush(id: string): Promise<void> {

@@ -43,7 +43,7 @@ export function renderApp(path = '/'): AppHarness {
   return { connection, router };
 }
 
-export function openConversation(options: { configured?: boolean; entries?: ConversationEntry[] } = {}): AppHarness {
+export function openConversation(options: { configured?: boolean; entries?: ConversationEntry[]; start?: number } = {}): AppHarness {
   const app = renderApp('/c/c1');
   act(() => {
     app.connection.emitEvent({
@@ -54,6 +54,7 @@ export function openConversation(options: { configured?: boolean; entries?: Conv
       type: 'conversation.history',
       conversationId: 'c1',
       entries: options.entries ?? [],
+      start: options.start ?? 0,
       state: 'idle',
     });
     app.connection.emitEvent({

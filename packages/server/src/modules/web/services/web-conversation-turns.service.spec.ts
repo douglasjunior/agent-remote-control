@@ -86,7 +86,7 @@ describe('WebConversationTurnsService', () => {
     expect(events.stateOf('web-1')).toBe('running');
   });
 
-  it('should close the open questions before idle and flush the store', async () => {
+  it('should close the open questions as it goes idle and flush the store', async () => {
     const { turns, events, store, observer } = setup();
     await events.publishEntry('web-1', questionEntry);
     const turn = turns.begin('web-1');
@@ -94,9 +94,12 @@ describe('WebConversationTurnsService', () => {
 
     turns.end('web-1', turn);
 
-    expect(observer.sent.map(event => event.type)).toEqual(['conversation.entry', 'conversation.state']);
-    expect(observer.sent[0]).toMatchObject({ entry: { id: 'q1', closed: true } });
+    expect(events.hasOpenQuestion('web-1')).toBe(false);
     await vi.waitFor(() => expect(store.flushed).toEqual(['web-1']));
+    expect(observer.sent).toEqual([
+      { type: 'conversation.state', conversationId: 'web-1', state: 'idle' },
+      expect.objectContaining({ type: 'conversation.entry', entry: expect.objectContaining({ id: 'q1', closed: true }), position: 0 }),
+    ]);
     expect((await store.history('web-1'))[0]).toMatchObject({ id: 'q1', closed: true });
   });
 

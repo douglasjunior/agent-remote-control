@@ -27,9 +27,9 @@ describe('ConversationView', () => {
   it('should upsert streamed entries in place', () => {
     const { connection } = openConversation();
     act(() => {
-      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'i1', at: AT, type: 'interim', text: 'draft' } });
-      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: userEntry('u1', 'after') });
-      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'i1', at: AT, type: 'interim', text: 'final' } });
+      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'i1', at: AT, type: 'interim', text: 'draft' }, position: 0 });
+      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: userEntry('u1', 'after'), position: 1 });
+      connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'i1', at: AT, type: 'interim', text: 'final' }, position: 0 });
     });
     expect(screen.queryByText('draft')).not.toBeInTheDocument();
     expect(screen.getByText('final')).toBeInTheDocument();
@@ -359,6 +359,7 @@ describe('ConversationView', () => {
         type: 'conversation.entry',
         conversationId: 'c1',
         entry: { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'The answer is 42.' },
+        position: 1,
       }));
       expect(screen.getAllByText(/The answer is/)).toHaveLength(1);
       expect(screen.getByText('The answer is 42.')).toBeInTheDocument();
@@ -367,7 +368,7 @@ describe('ConversationView', () => {
     it('should show the draft a reopened conversation was in the middle of', () => {
       const { connection } = renderApp('/c/c1');
       act(() => connection.emitEvent({
-        type: 'conversation.history', conversationId: 'c1', entries: [], state: 'running', draft: 'Half way',
+        type: 'conversation.history', conversationId: 'c1', entries: [], start: 0, state: 'running', draft: 'Half way',
       }));
 
       expect(screen.getByText('Half way')).toBeInTheDocument();

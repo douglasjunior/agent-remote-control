@@ -23,6 +23,7 @@ import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-his
 import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-profiles.use-case.js';
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
+import { ListEarlierConversationEntriesUseCase } from '../use-cases/list-earlier-conversation-entries.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
@@ -60,6 +61,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly listConversations: ListConversationsUseCase,
     private readonly createConversation: CreateConversationUseCase,
     private readonly getHistory: GetConversationHistoryUseCase,
+    private readonly listEarlierEntries: ListEarlierConversationEntriesUseCase,
     private readonly sendMessage: SendConversationMessageUseCase,
     private readonly cancelTurn: CancelConversationTurnUseCase,
     private readonly agentOptions: ListAgentOptionsUseCase,
@@ -229,15 +231,21 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     }
     switch (command.type) {
       case 'conversation.history': {
-        const { entries, state, draft, interrupted } = await this.getHistory.execute(command.conversationId);
+        const { entries, start, state, draft, interrupted } = await this.getHistory.execute(command.conversationId);
         connection.send({
           type: 'conversation.history',
           conversationId: command.conversationId,
           entries: [...entries],
+          start,
           state,
           ...(draft !== '' && { draft }),
           interrupted: [...interrupted],
         });
+        return;
+      }
+      case 'conversation.entries': {
+        const { entries, start } = await this.listEarlierEntries.execute(command.conversationId, command.before);
+        connection.send({ type: 'conversation.entries', conversationId: command.conversationId, entries: [...entries], start });
         return;
       }
       case 'conversation.rename':

@@ -6,8 +6,12 @@ import type { InterruptedWork, ServerEvent } from '@agent-remote-control/protoco
 
 
 export type ConversationView = {
+  /** The entries held, ordered by their position in the history. */
   readonly entryIds: readonly string[];
   readonly entries: Readonly<Record<string, ConversationEntry>>;
+  readonly positions: Readonly<Record<string, number>>;
+  /** The position the loaded entries start from; the history holds earlier ones while it is above 0. */
+  readonly start: number;
   /** The response being written, shown after the entries until the entry that delivers it arrives. */
   readonly draft: string;
   readonly state: ConversationState;
@@ -33,6 +37,8 @@ export const initialConversationsState: ConversationsState = {
 export const emptyConversationView: ConversationView = {
   entryIds: [],
   entries: {},
+  positions: {},
+  start: 0,
   draft: '',
   state: 'idle',
   interrupted: [],
@@ -59,7 +65,57 @@ function updateView(
   change: (view: ConversationView) => ConversationView,
 ): ConversationsState {
   const view = state.byId[conversationId] ?? emptyConversationView;
-  return { ...state, byId: { ...state.byId, [conversationId]: change(view) } };
+  const changed = change(view);
+  return changed === view ? state : { ...state, byId: { ...state.byId, [conversationId]: changed } };
+}
+
+/**
+ * Takes a page from `start` as the entries held. Entries already held past the page stay: they were published after
+ * the server read the page and reached the client before it.
+ */
+function withEntries(view: ConversationView, start: number, page: readonly ConversationEntry[]): ConversationView {
+  const end = start + page.length;
+  const pageIds = new Set(page.map(entry => entry.id));
+  const later = view.entryIds.filter(id => view.positions[id] >= end && !pageIds.has(id));
+  return {
+    ...view,
+    start,
+    entryIds: [...page.map(entry => entry.id), ...later],
+    entries: { ...Object.fromEntries(later.map(id => [id, view.entries[id]])), ...Object.fromEntries(page.map(entry => [entry.id, entry])) },
+    positions: { ...Object.fromEntries(later.map(id => [id, view.positions[id]])), ...Object.fromEntries(page.map((entry, index) => [entry.id, start + index])) },
+  };
+}
+
+/** Puts a page of earlier entries before the ones held, unless it does not end where they start (an answer to a request the history made stale). */
+function withEarlierEntries(view: ConversationView, start: number, page: readonly ConversationEntry[]): ConversationView {
+  if (!view.loaded || start + page.length !== view.start) {
+    return view;
+  }
+  return {
+    ...view,
+    start,
+    entryIds: [...page.map(entry => entry.id), ...view.entryIds],
+    entries: { ...view.entries, ...Object.fromEntries(page.map(entry => [entry.id, entry])) },
+    positions: { ...view.positions, ...Object.fromEntries(page.map((entry, index) => [entry.id, start + index])) },
+  };
+}
+
+/**
+ * Upserts an entry published live at its position. An entry before the loaded ones is left out: the page that holds
+ * it, read from the history when the reader scrolls back, already carries it as it is now.
+ */
+function withEntry(view: ConversationView, entry: ConversationEntry, position: number): ConversationView {
+  if (view.loaded && position < view.start) {
+    return view;
+  }
+  const known = view.entries[entry.id] !== undefined;
+  const after = view.entryIds.findIndex(id => view.positions[id] > position);
+  return {
+    ...view,
+    entryIds: known ? view.entryIds : after === -1 ? [...view.entryIds, entry.id] : view.entryIds.toSpliced(after, 0, entry.id),
+    entries: { ...view.entries, [entry.id]: entry },
+    positions: { ...view.positions, [entry.id]: position },
+  };
 }
 
 export function conversationsReducer(state: ConversationsState, event: ServerEvent): ConversationsState {
@@ -72,20 +128,16 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
       return { ...state, list: upsertSummary(state.list, event.conversation) };
     case 'conversation.history':
       return updateView(state, event.conversationId, view => ({
-        ...view,
-        entryIds: event.entries.map(entry => entry.id),
-        entries: Object.fromEntries(event.entries.map(entry => [entry.id, entry])),
+        ...withEntries(view, event.start, event.entries),
         draft: event.draft ?? '',
         state: event.state,
         interrupted: event.interrupted ?? [],
         loaded: true,
       }));
+    case 'conversation.entries':
+      return updateView(state, event.conversationId, view => withEarlierEntries(view, event.start, event.entries));
     case 'conversation.entry':
-      return updateView(state, event.conversationId, view => ({
-        ...view,
-        entryIds: view.entries[event.entry.id] ? view.entryIds : [...view.entryIds, event.entry.id],
-        entries: { ...view.entries, [event.entry.id]: event.entry },
-      }));
+      return updateView(state, event.conversationId, view => withEntry(view, event.entry, event.position));
     case 'conversation.draft':
       return updateView(state, event.conversationId, view => ({ ...view, draft: event.text }));
     case 'conversation.interrupted':

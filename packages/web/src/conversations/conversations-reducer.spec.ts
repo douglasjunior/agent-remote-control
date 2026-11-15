@@ -45,8 +45,8 @@ describe('conversationsReducer', () => {
 
   it('should replace a conversation wholesale on history', () => {
     const state = reduce([
-      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('old') },
-      { type: 'conversation.history', conversationId: 'c', entries: [userEntry('x'), userEntry('y')], state: 'running' },
+      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('old'), position: 0 },
+      { type: 'conversation.history', conversationId: 'c', start: 0, entries: [userEntry('x'), userEntry('y')], state: 'running' },
     ]);
     const view = state.byId.c;
     expect(view.entryIds).toEqual(['x', 'y']);
@@ -65,25 +65,71 @@ describe('conversationsReducer', () => {
   });
 
   it('should take the draft a history carries and none when it carries none', () => {
-    const withDraft = reduce([{ type: 'conversation.history', conversationId: 'c', entries: [], state: 'running', draft: 'Working' }]);
+    const withDraft = reduce([{ type: 'conversation.history', conversationId: 'c', start: 0, entries: [], state: 'running', draft: 'Working' }]);
     expect(withDraft.byId.c.draft).toBe('Working');
-    expect(reduce([{ type: 'conversation.history', conversationId: 'c', entries: [], state: 'idle' }], withDraft).byId.c.draft).toBe('');
+    expect(reduce([{ type: 'conversation.history', conversationId: 'c', start: 0, entries: [], state: 'idle' }], withDraft).byId.c.draft).toBe('');
   });
 
   it('should append a new entry and replace an existing id in place', () => {
     const state = reduce([
-      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('a', 'first') },
-      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('b') },
-      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('a', 'second') },
+      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('a', 'first'), position: 0 },
+      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('b'), position: 1 },
+      { type: 'conversation.entry', conversationId: 'c', entry: userEntry('a', 'second'), position: 0 },
     ]);
     expect(state.byId.c.entryIds).toEqual(['a', 'b']);
     expect(state.byId.c.entries.a).toMatchObject({ text: 'second' });
     expect(state.byId.c.loaded).toBe(false);
   });
 
+  describe('pages of entries', () => {
+    const history = (start: number, ids: string[]): ServerEvent => ({ type: 'conversation.history', conversationId: 'c', start, entries: ids.map(id => userEntry(id)), state: 'idle' });
+    const earlier = (start: number, ids: string[]): ServerEvent => ({ type: 'conversation.entries', conversationId: 'c', start, entries: ids.map(id => userEntry(id)) });
+    const live = (id: string, position: number, text = id): ServerEvent => ({ type: 'conversation.entry', conversationId: 'c', entry: userEntry(id, text), position });
+
+    it('should hold the latest page from its position', () => {
+      const view = reduce([history(4, ['e', 'f'])]).byId.c;
+
+      expect(view).toMatchObject({ start: 4, entryIds: ['e', 'f'], positions: { e: 4, f: 5 } });
+    });
+
+    it('should put an earlier page before the entries held', () => {
+      const view = reduce([history(4, ['e', 'f']), earlier(1, ['b', 'c', 'd']), earlier(0, ['a'])]).byId.c;
+
+      expect(view).toMatchObject({ start: 0, entryIds: ['a', 'b', 'c', 'd', 'e', 'f'], positions: { a: 0, d: 3, f: 5 } });
+    });
+
+    it('should ignore an earlier page that does not end where the entries held start', () => {
+      const loaded = reduce([history(4, ['e', 'f'])]);
+
+      expect(reduce([earlier(0, ['a', 'b'])], loaded)).toBe(loaded);
+      expect(reduce([earlier(0, ['a'])])).toBe(initialConversationsState);
+    });
+
+    it('should leave out a live entry before the entries held, which its page will carry', () => {
+      const loaded = reduce([history(4, ['e', 'f'])]);
+
+      expect(reduce([live('b', 1)], loaded)).toBe(loaded);
+    });
+
+    it('should place a live entry by its position and replace one held in place', () => {
+      const view = reduce([history(4, ['e', 'g']), live('h', 7), live('e', 4, 'changed')]).byId.c;
+
+      expect(view.entryIds).toEqual(['e', 'g', 'h']);
+      expect(view.entries.e).toMatchObject({ text: 'changed' });
+      expect(reduce([{ ...history(4, ['e']) }, live('g', 6), live('f', 5)]).byId.c.entryIds).toEqual(['e', 'f', 'g']);
+    });
+
+    it('should keep the live entries that came ahead of the page holding the entries before them', () => {
+      const view = reduce([live('old', 1), live('g', 6), history(4, ['e', 'f'])]).byId.c;
+
+      expect(view.entryIds).toEqual(['e', 'f', 'g']);
+      expect(view.entries.old).toBeUndefined();
+    });
+  });
+
   it('should track the conversation state without touching other conversations', () => {
     const state = reduce([
-      { type: 'conversation.entry', conversationId: 'other', entry: userEntry('a') },
+      { type: 'conversation.entry', conversationId: 'other', entry: userEntry('a'), position: 0 },
       { type: 'conversation.state', conversationId: 'c', state: 'queued' },
     ]);
     expect(state.byId.c.state).toBe('queued');
@@ -115,10 +161,10 @@ describe('conversationsReducer', () => {
   it('should keep the interrupted work from the history and from its own event', () => {
     const work = { id: 'w', role: 'DEVELOPER', roleName: 'Dev', projectName: null, summary: 'Build' };
 
-    const loaded = reduce([{ type: 'conversation.history', conversationId: 'a', entries: [], state: 'idle', interrupted: [work] }]);
+    const loaded = reduce([{ type: 'conversation.history', conversationId: 'a', start: 0, entries: [], state: 'idle', interrupted: [work] }]);
     expect(loaded.byId.a?.interrupted).toEqual([work]);
 
     expect(reduce([{ type: 'conversation.interrupted', conversationId: 'a', interrupted: [] }], loaded).byId.a?.interrupted).toEqual([]);
-    expect(reduce([{ type: 'conversation.history', conversationId: 'a', entries: [], state: 'idle' }], loaded).byId.a?.interrupted).toEqual([]);
+    expect(reduce([{ type: 'conversation.history', conversationId: 'a', start: 0, entries: [], state: 'idle' }], loaded).byId.a?.interrupted).toEqual([]);
   });
 });

@@ -11,6 +11,7 @@ import { emptyConversationView } from '../conversations/conversations-reducer.js
 import { openQuestion } from '../conversations/open-question.js';
 import { deriveTeam } from '../conversations/team-state.js';
 import { useDelivery } from '../conversations/use-delivery.js';
+import { useEarlierEntries } from '../conversations/use-earlier-entries.js';
 import { usePresence } from '../conversations/use-presence.js';
 import { agentIdentity } from '../lib/agent-identity.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
@@ -127,6 +128,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
 
   const running = view.state !== 'idle';
   const entries = useMemo(() => view.entryIds.map(id => view.entries[id]), [view.entryIds, view.entries]);
+  const earlier = useEarlierEntries(conversationId, view);
   const questionId = useMemo(() => openQuestion(entries)?.id, [entries]);
   const team = useMemo(() => deriveTeam(entries, running, view.interrupted), [entries, running, view.interrupted]);
   usePresence(team);
@@ -211,6 +213,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
               <FeedList
                 ref={feed}
                 entries={entries}
+                earlier={earlier}
                 team={team}
                 draft={view.draft}
                 running={running}

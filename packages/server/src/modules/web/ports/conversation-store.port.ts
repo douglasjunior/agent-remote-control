@@ -14,8 +14,8 @@ export interface IConversationStorePort {
   touch(id: string): Promise<ConversationSummary>;
   exists(id: string): Promise<boolean>;
   history(id: string): Promise<readonly ConversationEntry[]>;
-  /** Replaces the entry with the same `id` in place, or appends it. */
-  upsertEntry(id: string, entry: ConversationEntry): Promise<void>;
+  /** Replaces the entry with the same `id` in place, or appends it, and returns its position in the history. */
+  upsertEntry(id: string, entry: ConversationEntry): Promise<number>;
   /** Persists the pending changes of a conversation immediately. */
   flush(id: string): Promise<void>;
 }

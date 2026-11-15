@@ -25,6 +25,7 @@ import { GetConversationHistoryUseCase } from '../use-cases/get-conversation-his
 import { GetConversationProfilesUseCase } from '../use-cases/get-conversation-profiles.use-case.js';
 import { ListAgentOptionsUseCase } from '../use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from '../use-cases/list-conversations.use-case.js';
+import { ListEarlierConversationEntriesUseCase } from '../use-cases/list-earlier-conversation-entries.use-case.js';
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
@@ -67,6 +68,7 @@ describe('WebConnectionHandler', () => {
       new ListConversationsUseCase(store),
       new CreateConversationUseCase(store),
       new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()),
+      new ListEarlierConversationEntriesUseCase(store, events),
       sendMessage,
       new CancelConversationTurnUseCase(agentTurn, events, new ConversationEntryService()),
       new ListAgentOptionsUseCase(configuration),
@@ -512,7 +514,27 @@ describe('WebConnectionHandler', () => {
         conversationId: 'web-1',
         interrupted: [],
         entries: [],
+        start: 0,
         state: 'running',
+      });
+    });
+
+    it('should answer conversation.entries with the entries before the position asked for', async () => {
+      harness.store.seed('web-1');
+      for (const id of ['u1', 'r1', 'u2', 'r2']) {
+        await harness.store.upsertEntry('web-1', id.startsWith('u')
+          ? { id, at: '2026-01-01T00:00:00.000Z', type: 'user_message', text: id }
+          : { id, at: '2026-01-01T00:00:00.000Z', type: 'interim', text: id });
+      }
+
+      connection.receive({ type: 'conversation.entries', conversationId: 'web-1', before: 2 });
+      await settle();
+
+      expect(connection.sent).toContainEqual({
+        type: 'conversation.entries',
+        conversationId: 'web-1',
+        entries: [expect.objectContaining({ id: 'u1' }), expect.objectContaining({ id: 'r1' })],
+        start: 0,
       });
     });
 

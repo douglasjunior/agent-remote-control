@@ -12,27 +12,74 @@ import { WebConversationEventsService } from './web-conversation-events.service.
 const entry: ConversationEntry = { id: 'e1', at: '2026-01-01T00:00:00.000Z', type: 'interim', text: 'x' };
 
 describe('WebConversationEventsService', () => {
-  it('should persist an entry and broadcast it', async () => {
+  it('should persist an entry and broadcast it with its position', async () => {
     const { events, store, observer } = createWebHarness();
     store.seed('web-1');
+    const second: ConversationEntry = { ...entry, id: 'e2' };
 
     await events.publishEntry('web-1', entry);
+    await events.publishEntry('web-1', second);
+    await events.publishEntry('web-1', { ...entry, text: 'changed' });
 
-    expect(observer.sent).toEqual([{ type: 'conversation.entry', conversationId: 'web-1', entry }]);
-    expect(await store.history('web-1')).toEqual([entry]);
+    expect(observer.sent).toEqual([
+      { type: 'conversation.entry', conversationId: 'web-1', entry, position: 0 },
+      { type: 'conversation.entry', conversationId: 'web-1', entry: second, position: 1 },
+      { type: 'conversation.entry', conversationId: 'web-1', entry: { ...entry, text: 'changed' }, position: 0 },
+    ]);
+    expect(await store.history('web-1')).toEqual([{ ...entry, text: 'changed' }, second]);
   });
 
-  it('should still broadcast when the store fails', async () => {
+  it('should broadcast the entries of a conversation in the order they were published, whatever the store takes', async () => {
+    const { events, store, observer } = createWebHarness();
+    store.seed('web-1');
+    const upsert = store.upsertEntry.bind(store);
+    let release!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.spyOn(store, 'upsertEntry').mockImplementationOnce(async (id, value) => {
+      await slow;
+      return upsert(id, value);
+    });
+
+    const first = events.publishEntry('web-1', entry);
+    const second = events.publishEntry('web-1', { ...entry, id: 'e2' });
+    release();
+    await Promise.all([first, second]);
+
+    expect(observer.sent.map(event => (event as { position: number }).position)).toEqual([0, 1]);
+  });
+
+  it('should broadcast nothing the store refused, and go on with the next entries', async () => {
     const registry = new WebConnectionRegistryService();
     const observer = new FakeClientConnection('observer');
     registry.register(observer);
     const store = new FakeConversationStore();
-    vi.spyOn(store, 'upsertEntry').mockRejectedValue(new Error('disk full'));
+    store.seed('web-1');
+    vi.spyOn(store, 'upsertEntry').mockRejectedValueOnce(new Error('disk full'));
     const events = new WebConversationEventsService(store, registry, new ConversationEntryService());
 
     await expect(events.publishEntry('web-1', entry)).resolves.toBeUndefined();
+    await events.publishEntry('web-1', { ...entry, id: 'e2' });
 
-    expect(observer.sent).toHaveLength(1);
+    expect(observer.sent).toEqual([{ type: 'conversation.entry', conversationId: 'web-1', entry: { ...entry, id: 'e2' }, position: 0 }]);
+  });
+
+  it('should know the delegations that run until they end or the conversation goes idle', async () => {
+    const { events, store } = createWebHarness();
+    store.seed('web-1');
+    const delegation = (delegationId: string, phase: 'started' | 'finished'): ConversationEntry => ({
+      id: `${delegationId}:${phase}`, at: entry.at, type: 'delegation', delegationId, phase, round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: '', summary: '',
+    });
+
+    await events.publishEntry('web-1', delegation('a', 'started'));
+    await events.publishEntry('web-1', delegation('b', 'started'));
+    await events.publishEntry('web-1', delegation('a', 'finished'));
+
+    expect([...events.liveDelegationsOf('web-1')]).toEqual(['b']);
+    expect(events.liveDelegationsOf('other').size).toBe(0);
+    events.publishState('web-1', 'idle');
+    expect(events.liveDelegationsOf('web-1').size).toBe(0);
   });
 
   it('should track and broadcast the state, defaulting to idle', () => {
@@ -171,7 +218,7 @@ describe('WebConversationEventsService', () => {
       await events.closeOpenQuestions('web-1');
 
       expect(await store.history('web-1')).toEqual([{ ...question, closed: true }, entry]);
-      expect(observer.sent.at(-1)).toEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true } });
+      expect(observer.sent.at(-1)).toEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true }, position: 0 });
     });
 
     it('should do nothing once the questions are closed or when there were none', async () => {
@@ -202,7 +249,7 @@ describe('WebConversationEventsService', () => {
         { ...question, closed: true },
         expect.objectContaining({ id: 'question-abandoned:q', type: 'notice', level: 'warning' }),
       ]);
-      expect(observer.sent).toContainEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true } });
+      expect(observer.sent).toContainEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...question, closed: true }, position: 0 });
     });
 
     it('should keep a question this process is waiting on open', async () => {
