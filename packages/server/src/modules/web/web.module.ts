@@ -38,6 +38,7 @@ import { GetConversationHistoryUseCase } from './use-cases/get-conversation-hist
 import { GetConversationProfilesUseCase } from './use-cases/get-conversation-profiles.use-case.js';
 import { ListAgentOptionsUseCase } from './use-cases/list-agent-options.use-case.js';
 import { ListConversationsUseCase } from './use-cases/list-conversations.use-case.js';
+import { ListEarlierConversationEntriesUseCase } from './use-cases/list-earlier-conversation-entries.use-case.js';
 import { ListPromptHistoryUseCase } from './use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from './use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from './use-cases/resume-conversation-work.use-case.js';
@@ -72,6 +73,7 @@ import { WebStaticModule } from './web-static.module.js';
     CreateConversationUseCase,
     ListConversationsUseCase,
     GetConversationHistoryUseCase,
+    ListEarlierConversationEntriesUseCase,
     SendConversationMessageUseCase,
     ResumeConversationWorkUseCase,
     CancelConversationTurnUseCase,

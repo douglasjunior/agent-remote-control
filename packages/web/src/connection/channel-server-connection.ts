@@ -11,7 +11,8 @@ const MAX_BACKOFF_MS = 10_000;
 const HEARTBEAT_INTERVAL_MS = 5_000;
 /**
  * How long a `ping` may go unanswered before the connection counts as lost: a network that vanishes (Wi-Fi to mobile,
- * no signal) closes no socket. Counted from the ping, so the timers a background tab slows down drop nothing.
+ * no signal) closes no socket. Counted from the ping, so the timers a background tab slows down drop nothing. Anything
+ * the server sends answers it, a part of a long message included: the `pong` waits behind that message.
  */
 const HEARTBEAT_TIMEOUT_MS = 10_000;
 
@@ -22,6 +23,8 @@ export type ChannelHandlers = {
   readonly onOpen: () => void;
   /** One whole JSON message from the server. */
   readonly onMessage: (text: string) => void;
+  /** A part of a message arrived, so the server answers while the rest is on its way. */
+  readonly onProgress: () => void;
   readonly onClose: (reason: ChannelCloseReason) => void;
   readonly onTransport: (transport: ConnectionTransport) => void;
 };
@@ -125,13 +128,14 @@ export abstract class ChannelServerConnection implements IServerConnection {
     this.channel = this.openChannel(token, {
       onOpen: () => live() && this.channel!.send(JSON.stringify({ type: 'auth', token })),
       onMessage: text => live() && this.handleMessage(text),
+      onProgress: () => live() && this.heardFromServer(),
       onClose: reason => live() && this.handleClose(reason),
       onTransport: transport => live() && this.setTransport(transport),
     });
   }
 
   private handleMessage(text: string): void {
-    this.pingSentAt = null;
+    this.heardFromServer();
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -207,6 +211,10 @@ export abstract class ChannelServerConnection implements IServerConnection {
       clearInterval(this.heartbeat);
       this.heartbeat = null;
     }
+    this.pingSentAt = null;
+  }
+
+  private heardFromServer(): void {
     this.pingSentAt = null;
   }
 

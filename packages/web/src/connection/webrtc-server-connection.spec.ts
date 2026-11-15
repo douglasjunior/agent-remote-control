@@ -343,6 +343,22 @@ describe('WebRtcServerConnection', () => {
     expect(socket().sent.at(-1)).not.toEqual(expect.objectContaining({ candidate: 'late' }));
   });
 
+  it('should keep the connection while a message longer than the heartbeat timeout arrives frame by frame', async () => {
+    await openChannel();
+    const channel = peer().channel!;
+    channel.receive({ type: 'auth.ok' });
+    const frames = toFrames(JSON.stringify({ type: 'conversation.list', conversations: [] }), 8);
+
+    for (const frame of frames) {
+      vi.advanceTimersByTime(4_000);
+      channel.onmessage?.({ data: frame });
+    }
+
+    expect(frames.length * 4_000).toBeGreaterThan(20_000);
+    expect(statuses).toEqual(['connecting', 'open']);
+    expect(events).toEqual([{ type: 'conversation.list', conversations: [] }]);
+  });
+
   it('should report a direct connection', async () => {
     await openChannel();
 

@@ -45,8 +45,8 @@ Entry ids are stable so the store and the client upsert by id, and each carries 
 
 ## Publishing and the draft
 
-- `WebConversationEventsService` upserts an entry and broadcasts `conversation.entry` (broadcast first, so persistence never reorders the stream), and keeps the state in memory.
+- `WebConversationEventsService.publishEntry` places the entry in the store, then broadcasts `conversation.entry` with the `position` the store returned, one entry of a conversation at a time, so the stream follows the order of the history and a client knows where each entry belongs. An entry the store refuses is logged and reaches no client. It keeps the state in memory.
 - It also keeps the draft of each conversation in memory: the user-facing text of the CEO's response being written (`TurnRequest.onDraft`), broadcast as `conversation.draft { conversationId, text }` (whole text at every event, only when it changed) and never stored in the history.
-- The draft is discarded (`text: ''`, sent before the entry) by the entry that delivers the response (`interim`, `question` or an `agent_response` that is not `steered`) and when the conversation goes `idle`.
+- The draft is discarded (`text: ''`, sent right before the entry) by the entry that delivers the response (`interim`, `question` or an `agent_response` that is not `steered`) and when the conversation goes `idle`.
 - `conversation.history` carries the current draft in `draft` when there is one, so a conversation opened mid-response resumes it.
 - `WebConversationEventsService` records nothing after `onModuleDestroy`, because what dying turns report during a shutdown did not happen to the conversation.

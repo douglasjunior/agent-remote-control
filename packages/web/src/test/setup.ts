@@ -22,3 +22,4 @@ vi.stubGlobal('matchMedia', () => ({
 }));
 
 Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
+Element.prototype.scrollBy = vi.fn() as unknown as typeof Element.prototype.scrollBy;

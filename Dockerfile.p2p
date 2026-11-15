@@ -1,11 +1,11 @@
 # Image of packages/p2p-server: the signaling server of remote access, serving the hosted web app (dist-p2p)
 
 FROM node:24-bookworm-slim AS base
+RUN corepack enable
 WORKDIR /app
 
 # Installs the dependencies of the p2p-server, the web app and the protocol they share
 FROM base AS deps
-RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/protocol/package.json ./packages/protocol/package.json
 COPY packages/p2p-server/package.json ./packages/p2p-server/package.json
@@ -15,7 +15,6 @@ RUN pnpm install --frozen-lockfile --filter "@agent-remote-control/p2p-server...
 
 # Compiles the protocol, the p2p-server and the p2p build of the web app
 FROM base AS build
-RUN corepack enable
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules

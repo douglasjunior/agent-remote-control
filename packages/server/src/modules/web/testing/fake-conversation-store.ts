@@ -53,7 +53,7 @@ export class FakeConversationStore implements IConversationStorePort {
     return [...(this.histories.get(id) ?? [])];
   }
 
-  async upsertEntry(id: string, entry: ConversationEntry): Promise<void> {
+  async upsertEntry(id: string, entry: ConversationEntry): Promise<number> {
     const entries = this.histories.get(id) ?? [];
     const position = entries.findIndex(existing => existing.id === entry.id);
     if (position === -1) {
@@ -62,6 +62,7 @@ export class FakeConversationStore implements IConversationStorePort {
       entries[position] = entry;
     }
     this.histories.set(id, entries);
+    return position === -1 ? entries.length - 1 : position;
   }
 
   async flush(id: string): Promise<void> {

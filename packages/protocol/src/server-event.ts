@@ -21,6 +21,12 @@ export const interruptedWorkSchema = z.object({
 
 export type InterruptedWork = z.infer<typeof interruptedWorkSchema>;
 
+/**
+ * The place of an entry in its conversation's history, counted from 0. An entry keeps its position for good: the
+ * history only replaces an entry in place or appends one.
+ */
+const entryPositionSchema = z.number().int().min(0);
+
 export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth.ok') }),
   z.object({ type: z.literal('auth.failed') }),
@@ -35,10 +41,12 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     conversation: conversationSummarySchema,
   }),
   z.object({ type: z.literal('conversation.updated'), conversation: conversationSummarySchema }),
+  /** The latest entries of a conversation; the earlier ones come with `conversation.entries`. */
   z.object({
     type: z.literal('conversation.history'),
     conversationId: z.string(),
     entries: z.array(conversationEntrySchema),
+    start: entryPositionSchema,
     state: conversationStateSchema,
     /** The response being written when the history was read; absent when there is none. */
     draft: z.string().optional(),
@@ -49,6 +57,14 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     type: z.literal('conversation.entry'),
     conversationId: z.string(),
     entry: conversationEntrySchema,
+    position: entryPositionSchema,
+  }),
+  /** The entries right before the position the client asked for, `start` being the position of the first one. */
+  z.object({
+    type: z.literal('conversation.entries'),
+    conversationId: z.string(),
+    entries: z.array(conversationEntrySchema),
+    start: entryPositionSchema,
   }),
   z.object({
     type: z.literal('conversation.draft'),

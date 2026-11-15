@@ -7,17 +7,29 @@ import { groupEntries, itemId, type EntryItem } from '../../conversations/group-
 import { openQuestion } from '../../conversations/open-question.js';
 import type { TeamMember } from '../../conversations/team-state.js';
 import { IconButton } from '../icon-button.js';
+import { Button } from '../ui/button.js';
 
 import { FeedItem } from './feed-item.js';
 import { Markdown } from './markdown.js';
 import type { QuestionAnswer } from './question-card.js';
+import { useFirstItemIndex } from './use-first-item-index.js';
 import { useStickToEnd } from './use-stick-to-end.js';
 import { WaitingLine } from './waiting-line.js';
 import { WorkingIndicator } from './working-indicator.js';
 
 
+/** The earlier entries the history holds beyond the loaded ones. */
+export interface EarlierEntries {
+  readonly available: boolean;
+  readonly loading: boolean;
+  readonly load: () => void;
+}
+
+const NOTHING_EARLIER: EarlierEntries = { available: false, loading: false, load: () => undefined };
+
 interface FeedContext {
   readonly items: readonly EntryItem[];
+  readonly earlier: EarlierEntries;
   readonly draft: string;
   readonly running: boolean;
   readonly working: boolean;
@@ -37,8 +49,18 @@ function FeedRow(props: ComponentProps<'div'>) {
   return <div {...props} className={`${COLUMN_CLASSES} pb-4`} />;
 }
 
-function FeedHeader() {
-  return <div className="h-7" />;
+function FeedHeader({ context }: { readonly context: FeedContext }) {
+  const { available, loading, load } = context.earlier;
+  if (!available) {
+    return <div className="h-7" />;
+  }
+  return (
+    <div className={`${COLUMN_CLASSES} flex justify-center py-3`}>
+      {loading
+        ? <p role="status" className="text-[13px] text-muted-foreground">Loading earlier messages…</p>
+        : <Button variant="ghost" size="sm" onClick={load}>Load earlier messages</Button>}
+    </div>
+  );
 }
 
 function FeedFooter({ context }: { readonly context: FeedContext }) {
@@ -63,9 +85,11 @@ export interface FeedHandle {
 
 const FOCUSABLE = 'button, input';
 
-export function FeedList({ ref, entries, team, draft, running, focus, onFocus, onHover, onAnswer }: {
+export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft, running, focus, onFocus, onHover, onAnswer }: {
   readonly ref?: Ref<FeedHandle>;
   readonly entries: readonly ConversationEntry[];
+  /** Absent for a feed whose history starts with its first entry. */
+  readonly earlier?: EarlierEntries;
   readonly team: readonly TeamMember[];
   readonly draft: string;
   readonly running: boolean;
@@ -83,13 +107,16 @@ export function FeedList({ ref, entries, team, draft, running, focus, onFocus, o
   const handledUserMessage = useRef<string | undefined>(undefined);
 
   const items = useMemo(() => groupEntries(entries), [entries]);
+  const itemIds = useMemo(() => items.map(itemId), [items]);
+  const firstItemIndex = useFirstItemIndex(itemIds);
   const last = entries.at(-1);
   const open = openQuestion(entries);
   const openQuestionId = open?.id;
   const openIndex = items.findIndex(item => item.kind === 'entry' && item.entry.id === openQuestionId);
   const lastIsOpenQuestion = open !== undefined && last?.id === open.id;
   const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && !lastIsOpenQuestion && last?.type !== 'agent_response';
-  const questionOutOfView = open !== undefined && range !== null && (openIndex < range.startIndex || openIndex > range.endIndex);
+  const questionOutOfView = open !== undefined && range !== null
+    && (openIndex + firstItemIndex < range.startIndex || openIndex + firstItemIndex > range.endIndex);
 
   const focusQuestion = useCallback(() => {
     const control = viewport?.querySelector(`[data-question-id="${openQuestionId}"]`)?.querySelector<HTMLElement>(FOCUSABLE);
@@ -137,8 +164,8 @@ export function FeedList({ ref, entries, team, draft, running, focus, onFocus, o
   }, []);
 
   const context = useMemo<FeedContext>(() => ({
-    items, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer,
-  }), [items, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer]);
+    items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer,
+  }), [items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -149,14 +176,16 @@ export function FeedList({ ref, entries, team, draft, running, focus, onFocus, o
               ref={virtuoso}
               rangeChanged={setRange}
               customScrollParent={viewport}
+              firstItemIndex={firstItemIndex}
+              startReached={earlier.load}
               data={items}
               context={context}
               components={FEED_COMPONENTS}
               computeItemKey={(_, item) => itemId(item)}
-              itemContent={(index, item, ctx) => (
+              itemContent={(_, item, ctx) => (
                 <FeedItem
                   item={item}
-                  activityRunning={ctx.running && ctx.draft === '' && index === ctx.items.length - 1}
+                  activityRunning={ctx.running && ctx.draft === '' && item === ctx.items.at(-1)}
                   running={ctx.running}
                   openQuestionId={ctx.openQuestionId}
                   expanded={ctx.expanded}

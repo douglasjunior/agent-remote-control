@@ -18,6 +18,8 @@ export class WebConversationEventsService implements OnModuleDestroy {
   private readonly states = new Map<string, ConversationState>();
   private readonly drafts = new Map<string, string>();
   private readonly openQuestions = new Map<string, Map<string, QuestionEntry>>();
+  private readonly liveDelegations = new Map<string, Set<string>>();
+  private readonly publishing = new Map<string, Promise<void>>();
   private frozen = false;
 
   constructor(
@@ -32,23 +34,24 @@ export class WebConversationEventsService implements OnModuleDestroy {
   }
 
   /**
-   * Broadcasts first so the order of the stream does not depend on the store. An entry that delivers the
-   * response being written replaces its draft.
+   * Places the entry in the history, then broadcasts it with its position, one entry of a conversation at a time
+   * so the stream follows the order of the history. An entry that delivers the response being written replaces
+   * its draft. An entry the store refuses reaches no client, since no history would show it again.
    */
-  async publishEntry(conversationId: string, entry: ConversationEntry): Promise<void> {
+  publishEntry(conversationId: string, entry: ConversationEntry): Promise<void> {
     if (this.frozen) {
-      return;
-    }
-    if (this.deliversResponse(entry)) {
-      this.publishDraft(conversationId, '');
+      return Promise.resolve();
     }
     this.trackQuestion(conversationId, entry);
-    this.registry.broadcast({ type: 'conversation.entry', conversationId, entry });
-    try {
-      await this.store.upsertEntry(conversationId, entry);
-    } catch (error) {
-      this.logger.error(`entry_not_persisted: ${conversationId}: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    this.trackDelegation(conversationId, entry);
+    const published = (this.publishing.get(conversationId) ?? Promise.resolve()).then(() => this.place(conversationId, entry));
+    this.publishing.set(conversationId, published);
+    void published.then(() => {
+      if (this.publishing.get(conversationId) === published) {
+        this.publishing.delete(conversationId);
+      }
+    });
+    return published;
   }
 
   /** Closes, in place, every question of the conversation that is still open. */
@@ -69,6 +72,11 @@ export class WebConversationEventsService implements OnModuleDestroy {
     }
     const tracked = this.openQuestions.get(conversationId);
     await this.abandonQuestions(conversationId, question => !tracked?.has(question.id));
+  }
+
+  /** The delegations of the conversation that started in this process and have not ended. */
+  liveDelegationsOf(conversationId: string): ReadonlySet<string> {
+    return this.liveDelegations.get(conversationId) ?? new Set();
   }
 
   hasOpenQuestion(conversationId: string): boolean {
@@ -97,10 +105,11 @@ export class WebConversationEventsService implements OnModuleDestroy {
     return this.drafts.get(conversationId) ?? '';
   }
 
-  /** An idle conversation has nothing being written, whatever way the turn ended. */
+  /** An idle conversation has nothing being written nor delegated, whatever way the turn ended. */
   publishState(conversationId: string, state: ConversationState): void {
     if (state === 'idle') {
       this.publishDraft(conversationId, '');
+      this.liveDelegations.delete(conversationId);
     }
     this.states.set(conversationId, state);
     this.registry.broadcast({ type: 'conversation.state', conversationId, state });
@@ -132,6 +141,33 @@ export class WebConversationEventsService implements OnModuleDestroy {
     }
     await Promise.all(abandoned.map(question => this.publishEntry(conversationId, { ...question, closed: true })));
     await this.publishEntry(conversationId, this.entries.abandonedQuestionNotice(last.id));
+  }
+
+  private async place(conversationId: string, entry: ConversationEntry): Promise<void> {
+    let position: number;
+    try {
+      position = await this.store.upsertEntry(conversationId, entry);
+    } catch (error) {
+      this.logger.error(`entry_not_persisted: ${conversationId}: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    if (this.deliversResponse(entry)) {
+      this.publishDraft(conversationId, '');
+    }
+    this.registry.broadcast({ type: 'conversation.entry', conversationId, entry, position });
+  }
+
+  private trackDelegation(conversationId: string, entry: ConversationEntry): void {
+    if (entry.type !== 'delegation') {
+      return;
+    }
+    const live = this.liveDelegations.get(conversationId) ?? new Set<string>();
+    if (entry.phase === 'started') {
+      live.add(entry.delegationId);
+    } else {
+      live.delete(entry.delegationId);
+    }
+    this.liveDelegations.set(conversationId, live);
   }
 
   private trackQuestion(conversationId: string, entry: ConversationEntry): void {

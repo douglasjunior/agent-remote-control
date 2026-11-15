@@ -21,6 +21,8 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('conversation.list') }),
   z.object({ type: z.literal('conversation.create'), requestId: z.string() }),
   z.object({ type: z.literal('conversation.history'), conversationId: z.string() }),
+  /** Asks for the entries before `before`, the position of the oldest entry the client holds. */
+  z.object({ type: z.literal('conversation.entries'), conversationId: z.string(), before: z.number().int().min(1) }),
   z.object({
     type: z.literal('conversation.rename'),
     conversationId: z.string(),

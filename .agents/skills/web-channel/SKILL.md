@@ -60,8 +60,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 
 - Ids are `web-<randomUUID()>` so they never collide with Discord ids in the shared session store. The web
   channel owns its history through `IConversationStorePort`; Discord keeps its own.
-- `WebConnectionHandler` routes authenticated commands. `conversation.list` and `conversation.history`
-  answer the requester only; `conversation.create` answers the requester with `conversation.created` and
+- `WebConnectionHandler` routes authenticated commands. `conversation.list`, `conversation.history` and
+  `conversation.entries` answer the requester only; `conversation.create` answers the requester with `conversation.created` and
   broadcasts `conversation.updated` to the other connections.
 - `conversation.rename { conversationId, title }` (`RenameConversationUseCase`, title trimmed, up to
   `MAX_CONVERSATION_TITLE_LENGTH`) and `conversation.archive { conversationId, archived }`
@@ -75,12 +75,24 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `delegation:<delegationId>:<phase>`) so the store and the client upsert by id. `ConversationEntryService` builds
   every entry and owns the clock and the random ids.
 - The conversation state (`running`, `queued`, `idle`) belongs to the conversation, not to a turn, and is
-  published only when it changes. `WebConversationEventsService` broadcasts each entry before persisting it, and
-  keeps the CEO's response being written as an in-memory draft (`conversation.draft`), never stored.
+  published only when it changes. `WebConversationEventsService` places each entry in the history, then broadcasts it
+  with its position, and keeps the CEO's response being written as an in-memory draft (`conversation.draft`), never
+  stored.
 - `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
   `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
   and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
   found among the known conversations. Files that do not match the protocol schemas are ignored.
+
+- The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in
+  place or appends, and returns the position). `conversation.history` (`GetConversationHistoryUseCase`) answers the
+  latest page with `start`, the position of its first entry; `conversation.entries { conversationId, before }`
+  (`ListEarlierConversationEntriesUseCase`) answers the page right before `before`, with its own `start`.
+- `history-page.util.ts` cuts the pages. A segment starts at the beginning of the history and at each user message no
+  delegation spans: a delegation spans from its `started` entry to the entry that ends it, or, while it still runs
+  (`WebConversationEventsService.liveDelegationsOf`, cleared when the conversation goes `idle`), to the end of the
+  history; one a restart stopped spans nothing. A page holds whole segments, as many as fit `HISTORY_PAGE_SIZE`
+  (200) entries and at least one, so it always carries whole delegations with their steps and the latest page every
+  delegation the squad still shows. The latest page also reaches back to the oldest question still open.
 
 Read [references/turns-and-entries.md](references/turns-and-entries.md) before changing `message.send`,
 `turn.cancel`, message attachments, the callback-to-entry mapping, entry ids, the conversation state or the draft.

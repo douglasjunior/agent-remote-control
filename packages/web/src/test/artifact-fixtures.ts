@@ -38,7 +38,7 @@ export function openBoard(
   const app = renderApp(path);
   act(() => {
     app.connection.emitEvent({ type: 'conversation.list', conversations: [{ id: CONVERSATION_ID, title: 'My task', createdAt: AT, updatedAt: AT }] });
-    app.connection.emitEvent({ type: 'conversation.history', conversationId: CONVERSATION_ID, entries: [], state: 'idle' });
+    app.connection.emitEvent({ type: 'conversation.history', conversationId: CONVERSATION_ID, entries: [], start: 0, state: 'idle' });
     app.connection.emitEvent({ type: 'profiles', conversationId: CONVERSATION_ID, configured: true, profiles: roleProfiles });
     app.connection.emitEvent({ type: 'artifacts.list', conversationId: CONVERSATION_ID, artifacts: [...artifacts] });
     app.connection.emitEvent({ type: 'projects.list', projects: [...projects] });

@@ -25,6 +25,7 @@ describe('conversation query use cases', () => {
 
     expect(await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1')).toEqual({
       entries: [entry],
+      start: 0,
       state: 'running',
       draft: 'Working on',
       interrupted: [],

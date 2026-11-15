@@ -1,5 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 
+import { HISTORY_PAGE_SIZE } from '../constants/history-page.constant.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
@@ -65,5 +66,19 @@ describe('GetConversationHistoryUseCase', () => {
     const { entries } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1');
 
     expect(entries).toEqual([{ ...question, closed: true }, expect.objectContaining({ type: 'question', text: 'Next?', closed: false })]);
+  });
+
+  it('should return the latest page of a long history, from its position', async () => {
+    const { store, events, questions, agentTurn } = createWebHarness();
+    store.seed('web-1');
+    for (let index = 0; index < HISTORY_PAGE_SIZE + 2; index += 1) {
+      await store.upsertEntry('web-1', { id: `u${index}`, at: question.at, type: 'user_message', text: `${index}` });
+    }
+
+    const { entries, start } = await new GetConversationHistoryUseCase(store, events, questions, agentTurn, new ConversationEntryService()).execute('web-1');
+
+    expect(start).toBe(2);
+    expect(entries).toHaveLength(HISTORY_PAGE_SIZE);
+    expect(entries[0]).toMatchObject({ id: 'u2' });
   });
 });

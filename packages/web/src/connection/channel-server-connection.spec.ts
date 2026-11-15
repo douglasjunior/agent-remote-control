@@ -153,6 +153,17 @@ describe('ChannelServerConnection', () => {
       expect(pings()).toBe(2);
     });
 
+    it('should keep a connection that is still receiving a long message', () => {
+      authenticate();
+      for (let beat = 0; beat < 6; beat += 1) {
+        vi.advanceTimersByTime(5_000);
+        latest().handlers.onProgress();
+      }
+
+      expect(statuses.at(-1)).toBe('open');
+      expect(connection.channels).toHaveLength(1);
+    });
+
     it('should drop a connection whose ping goes unanswered for 10 s and reconnect', () => {
       authenticate();
       const silent = latest();

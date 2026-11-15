@@ -16,7 +16,7 @@ import { ChannelServerConnection, type ChannelCloseReason, type ChannelHandlers,
 import type { RemoteLink } from './remote-link.js';
 
 
-/** A conversation history arrives as one event, so a message from the host may be large. */
+/** A page of a conversation history arrives as one event, so a message from the host may be large. */
 const MAX_EVENT_LENGTH = 64 * 1024 * 1024;
 
 const CERTIFICATE_ALGORITHM: EcKeyGenParams = { name: 'ECDSA', namedCurve: 'P-256' };
@@ -220,6 +220,9 @@ class PeerChannel implements ServerChannel {
     const result = this.assembler.push(frame);
     if (result.kind === 'message') {
       this.handlers.onMessage(result.text);
+    }
+    if (result.kind === 'partial') {
+      this.handlers.onProgress();
     }
     if (result.kind === 'invalid') {
       console.warn('Dropped a connection sending invalid frames', result.reason);

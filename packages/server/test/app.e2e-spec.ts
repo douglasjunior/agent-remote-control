@@ -106,6 +106,7 @@ describe('AppController (e2e)', () => {
       interrupted: [],
       conversationId: created?.conversation.id,
       entries: [],
+      start: 0,
       state: 'idle',
     });
     expect(events.find(event => event.type === 'agents.list')?.agents).toBeInstanceOf(Array);

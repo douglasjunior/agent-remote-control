@@ -1,9 +1,11 @@
 import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
+import { Settings } from 'lucide-react';
 import { useRef } from 'react';
 
 import type { TeamMember } from '../../conversations/team-state.js';
 import { useNow } from '../../lib/use-now.js';
 import { cn } from '../../lib/utils.js';
+import { IconButton } from '../icon-button.js';
 
 import { squadStatus } from './squad-status.js';
 import { Station } from './station.js';
@@ -17,7 +19,7 @@ const COORDINATOR = 'CEO';
  * The present moment of the squad: one station per role, joined by a neutral spine. It describes the
  * current turn only and never grows; the feed is the history.
  */
-export function SquadPanel({ members, profiles = [], focus, highlight, delivery, onSelect, onContinue }: {
+export function SquadPanel({ members, profiles = [], focus, highlight, delivery, onSelect, onContinue, onSettings }: {
   readonly members: readonly TeamMember[];
   /** What each role runs on in this conversation. */
   readonly profiles?: readonly RoleProfile[];
@@ -27,6 +29,8 @@ export function SquadPanel({ members, profiles = [], focus, highlight, delivery,
   readonly delivery: number;
   readonly onSelect: (role: string) => void;
   readonly onContinue: (workId: string) => void;
+  /** Opens the agent, model and effort of each role; without it the header has no settings button. */
+  readonly onSettings?: () => void;
 }) {
   const root = useRef<HTMLElement>(null);
   const stations = useRef<HTMLDivElement>(null);
@@ -45,14 +49,21 @@ export function SquadPanel({ members, profiles = [], focus, highlight, delivery,
       />
       <header className="relative flex min-h-[60px] items-center justify-between gap-3 border-b px-5 py-3.5">
         <h2 className="font-heading text-[17px] leading-tight font-semibold">Your squad</h2>
-        <span aria-live="polite" className="inline-flex items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
-          <i
-            aria-hidden
-            data-live={status.live}
-            className={cn('squad-live-dot size-[7px] rounded-full', status.live ? 'bg-good shadow-[0_0_0_0_var(--good)]' : 'bg-muted-foreground/60')}
-          />
-          {status.text}
-        </span>
+        <div className="flex items-center gap-2">
+          <span aria-live="polite" className="inline-flex items-center gap-2 text-[13px] whitespace-nowrap text-muted-foreground">
+            <i
+              aria-hidden
+              data-live={status.live}
+              className={cn('squad-live-dot size-[7px] rounded-full', status.live ? 'bg-good shadow-[0_0_0_0_var(--good)]' : 'bg-muted-foreground/60')}
+            />
+            {status.text}
+          </span>
+          {onSettings && (
+            <IconButton variant="ghost" size="icon-sm" label="Agent settings" onClick={onSettings}>
+              <Settings />
+            </IconButton>
+          )}
+        </div>
       </header>
       <div className="relative min-h-0 flex-1 overflow-y-auto p-3">
         <div ref={stations} className="relative">

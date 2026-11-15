@@ -1,11 +1,11 @@
 # Production Dockerfile
 
 FROM node:24-bookworm-slim AS base
+RUN corepack enable
 WORKDIR /app
 
 # Installs every dependency required for the build
 FROM base AS deps
-RUN corepack enable
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY packages/protocol/package.json ./packages/protocol/package.json
 COPY packages/server/package.json ./packages/server/package.json
@@ -14,7 +14,6 @@ RUN pnpm install --frozen-lockfile
 
 # Compiles the protocol, the server and the web app with the installed dependencies
 FROM base AS build
-RUN corepack enable
 COPY . .
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/protocol/node_modules ./packages/protocol/node_modules

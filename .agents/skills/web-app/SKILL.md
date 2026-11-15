@@ -49,7 +49,7 @@ packages/web/src/
 
 - `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills link (an icon link with a tooltip, to `/skills`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
-- "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
+- "New conversation" lives only in the header and the empty state of `ConversationPage`. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so every control fits from 320 px.
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
 
 ## Connection
@@ -66,7 +66,8 @@ packages/web/src/
   reports `unauthorized` and stops; `incompatible` and `untrusted` stop too. Other closes reconnect with exponential
   backoff from 500 ms to a 10 s cap, reset after a successful auth, and at once when the page becomes visible again.
   Commands sent while not `open` are queued and flushed after `auth.ok`. Once authenticated it sends `ping` every 5 s
-  when none is pending; any message answers it (`pong` is not forwarded), and a ping unanswered for 10 s drops the
+  when none is pending; anything from the server answers it (`pong` is not forwarded), a frame of a message still
+  arriving included (`ChannelHandlers.onProgress`), since the `pong` waits behind that message; a ping unanswered for 10 s drops the
   connection into the reconnection, since a vanished network closes no socket. Every message goes through `parseServerEvent`;
   invalid ones are dropped with `console.warn`. Reports of a replaced attempt are ignored.
 - `WebSocketServerConnection` always connects to the relative `/ws` (`wss` on https); close code `4401` is `unauthorized`.
@@ -118,9 +119,13 @@ packages/web/src/
 ## Conversation state
 
 - `conversationsReducer` is a pure reducer from `ServerEvent` to `ConversationsState` (`list` ordered by
-  `updatedAt` desc, `agents`, and `byId` with `entryIds`, `entries`, `state`, `loaded`, `configured`,
-  `profilesLoaded`, `profiles`). `conversation.entry` upserts by id (existing ids replaced in place, new ids
-  appended); `conversation.history` replaces the conversation wholesale. Events that carry no state
+  `updatedAt` desc, `agents`, and `byId` with `entryIds`, `entries`, `positions`, `start`, `state`, `loaded`,
+  `configured`, `profilesLoaded`, `profiles`). The view holds a window of the history, ordered by position, from
+  `start`. `conversation.history` replaces the window with the latest page, keeping only the entries already held
+  past its end (published after the server read the page); `conversation.entries` puts an earlier page before the
+  window when it ends where the window starts, and is ignored otherwise; `conversation.entry` replaces a held entry
+  in place, places a new one by its position, and leaves out an entry before the window, which its page carries as
+  it is now. A change that leaves a view as it was returns the same state. Events that carry no state
   (`models.list`, `efforts.list`, `error`, auth) leave it untouched; the settings sheet listens to them
   through `connection.onEvent`.
 - State that only one feature reads (the board, usage, agent logins) lives in its own provider or hook, outside
@@ -128,7 +133,8 @@ packages/web/src/
 - `ConversationsProvider` lives inside the router (`AppLayout`). It sends `conversation.list` on every `open`
   status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated.
   `ConversationView` sends `conversation.history` and `profiles.get` whenever the status is `open` or the
-  conversation changes, and `agents.list` while no agents are known.
+  conversation changes, and `agents.list` while no agents are known. `useEarlierEntries` sends
+  `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection.
 
 ## Theme and motion
 

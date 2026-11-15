@@ -38,6 +38,21 @@ describe('SquadPanel', () => {
     expect(stationStates().every(([, state]) => state === 'idle')).toBe(true);
   });
 
+  it('should open the agent settings from its header', async () => {
+    const onSettings = vi.fn();
+    renderPanel([], false, { onSettings });
+
+    await userEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Agent settings' }));
+
+    expect(onSettings).toHaveBeenCalledOnce();
+  });
+
+  it('should leave the settings button out without a handler', () => {
+    renderPanel([], false);
+
+    expect(screen.queryByRole('button', { name: 'Agent settings' })).not.toBeInTheDocument();
+  });
+
   it('should show what each role runs on, and an agent that is not installed', () => {
     renderPanel([], false, {
       profiles: [

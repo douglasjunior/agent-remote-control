@@ -13,14 +13,16 @@ import { FeedList, type FeedHandle } from './feed-list.js';
 const virtuoso = vi.hoisted(() => ({ range: { startIndex: 0, endIndex: 2 }, scrollToIndex: vi.fn() }));
 
 // The real list measures its items, which jsdom cannot do: this stand-in renders only the items of a visible range,
-// reports it, and moves it to the requested index on `scrollToIndex`.
+// reports it, and moves it to the requested index on `scrollToIndex`. Like the real list, it reports indexes offset by
+// `firstItemIndex` and scrolls to an index of `data`.
 vi.mock('react-virtuoso', () => ({
-  Virtuoso: ({ ref, data, itemContent, context, rangeChanged }: {
+  Virtuoso: ({ ref, data, itemContent, context, rangeChanged, firstItemIndex = 0 }: {
     ref: Ref<Pick<VirtuosoHandle, 'scrollToIndex'>>;
     data: readonly unknown[];
     itemContent: (index: number, item: unknown, context: unknown) => ReactNode;
     context: unknown;
     rangeChanged: (range: ListRange) => void;
+    firstItemIndex?: number;
   }) => {
     const [range, setRange] = useState(virtuoso.range);
     useImperativeHandle(ref, () => ({
@@ -30,8 +32,8 @@ vi.mock('react-virtuoso', () => ({
         setRange({ startIndex: index, endIndex: index + 1 });
       },
     }));
-    useEffect(() => rangeChanged(range), [rangeChanged, range]);
-    return <div>{data.map((item, index) => (index >= range.startIndex && index <= range.endIndex ? <div key={index}>{itemContent(index, item, context)}</div> : null))}</div>;
+    useEffect(() => rangeChanged({ startIndex: range.startIndex + firstItemIndex, endIndex: range.endIndex + firstItemIndex }), [rangeChanged, range, firstItemIndex]);
+    return <div>{data.map((item, index) => (index >= range.startIndex && index <= range.endIndex ? <div key={index}>{itemContent(index + firstItemIndex, item, context)}</div> : null))}</div>;
   },
 }));
 
@@ -41,8 +43,12 @@ const question: ConversationEntry = {
 const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'Merge requests are open' };
 const entries = [userEntry('u1'), question, userEntry('u2'), userEntry('u3'), userEntry('u4'), reply];
 
+function feed(list: ConversationEntry[], handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
+  return <FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />;
+}
+
 function renderFeed(list: ConversationEntry[] = entries, handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
-  return render(<FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />, { wrapper: FeedProviders });
+  return render(feed(list, handle), { wrapper: FeedProviders });
 }
 
 describe('FeedList open question out of view', () => {
@@ -61,6 +67,19 @@ describe('FeedList open question out of view', () => {
     expect(virtuoso.scrollToIndex).toHaveBeenCalledWith(expect.objectContaining({ index: 1 }));
     expect(screen.getByRole('button', { name: 'main' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Go to question' })).not.toBeInTheDocument();
+  });
+
+  it('should follow the question across earlier entries put before it', async () => {
+    const user = userEvent.setup();
+    virtuoso.range = { startIndex: 0, endIndex: 1 };
+    const { rerender } = renderFeed();
+    expect(screen.queryByText('Tech Lead is waiting for your answer')).not.toBeInTheDocument();
+
+    rerender(feed([userEntry('e1'), userEntry('e2'), ...entries]));
+    expect(screen.getByText('Tech Lead is waiting for your answer')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Go to question' }));
+    expect(virtuoso.scrollToIndex).toHaveBeenCalledWith(expect.objectContaining({ index: 3 }));
   });
 
   it('should hide the line when the question is within the visible range, and when it is closed', () => {
