@@ -49,7 +49,7 @@ packages/web/src/
 
 - `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills link (an icon link with a tooltip, to `/skills`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
-- "New conversation" lives only in the header (icon-only below `sm`) and the empty state of `ConversationPage`.
+- "New conversation" lives only in the header and the empty state of `ConversationPage`. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so every control fits from 320 px.
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
 
 ## Connection

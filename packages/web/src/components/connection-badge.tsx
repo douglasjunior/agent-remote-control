@@ -38,7 +38,7 @@ const STATUS_NOTES: Partial<Record<ConnectionStatus, string>> = {
   untrusted: 'The server that answered presented a certificate other than the one in your link, so this page refused it. Open the link your server printed again.',
 };
 
-/** The connection status, with an icon of the transport whose popover, open on hover, explains it. */
+/** The connection status, with an icon of the transport whose popover, open on hover, explains it; below `sm` only the icon and the color show it. */
 export function ConnectionBadge({ status, transport }: {
   readonly status: ConnectionStatus;
   readonly transport: ConnectionTransport;
@@ -55,7 +55,7 @@ export function ConnectionBadge({ status, transport }: {
         render={<button type="button" aria-label={`${LABELS[status]} over ${title}`} className={badgeVariants({ variant })} />}
       >
         <Icon data-icon="inline-start" aria-hidden />
-        {LABELS[status]}
+        <span className="hidden sm:inline">{LABELS[status]}</span>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <PopoverHeader>
