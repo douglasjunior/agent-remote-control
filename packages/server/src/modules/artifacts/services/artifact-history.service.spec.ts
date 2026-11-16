@@ -1,13 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 
 import { ArtifactHistoryService } from './artifact-history.service.js';
 
 
 describe('ArtifactHistoryService', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    rs.useRealTimers();
+  });
 
   it('should stamp events with the current time and a fresh id, leaving out empty details', () => {
-    vi.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
+    rs.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
     const history = new ArtifactHistoryService();
 
     const first = history.event({ kind: 'system' }, 'updated', 'Nothing', { changes: [], text: '' });

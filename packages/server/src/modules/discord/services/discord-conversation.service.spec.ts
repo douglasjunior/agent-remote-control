@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
@@ -25,9 +25,9 @@ describe('DiscordConversationService', () => {
   let agentAuthRequests: AgentAuthRequestService;
 
   beforeEach(() => {
-    mockResolveUseCase = { execute: vi.fn() } as unknown as ResolveConversationInputUseCase;
-    mockStartSelectionUseCase = { execute: vi.fn() } as unknown as StartAgentConfigSelectionUseCase;
-    mockCancelSelectionUseCase = { execute: vi.fn() } as unknown as CancelAgentConfigSelectionUseCase;
+    mockResolveUseCase = { execute: rs.fn() } as unknown as ResolveConversationInputUseCase;
+    mockStartSelectionUseCase = { execute: rs.fn() } as unknown as StartAgentConfigSelectionUseCase;
+    mockCancelSelectionUseCase = { execute: rs.fn() } as unknown as CancelAgentConfigSelectionUseCase;
     selectionStore = new InMemoryAgentConfigSelectionStoreAdapter();
     configuration = new StubAgentConfigurationPort();
     agentAuth = new StubAgentAuthPort();
@@ -61,7 +61,7 @@ describe('DiscordConversationService', () => {
   });
 
   it('should delegate resolveInput to ResolveConversationInputUseCase', async () => {
-    vi.mocked(mockResolveUseCase.execute).mockResolvedValue({ kind: 'execute', prompt: 'hi' });
+    rs.mocked(mockResolveUseCase.execute).mockResolvedValue({ kind: 'execute', prompt: 'hi' });
 
     await expect(service.resolveInput({ conversationId: 'conv-1', prompt: 'hi' })).resolves.toEqual({
       kind: 'execute',
@@ -70,8 +70,8 @@ describe('DiscordConversationService', () => {
   });
 
   it('should start and cancel configuration selections through their use cases', async () => {
-    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
-    vi.mocked(mockCancelSelectionUseCase.execute).mockResolvedValue(true);
+    rs.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+    rs.mocked(mockCancelSelectionUseCase.execute).mockResolvedValue(true);
 
     await expect(service.startConfigSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
     await expect(service.cancelConfigSelection('conv-th-1')).resolves.toBe(true);
@@ -80,14 +80,14 @@ describe('DiscordConversationService', () => {
   });
 
   it('should start the agent selection at the agent step', async () => {
-    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+    rs.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
 
     await expect(service.startAgentSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({ conversationId: 'conv-th-1', step: 'agent' });
   });
 
   it('should start the profiles selection at the profile step', async () => {
-    vi.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+    rs.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
 
     await expect(service.startProfilesSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({ conversationId: 'conv-th-1', step: 'profile' });

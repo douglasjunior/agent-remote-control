@@ -31,7 +31,7 @@ const sentOfType = (connection: FakeServerConnection, type: string) =>
   connection.sent.filter(command => command.type === type);
 
 // Each case mounts the whole app and waits on sonner's animated toasts, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
+rs.setConfig({ testTimeout: 20_000 });
 
 describe('AgentAuthController', () => {
   afterEach(() => {
@@ -332,7 +332,7 @@ describe('AgentAuthPopover', () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'authenticated']);
     const user = await open();
-    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    const writeText = rs.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
     await user.click(screen.getByRole('button', { name: 'Re-authenticate Claude Code' }));
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'AB12-CD34' });
 

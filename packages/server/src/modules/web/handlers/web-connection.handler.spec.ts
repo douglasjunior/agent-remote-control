@@ -48,8 +48,8 @@ describe('WebConnectionHandler', () => {
   let agentAuth: StubAgentAuthPort;
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
+    rs.useFakeTimers();
+    rs.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     transport = new FakeClientTransport();
     harness = createWebHarness();
     skills = new StubAgentSkillsPort();
@@ -94,8 +94,8 @@ describe('WebConnectionHandler', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
+    rs.useRealTimers();
+    rs.unstubAllEnvs();
   });
 
   it('should authenticate a correct token and register the connection', () => {
@@ -108,14 +108,14 @@ describe('WebConnectionHandler', () => {
   it('should answer the heartbeat of an authenticated connection', async () => {
     connection.receive({ type: 'auth', token: 'secret' });
     connection.receive({ type: 'ping' });
-    await vi.advanceTimersByTimeAsync(0);
+    await rs.advanceTimersByTimeAsync(0);
 
     expect(connection.sent).toEqual([{ type: 'auth.ok' }, { type: 'pong' }]);
   });
 
   it('should not close an authenticated connection when the timeout elapses', () => {
     connection.receive({ type: 'auth', token: 'secret' });
-    vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
+    rs.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.closedWith).toBeUndefined();
   });
@@ -129,7 +129,7 @@ describe('WebConnectionHandler', () => {
   });
 
   it('should reject when no auth command arrives in time', () => {
-    vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
+    rs.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.sent).toEqual([{ type: 'auth.failed' }]);
     expect(connection.closedWith?.code).toBe(AUTH_FAILED_CLOSE_CODE);
@@ -152,7 +152,7 @@ describe('WebConnectionHandler', () => {
 
   it('should cancel the timeout when the connection closes', () => {
     connection.simulateClose();
-    vi.advanceTimersByTime(AUTH_TIMEOUT_MS);
+    rs.advanceTimersByTime(AUTH_TIMEOUT_MS);
 
     expect(connection.sent).toEqual([]);
   });
@@ -168,7 +168,7 @@ describe('WebConnectionHandler', () => {
   describe('routing after authentication', () => {
     const settle = async () => {
       for (let pass = 0; pass < 10; pass += 1) {
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
       }
     };
     const sent = () => connection.sent.slice(1);
@@ -200,7 +200,7 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should answer quota.failed, never an error event, when the usage cannot be read', async () => {
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       harness.agentTurn.throwOnQuota = true;
 
       connection.receive({ type: 'quota.get' });
@@ -233,7 +233,7 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should answer auth.status.failed, never an error event, when the state cannot be read', async () => {
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       agentAuth.statusError = new Error('probe down');
 
       connection.receive({ type: 'auth.status' });
@@ -245,7 +245,7 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should start a login on auth.login and forward its progress, logging the command type only', async () => {
-      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       connection.receive({ type: 'auth.login', agentId: 'claude' });
       await settle();
@@ -258,7 +258,7 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should hand a pasted code to the login without logging it', async () => {
-      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       connection.receive({ type: 'auth.input', agentId: 'claude', text: 'abc#def' });
       await settle();
@@ -637,7 +637,7 @@ describe('WebConnectionHandler', () => {
 
       connection.receive({ type: 'work.resume', conversationId: 'web-1', workId: 'w' });
 
-      await vi.waitFor(() => expect(harness.agentTurn.resumedWorkIds).toEqual(['w']));
+      await rs.waitFor(() => expect(harness.agentTurn.resumedWorkIds).toEqual(['w']));
     });
 
     it('should reject an answer when no question is waiting', async () => {
@@ -655,8 +655,8 @@ describe('WebConnectionHandler', () => {
       const record = (message: unknown) => {
         logged.push([String(message), logContext.current()]);
       };
-      const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(record);
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(record);
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(record);
+      const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(record);
 
       connection.receive({ type: 'question.answer', conversationId: 'web-1', answer: { kind: 'text', text: 'private words' } });
       await settle();
@@ -685,8 +685,8 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should report a failing command without closing the connection', async () => {
-      vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-      vi.spyOn(harness.store, 'list').mockRejectedValue(new Error('disk gone'));
+      rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      rs.spyOn(harness.store, 'list').mockRejectedValue(new Error('disk gone'));
       connection.receive({ type: 'conversation.list' });
       await settle();
 
@@ -695,8 +695,8 @@ describe('WebConnectionHandler', () => {
     });
 
     it('should describe a command that fails with a non-Error value', async () => {
-      const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-      vi.spyOn(harness.store, 'list').mockRejectedValue('plain');
+      const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      rs.spyOn(harness.store, 'list').mockRejectedValue('plain');
       connection.receive({ type: 'conversation.list' });
       await settle();
 

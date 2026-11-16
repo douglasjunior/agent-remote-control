@@ -22,7 +22,7 @@ describe('JsonPromptHistoryAdapter', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -75,7 +75,7 @@ describe('JsonPromptHistoryAdapter', () => {
   });
 
   it('should ignore a stored file with the wrong shape and warn', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     seedFile(JSON.stringify({ not: 'a list' }));
 
     expect(await new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir)).list()).toEqual([]);
@@ -83,7 +83,7 @@ describe('JsonPromptHistoryAdapter', () => {
   });
 
   it('should log a failed write without rejecting', async () => {
-    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     mkdirSync(join(dataDir, 'web'), { recursive: true });
     mkdirSync(file());
     const history = new JsonPromptHistoryAdapter(dataDirectoryAt(dataDir));

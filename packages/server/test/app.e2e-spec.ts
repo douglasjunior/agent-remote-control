@@ -13,9 +13,9 @@ describe('AppController (e2e)', () => {
   let dataDir: string;
 
   beforeAll(async () => {
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'test');
+    rs.stubEnv('WEB_ACCESS_TOKEN', 'test');
     dataDir = mkdtempSync(join(tmpdir(), 'web-e2e-'));
-    vi.stubEnv('DATA_DIR', dataDir);
+    rs.stubEnv('DATA_DIR', dataDir);
 
     const { AppModule } = await import('./../src/app.module.js');
     app = await NestFactory.create(AppModule, { logger: false });
@@ -24,7 +24,7 @@ describe('AppController (e2e)', () => {
 
   afterAll(async () => {
     await app.close();
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -48,8 +48,8 @@ describe('AppController (e2e)', () => {
       client.on('error', fail);
     });
 
-  it('should answer GET /health', () => {
-    return request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' });
+  it('should answer GET /health', async () => {
+    await request(app.getHttpServer()).get('/health').expect(200).expect({ status: 'ok' });
   });
 
   it('should authenticate over /ws and list conversations', async () => {

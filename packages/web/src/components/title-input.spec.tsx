@@ -5,8 +5,8 @@ import { TitleInput } from './title-input.js';
 
 describe('TitleInput', () => {
   it('should end the edit once, even when the field is left after Enter', () => {
-    const onSave = vi.fn();
-    const onDone = vi.fn();
+    const onSave = rs.fn();
+    const onDone = rs.fn();
     render(<TitleInput title="Alpha" label="Title" onSave={onSave} onDone={onDone} />);
     const input = screen.getByRole('textbox', { name: 'Title' });
     fireEvent.change(input, { target: { value: 'Beta' } });

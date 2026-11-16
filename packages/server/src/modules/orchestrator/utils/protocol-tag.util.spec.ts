@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { escapeTagAttribute, findCodeSpans, isInCode, parseTagAttributes, readTagBody } from './protocol-tag.util.js';
 

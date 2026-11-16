@@ -90,7 +90,7 @@ describe('ArtifactsProvider and useBoard', () => {
   });
 
   it('should refuse to be used outside its provider', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rs.spyOn(console, 'error').mockImplementation(() => undefined);
     function Outside() {
       useArtifacts();
       return null;

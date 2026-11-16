@@ -96,7 +96,7 @@ describe('WebArtifactsService', () => {
     await artifacts.service.comment('web-1', 'F-1', 'Hi', user);
     await artifacts.service.remove('web-1', 'T-1', user);
     await artifacts.service.create('discord:1', { type: 'task', title: 'Elsewhere', projectName: 'shop' }, user);
-    await vi.waitFor(() => expect(observer.sent).toHaveLength(2));
+    await rs.waitFor(() => expect(observer.sent).toHaveLength(2));
     service.onModuleDestroy();
     await artifacts.service.comment('web-1', 'F-1', 'Again', user);
 

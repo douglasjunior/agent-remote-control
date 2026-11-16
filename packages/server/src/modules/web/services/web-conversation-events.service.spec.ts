@@ -37,7 +37,7 @@ describe('WebConversationEventsService', () => {
     const slow = new Promise<void>((resolve) => {
       release = resolve;
     });
-    vi.spyOn(store, 'upsertEntry').mockImplementationOnce(async (id, value) => {
+    rs.spyOn(store, 'upsertEntry').mockImplementationOnce(async (id, value) => {
       await slow;
       return upsert(id, value);
     });
@@ -56,7 +56,7 @@ describe('WebConversationEventsService', () => {
     registry.register(observer);
     const store = new FakeConversationStore();
     store.seed('web-1');
-    vi.spyOn(store, 'upsertEntry').mockRejectedValueOnce(new Error('disk full'));
+    rs.spyOn(store, 'upsertEntry').mockRejectedValueOnce(new Error('disk full'));
     const events = new WebConversationEventsService(store, registry, new ConversationEntryService());
 
     await expect(events.publishEntry('web-1', entry)).resolves.toBeUndefined();

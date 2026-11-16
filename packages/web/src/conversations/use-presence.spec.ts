@@ -12,7 +12,7 @@ describe('usePresence', () => {
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
+    rs.unstubAllGlobals();
     Object.defineProperty(document, 'hidden', { configurable: true, value: false });
   });
 
@@ -52,7 +52,7 @@ describe('usePresence', () => {
   });
 
   describe('notification', () => {
-    const notify = vi.fn();
+    const notify = rs.fn();
 
     beforeEach(() => {
       notify.mockClear();
@@ -62,7 +62,7 @@ describe('usePresence', () => {
           notify(title, options);
         }
       }
-      vi.stubGlobal('Notification', FakeNotification);
+      rs.stubGlobal('Notification', FakeNotification);
     });
 
     it('should announce a question while the tab is hidden', () => {
@@ -85,14 +85,14 @@ describe('usePresence', () => {
       renderHook(() => usePresence([member('TECH_LEAD', 'waiting')]));
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
       renderHook(() => usePresence([member('TECH_LEAD', 'working')]));
-      vi.stubGlobal('Notification', Object.assign(vi.fn(), { permission: 'default' }));
+      rs.stubGlobal('Notification', Object.assign(rs.fn(), { permission: 'default' }));
       renderHook(() => usePresence([member('TECH_LEAD', 'waiting')]));
 
       expect(notify).not.toHaveBeenCalled();
     });
 
     it('should stay quiet where notifications do not exist', () => {
-      vi.stubGlobal('Notification', undefined);
+      rs.stubGlobal('Notification', undefined);
       Object.defineProperty(document, 'hidden', { configurable: true, value: true });
 
       expect(() => renderHook(() => usePresence([member('TECH_LEAD', 'waiting')]))).not.toThrow();

@@ -40,11 +40,11 @@ describe('WsSignalingTransportAdapter', () => {
     adapter.onModuleInit();
   };
 
-  let warn: ReturnType<typeof vi.spyOn>;
+  let warn: ReturnType<typeof rs.spyOn>;
 
   beforeEach(async () => {
-    warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    vi.stubEnv('P2P_ALLOWED_ORIGINS', ' http://localhost:5173/ , ');
+    warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    rs.stubEnv('P2P_ALLOWED_ORIGINS', ' http://localhost:5173/ , ');
     httpServer = createServer((_req, res) => res.end());
     await new Promise<void>(done => httpServer.listen(0, '127.0.0.1', done));
     port = (httpServer.address() as AddressInfo).port;
@@ -52,9 +52,9 @@ describe('WsSignalingTransportAdapter', () => {
   });
 
   afterEach(async () => {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.unstubAllEnvs();
+    rs.restoreAllMocks();
     for (const socket of sockets.splice(0)) {
       socket.terminate();
     }
@@ -96,7 +96,7 @@ describe('WsSignalingTransportAdapter', () => {
     socket.send('not json');
     host.send({ type: 'host.registered' });
     expect(await reply).toBe('{"type":"host.registered"}');
-    await vi.waitFor(() => expect(received).toEqual([{ type: 'host.close' }, 'not json']));
+    await rs.waitFor(() => expect(received).toEqual([{ type: 'host.close' }, 'not json']));
     unsubscribe();
     host.close(4409, 'replaced');
     await closed;
@@ -104,7 +104,7 @@ describe('WsSignalingTransportAdapter', () => {
   });
 
   it('should keep a socket that answers pings and terminate one that does not', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    rs.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     await adapter.onModuleDestroy();
     start();
     const answering = open('/signal/host');
@@ -114,9 +114,9 @@ describe('WsSignalingTransportAdapter', () => {
     (silent as unknown as { _receiver: { removeAllListeners: (event: string) => void } })._receiver.removeAllListeners('ping');
     const terminated = new Promise<void>(done => silent.once('close', () => done()));
 
-    vi.advanceTimersByTime(25_000);
-    await vi.waitFor(() => new Promise(done => setTimeout(done, 20)));
-    vi.advanceTimersByTime(25_000);
+    rs.advanceTimersByTime(25_000);
+    await rs.waitFor(() => new Promise(done => setTimeout(done, 20)));
+    rs.advanceTimersByTime(25_000);
 
     await terminated;
     expect(answering.readyState).toBe(WebSocket.OPEN);
@@ -172,7 +172,7 @@ describe('WsSignalingTransportAdapter', () => {
   });
 
   it('should count the address the trusted proxies saw, whatever the client put before it', async () => {
-    vi.stubEnv('P2P_TRUSTED_PROXY_HOPS', '1');
+    rs.stubEnv('P2P_TRUSTED_PROXY_HOPS', '1');
     await adapter.onModuleDestroy();
     start();
     const crowded = Array.from({ length: 20 }, (_, index) => open('/signal/host', undefined, `10.0.0.${index}, 203.0.113.1`));
@@ -185,17 +185,17 @@ describe('WsSignalingTransportAdapter', () => {
   });
 
   it('should forget an address once it has no socket and its whole allowance back', async () => {
-    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    rs.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
     await adapter.onModuleDestroy();
     start();
     const socket = open('/signal/host');
     await outcome(socket);
 
-    vi.advanceTimersByTime(25_000);
+    rs.advanceTimersByTime(25_000);
     expect(adapter['addresses'].size).toBe(1);
     socket.close();
-    await vi.waitFor(() => expect([...adapter['addresses'].values()][0]?.sockets).toBe(0));
-    vi.advanceTimersByTime(25_000);
+    await rs.waitFor(() => expect([...adapter['addresses'].values()][0]?.sockets).toBe(0));
+    rs.advanceTimersByTime(25_000);
     expect(adapter['addresses'].size).toBe(0);
   });
 });

@@ -31,16 +31,16 @@ describe('useAgentQuota', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers({ now: NOW });
+    rs.useFakeTimers({ now: NOW });
     localStorage.clear();
     connection = new FakeServerConnection();
     visibility = 'visible';
-    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    rs.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
   });
 
   it('should ask when the connection opens, and again after a reconnection', () => {
@@ -72,11 +72,11 @@ describe('useAgentQuota', () => {
 
   it('should refresh on the interval only while the tab is visible', () => {
     renderQuota();
-    act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
+    act(() => void rs.advanceTimersByTime(QUOTA_REFRESH_MS));
     expect(requests()).toHaveLength(2);
 
     visibility = 'hidden';
-    act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
+    act(() => void rs.advanceTimersByTime(QUOTA_REFRESH_MS));
     expect(requests()).toHaveLength(2);
   });
 
@@ -89,7 +89,7 @@ describe('useAgentQuota', () => {
     expect(requests()).toHaveLength(1);
 
     visibility = 'hidden';
-    act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
+    act(() => void rs.advanceTimersByTime(QUOTA_REFRESH_MS));
     setVisibility('hidden');
     expect(requests()).toHaveLength(1);
     setVisibility('visible');
@@ -105,7 +105,7 @@ describe('useAgentQuota', () => {
   it('should stop asking when unmounted', () => {
     const { unmount } = renderQuota();
     unmount();
-    act(() => void vi.advanceTimersByTime(QUOTA_REFRESH_MS));
+    act(() => void rs.advanceTimersByTime(QUOTA_REFRESH_MS));
     setVisibility('visible');
     expect(requests()).toHaveLength(1);
   });

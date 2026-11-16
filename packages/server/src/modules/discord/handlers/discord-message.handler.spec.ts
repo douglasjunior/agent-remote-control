@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
@@ -40,8 +40,8 @@ class MockDiscordAttachmentService {
 
   public downloadError: Error | null = null;
 
-  validateAttachments = vi.fn().mockImplementation((_attachments: readonly DiscordAttachment[]) => this.validationResult);
-  downloadAttachments = vi.fn().mockImplementation(async () => {
+  validateAttachments = rs.fn().mockImplementation((_attachments: readonly DiscordAttachment[]) => this.validationResult);
+  downloadAttachments = rs.fn().mockImplementation(async () => {
     if (this.downloadError) {
       throw this.downloadError;
     }
@@ -52,7 +52,7 @@ class MockDiscordAttachmentService {
 class MockDiscordClientService {
   public mockClient = {
     user: { id: 'bot-123' },
-    on: vi.fn(),
+    on: rs.fn(),
   };
 
   getClient() {
@@ -128,12 +128,12 @@ class MockDiscordConversationService {
 }
 
 class MockWorkspacePort implements IWorkspacePort {
-  getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
-  resolveRepositoryPath = vi.fn();
-  ensureDirectory = vi.fn().mockResolvedValue(undefined);
-  listProjectFolders = vi.fn().mockResolvedValue([]);
-  writeFile = vi.fn().mockResolvedValue(undefined);
-  ensureSymlink = vi.fn().mockResolvedValue(undefined);
+  getBaseDirectory = rs.fn().mockReturnValue('/mock/workspace');
+  resolveRepositoryPath = rs.fn();
+  ensureDirectory = rs.fn().mockResolvedValue(undefined);
+  listProjectFolders = rs.fn().mockResolvedValue([]);
+  writeFile = rs.fn().mockResolvedValue(undefined);
+  ensureSymlink = rs.fn().mockResolvedValue(undefined);
 }
 
 describe('DiscordMessageHandler', () => {
@@ -146,7 +146,7 @@ describe('DiscordMessageHandler', () => {
   let workspacePort: MockWorkspacePort;
 
   beforeEach(async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -191,7 +191,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should delegate registered message create events to handleMessage', () => {
-    const handleMessage = vi.spyOn(handler, 'handleMessage').mockResolvedValue();
+    const handleMessage = rs.spyOn(handler, 'handleMessage').mockResolvedValue();
     handler.onModuleInit();
     const listener = discordClientService.mockClient.on.mock.calls[0]![1] as (message: Message) => void;
     const message = { author: { bot: true } } as Message;
@@ -221,10 +221,10 @@ describe('DiscordMessageHandler', () => {
   it('should ignore messages that are neither DM, thread, nor mention', async () => {
     const message = {
       author: { bot: false },
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: {
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(false),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(false),
       },
     } as unknown as Message;
     await handler.handleMessage(message);
@@ -232,14 +232,14 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should handle message in existing managed thread', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -247,7 +247,7 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Do something',
       content: 'Do something',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
@@ -265,10 +265,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should spawn a new thread if bot is mentioned in a normal channel', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-new',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     const message = {
@@ -276,12 +276,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Fix the bug',
       content: '<@bot-123> Fix the bug',
-      mentions: { has: vi.fn().mockReturnValue(true) },
+      mentions: { has: rs.fn().mockReturnValue(true) },
       channel: {
-        isThread: vi.fn().mockReturnValue(false),
-        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(false),
+        isDMBased: rs.fn().mockReturnValue(false),
       },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -303,7 +303,7 @@ describe('DiscordMessageHandler', () => {
   it('should reply with greeting if prompt is empty in normal channel', async () => {
     const mockThread = {
       id: 'thread-new',
-      send: vi.fn().mockResolvedValue({}),
+      send: rs.fn().mockResolvedValue({}),
     };
 
     const message = {
@@ -311,12 +311,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: '',
       content: '<@bot-123>   ',
-      mentions: { has: vi.fn().mockReturnValue(true) },
+      mentions: { has: rs.fn().mockReturnValue(true) },
       channel: {
-        isThread: vi.fn().mockReturnValue(false),
-        isDMBased: vi.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(false),
+        isDMBased: rs.fn().mockReturnValue(false),
       },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -337,14 +337,14 @@ describe('DiscordMessageHandler', () => {
         status: 'in_progress',
       },
     ];
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -352,12 +352,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await handler.handleMessage(message);
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
 
     const sendCalls = (mockThread.send as any).mock.calls.map((call: any) => call[0]);
     expect(sendCalls.some((c: string) => typeof c === 'string' && c.includes('Thinking about the request'))).toBe(true);
@@ -365,13 +365,13 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should ignore @everyone and role mentions when checking for the bot mention', async () => {
-    const has = vi.fn().mockReturnValue(false);
+    const has = rs.fn().mockReturnValue(false);
     const message = {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
       content: '@everyone hello',
       mentions: { has },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -385,20 +385,20 @@ describe('DiscordMessageHandler', () => {
 
   it('should tell the user when the message is waiting for the previous turn', async () => {
     agentTurn.queued = true;
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
     const message = {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
       content: 'Next task',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
@@ -412,20 +412,20 @@ describe('DiscordMessageHandler', () => {
   it('should ignore failures when showing the queued notice', async () => {
     agentTurn.queued = true;
     agentTurn.activitiesToEmit = [];
-    const progressMessage = { edit: vi.fn().mockRejectedValue(new Error('gone')) };
+    const progressMessage = { edit: rs.fn().mockRejectedValue(new Error('gone')) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(progressMessage),
     } as unknown as ThreadChannel;
     const message = {
       author: { bot: false, id: 'user-42' },
       channelId: 'channel-1',
       content: 'Next task',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
@@ -440,15 +440,15 @@ describe('DiscordMessageHandler', () => {
         { kind: 'thought', id: 't1', text: 'Hello there' },
         { kind: 'thought', id: 't1', text: 'Hello there, friend', final: true },
       ];
-      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
+      const sentMessages: { content: string; edit: ReturnType<typeof rs.fn> }[] = [];
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
-          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: rs.fn().mockResolvedValue(undefined) };
           sentMessages.push(sent);
           return sent;
         }),
@@ -458,12 +458,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const thoughtMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Hello'));
       expect(thoughtMsg).toBeDefined();
@@ -473,20 +473,20 @@ describe('DiscordMessageHandler', () => {
     it('should update tool calls in place and drop removed thoughts', async () => {
       const sentMessages: {
         content: string;
-        edit: ReturnType<typeof vi.fn>;
-        delete: ReturnType<typeof vi.fn>;
+        edit: ReturnType<typeof rs.fn>;
+        delete: ReturnType<typeof rs.fn>;
       }[] = [];
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
           const sent = {
             content,
-            edit: vi.fn().mockResolvedValue(undefined),
-            delete: vi.fn().mockResolvedValue(undefined),
+            edit: rs.fn().mockResolvedValue(undefined),
+            delete: rs.fn().mockResolvedValue(undefined),
           };
           sentMessages.push(sent);
           return sent;
@@ -497,13 +497,13 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
-      vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
+      rs.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
         req.onActivity?.({ kind: 'thought', id: 't1', text: 'Draft' }, 'CEO');
-        await vi.advanceTimersByTimeAsync(1500);
+        await rs.advanceTimersByTimeAsync(1500);
         req.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'ls', status: 'in_progress' }, 'CEO');
         req.onActivity?.({
           kind: 'tool',
@@ -518,7 +518,7 @@ describe('DiscordMessageHandler', () => {
       });
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Running'));
       expect(toolMsg).toBeDefined();
@@ -536,15 +536,15 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
           sends += 1;
           if (content.includes('could not')) {
             throw new Error('Discord down');
           }
           posted.push(content);
-          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+          return { content, edit: rs.fn().mockResolvedValue(undefined) };
         }),
       } as unknown as ThreadChannel;
       const message = {
@@ -552,33 +552,33 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
-      vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
+      rs.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
         req.onActivity?.({ kind: 'skill', id: 's1', action: 'read', names: ['api-testing'], status: 'completed' }, 'QA');
         req.onActivity?.({ kind: 'skill', id: 's2', action: 'write', names: ['x'], status: 'failed', error: 'No.' }, 'CEO');
         return agentTurn.turnResult;
       });
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(posted).toContain('📘 **QA** read the skill `api-testing`');
       expect(sends).toBeGreaterThanOrEqual(3);
     });
 
     it('should announce delegations and deliver thoughts and tool calls as individual messages', async () => {
-      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
+      const sentMessages: { content: string; edit: ReturnType<typeof rs.fn> }[] = [];
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn(async (content: string) => {
-          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn(async (content: string) => {
+          const sent = { content, edit: rs.fn().mockResolvedValue(undefined) };
           sentMessages.push(sent);
           return sent;
         }),
@@ -587,7 +587,7 @@ describe('DiscordMessageHandler', () => {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
       const delegation = {
@@ -614,7 +614,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const contents = sentMessages.map(sent => sent.content);
       expect(contents).toContain('⏳ *Starting...*');
@@ -631,23 +631,23 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should announce nothing when a delegation is cancelled', async () => {
-      const send = vi.fn().mockImplementation(async (content: string) => ({
+      const send = rs.fn().mockImplementation(async (content: string) => ({
         content,
-        edit: vi.fn().mockResolvedValue(undefined),
+        edit: rs.fn().mockResolvedValue(undefined),
       }));
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       } as unknown as ThreadChannel;
       const message = {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
       agentTurn.executeTurn = async (request: TurnRequest) => {
@@ -665,30 +665,30 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const contents = send.mock.calls.map(([content]) => String(content));
       expect(contents.filter(content => content.includes('Developer'))).toEqual([]);
     });
 
     it('should proceed gracefully when a delegation cannot be announced', async () => {
-      const send = vi.fn().mockImplementation(async (content: string) => ({
+      const send = rs.fn().mockImplementation(async (content: string) => ({
         content,
-        edit: vi.fn().mockResolvedValue(undefined),
+        edit: rs.fn().mockResolvedValue(undefined),
       }));
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       } as unknown as ThreadChannel;
       const message = {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
       agentTurn.executeTurn = async (request: TurnRequest) => {
@@ -696,7 +696,7 @@ describe('DiscordMessageHandler', () => {
           if (typeof content === 'string' && content.includes('delegated')) {
             throw new Error('rate limited');
           }
-          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+          return { content, edit: rs.fn().mockResolvedValue(undefined) };
         });
         request.onDelegation?.({
           delegationId: 'dl-1', round: 1,
@@ -710,28 +710,28 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
 
     it('should send the CEO interim message before the delegation it precedes', async () => {
       const contents: string[] = [];
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         contents.push(content);
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       const message = {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: {
           id: 'thread-1',
           parentId: 'channel-1',
           ownerId: 'bot-123',
-          isDMBased: vi.fn().mockReturnValue(false),
-          isThread: vi.fn().mockReturnValue(true),
+          isDMBased: rs.fn().mockReturnValue(false),
+          isThread: rs.fn().mockReturnValue(true),
           send,
         },
       } as unknown as Message;
@@ -742,7 +742,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const interim = contents.indexOf('Splitting this in two.');
       expect(interim).toBeGreaterThanOrEqual(0);
@@ -750,23 +750,23 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should proceed gracefully when the CEO interim message cannot be sent', async () => {
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         if (content === 'Splitting this in two.') {
           throw new Error('rate limited');
         }
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       const message = {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: {
           id: 'thread-1',
           parentId: 'channel-1',
           ownerId: 'bot-123',
-          isDMBased: vi.fn().mockReturnValue(false),
-          isThread: vi.fn().mockReturnValue(true),
+          isDMBased: rs.fn().mockReturnValue(false),
+          isThread: rs.fn().mockReturnValue(true),
           send,
         },
       } as unknown as Message;
@@ -776,7 +776,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
@@ -786,25 +786,25 @@ describe('DiscordMessageHandler', () => {
       const deletePromise = new Promise<void>((resolve) => {
         resolveDelete = resolve;
       });
-      const deleteFn = vi.fn().mockImplementation(() => deletePromise);
-      const send = vi.fn().mockImplementation(async (content: string) => ({
+      const deleteFn = rs.fn().mockImplementation(() => deletePromise);
+      const send = rs.fn().mockImplementation(async (content: string) => ({
         content,
-        edit: vi.fn().mockResolvedValue(undefined),
+        edit: rs.fn().mockResolvedValue(undefined),
         delete: deleteFn,
       }));
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       } as unknown as ThreadChannel;
       const message = {
         author: { bot: false, id: 'user-42' },
         channelId: 'channel-1',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
@@ -822,7 +822,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(deleteFn).toHaveBeenCalledTimes(1);
     });
@@ -832,15 +832,15 @@ describe('DiscordMessageHandler', () => {
         { kind: 'thought', id: 't1', text: '   ' },
         { kind: 'tool', toolCallId: 't2', title: 'ls', status: 'unknown' as any },
       ];
-      const sendMock = vi.fn().mockResolvedValue({
-        edit: vi.fn().mockResolvedValue(undefined),
+      const sendMock = rs.fn().mockResolvedValue({
+        edit: rs.fn().mockResolvedValue(undefined),
       });
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send: sendMock,
       } as unknown as ThreadChannel;
       const message = {
@@ -848,12 +848,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const sentContents = sendMock.mock.calls.map(c => c[0]);
       expect(sentContents.some(c => typeof c === 'string' && c.startsWith('> 💭'))).toBe(false);
@@ -867,10 +867,10 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
-          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: rs.fn().mockResolvedValue(undefined) };
           sentMessages.push(sent);
           return sent;
         }),
@@ -880,12 +880,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const thoughtMessages = sentMessages.filter(
         m => typeof m.content === 'string' && (m.content.startsWith('> 💭') || m.content.startsWith('> *')),
@@ -901,10 +901,10 @@ describe('DiscordMessageHandler', () => {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
-          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: rs.fn().mockResolvedValue(undefined) };
           sentMessages.push(sent);
           return sent;
         }),
@@ -914,12 +914,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(sentMessages.some(m => typeof m.content === 'string' && m.content.includes('✅ **Completed**: `pwd`'))).toBe(true);
     });
@@ -929,15 +929,15 @@ describe('DiscordMessageHandler', () => {
         { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'in_progress' },
         { kind: 'tool', toolCallId: 'fail-1', title: 'npm build', status: 'failed', details: 'exit code 1' },
       ];
-      const sentMessages: { content: string; edit: ReturnType<typeof vi.fn> }[] = [];
+      const sentMessages: { content: string; edit: ReturnType<typeof rs.fn> }[] = [];
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockImplementation(async (content: string) => {
-          const sent = { content, edit: vi.fn().mockResolvedValue(undefined) };
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockImplementation(async (content: string) => {
+          const sent = { content, edit: rs.fn().mockResolvedValue(undefined) };
           sentMessages.push(sent);
           return sent;
         }),
@@ -947,12 +947,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Hi',
         content: 'Hi',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       await handler.handleMessage(message);
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const toolMsg = sentMessages.find(m => typeof m.content === 'string' && m.content.includes('Running'));
       expect(toolMsg).toBeDefined();
@@ -965,14 +965,14 @@ describe('DiscordMessageHandler', () => {
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
     ];
-    const mockMsg = { edit: vi.fn().mockRejectedValue(new Error('Discord API Error')) };
+    const mockMsg = { edit: rs.fn().mockRejectedValue(new Error('Discord API Error')) };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(mockMsg),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(mockMsg),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -980,12 +980,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
   });
 
   it('should log warning when tool message edit throws a non-Error string', async () => {
@@ -993,14 +993,14 @@ describe('DiscordMessageHandler', () => {
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'in_progress' },
       { kind: 'tool', toolCallId: 't1', title: 'git status', status: 'completed' },
     ];
-    const mockMsg = { edit: vi.fn().mockRejectedValue('String error from Discord API') };
+    const mockMsg = { edit: rs.fn().mockRejectedValue('String error from Discord API') };
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockResolvedValue(mockMsg),
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockResolvedValue(mockMsg),
     } as unknown as ThreadChannel;
 
     const message = {
@@ -1008,12 +1008,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
   });
 
   it('should log warning when tool message initial send fails', async () => {
@@ -1023,14 +1023,14 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockImplementation(async () => {
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockImplementation(async () => {
         sendCount++;
         if (sendCount === 2) {
           throw new Error('Send failed');
         }
-        return { edit: vi.fn().mockResolvedValue(undefined) };
+        return { edit: rs.fn().mockResolvedValue(undefined) };
       }),
     } as unknown as ThreadChannel;
 
@@ -1039,12 +1039,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
   });
 
   it('should log warning when thought message send fails', async () => {
@@ -1054,14 +1054,14 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockImplementation(async () => {
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockImplementation(async () => {
         sendCount++;
         if (sendCount === 2) {
           throw new Error('Thought send failed');
         }
-        return { edit: vi.fn().mockResolvedValue(undefined) };
+        return { edit: rs.fn().mockResolvedValue(undefined) };
       }),
     } as unknown as ThreadChannel;
 
@@ -1070,12 +1070,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
   });
 
   it('should log warning when thought message edit fails', async () => {
@@ -1083,20 +1083,20 @@ describe('DiscordMessageHandler', () => {
       { kind: 'thought', id: 't1', text: 'Hello' },
       { kind: 'thought', id: 't1', text: 'Hello world' },
     ];
-    const mockMsg = { edit: vi.fn().mockRejectedValue(new Error('Edit failed')), content: '' };
+    const mockMsg = { edit: rs.fn().mockRejectedValue(new Error('Edit failed')), content: '' };
     let sendCount = 0;
     const mockThread = {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockImplementation(async () => {
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockImplementation(async () => {
         sendCount++;
         if (sendCount === 2) {
           return mockMsg;
         }
-        return { edit: vi.fn().mockResolvedValue(undefined) };
+        return { edit: rs.fn().mockResolvedValue(undefined) };
       }),
     } as unknown as ThreadChannel;
 
@@ -1105,12 +1105,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Update me',
       content: 'Update me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
   });
 
   it('should abort subsequent chunks when an intermediate thought chunk send fails', async () => {
@@ -1123,22 +1123,22 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockImplementation(async (content: string) => {
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockImplementation(async (content: string) => {
         if (content.startsWith('> 💭') || content.startsWith('> *')) {
           thoughtSendCalls++;
           if (thoughtSendCalls === 1) {
             sentChunks.push(content);
-            return { content, edit: vi.fn().mockResolvedValue(undefined) };
+            return { content, edit: rs.fn().mockResolvedValue(undefined) };
           }
           if (thoughtSendCalls === 2) {
             throw new Error('Rate limit on chunk 2');
           }
           sentChunks.push(content);
-          return { content, edit: vi.fn().mockResolvedValue(undefined) };
+          return { content, edit: rs.fn().mockResolvedValue(undefined) };
         }
-        return { delete: vi.fn().mockResolvedValue(undefined) };
+        return { delete: rs.fn().mockResolvedValue(undefined) };
       }),
     } as unknown as ThreadChannel;
 
@@ -1147,12 +1147,12 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Split failure',
       content: 'Split failure',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
     await handler.handleMessage(message);
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
 
     expect(sentChunks).toHaveLength(1);
     expect(thoughtSendCalls).toBe(2);
@@ -1166,8 +1166,8 @@ describe('DiscordMessageHandler', () => {
 
     const mockDeletedMsg = {
       content: 'thinking slow',
-      edit: vi.fn().mockResolvedValue(undefined),
-      delete: vi.fn().mockResolvedValue(undefined),
+      edit: rs.fn().mockResolvedValue(undefined),
+      delete: rs.fn().mockResolvedValue(undefined),
     };
 
     let sendCalls = 0;
@@ -1175,12 +1175,12 @@ describe('DiscordMessageHandler', () => {
       id: 'thread-1',
       parentId: 'channel-1',
       ownerId: 'bot-123',
-      isDMBased: vi.fn().mockReturnValue(false),
-      isThread: vi.fn().mockReturnValue(true),
-      send: vi.fn().mockImplementation(async () => {
+      isDMBased: rs.fn().mockReturnValue(false),
+      isThread: rs.fn().mockReturnValue(true),
+      send: rs.fn().mockImplementation(async () => {
         sendCalls++;
         if (sendCalls === 1) {
-          return { delete: vi.fn().mockResolvedValue(undefined) };
+          return { delete: rs.fn().mockResolvedValue(undefined) };
         }
         return sendDeferred;
       }),
@@ -1191,13 +1191,13 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Race condition',
       content: 'Race condition',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: mockThread,
     } as unknown as Message;
 
-    vi.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
+    rs.spyOn(agentTurn, 'executeTurn').mockImplementation(async (req) => {
       req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow' }, 'CEO');
-      await vi.advanceTimersByTimeAsync(1500);
+      await rs.advanceTimersByTimeAsync(1500);
       req.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking slow', removed: true }, 'CEO');
       resolveSend(mockDeletedMsg);
       await sendDeferred;
@@ -1205,7 +1205,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     await handler.handleMessage(message);
-    await vi.runAllTimersAsync();
+    await rs.runAllTimersAsync();
 
     expect(mockDeletedMsg.delete).toHaveBeenCalled();
   });
@@ -1225,7 +1225,7 @@ describe('DiscordMessageHandler', () => {
       ['nullSend', nullSendTracker],
     ]);
     const mockChannel = {
-      send: vi.fn().mockResolvedValue(null),
+      send: rs.fn().mockResolvedValue(null),
     };
 
     await (handler as any).syncThoughtMessages(trackers, mockChannel);
@@ -1241,9 +1241,9 @@ describe('DiscordMessageHandler', () => {
       isDeleted: false,
     };
     const trackers = new Map([['t1', tracker]]);
-    const mockMsgWithoutDelete = { content: 'test', edit: vi.fn() };
+    const mockMsgWithoutDelete = { content: 'test', edit: rs.fn() };
     const mockChannel = {
-      send: vi.fn().mockImplementation(async () => {
+      send: rs.fn().mockImplementation(async () => {
         tracker.isDeleted = true;
         return mockMsgWithoutDelete;
       }),
@@ -1255,10 +1255,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should split long responses into multiple chunks', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1271,9 +1271,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Long task',
       content: '<@bot-123> Long task',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1283,10 +1283,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should show local file links in the response as plain text', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1299,9 +1299,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Plan',
       content: '<@bot-123> Plan',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1310,10 +1310,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should send default completion message when response is empty', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1326,9 +1326,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Silent task',
       content: '<@bot-123> Silent task',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1339,10 +1339,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should send cancellation message when status is cancelled', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1355,9 +1355,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Stop',
       content: '<@bot-123> Stop',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1368,10 +1368,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should send error message when status is failed', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1385,9 +1385,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Crash',
       content: '<@bot-123> Crash',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1398,10 +1398,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should attach files to single chunk completed turn result', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1415,9 +1415,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Get report',
       content: '<@bot-123> Get report',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1429,10 +1429,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should attach files only to the last chunk of a multi-chunk response', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1446,9 +1446,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Long task with files',
       content: '<@bot-123> Long task with files',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1461,10 +1461,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should send plain string message when attachments is empty array', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi.fn().mockResolvedValue(progressMessage),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     agentTurn.turnResult = {
@@ -1478,9 +1478,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Get report',
       content: '<@bot-123> Get report',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1489,10 +1489,10 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should fall back to sending plain text message when sending with attachments fails', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-999',
-      send: vi
+      send: rs
         .fn()
         .mockResolvedValueOnce(progressMessage)
         .mockRejectedValueOnce(new Error('File could not be found'))
@@ -1510,9 +1510,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Get report',
       content: '<@bot-123> Get report',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1527,7 +1527,7 @@ describe('DiscordMessageHandler', () => {
   it('should handle thrown error in execution and send friendly error message to thread', async () => {
     const mockThread = {
       id: 'thread-999',
-      send: vi
+      send: rs
         .fn()
         .mockRejectedValueOnce(new Error('Discord API 500'))
         .mockResolvedValueOnce({}),
@@ -1538,9 +1538,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Crash test',
       content: '<@bot-123> Crash test',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1553,7 +1553,7 @@ describe('DiscordMessageHandler', () => {
   it('should handle raw string error during execution', async () => {
     const mockThread = {
       id: 'thread-999',
-      send: vi
+      send: rs
         .fn()
         .mockRejectedValueOnce('raw string error')
         .mockResolvedValueOnce({}),
@@ -1564,9 +1564,9 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Crash test',
       content: '<@!bot-123> Crash test',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockResolvedValue(mockThread),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockResolvedValue(mockThread),
     } as unknown as Message;
 
     await handler.handleMessage(message);
@@ -1582,20 +1582,20 @@ describe('DiscordMessageHandler', () => {
       channelId: 'channel-1',
       cleanContent: 'Thread failure',
       content: '<@!bot-123> Thread failure',
-      mentions: { has: vi.fn().mockReturnValue(true) },
-      channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false) },
-      startThread: vi.fn().mockRejectedValue(new Error('Cannot create thread')),
+      mentions: { has: rs.fn().mockReturnValue(true) },
+      channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false) },
+      startThread: rs.fn().mockRejectedValue(new Error('Cannot create thread')),
     } as unknown as Message;
 
     await expect(handler.handleMessage(message)).resolves.toBeUndefined();
   });
 
   it('should process direct message (DM) without requiring mention or thread', async () => {
-    const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
+    const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const dmChannel = {
-      isDMBased: vi.fn().mockReturnValue(true),
-      isThread: vi.fn().mockReturnValue(false),
-      send: vi.fn().mockResolvedValue(progressMessage),
+      isDMBased: rs.fn().mockReturnValue(true),
+      isThread: rs.fn().mockReturnValue(false),
+      send: rs.fn().mockResolvedValue(progressMessage),
     };
 
     const message = {
@@ -1603,7 +1603,7 @@ describe('DiscordMessageHandler', () => {
       channelId: 'dm-channel-1',
       cleanContent: 'Create a new feature',
       content: 'Create a new feature',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: dmChannel,
     } as unknown as Message;
 
@@ -1620,16 +1620,16 @@ describe('DiscordMessageHandler', () => {
 
   it('should reply with greeting when direct message has empty prompt', async () => {
     const dmChannel = {
-      isDMBased: vi.fn().mockReturnValue(true),
-      isThread: vi.fn().mockReturnValue(false),
-      send: vi.fn().mockResolvedValue({}),
+      isDMBased: rs.fn().mockReturnValue(true),
+      isThread: rs.fn().mockReturnValue(false),
+      send: rs.fn().mockResolvedValue({}),
     };
 
     const message = {
       author: { bot: false, id: 'user-dm-1' },
       channelId: 'dm-channel-1',
       content: '   ',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: dmChannel,
     } as unknown as Message;
 
@@ -1643,9 +1643,9 @@ describe('DiscordMessageHandler', () => {
 
   it('should send error to DM channel when processing direct message fails', async () => {
     const dmChannel = {
-      isDMBased: vi.fn().mockReturnValue(true),
-      isThread: vi.fn().mockReturnValue(false),
-      send: vi
+      isDMBased: rs.fn().mockReturnValue(true),
+      isThread: rs.fn().mockReturnValue(false),
+      send: rs
         .fn()
         .mockRejectedValueOnce(new Error('Internal failure'))
         .mockResolvedValueOnce({}),
@@ -1655,7 +1655,7 @@ describe('DiscordMessageHandler', () => {
       author: { bot: false, id: 'user-dm-1' },
       channelId: 'dm-channel-1',
       content: 'Help me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: dmChannel,
     } as unknown as Message;
 
@@ -1668,9 +1668,9 @@ describe('DiscordMessageHandler', () => {
 
   it('should swallow error if sending error notification to targetChannel fails', async () => {
     const dmChannel = {
-      isDMBased: vi.fn().mockReturnValue(true),
-      isThread: vi.fn().mockReturnValue(false),
-      send: vi
+      isDMBased: rs.fn().mockReturnValue(true),
+      isThread: rs.fn().mockReturnValue(false),
+      send: rs
         .fn()
         .mockRejectedValue(new Error('Network failure on send error notification')),
     };
@@ -1679,7 +1679,7 @@ describe('DiscordMessageHandler', () => {
       author: { bot: false, id: 'user-dm-1' },
       channelId: 'dm-channel-1',
       content: 'Help me',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: dmChannel,
     } as unknown as Message;
 
@@ -1688,15 +1688,15 @@ describe('DiscordMessageHandler', () => {
 
   it('should ignore direct message if channel does not support send', async () => {
     const dmChannelWithoutSend = {
-      isDMBased: vi.fn().mockReturnValue(true),
-      isThread: vi.fn().mockReturnValue(false),
+      isDMBased: rs.fn().mockReturnValue(true),
+      isThread: rs.fn().mockReturnValue(false),
     };
 
     const message = {
       author: { bot: false, id: 'user-dm-1' },
       channelId: 'dm-channel-1',
       content: 'Hello',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: dmChannelWithoutSend,
     } as unknown as Message;
 
@@ -1709,23 +1709,23 @@ describe('DiscordMessageHandler', () => {
     const agentInfo = { roleName: 'CEO', agentName: 'agy', modelName: 'Deep', effortName: 'High' };
     const footer = '-# 🤖 CEO (agy) · 🧠 Deep · ⚡ High';
 
-    const threadMessage = (send: ReturnType<typeof vi.fn>) => ({
+    const threadMessage = (send: ReturnType<typeof rs.fn>) => ({
       author: { bot: false, id: 'user-42' },
       channelId: 'thread-1',
       content: 'Do it',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       },
     }) as unknown as Message;
 
     it('should append the footer only to the last chunk of a long response', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.turnResult = {
         response: 'A'.repeat(3000),
         status: 'completed',
@@ -1742,7 +1742,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should show the token usage in the footer', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.turnResult = {
         response: 'Done.',
         status: 'completed',
@@ -1756,7 +1756,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should split a long failure message and keep the footer on the last chunk', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.turnResult = {
         response: '',
         status: 'failed',
@@ -1775,7 +1775,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should split a long error thrown while processing the message', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.executeTurn = async () => {
         throw new Error('trace line\n'.repeat(400));
       };
@@ -1793,7 +1793,7 @@ describe('DiscordMessageHandler', () => {
       ['cancelled', { response: '', status: 'cancelled' }, '⚠️ **Turn cancelled by the user.**'],
       ['failed', { response: '', status: 'failed', errorMessage: 'boom' }, '❌ **Execution error**: boom'],
     ] as const)('should append the footer when the turn is %s', async (_label, partial, text) => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.turnResult = { ...partial, agentInfo };
 
       await handler.handleMessage(threadMessage(send));
@@ -1802,7 +1802,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should send only the steering notice without footer when the message joined a running turn', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       agentTurn.turnResult = {
         response: '',
         status: 'steered',
@@ -1839,23 +1839,23 @@ describe('DiscordMessageHandler', () => {
       updatedAt: '',
     };
 
-    const threadMessage = (send: ReturnType<typeof vi.fn>, content = '1') => ({
+    const threadMessage = (send: ReturnType<typeof rs.fn>, content = '1') => ({
       author: { bot: false, id: 'user-42' },
       channelId: 'thread-1',
       content,
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       },
     }) as unknown as Message;
 
     it('should show the options instead of running the turn', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'selection', selection };
 
       await handler.handleMessage(threadMessage(send, 'Build it'));
@@ -1866,7 +1866,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should repeat the options on an invalid answer', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'invalid', selection };
 
       await handler.handleMessage(threadMessage(send, 'abc'));
@@ -1876,7 +1876,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should confirm a configuration without pending prompt', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'configured', settings };
 
       await handler.handleMessage(threadMessage(send));
@@ -1886,7 +1886,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should confirm the configuration and run the pending prompt', async () => {
-      const send = vi.fn().mockResolvedValue({ edit: vi.fn().mockResolvedValue(undefined) });
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
       conversationService.resolution = { kind: 'execute', prompt: 'Build it', configured: settings };
 
       await handler.handleMessage(threadMessage(send));
@@ -1902,7 +1902,7 @@ describe('DiscordMessageHandler', () => {
     };
 
     it('should post the profile list on profiles_menu', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'profiles_menu', selection: profilesSelection };
 
       await handler.handleMessage(threadMessage(send, '0'));
@@ -1912,7 +1912,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should confirm the update and show the refreshed list on profiles_updated', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = {
         kind: 'profiles_updated',
         selection: profilesSelection,
@@ -1931,7 +1931,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should split a long profiles_updated message into several messages', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = {
         kind: 'profiles_updated',
         selection: {
@@ -1956,7 +1956,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should announce that the profile configuration closed on profiles_closed', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'profiles_closed' };
 
       await handler.handleMessage(threadMessage(send, '0'));
@@ -1964,23 +1964,23 @@ describe('DiscordMessageHandler', () => {
       expect(send).toHaveBeenCalledWith('✅ **Profile configuration closed.**');
     });
 
-    const unmanagedThreadMessage = (send: ReturnType<typeof vi.fn>) => ({
+    const unmanagedThreadMessage = (send: ReturnType<typeof rs.fn>) => ({
       author: { bot: false, id: 'user-42' },
       channelId: 'thread-9',
       content: ' 1 ',
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       channel: {
         id: 'thread-9',
         parentId: 'channel-1',
         ownerId: 'someone-else',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       },
     }) as unknown as Message;
 
     it('should accept an answer without mention in an unmanaged thread with an active selection', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.activeSelection = true;
       conversationService.resolution = { kind: 'configured', settings };
 
@@ -1992,7 +1992,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should take a message without mention as the language while a language change is pending', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.pendingLanguageChange = true;
       conversationService.resolution = { kind: 'language_set', language: 'Spanish' };
 
@@ -2003,7 +2003,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should ask again when the language is invalid', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.pendingLanguageChange = true;
       conversationService.resolution = { kind: 'invalid_language' };
 
@@ -2014,7 +2014,7 @@ describe('DiscordMessageHandler', () => {
 
     describe('agent login dialog', () => {
       it('should start the login of the picked agent in the thread the user answered in', async () => {
-        const send = vi.fn().mockResolvedValue(undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
         const agent = { agentId: 'claude', displayName: 'Claude Code' };
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'agent_auth_selected', agent };
@@ -2029,7 +2029,7 @@ describe('DiscordMessageHandler', () => {
       });
 
       it('should ask again after an invalid pick', async () => {
-        const send = vi.fn().mockResolvedValue(undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'invalid_agent_auth_choice', count: 3 };
 
@@ -2039,7 +2039,7 @@ describe('DiscordMessageHandler', () => {
       });
 
       it('should announce the cancelled login dialog', async () => {
-        const send = vi.fn().mockResolvedValue(undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'agent_auth_closed' };
 
@@ -2049,8 +2049,8 @@ describe('DiscordMessageHandler', () => {
       });
 
       it('should delete the message that carried the code and confirm that it arrived', async () => {
-        const send = vi.fn().mockResolvedValue(undefined);
-        const deleteMessage = vi.fn().mockResolvedValue(undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
+        const deleteMessage = rs.fn().mockResolvedValue(undefined);
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'agent_auth_code', agentId: 'claude', delivered: true };
 
@@ -2061,21 +2061,21 @@ describe('DiscordMessageHandler', () => {
       });
 
       it('should say that the login no longer waits for a code, even when the message cannot be deleted', async () => {
-        const send = vi.fn().mockResolvedValue(undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'agent_auth_code', agentId: 'claude', delivered: false };
 
         await handler.handleMessage({
           ...unmanagedThreadMessage(send),
-          delete: vi.fn().mockRejectedValue(new Error('Missing Permissions')),
+          delete: rs.fn().mockRejectedValue(new Error('Missing Permissions')),
         } as unknown as Message);
 
         expect(send).toHaveBeenCalledWith('⚠️ The login is no longer waiting for a code.');
       });
 
       it('should keep what the user typed out of the log while a login dialog is open', async () => {
-        const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-        const send = vi.fn().mockResolvedValue(undefined);
+        const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+        const send = rs.fn().mockResolvedValue(undefined);
         conversationService.pendingAgentAuth = true;
         conversationService.resolution = { kind: 'agent_auth_closed' };
 
@@ -2089,7 +2089,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should ignore messages without mention in an unmanaged thread without a selection', async () => {
-      const send = vi.fn();
+      const send = rs.fn();
 
       await handler.handleMessage(unmanagedThreadMessage(send));
 
@@ -2098,15 +2098,15 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should ignore messages without mention in a plain channel even with a selection open', async () => {
-      const send = vi.fn();
-      const startThread = vi.fn();
+      const send = rs.fn();
+      const startThread = rs.fn();
       conversationService.activeSelection = true;
       const message = {
         author: { bot: false, id: 'user-7' },
         channelId: 'channel-1',
         content: 'just chatting',
-        mentions: { has: vi.fn().mockReturnValue(false) },
-        channel: { isDMBased: vi.fn().mockReturnValue(false), isThread: vi.fn().mockReturnValue(false), send },
+        mentions: { has: rs.fn().mockReturnValue(false) },
+        channel: { isDMBased: rs.fn().mockReturnValue(false), isThread: rs.fn().mockReturnValue(false), send },
         startThread,
       } as unknown as Message;
 
@@ -2127,24 +2127,24 @@ describe('DiscordMessageHandler', () => {
       waitingAskers: 0,
     };
 
-    const threadMessage = (send: ReturnType<typeof vi.fn>, content: string, ownerId = 'bot-123') => ({
+    const threadMessage = (send: ReturnType<typeof rs.fn>, content: string, ownerId = 'bot-123') => ({
       author: { bot: false, id: 'user-42' },
       channelId: 'thread-1',
       content,
-      mentions: { has: vi.fn().mockReturnValue(false) },
+      mentions: { has: rs.fn().mockReturnValue(false) },
       attachments: new Map(),
       channel: {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId,
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       },
     }) as unknown as Message;
 
     it('should show the next question instead of running a turn', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'question', prompt };
 
       await handler.handleMessage(threadMessage(send, '2'));
@@ -2154,7 +2154,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should repeat the question on an invalid option', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'invalid_answer', prompt };
 
       await handler.handleMessage(threadMessage(send, '9'));
@@ -2163,7 +2163,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should confirm the answers and show the question of the next waiting agent', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       const next = { ...prompt, asker: { role: 'TECH_LEAD', roleName: 'Tech Lead Agent', projectName: 'my-app' } };
       conversationService.resolution = { kind: 'answered', asker: prompt.asker, next };
 
@@ -2176,7 +2176,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should only confirm the answers when no other agent is waiting', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'answered', asker: prompt.asker };
 
       await handler.handleMessage(threadMessage(send, 'Finance'));
@@ -2186,7 +2186,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should hand the downloaded attachments to the input resolution', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'answered', asker: prompt.asker };
       const message = threadMessage(send, 'see file');
       (message as unknown as { attachments: Map<string, unknown> }).attachments = new Map([['a', { name: 'a.png' }]]);
@@ -2203,7 +2203,7 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should accept an answer without mention in an unmanaged thread with questions waiting', async () => {
-      const send = vi.fn().mockResolvedValue(undefined);
+      const send = rs.fn().mockResolvedValue(undefined);
       questions.pending = true;
       conversationService.resolution = { kind: 'question', prompt };
 
@@ -2215,9 +2215,9 @@ describe('DiscordMessageHandler', () => {
 
     it('should show the question an agent asks during the turn, in order with the delegation notices', async () => {
       const contents: string[] = [];
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         contents.push(content);
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', taskSpec: 'Do the work', summary: 'Doing the work', phase: 'started' });
@@ -2226,7 +2226,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const delegated = contents.findIndex(content => content.includes('Task delegated'));
       const question = contents.findIndex(content => content.includes('❓ **Question 1/2**'));
@@ -2236,9 +2236,9 @@ describe('DiscordMessageHandler', () => {
 
     it('should report a question answered after the timeout, followed by the next question', async () => {
       const contents: string[] = [];
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         contents.push(content);
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onQuestion?.({
@@ -2252,7 +2252,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       const timedOut = contents.findIndex(content => content.includes('No reply in 5 min'));
       const next = contents.findIndex(content => content.includes('❓ **Question 2/2**'));
@@ -2262,9 +2262,9 @@ describe('DiscordMessageHandler', () => {
 
     it('should report a question answered after the timeout when no question follows it', async () => {
       const contents: string[] = [];
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         contents.push(content);
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onQuestion?.({
@@ -2277,18 +2277,18 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(contents.some(content => content.includes('No reply in 5 min'))).toBe(true);
       expect(contents.some(content => content.includes('❓'))).toBe(false);
     });
 
     it('should proceed gracefully when the question cannot be sent', async () => {
-      const send = vi.fn().mockImplementation(async (content: string) => {
+      const send = rs.fn().mockImplementation(async (content: string) => {
         if (content.includes('❓')) {
           throw new Error('rate limited');
         }
-        return { content, edit: vi.fn().mockResolvedValue(undefined) };
+        return { content, edit: rs.fn().mockResolvedValue(undefined) };
       });
       agentTurn.executeTurn = async (request: TurnRequest) => {
         request.onQuestion?.({ kind: 'asked', prompt });
@@ -2296,7 +2296,7 @@ describe('DiscordMessageHandler', () => {
       };
 
       await handler.handleMessage(threadMessage(send, 'Plan refunds'));
-      await vi.runAllTimersAsync();
+      await rs.runAllTimersAsync();
 
       expect(send).toHaveBeenLastCalledWith('Done.');
     });
@@ -2304,17 +2304,17 @@ describe('DiscordMessageHandler', () => {
 
   describe('typing indicator', () => {
     it('should start typing indicator when turn starts and stop when completed', async () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
       let typingCallsDuringTurn = 0;
 
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(progressMessage),
         sendTyping,
       } as unknown as ThreadChannel;
 
@@ -2323,7 +2323,7 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Run task',
         content: 'Run task',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
@@ -2340,20 +2340,20 @@ describe('DiscordMessageHandler', () => {
       expect(typingCallsDuringTurn).toBe(2);
       const callsAfterTurn = sendTyping.mock.calls.length;
 
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(callsAfterTurn);
     });
 
     it('should show typing while the input is resolved and stop after answering a selection', async () => {
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
       let typingCallsDuringResolution = 0;
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(undefined),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(undefined),
         sendTyping,
       } as unknown as ThreadChannel;
       const message = {
@@ -2361,7 +2361,7 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: '2',
         content: '2',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
       conversationService.resolveInput = async () => {
@@ -2375,21 +2375,21 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       expect(typingCallsDuringResolution).toBe(1);
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(1);
     });
 
     it('should keep typing indicator alive on activity', async () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
 
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(progressMessage),
         sendTyping,
       } as unknown as ThreadChannel;
 
@@ -2398,14 +2398,14 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Run task',
         content: 'Run task',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        vi.advanceTimersByTime(4 * 60 * 1000);
+        rs.advanceTimersByTime(4 * 60 * 1000);
         request.onActivity?.({ kind: 'thought', id: '1', text: 'thinking' }, 'CEO');
-        vi.advanceTimersByTime(2 * 60 * 1000);
+        rs.advanceTimersByTime(2 * 60 * 1000);
         expect(sendTyping).toHaveBeenCalled();
         return {
           response: 'Done',
@@ -2417,16 +2417,16 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should keep typing indicator alive on delegation', async () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
 
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(progressMessage),
         sendTyping,
       } as unknown as ThreadChannel;
 
@@ -2435,12 +2435,12 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Run task',
         content: 'Run task',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
       agentTurn.executeTurn = async (request: TurnRequest) => {
-        vi.advanceTimersByTime(4 * 60 * 1000);
+        rs.advanceTimersByTime(4 * 60 * 1000);
         request.onDelegation?.({
           delegationId: 'dl-1', round: 1,
           role: 'DEVELOPER',
@@ -2448,7 +2448,7 @@ describe('DiscordMessageHandler', () => {
           taskSpec: 'Do the work', summary: 'Doing the work',
           phase: 'started',
         });
-        vi.advanceTimersByTime(2 * 60 * 1000);
+        rs.advanceTimersByTime(2 * 60 * 1000);
         expect(sendTyping).toHaveBeenCalled();
         return {
           response: 'Done',
@@ -2460,16 +2460,16 @@ describe('DiscordMessageHandler', () => {
     });
 
     it('should stop typing indicator if executeTurn throws', async () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
 
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(progressMessage),
         sendTyping,
       } as unknown as ThreadChannel;
 
@@ -2478,7 +2478,7 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Run task',
         content: 'Run task',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
@@ -2489,21 +2489,21 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       const callCount = sendTyping.mock.calls.length;
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(callCount);
     });
 
     it('should stop typing indicator when turn is cancelled', async () => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
 
       const mockThread = {
         id: 'thread-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
-        send: vi.fn().mockResolvedValue(progressMessage),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
+        send: rs.fn().mockResolvedValue(progressMessage),
         sendTyping,
       } as unknown as ThreadChannel;
 
@@ -2512,7 +2512,7 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: 'Cancel task',
         content: 'Cancel task',
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
       } as unknown as Message;
 
@@ -2524,7 +2524,7 @@ describe('DiscordMessageHandler', () => {
       await handler.handleMessage(message);
 
       const callCount = sendTyping.mock.calls.length;
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(callCount);
     });
   });
@@ -2541,14 +2541,14 @@ describe('DiscordMessageHandler', () => {
       content: string,
       attachmentsList: DiscordAttachment[],
     ) => {
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined) };
-      const send = vi.fn().mockResolvedValue(progressMessage);
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
+      const send = rs.fn().mockResolvedValue(progressMessage);
       const mockThread = {
         id: 'thread-att-1',
         parentId: 'channel-1',
         ownerId: 'bot-123',
-        isDMBased: vi.fn().mockReturnValue(false),
-        isThread: vi.fn().mockReturnValue(true),
+        isDMBased: rs.fn().mockReturnValue(false),
+        isThread: rs.fn().mockReturnValue(true),
         send,
       } as unknown as ThreadChannel;
 
@@ -2561,7 +2561,7 @@ describe('DiscordMessageHandler', () => {
         channelId: 'channel-1',
         cleanContent: content,
         content,
-        mentions: { has: vi.fn().mockReturnValue(false) },
+        mentions: { has: rs.fn().mockReturnValue(false) },
         channel: mockThread,
         attachments: attachmentsMap,
       } as unknown as Message;
@@ -2647,8 +2647,8 @@ describe('DiscordMessageHandler', () => {
     it('should keep running the turn when the transcription cannot be shown', async () => {
       const { message, mockThread } = createThreadMessageWithAttachments('', [createAttachment('voice.ogg', 'audio/ogg')]);
       agentTurn.transcription = { transcripts: [], warnings: ['⚠️ model missing'] };
-      const progressMessage = { edit: vi.fn().mockResolvedValue(undefined), delete: vi.fn().mockResolvedValue(undefined) };
-      vi.mocked(mockThread.send).mockImplementation(async (content) => {
+      const progressMessage = { edit: rs.fn().mockResolvedValue(undefined), delete: rs.fn().mockResolvedValue(undefined) };
+      rs.mocked(mockThread.send).mockImplementation(async (content) => {
         if (typeof content === 'string' && content.includes('model missing')) {
           throw new Error('discord down');
         }

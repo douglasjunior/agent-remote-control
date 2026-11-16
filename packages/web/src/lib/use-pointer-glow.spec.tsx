@@ -10,22 +10,22 @@ function Glow() {
   return <div ref={ref} data-testid="glow" />;
 }
 
-const mediaMatches = (matching: readonly string[]) => vi.stubGlobal('matchMedia', (query: string) => ({
+const mediaMatches = (matching: readonly string[]) => rs.stubGlobal('matchMedia', (query: string) => ({
   matches: matching.includes(query),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
+  addEventListener: rs.fn(),
+  removeEventListener: rs.fn(),
 }));
 
 describe('usePointerGlow', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.stubGlobal('innerWidth', 1000);
-    vi.stubGlobal('innerHeight', 600);
+    rs.useFakeTimers();
+    rs.stubGlobal('innerWidth', 1000);
+    rs.stubGlobal('innerHeight', 600);
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    rs.restoreAllMocks();
+    rs.useRealTimers();
     mediaMatches([]);
   });
 
@@ -43,19 +43,19 @@ describe('usePointerGlow', () => {
     const glow = getByTestId('glow');
 
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 100, clientY: 100 }));
-    vi.advanceTimersByTime(32);
+    rs.advanceTimersByTime(32);
     const midway = Number.parseFloat(glow.style.getPropertyValue('--mx'));
     expect(midway).toBeLessThan(500);
     expect(midway).toBeGreaterThan(100);
 
-    vi.advanceTimersByTime(5000);
+    rs.advanceTimersByTime(5000);
     expect(Number.parseFloat(glow.style.getPropertyValue('--mx'))).toBeCloseTo(100, 0);
     expect(Number.parseFloat(glow.style.getPropertyValue('--my'))).toBeCloseTo(100, 0);
   });
 
   it('should keep one animation going while the pointer moves', () => {
     mediaMatches([]);
-    const request = vi.spyOn(window, 'requestAnimationFrame');
+    const request = rs.spyOn(window, 'requestAnimationFrame');
     render(<Glow />);
 
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 10, clientY: 10 }));
@@ -69,14 +69,14 @@ describe('usePointerGlow', () => {
     const { getByTestId } = render(<Glow />);
 
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 100, clientY: 100 }));
-    vi.advanceTimersByTime(1000);
+    rs.advanceTimersByTime(1000);
 
     expect(getByTestId('glow').style.getPropertyValue('--mx')).toBe('');
   });
 
   it('should stop listening when it unmounts', () => {
     mediaMatches([]);
-    const request = vi.spyOn(window, 'requestAnimationFrame');
+    const request = rs.spyOn(window, 'requestAnimationFrame');
     const { unmount } = render(<Glow />);
     unmount();
 

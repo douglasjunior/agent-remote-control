@@ -16,7 +16,7 @@ function stubMatchMedia(initialDark: boolean) {
     addEventListener: (_type: string, listener: Listener) => listeners.add(listener),
     removeEventListener: (_type: string, listener: Listener) => listeners.delete(listener),
   };
-  vi.stubGlobal('matchMedia', () => media);
+  rs.stubGlobal('matchMedia', () => media);
   return {
     setDark(dark: boolean) {
       media.matches = dark;
@@ -44,8 +44,8 @@ describe('ThemeProvider', () => {
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    rs.unstubAllGlobals();
+    rs.restoreAllMocks();
   });
 
   it('should default to system and follow the operating system preference', () => {
@@ -77,10 +77,10 @@ describe('ThemeProvider', () => {
 
   it('should fall back to system when storage throws', async () => {
     stubMatchMedia(false);
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
     render(<ThemeProvider><ThemeToggle /></ThemeProvider>);
@@ -117,7 +117,7 @@ describe('ThemeProvider', () => {
   });
 
   it('should throw outside the provider', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rs.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow('useTheme must be used inside ThemeProvider');
   });
 });

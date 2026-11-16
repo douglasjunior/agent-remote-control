@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -33,7 +33,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   it('should start the login and announce it', async () => {
@@ -120,7 +120,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log a failed post and carry on', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const failing = { send: async () => Promise.reject(new Error('Missing Access')) };
 
     await notifier.start('conv-1', claude, failing);
@@ -129,7 +129,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log a post failure that is not an error', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const failing = { send: async () => Promise.reject('nope') };
 
     await notifier.start('conv-1', claude, failing);
@@ -138,7 +138,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log the outcome of a login without the link or the code', async () => {
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     await notifier.start('conv-1', claude, channel);
 
     agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'ABCD-12345' });

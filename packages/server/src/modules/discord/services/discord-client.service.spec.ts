@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import type { Client } from 'discord.js';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
@@ -27,9 +27,9 @@ const SHELL_COMMAND = {
 describe('DiscordClientService', () => {
   const agentTurn = new StubAgentTurnPort();
   const agentAuth = new StubAgentAuthPort();
-  let loginMock: ReturnType<typeof vi.fn>;
-  let destroyMock: ReturnType<typeof vi.fn>;
-  let onMock: ReturnType<typeof vi.fn>;
+  let loginMock: ReturnType<typeof rs.fn>;
+  let destroyMock: ReturnType<typeof rs.fn>;
+  let onMock: ReturnType<typeof rs.fn>;
   let mockClient: Client;
   let service: DiscordClientService;
   const originalToken = process.env.DISCORD_BOT_TOKEN;
@@ -37,9 +37,9 @@ describe('DiscordClientService', () => {
   beforeEach(() => {
     agentTurn.shellEnabled = false;
     agentAuth.enabled = true;
-    loginMock = vi.fn().mockResolvedValue('token');
-    destroyMock = vi.fn().mockResolvedValue(undefined);
-    onMock = vi.fn().mockReturnThis();
+    loginMock = rs.fn().mockResolvedValue('token');
+    destroyMock = rs.fn().mockResolvedValue(undefined);
+    onMock = rs.fn().mockReturnThis();
 
     mockClient = {
       login: loginMock,
@@ -57,7 +57,7 @@ describe('DiscordClientService', () => {
     } else {
       delete process.env.DISCORD_BOT_TOKEN;
     }
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   it('should instantiate with default discord.js Client if none provided', () => {
@@ -70,7 +70,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should delegate event listener registration to client.on', () => {
-    const listener = vi.fn();
+    const listener = rs.fn();
     service.on('ready', listener);
 
     expect(onMock).toHaveBeenCalledWith('ready', listener);
@@ -83,13 +83,13 @@ describe('DiscordClientService', () => {
   });
 
   it('should register the commands only in the guild and clear the global ones', async () => {
-    const setGuildCommands = vi.fn().mockResolvedValue([]);
-    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const setGuildCommands = rs.fn().mockResolvedValue([]);
+    const setAppCommands = rs.fn().mockResolvedValue([]);
     const guildMock = { commands: { set: setGuildCommands } };
 
     (mockClient as any).guilds = {
       cache: new Map([['guild-123', guildMock]]),
-      fetch: vi.fn().mockResolvedValue(guildMock),
+      fetch: rs.fn().mockResolvedValue(guildMock),
     };
     (mockClient as any).application = {
       commands: { set: setAppCommands },
@@ -110,7 +110,7 @@ describe('DiscordClientService', () => {
 
   it('should register the shell command only when shell commands are enabled', async () => {
     agentTurn.shellEnabled = true;
-    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const setAppCommands = rs.fn().mockResolvedValue([]);
     (mockClient as any).application = { commands: { set: setAppCommands } };
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
 
@@ -121,7 +121,7 @@ describe('DiscordClientService', () => {
 
   it('should leave the login command out when agent authentication is disabled', async () => {
     agentAuth.enabled = false;
-    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const setAppCommands = rs.fn().mockResolvedValue([]);
     (mockClient as any).application = { commands: { set: setAppCommands } };
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
 
@@ -131,9 +131,9 @@ describe('DiscordClientService', () => {
   });
 
   it('should register the guild commands even without an application', async () => {
-    const setGuildCommands = vi.fn().mockResolvedValue([]);
+    const setGuildCommands = rs.fn().mockResolvedValue([]);
     const guildMock = { commands: { set: setGuildCommands } };
-    (mockClient as any).guilds = { cache: new Map([['guild-123', guildMock]]), fetch: vi.fn() };
+    (mockClient as any).guilds = { cache: new Map([['guild-123', guildMock]]), fetch: rs.fn() };
     (mockClient as any).application = null;
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
     process.env.DISCORD_GUILD_ID = 'guild-123';
@@ -145,7 +145,7 @@ describe('DiscordClientService', () => {
   });
 
   it('should register the commands globally when no guild is configured', async () => {
-    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const setAppCommands = rs.fn().mockResolvedValue([]);
     (mockClient as any).application = { commands: { set: setAppCommands } };
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
 
@@ -156,16 +156,16 @@ describe('DiscordClientService', () => {
   });
 
   it('should fetch guild if not cached when registering slash commands', async () => {
-    const setGuildCommands = vi.fn().mockResolvedValue([]);
+    const setGuildCommands = rs.fn().mockResolvedValue([]);
     const guildMock = { commands: { set: setGuildCommands } };
-    const fetchMock = vi.fn().mockResolvedValue(guildMock);
+    const fetchMock = rs.fn().mockResolvedValue(guildMock);
 
     (mockClient as any).guilds = {
       cache: new Map(),
       fetch: fetchMock,
     };
     (mockClient as any).application = {
-      commands: { set: vi.fn() },
+      commands: { set: rs.fn() },
     };
 
     process.env.DISCORD_BOT_TOKEN = 'test-bot-token';
@@ -180,10 +180,10 @@ describe('DiscordClientService', () => {
   });
 
   it('should fall back to global registration when the guild cannot be fetched', async () => {
-    const setAppCommands = vi.fn().mockResolvedValue([]);
+    const setAppCommands = rs.fn().mockResolvedValue([]);
     (mockClient as any).guilds = {
       cache: new Map(),
-      fetch: vi.fn().mockRejectedValue(new Error('Guild not found')),
+      fetch: rs.fn().mockRejectedValue(new Error('Guild not found')),
     };
     (mockClient as any).application = {
       commands: { set: setAppCommands },
@@ -201,7 +201,7 @@ describe('DiscordClientService', () => {
   it('should catch and log error if registerSlashCommands throws', async () => {
     (mockClient as any).application = {
       commands: {
-        set: vi.fn().mockRejectedValueOnce(new Error('Missing Access')),
+        set: rs.fn().mockRejectedValueOnce(new Error('Missing Access')),
       },
     };
 
@@ -213,7 +213,7 @@ describe('DiscordClientService', () => {
   it('should catch and log raw string error if registerSlashCommands throws', async () => {
     (mockClient as any).application = {
       commands: {
-        set: vi.fn().mockRejectedValueOnce('raw slash error'),
+        set: rs.fn().mockRejectedValueOnce('raw slash error'),
       },
     };
 

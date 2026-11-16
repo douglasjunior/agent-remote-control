@@ -1,10 +1,10 @@
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 import type {
   ChatInputCommandInteraction,
   Client,
   Interaction,
 } from 'discord.js';
 import { Events } from 'discord.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
@@ -125,28 +125,28 @@ type InteractionOverrides = {
   channel?: unknown;
   inGuild?: boolean;
   user?: unknown;
-  editReply?: ReturnType<typeof vi.fn>;
+  editReply?: ReturnType<typeof rs.fn>;
   options?: unknown;
   deferred?: boolean;
   replied?: boolean;
-  reply?: ReturnType<typeof vi.fn>;
-  followUp?: ReturnType<typeof vi.fn>;
+  reply?: ReturnType<typeof rs.fn>;
+  followUp?: ReturnType<typeof rs.fn>;
 };
 
 function buildInteraction({ inGuild = true, ...overrides }: InteractionOverrides = {}): ChatInputCommandInteraction {
   const interaction = {
-    inGuild: vi.fn().mockReturnValue(inGuild),
-    isChatInputCommand: vi.fn().mockReturnValue(true),
+    inGuild: rs.fn().mockReturnValue(inGuild),
+    isChatInputCommand: rs.fn().mockReturnValue(true),
     commandName: 'cancel',
     channelId: 'channel-123',
-    channel: { isThread: vi.fn().mockReturnValue(false) },
+    channel: { isThread: rs.fn().mockReturnValue(false) },
     user: { username: 'alice', id: 'u-1' },
     deferred: false,
     replied: false,
-    reply: vi.fn().mockResolvedValue(undefined),
-    followUp: vi.fn().mockResolvedValue(undefined),
-    editReply: vi.fn().mockResolvedValue(undefined),
-    deferReply: vi.fn(async () => {
+    reply: rs.fn().mockResolvedValue(undefined),
+    followUp: rs.fn().mockResolvedValue(undefined),
+    editReply: rs.fn().mockResolvedValue(undefined),
+    deferReply: rs.fn(async () => {
       interaction.deferred = true;
     }),
     ...overrides,
@@ -177,7 +177,7 @@ describe('DiscordInteractionHandler', () => {
 
   beforeEach(() => {
     mockClient = {
-      on: vi.fn(),
+      on: rs.fn(),
     } as unknown as Client;
 
     agentTurn = new StubAgentTurnPort();
@@ -205,7 +205,7 @@ describe('DiscordInteractionHandler', () => {
 
   const captureListener = () => {
     let interactionListener: ((interaction: Interaction) => void) | undefined;
-    vi.mocked(mockClient.on).mockImplementation(((event: string, cb: any) => {
+    rs.mocked(mockClient.on).mockImplementation(((event: string, cb: any) => {
       if (event === Events.InteractionCreate) {
         interactionListener = cb;
       }
@@ -219,7 +219,7 @@ describe('DiscordInteractionHandler', () => {
     const listener = captureListener();
 
     const nonChatInput = {
-      isChatInputCommand: vi.fn().mockReturnValue(false),
+      isChatInputCommand: rs.fn().mockReturnValue(false),
     } as unknown as Interaction;
     listener(nonChatInput);
 
@@ -229,18 +229,18 @@ describe('DiscordInteractionHandler', () => {
   it('should log instead of rejecting when the handler itself fails', async () => {
     const listener = captureListener();
     const broken = {
-      isChatInputCommand: vi.fn(() => {
+      isChatInputCommand: rs.fn(() => {
         throw new Error('broken interaction');
       }),
     } as unknown as Interaction;
 
     expect(() => listener(broken)).not.toThrow();
-    await vi.waitFor(() => expect(broken.isChatInputCommand).toHaveBeenCalled());
+    await rs.waitFor(() => expect(broken.isChatInputCommand).toHaveBeenCalled());
   });
 
   it('should ignore interactions that are not chat input commands', async () => {
     const interaction = {
-      isChatInputCommand: vi.fn().mockReturnValue(false),
+      isChatInputCommand: rs.fn().mockReturnValue(false),
     } as unknown as Interaction;
 
     await handler.handleInteraction(interaction);
@@ -274,7 +274,7 @@ describe('DiscordInteractionHandler', () => {
     it('should use the parent channel and thread ids inside a thread', async () => {
       const interaction = buildInteraction({
         channelId: 'thread-777',
-        channel: { id: 'thread-777', isThread: vi.fn().mockReturnValue(true), parentId: 'parent-channel-456' },
+        channel: { id: 'thread-777', isThread: rs.fn().mockReturnValue(true), parentId: 'parent-channel-456' },
       });
 
       await handler.handleInteraction(interaction);
@@ -285,7 +285,7 @@ describe('DiscordInteractionHandler', () => {
     it('should fall back to the thread id when the thread has no parent', async () => {
       const interaction = buildInteraction({
         channelId: 'thread-777',
-        channel: { id: 'thread-777', isThread: vi.fn().mockReturnValue(true), parentId: null },
+        channel: { id: 'thread-777', isThread: rs.fn().mockReturnValue(true), parentId: null },
       });
 
       await handler.handleInteraction(interaction);
@@ -355,7 +355,7 @@ describe('DiscordInteractionHandler', () => {
     });
 
     it('should stringify non-Error failures', async () => {
-      agentTurn.cancelTurn = vi.fn().mockRejectedValueOnce('raw cancel error');
+      agentTurn.cancelTurn = rs.fn().mockRejectedValueOnce('raw cancel error');
       const interaction = buildInteraction();
 
       await handler.handleInteraction(interaction);
@@ -369,7 +369,7 @@ describe('DiscordInteractionHandler', () => {
     it('should not reject when both the cancel and the error reply fail', async () => {
       agentTurn.throwOnCancel = true;
       const interaction = buildInteraction({
-        reply: vi.fn().mockRejectedValue(new Error('Unknown interaction')),
+        reply: rs.fn().mockRejectedValue(new Error('Unknown interaction')),
       });
 
       await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
@@ -380,7 +380,7 @@ describe('DiscordInteractionHandler', () => {
   describe('/shell', () => {
     const buildShellInteraction = () => buildInteraction({
       commandName: 'shell',
-      options: { getString: vi.fn().mockReturnValue('df -h') },
+      options: { getString: rs.fn().mockReturnValue('df -h') },
     });
 
     it('should defer ephemerally, run the command and reply with the formatted result', async () => {
@@ -425,9 +425,9 @@ describe('DiscordInteractionHandler', () => {
 
       await handler.handleInteraction(interaction);
 
-      const followUps = vi.mocked(interaction.followUp).mock.calls.map(([options]) => options as { content: string; ephemeral: boolean });
+      const followUps = rs.mocked(interaction.followUp).mock.calls.map(([options]) => options as { content: string; ephemeral: boolean });
       const contents = [
-        (vi.mocked(interaction.editReply).mock.calls[0]![0] as { content: string }).content,
+        (rs.mocked(interaction.editReply).mock.calls[0]![0] as { content: string }).content,
         ...followUps.map(options => options.content),
       ];
       expect(followUps.length).toBeGreaterThan(0);
@@ -440,7 +440,7 @@ describe('DiscordInteractionHandler', () => {
       agentTurn.quotaReports = buildLongQuotaReports();
       const interaction = buildInteraction({
         commandName: 'usage',
-        followUp: vi.fn().mockRejectedValue(new Error('Unknown webhook')),
+        followUp: rs.fn().mockRejectedValue(new Error('Unknown webhook')),
       });
 
       await expect(handler.handleInteraction(interaction)).resolves.toBeUndefined();
@@ -462,14 +462,14 @@ describe('DiscordInteractionHandler', () => {
   describe('/model', () => {
     const optionsText = '🧠 **Choose the agent model** by replying with the option number:\n**1.** Model 1';
 
-    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+    const guildChannelInteraction = (startThread: ReturnType<typeof rs.fn>) => buildInteraction({
       commandName: 'model',
-      editReply: vi.fn().mockResolvedValue({ startThread }),
+      editReply: rs.fn().mockResolvedValue({ startThread }),
     });
 
     it('should open the selection in a new thread when used in a guild channel', async () => {
-      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
-      const startThread = vi.fn().mockResolvedValue(thread);
+      const thread = { id: 'selection-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
       const interaction = guildChannelInteraction(startThread);
 
       await handler.handleInteraction(interaction);
@@ -483,15 +483,15 @@ describe('DiscordInteractionHandler', () => {
 
     it('should show typing in the new thread while the options are loaded', async () => {
       let typingCallsDuringLoad = 0;
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
-      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined), sendTyping };
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
+      const thread = { id: 'selection-thread', send: rs.fn().mockResolvedValue(undefined), sendTyping };
       const startConfigSelection = dialogs.startConfigSelection.bind(dialogs);
       dialogs.startConfigSelection = async (conversationId: string) => {
         typingCallsDuringLoad = sendTyping.mock.calls.length;
         return startConfigSelection(conversationId);
       };
 
-      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+      await handler.handleInteraction(guildChannelInteraction(rs.fn().mockResolvedValue(thread)));
 
       expect(typingCallsDuringLoad).toBe(1);
       expect(thread.send).toHaveBeenCalledWith(optionsText);
@@ -499,15 +499,15 @@ describe('DiscordInteractionHandler', () => {
 
     it('should explain inside the new thread when the agent exposes no models', async () => {
       dialogs.selectionResult = { kind: 'unavailable' };
-      const thread = { id: 'selection-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const thread = { id: 'selection-thread', send: rs.fn().mockResolvedValue(undefined) };
 
-      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+      await handler.handleInteraction(guildChannelInteraction(rs.fn().mockResolvedValue(thread)));
 
       expect(thread.send).toHaveBeenCalledWith('ℹ️ The current agent does not expose any models to select.');
     });
 
     it('should report the failure when the thread cannot be created', async () => {
-      const interaction = guildChannelInteraction(vi.fn().mockRejectedValue(new Error('Missing Permissions')));
+      const interaction = guildChannelInteraction(rs.fn().mockRejectedValue(new Error('Missing Permissions')));
 
       await handler.handleInteraction(interaction);
 
@@ -521,7 +521,7 @@ describe('DiscordInteractionHandler', () => {
       const interaction = buildInteraction({
         commandName: 'model',
         channelId: 'thread-1',
-        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+        channel: { id: 'thread-1', isThread: rs.fn().mockReturnValue(true), parentId: 'channel-123' },
       });
 
       await handler.handleInteraction(interaction);
@@ -535,7 +535,7 @@ describe('DiscordInteractionHandler', () => {
       const interaction = buildInteraction({
         commandName: 'model',
         channelId: 'thread-1',
-        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+        channel: { id: 'thread-1', isThread: rs.fn().mockReturnValue(true), parentId: 'channel-123' },
       });
 
       await handler.handleInteraction(interaction);
@@ -582,14 +582,14 @@ describe('DiscordInteractionHandler', () => {
   describe('/agent', () => {
     const optionsText = '🤖 **Choose the agent** by replying with the option number:\n**1.** Claude Code';
 
-    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+    const guildChannelInteraction = (startThread: ReturnType<typeof rs.fn>) => buildInteraction({
       commandName: 'agent',
-      editReply: vi.fn().mockResolvedValue({ startThread }),
+      editReply: rs.fn().mockResolvedValue({ startThread }),
     });
 
     it('should open the agent selection in a new thread when used in a guild channel', async () => {
-      const thread = { id: 'agent-thread', send: vi.fn().mockResolvedValue(undefined) };
-      const startThread = vi.fn().mockResolvedValue(thread);
+      const thread = { id: 'agent-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
       const interaction = guildChannelInteraction(startThread);
 
       await handler.handleInteraction(interaction);
@@ -604,9 +604,9 @@ describe('DiscordInteractionHandler', () => {
 
     it('should explain inside the new thread when no agent is available', async () => {
       dialogs.agentSelectionResult = { kind: 'unavailable' };
-      const thread = { id: 'agent-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const thread = { id: 'agent-thread', send: rs.fn().mockResolvedValue(undefined) };
 
-      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+      await handler.handleInteraction(guildChannelInteraction(rs.fn().mockResolvedValue(thread)));
 
       expect(thread.send).toHaveBeenCalledWith('ℹ️ No agents available to select.');
     });
@@ -615,7 +615,7 @@ describe('DiscordInteractionHandler', () => {
       const interaction = buildInteraction({
         commandName: 'agent',
         channelId: 'thread-1',
-        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+        channel: { id: 'thread-1', isThread: rs.fn().mockReturnValue(true), parentId: 'channel-123' },
       });
 
       await handler.handleInteraction(interaction);
@@ -648,14 +648,14 @@ describe('DiscordInteractionHandler', () => {
   describe('/profiles', () => {
     const menuText = '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:\n**1.** CEO — Claude Code - default - default';
 
-    const guildChannelInteraction = (startThread: ReturnType<typeof vi.fn>) => buildInteraction({
+    const guildChannelInteraction = (startThread: ReturnType<typeof rs.fn>) => buildInteraction({
       commandName: 'profiles',
-      editReply: vi.fn().mockResolvedValue({ startThread }),
+      editReply: rs.fn().mockResolvedValue({ startThread }),
     });
 
     it('should open the profile list in a new thread when used in a guild channel', async () => {
-      const thread = { id: 'profiles-thread', send: vi.fn().mockResolvedValue(undefined) };
-      const startThread = vi.fn().mockResolvedValue(thread);
+      const thread = { id: 'profiles-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
       const interaction = guildChannelInteraction(startThread);
 
       await handler.handleInteraction(interaction);
@@ -668,9 +668,9 @@ describe('DiscordInteractionHandler', () => {
 
     it('should explain inside the new thread when no profile is available', async () => {
       dialogs.profilesSelectionResult = { kind: 'unavailable' };
-      const thread = { id: 'profiles-thread', send: vi.fn().mockResolvedValue(undefined) };
+      const thread = { id: 'profiles-thread', send: rs.fn().mockResolvedValue(undefined) };
 
-      await handler.handleInteraction(guildChannelInteraction(vi.fn().mockResolvedValue(thread)));
+      await handler.handleInteraction(guildChannelInteraction(rs.fn().mockResolvedValue(thread)));
 
       expect(thread.send).toHaveBeenCalledWith('ℹ️ No profiles available to configure.');
     });
@@ -679,7 +679,7 @@ describe('DiscordInteractionHandler', () => {
       const interaction = buildInteraction({
         commandName: 'profiles',
         channelId: 'thread-1',
-        channel: { id: 'thread-1', isThread: vi.fn().mockReturnValue(true), parentId: 'channel-123' },
+        channel: { id: 'thread-1', isThread: rs.fn().mockReturnValue(true), parentId: 'channel-123' },
       });
 
       await handler.handleInteraction(interaction);
@@ -723,11 +723,11 @@ describe('DiscordInteractionHandler', () => {
     const requestText = '🌐 **Current language**: English\nReply with the language the agents should use to talk to you, such as "Spanish" or "Português".';
 
     it('should ask for the language in a new thread when used in a guild channel', async () => {
-      const thread = { id: 'language-thread', send: vi.fn().mockResolvedValue(undefined) };
-      const startThread = vi.fn().mockResolvedValue(thread);
+      const thread = { id: 'language-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
       const interaction = buildInteraction({
         commandName: 'language',
-        editReply: vi.fn().mockResolvedValue({ startThread }),
+        editReply: rs.fn().mockResolvedValue({ startThread }),
       });
 
       await handler.handleInteraction(interaction);
@@ -780,11 +780,11 @@ describe('DiscordInteractionHandler', () => {
     ].join('\n');
 
     it('should list the agents in a new thread when used in a guild channel', async () => {
-      const thread = { id: 'login-thread', send: vi.fn().mockResolvedValue(undefined) };
-      const startThread = vi.fn().mockResolvedValue(thread);
+      const thread = { id: 'login-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
       const interaction = buildInteraction({
         commandName: 'agent-auth',
-        editReply: vi.fn().mockResolvedValue({ startThread }),
+        editReply: rs.fn().mockResolvedValue({ startThread }),
       });
 
       await handler.handleInteraction(interaction);

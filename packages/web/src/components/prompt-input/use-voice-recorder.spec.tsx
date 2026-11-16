@@ -30,21 +30,21 @@ class FakeMediaRecorder {
   }
 }
 
-const track = { stop: vi.fn() };
-const getUserMedia = vi.fn();
+const track = { stop: rs.fn() };
+const getUserMedia = rs.fn();
 
 beforeEach(() => {
   FakeMediaRecorder.supported = ['audio/webm;codecs=opus', 'audio/webm'];
   FakeMediaRecorder.instances = [];
   track.stop.mockClear();
   getUserMedia.mockReset().mockResolvedValue({ getTracks: () => [track] });
-  vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
-  vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+  rs.stubGlobal('MediaRecorder', FakeMediaRecorder);
+  rs.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
 });
 
 afterEach(() => {
-  vi.useRealTimers();
-  vi.unstubAllGlobals();
+  rs.useRealTimers();
+  rs.unstubAllGlobals();
 });
 
 describe('useVoiceRecorder', () => {
@@ -127,12 +127,12 @@ describe('useVoiceRecorder', () => {
   });
 
   it('should count the elapsed seconds while recording', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { result } = renderHook(() => useVoiceRecorder());
 
     await act(() => result.current.start());
     act(() => {
-      vi.advanceTimersByTime(3100);
+      rs.advanceTimersByTime(3100);
     });
 
     expect(result.current.elapsedSeconds).toBe(3);
@@ -149,7 +149,7 @@ describe('useVoiceRecorder', () => {
   });
 
   it('should report any other failure and release a stream already opened', async () => {
-    vi.stubGlobal('MediaRecorder', class {
+    rs.stubGlobal('MediaRecorder', class {
       static isTypeSupported = () => true;
       constructor() {
         throw new Error('boom');

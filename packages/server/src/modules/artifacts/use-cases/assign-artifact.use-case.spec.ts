@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { ArtifactHistoryEvent } from '../models/artifact.model.js';
 import { ArtifactLimitsConfigService } from '../services/artifact-limits-config.service.js';
@@ -25,10 +25,12 @@ function setup(extra: ReturnType<typeof buildArtifact>[] = []) {
 }
 
 describe('AssignArtifactUseCase', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    rs.unstubAllEnvs();
+  });
 
   it('should freeze an artifact that reached the maximum of delegations instead of handing it over', async () => {
-    vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
+    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
     const { useCase, store, published } = setup([buildArtifact({ id: 'T-3', status: 'in_progress', history: assigned(3) })]);
 
     const outcome = await useCase.execute('c1', 'T-3', developer);
@@ -43,7 +45,7 @@ describe('AssignArtifactUseCase', () => {
   });
 
   it('should refuse a frozen artifact and count again from when the user unfroze it', async () => {
-    vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
+    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
     const { useCase, published } = setup([
       buildArtifact({ id: 'T-3', status: 'frozen', history: assigned(3) }),
       buildArtifact({ id: 'T-4', status: 'ready', history: [...assigned(3), unfrozen, ...assigned(2)] }),
@@ -55,7 +57,7 @@ describe('AssignArtifactUseCase', () => {
   });
 
   it('should never freeze when the limit is disabled', async () => {
-    vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', '0');
+    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '0');
     const { useCase } = setup([buildArtifact({ id: 'T-3', history: assigned(50) })]);
 
     expect(await useCase.execute('c1', 'T-3', developer)).toMatchObject({ ok: true });

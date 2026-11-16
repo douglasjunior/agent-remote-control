@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { AgentQuota } from '../../agent/ports/agent.port.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
@@ -21,7 +21,7 @@ function buildFactory(ports: Record<string, StubAgentPort>): StubAgentPortFactor
 
 describe('GetAgentQuotaUseCase', () => {
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should report the quota of every available agent in catalog order', async () => {
@@ -108,12 +108,12 @@ describe('GetAgentQuotaUseCase', () => {
       };
       ports[agentId] = port;
     }
-    vi.useFakeTimers();
+    rs.useFakeTimers();
 
     const pending = new GetAgentQuotaUseCase(buildFactory(ports)).execute();
 
     expect(started).toEqual(['agy', 'copilot', 'codex']);
-    await vi.advanceTimersByTimeAsync(15_000);
+    await rs.advanceTimersByTimeAsync(15_000);
     await pending;
   });
 
@@ -124,17 +124,17 @@ describe('GetAgentQuotaUseCase', () => {
     copilot.getQuota = () => new Promise(() => undefined);
     const factory = buildFactory({ agy, copilot });
     factory.unavailableAgentIds.add('codex');
-    vi.useFakeTimers();
+    rs.useFakeTimers();
 
     const pending = new GetAgentQuotaUseCase(factory).execute();
-    await vi.advanceTimersByTimeAsync(14_999);
+    await rs.advanceTimersByTimeAsync(14_999);
     let settled = false;
     void pending.then(() => {
       settled = true;
     });
-    await vi.advanceTimersByTimeAsync(0);
+    await rs.advanceTimersByTimeAsync(0);
     expect(settled).toBe(false);
-    await vi.advanceTimersByTimeAsync(1);
+    await rs.advanceTimersByTimeAsync(1);
 
     expect(await pending).toEqual([
       { agent: { id: 'agy', name: 'Antigravity' }, status: 'ok', quota },
@@ -153,14 +153,14 @@ describe('GetAgentQuotaUseCase', () => {
     const unhandled: unknown[] = [];
     const record = (reason: unknown) => unhandled.push(reason);
     process.on('unhandledRejection', record);
-    vi.useFakeTimers();
+    rs.useFakeTimers();
 
     try {
       const pending = new GetAgentQuotaUseCase(factory).execute();
-      await vi.advanceTimersByTimeAsync(15_000);
+      await rs.advanceTimersByTimeAsync(15_000);
       await pending;
       rejectLate(new Error('connection closed'));
-      vi.useRealTimers();
+      rs.useRealTimers();
       await new Promise(resolve => setImmediate(resolve));
     } finally {
       process.off('unhandledRejection', record);

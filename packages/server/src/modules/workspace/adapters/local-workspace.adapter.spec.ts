@@ -1,14 +1,14 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';
 
 import { LocalWorkspaceAdapter } from './local-workspace.adapter.js';
 
 
-vi.mock('node:fs/promises', () => ({
-  mkdir: vi.fn(),
-  readdir: vi.fn(),
-  stat: vi.fn(),
+rs.mock('node:fs/promises', () => ({
+  mkdir: rs.fn(),
+  readdir: rs.fn(),
+  stat: rs.fn(),
 }));
 
 const { mkdir, readdir, stat } = await import('node:fs/promises');
@@ -23,7 +23,7 @@ function dirent(name: string, isDirectory: boolean, isSymbolicLink = false) {
 
 describe('LocalWorkspaceAdapter', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    rs.clearAllMocks();
   });
 
   it('should report the directory the workspace directory service resolves', () => {
@@ -34,7 +34,7 @@ describe('LocalWorkspaceAdapter', () => {
     let adapter: LocalWorkspaceAdapter;
 
     beforeEach(() => {
-      vi.mocked(mkdir).mockResolvedValue(undefined);
+      rs.mocked(mkdir).mockResolvedValue(undefined);
       adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
     });
 
@@ -81,7 +81,7 @@ describe('LocalWorkspaceAdapter', () => {
     const adapter = new LocalWorkspaceAdapter(workspaceDirectoryAt('/test/workspaces'));
 
     it('should list the visible direct subfolders in alphabetical order', async () => {
-      vi.mocked(readdir).mockResolvedValue([
+      rs.mocked(readdir).mockResolvedValue([
         dirent('zeta', true),
         dirent('.agents', true),
         dirent('AGENTS.md', false),
@@ -93,12 +93,12 @@ describe('LocalWorkspaceAdapter', () => {
     });
 
     it('should list symlinked folders and skip broken links or links to files', async () => {
-      vi.mocked(readdir).mockResolvedValue([
+      rs.mocked(readdir).mockResolvedValue([
         dirent('linked', false, true),
         dirent('file-link', false, true),
         dirent('broken', false, true),
       ] as never);
-      vi.mocked(stat).mockImplementation((path) => {
+      rs.mocked(stat).mockImplementation((path) => {
         if (path === '/test/workspaces/broken') {
           return Promise.reject(errnoError('ENOENT'));
         }
@@ -109,13 +109,13 @@ describe('LocalWorkspaceAdapter', () => {
     });
 
     it('should return no folders when the base directory does not exist', async () => {
-      vi.mocked(readdir).mockRejectedValue(errnoError('ENOENT'));
+      rs.mocked(readdir).mockRejectedValue(errnoError('ENOENT'));
 
       await expect(adapter.listProjectFolders()).resolves.toEqual([]);
     });
 
     it('should propagate other read errors', async () => {
-      vi.mocked(readdir).mockRejectedValue(errnoError('EACCES'));
+      rs.mocked(readdir).mockRejectedValue(errnoError('EACCES'));
 
       await expect(adapter.listProjectFolders()).rejects.toThrow('EACCES');
     });

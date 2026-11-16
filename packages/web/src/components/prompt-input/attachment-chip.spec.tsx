@@ -28,7 +28,7 @@ describe('AttachmentChip', () => {
   });
 
   it('should offer removal only when asked to', () => {
-    const onRemove = vi.fn();
+    const onRemove = rs.fn();
     renderChip({ name: 'shot.png', onRemove });
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove shot.png' }));

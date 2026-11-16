@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { DiscordModule } from './discord.module.js';
 import { DiscordActivityFormatter } from './formatters/discord-activity.formatter.js';

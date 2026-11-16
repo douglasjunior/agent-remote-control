@@ -15,8 +15,8 @@ export type AppConnection = {
  * The `p2p` build is the hosted web app, which reaches a host through WebRTC under `/i/<instance id>`; it has no
  * connection to open without the remote link. Any other build reaches the server that serves it.
  */
-export function createAppConnection(mode: string): AppConnection | null {
-  if (mode !== 'p2p') {
+export function createAppConnection(target: ImportMetaEnv['ARC_TARGET']): AppConnection | null {
+  if (target !== 'p2p') {
     return { connection: new WebSocketServerConnection(new AccessTokenStore()), basename: '/' };
   }
   const link = readRemoteLink();

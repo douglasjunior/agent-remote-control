@@ -1,5 +1,5 @@
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { useMediaQuery } from './use-media-query.js';
 
@@ -7,7 +7,7 @@ import { useMediaQuery } from './use-media-query.js';
 function stubMedia(initial: boolean) {
   let matches = initial;
   const listeners = new Set<() => void>();
-  vi.stubGlobal('matchMedia', () => ({
+  rs.stubGlobal('matchMedia', () => ({
     get matches() {
       return matches;
     },
@@ -24,7 +24,9 @@ function stubMedia(initial: boolean) {
 }
 
 describe('useMediaQuery', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    rs.unstubAllGlobals();
+  });
 
   it('should follow the query as the window changes', () => {
     const media = stubMedia(false);

@@ -11,7 +11,7 @@
     "incremental": false,
     "emitDecoratorMetadata": false,
     "experimentalDecorators": false,
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom"]
+    "types": ["@rsbuild/core/types", "@rstest/core/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "rsbuild.config.ts", "rstest.config.ts"]
 }

@@ -158,13 +158,13 @@ describe('WebRtcServerConnection', () => {
 
   const socket = () => FakeSignalingSocket.instances.at(-1)!;
   const peer = () => FakePeerConnection.instances.at(-1)!;
-  const flush = () => vi.advanceTimersByTimeAsync(0);
+  const flush = () => rs.advanceTimersByTimeAsync(0);
 
   /** Opens the signaling socket and waits for the browser's proof, which WebCrypto computes off the timers. */
   const request = async () => {
     connection.connect();
     socket().open();
-    await vi.waitFor(() => expect(socket().sent.length > 0 || statuses.includes('closed')).toBe(true));
+    await rs.waitFor(() => expect(socket().sent.length > 0 || statuses.includes('closed')).toBe(true));
   };
   const accept = async (protocolVersion = PROTOCOL_VERSION) => {
     await request();
@@ -183,9 +183,9 @@ describe('WebRtcServerConnection', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.stubGlobal('WebSocket', FakeSignalingSocket);
-    vi.stubGlobal('RTCPeerConnection', FakePeerConnection);
+    rs.useFakeTimers();
+    rs.stubGlobal('WebSocket', FakeSignalingSocket);
+    rs.stubGlobal('RTCPeerConnection', FakePeerConnection);
     FakeSignalingSocket.instances = [];
     FakePeerConnection.instances = [];
     FakePeerConnection.failOffer = false;
@@ -205,9 +205,9 @@ describe('WebRtcServerConnection', () => {
 
   afterEach(() => {
     connection.disconnect();
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.unstubAllGlobals();
+    rs.restoreAllMocks();
   });
 
   it('should ask the signaling server of the page for the instance, proving the token for a fresh certificate', async () => {
@@ -224,7 +224,7 @@ describe('WebRtcServerConnection', () => {
     await request();
     socket().receive({ type: 'client.rejected' });
     await flush();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
 
     expect(statuses).toEqual(['connecting', 'unauthorized']);
     expect(connection.hasAccessToken()).toBe(false);
@@ -251,7 +251,7 @@ describe('WebRtcServerConnection', () => {
   });
 
   it('should use wss on https pages', () => {
-    vi.stubGlobal('location', { protocol: 'https:', host: 'arc.example.com' });
+    rs.stubGlobal('location', { protocol: 'https:', host: 'arc.example.com' });
     connection.connect();
 
     expect(socket().url).toBe('wss://arc.example.com/signal/client');
@@ -275,9 +275,9 @@ describe('WebRtcServerConnection', () => {
   it.each([
     [
       'opens no channel in time', async () => {
-        vi.advanceTimersByTime(7_999);
+        rs.advanceTimersByTime(7_999);
         expect(statuses.at(-1)).toBe('connecting');
-        vi.advanceTimersByTime(1);
+        rs.advanceTimersByTime(1);
       },
     ],
     ['fails to connect', async () => peer().changeState('failed')],
@@ -285,12 +285,12 @@ describe('WebRtcServerConnection', () => {
     await accept();
     await fail();
     expect(statuses.at(-1)).toBe('closed');
-    vi.advanceTimersByTime(500);
+    rs.advanceTimersByTime(500);
     socket().open();
-    await vi.waitFor(() => expect(socket().sent).toHaveLength(1));
+    await rs.waitFor(() => expect(socket().sent).toHaveLength(1));
     socket().receive({ type: 'client.accepted', iceServers, protocolVersion: PROTOCOL_VERSION });
     await flush();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
 
     expect(peer().config).toEqual({ iceServers, certificates: [CERTIFICATE] });
     expect(statuses.at(-1)).toBe('connecting');
@@ -299,9 +299,9 @@ describe('WebRtcServerConnection', () => {
   it('should retry without the relay when a connection that was open fails', async () => {
     await openChannel();
     peer().changeState('failed');
-    vi.advanceTimersByTime(500);
+    rs.advanceTimersByTime(500);
     socket().open();
-    await vi.waitFor(() => expect(socket().sent).toHaveLength(1));
+    await rs.waitFor(() => expect(socket().sent).toHaveLength(1));
     socket().receive({ type: 'client.accepted', iceServers, protocolVersion: PROTOCOL_VERSION });
     await flush();
 
@@ -311,7 +311,7 @@ describe('WebRtcServerConnection', () => {
 
   it('should keep going without the relay once the channel opens in time', async () => {
     await openChannel();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     peer().channel!.receive({ type: 'auth.ok' });
 
     expect(statuses.at(-1)).toBe('open');
@@ -350,7 +350,7 @@ describe('WebRtcServerConnection', () => {
     const frames = toFrames(JSON.stringify({ type: 'conversation.list', conversations: [] }), 8);
 
     for (const frame of frames) {
-      vi.advanceTimersByTime(4_000);
+      rs.advanceTimersByTime(4_000);
       channel.onmessage?.({ data: frame });
     }
 
@@ -396,7 +396,7 @@ describe('WebRtcServerConnection', () => {
     await accept();
     socket().receive({ type: 'session.answer', sdp: answerSdp(OTHER_HEX) });
     await flush();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
 
     expect(statuses).toEqual(['connecting', 'untrusted']);
     expect(peer().remote).toBeUndefined();
@@ -406,7 +406,7 @@ describe('WebRtcServerConnection', () => {
 
   it('should refuse a host of another protocol version, without retrying', async () => {
     await accept(PROTOCOL_VERSION + 1);
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
 
     expect(statuses).toEqual(['connecting', 'incompatible']);
     expect(FakePeerConnection.instances).toHaveLength(1);
@@ -429,7 +429,7 @@ describe('WebRtcServerConnection', () => {
     await flush();
 
     expect(statuses.at(-1)).toBe('closed');
-    vi.advanceTimersByTime(500);
+    rs.advanceTimersByTime(500);
     expect(FakeSignalingSocket.instances).toHaveLength(2);
   });
 
@@ -451,7 +451,7 @@ describe('WebRtcServerConnection', () => {
   });
 
   it('should drop invalid signals and close on invalid frames', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(console, 'warn').mockImplementation(() => undefined);
     await accept();
     socket().receive('not json');
     socket().receive({ type: 'unknown' });

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import {
   DiscordTypingIndicator,
@@ -8,16 +8,16 @@ import {
 
 describe('DiscordTypingIndicator', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.useRealTimers();
+    rs.restoreAllMocks();
+    rs.useRealTimers();
   });
 
   it('should trigger sendTyping immediately on start', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
 
@@ -28,56 +28,56 @@ describe('DiscordTypingIndicator', () => {
   });
 
   it('should trigger sendTyping periodically at the configured interval', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 8000 });
 
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(8000);
+    rs.advanceTimersByTime(8000);
     expect(sendTyping).toHaveBeenCalledTimes(2);
 
-    vi.advanceTimersByTime(8000);
+    rs.advanceTimersByTime(8000);
     expect(sendTyping).toHaveBeenCalledTimes(3);
 
     indicator.stop();
   });
 
   it('should use default interval of 8000ms and default idle timeout of 5 minutes', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
 
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(8000);
+    rs.advanceTimersByTime(8000);
     expect(sendTyping).toHaveBeenCalledTimes(2);
 
-    vi.advanceTimersByTime(5 * 60 * 1000 - 8000);
+    rs.advanceTimersByTime(5 * 60 * 1000 - 8000);
     expect(sendTyping).toHaveBeenCalledTimes(38);
 
-    vi.advanceTimersByTime(8000);
+    rs.advanceTimersByTime(8000);
     expect(sendTyping).toHaveBeenCalledTimes(38);
   });
 
   it('should swallow asynchronous errors from sendTyping', async () => {
-    const sendTyping = vi.fn().mockRejectedValue(new Error('Discord API 429'));
+    const sendTyping = rs.fn().mockRejectedValue(new Error('Discord API 429'));
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 1000 });
 
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(1000);
+    await rs.advanceTimersByTimeAsync(1000);
     expect(sendTyping).toHaveBeenCalledTimes(2);
 
     indicator.stop();
   });
 
   it('should swallow synchronous exceptions from sendTyping', () => {
-    const sendTyping = vi.fn().mockImplementation(() => {
+    const sendTyping = rs.fn().mockImplementation(() => {
       throw new Error('Immediate failure');
     });
     const channel: TypingChannel = { sendTyping };
@@ -95,12 +95,12 @@ describe('DiscordTypingIndicator', () => {
 
     expect(() => indicator.start()).not.toThrow();
 
-    vi.advanceTimersByTime(1000);
+    rs.advanceTimersByTime(1000);
     indicator.stop();
   });
 
   it('should clear previous timers when start is invoked multiple times', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, { intervalMs: 2000 });
 
@@ -110,40 +110,40 @@ describe('DiscordTypingIndicator', () => {
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(2);
 
-    vi.advanceTimersByTime(2000);
+    rs.advanceTimersByTime(2000);
     expect(sendTyping).toHaveBeenCalledTimes(3);
 
     indicator.stop();
   });
 
   it('should reset idle watchdog timer on keepAlive', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
       intervalMs: 1000,
-      idleTimeoutMs: 5000,
+      idleTimeoutMs: 5500,
     });
 
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(4000);
+    rs.advanceTimersByTime(4000);
     expect(sendTyping).toHaveBeenCalledTimes(5);
 
     indicator.keepAlive();
 
-    vi.advanceTimersByTime(2000);
+    rs.advanceTimersByTime(2000);
     expect(sendTyping).toHaveBeenCalledTimes(7);
 
-    vi.advanceTimersByTime(3000);
+    rs.advanceTimersByTime(3000);
     expect(sendTyping).toHaveBeenCalledTimes(10);
 
-    vi.advanceTimersByTime(2000);
+    rs.advanceTimersByTime(2000);
     expect(sendTyping).toHaveBeenCalledTimes(10);
   });
 
   it('should do nothing when keepAlive is called while inactive', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
       intervalMs: 1000,
@@ -151,34 +151,34 @@ describe('DiscordTypingIndicator', () => {
     });
 
     indicator.keepAlive();
-    vi.advanceTimersByTime(10000);
+    rs.advanceTimersByTime(10000);
 
     expect(sendTyping).not.toHaveBeenCalled();
   });
 
   it('should stop typing when idleTimeoutMs expires without keepAlive', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
       intervalMs: 1000,
-      idleTimeoutMs: 3000,
+      idleTimeoutMs: 3500,
     });
 
     indicator.start();
     expect(sendTyping).toHaveBeenCalledTimes(1);
 
-    vi.advanceTimersByTime(2000);
+    rs.advanceTimersByTime(2000);
     expect(sendTyping).toHaveBeenCalledTimes(3);
 
-    vi.advanceTimersByTime(1000);
+    rs.advanceTimersByTime(1500);
     expect(sendTyping).toHaveBeenCalledTimes(4);
 
-    vi.advanceTimersByTime(2000);
+    rs.advanceTimersByTime(2000);
     expect(sendTyping).toHaveBeenCalledTimes(4);
   });
 
   it('should stop typing and clear all timers on stop', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel, {
       intervalMs: 1000,
@@ -190,12 +190,12 @@ describe('DiscordTypingIndicator', () => {
 
     indicator.stop();
 
-    vi.advanceTimersByTime(10000);
+    rs.advanceTimersByTime(10000);
     expect(sendTyping).toHaveBeenCalledTimes(1);
   });
 
   it('should allow safe repeated calls to stop', () => {
-    const sendTyping = vi.fn().mockResolvedValue(undefined);
+    const sendTyping = rs.fn().mockResolvedValue(undefined);
     const channel: TypingChannel = { sendTyping };
     const indicator = new DiscordTypingIndicator(channel);
 
@@ -207,30 +207,30 @@ describe('DiscordTypingIndicator', () => {
 
   describe('during', () => {
     it('should keep typing while the work runs and stop when it resolves', async () => {
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
       let resolveWork: (value: string) => void = () => undefined;
       const work = new Promise<string>((resolve) => {
         resolveWork = resolve;
       });
 
       const result = DiscordTypingIndicator.during({ sendTyping }, () => work);
-      vi.advanceTimersByTime(8000);
+      rs.advanceTimersByTime(8000);
       expect(sendTyping).toHaveBeenCalledTimes(2);
 
       resolveWork('done');
       await expect(result).resolves.toBe('done');
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(2);
     });
 
     it('should stop typing when the work fails', async () => {
-      const sendTyping = vi.fn().mockResolvedValue(undefined);
+      const sendTyping = rs.fn().mockResolvedValue(undefined);
 
       await expect(
         DiscordTypingIndicator.during({ sendTyping }, () => Promise.reject(new Error('probe failed'))),
       ).rejects.toThrow('probe failed');
 
-      vi.advanceTimersByTime(20000);
+      rs.advanceTimersByTime(20000);
       expect(sendTyping).toHaveBeenCalledTimes(1);
     });
   });

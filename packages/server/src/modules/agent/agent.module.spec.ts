@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { AcpAgentPortFactoryAdapter } from './adapters/acp-agent-port-factory.adapter.js';
 import { NodeFileSystemAdapter } from './adapters/node-file-system.adapter.js';

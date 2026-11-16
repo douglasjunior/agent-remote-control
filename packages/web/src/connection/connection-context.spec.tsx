@@ -62,8 +62,8 @@ describe('ConnectionProvider', () => {
   });
 
   it('should throw outside the provider', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rs.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow('useConnection must be used inside ConnectionProvider');
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 });

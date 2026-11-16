@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { ArtifactsModule } from './artifacts.module.js';
 import { IArtifactsPort } from './ports/artifacts.port.js';

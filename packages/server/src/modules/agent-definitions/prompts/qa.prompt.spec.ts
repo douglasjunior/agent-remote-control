@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { QA_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 

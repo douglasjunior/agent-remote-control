@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
@@ -109,15 +109,15 @@ describe('AgentProfilesService', () => {
     });
 
     it('should stamp the settings with the current time', async () => {
-      vi.useFakeTimers({ toFake: ['Date'] });
-      vi.setSystemTime(new Date('2026-03-04T05:06:07.000Z'));
+      rs.useFakeTimers({ toFake: ['Date'] });
+      rs.setSystemTime(new Date('2026-03-04T05:06:07.000Z'));
 
       try {
         const settings = await service.save('conv', undefined, profile);
 
         expect(settings.updatedAt).toBe('2026-03-04T05:06:07.000Z');
       } finally {
-        vi.useRealTimers();
+        rs.useRealTimers();
       }
     });
 

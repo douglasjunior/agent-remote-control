@@ -6,14 +6,14 @@ import { IceServersService } from './ice-servers.service.js';
 
 describe('IceServersService', () => {
   afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllEnvs();
-    vi.useRealTimers();
+    rs.restoreAllMocks();
+    rs.unstubAllEnvs();
+    rs.useRealTimers();
   });
 
   it('should hand the public STUN servers and no TURN by default', () => {
     const service = new IceServersService();
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     service.onModuleInit();
 
     expect(service.forBrowser('i')).toEqual([{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }]);
@@ -21,17 +21,17 @@ describe('IceServersService', () => {
   });
 
   it('should hand the same TURN credential of coturn\'s REST API within a window, valid until the end of the next one', () => {
-    vi.useFakeTimers({ now: 1_000_000 });
-    vi.stubEnv('P2P_STUN_URLS', ' stun:a.test:3478 , ');
-    vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478?transport=udp,turn:t.test:3478?transport=tcp');
-    vi.stubEnv('P2P_TURN_SECRET', 'secret');
-    vi.stubEnv('P2P_TURN_TTL_SECONDS', '60');
+    rs.useFakeTimers({ now: 1_000_000 });
+    rs.stubEnv('P2P_STUN_URLS', ' stun:a.test:3478 , ');
+    rs.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478?transport=udp,turn:t.test:3478?transport=tcp');
+    rs.stubEnv('P2P_TURN_SECRET', 'secret');
+    rs.stubEnv('P2P_TURN_TTL_SECONDS', '60');
     const service = new IceServersService();
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     service.onModuleInit();
 
     const username = '1080:inst';
-    vi.setSystemTime(1_019_999);
+    rs.setSystemTime(1_019_999);
     expect(service.forBrowser('inst')[1]?.username).toBe(username);
     expect(service.forBrowser('inst')).toEqual([
       { urls: ['stun:a.test:3478'] },
@@ -43,21 +43,21 @@ describe('IceServersService', () => {
     ]);
     expect(log).toHaveBeenCalledWith('TURN relay: turn:t.test:3478?transport=udp, turn:t.test:3478?transport=tcp');
     expect(service.forHost()).toEqual([{ urls: ['stun:a.test:3478'] }]);
-    vi.setSystemTime(1_020_000);
+    rs.setSystemTime(1_020_000);
     expect(service.forBrowser('inst')[1]?.username).toBe('1140:inst');
   });
 
   it.each(['', '0', '-5', '1.5', 'abc'])('should count windows of an hour when the TTL is %j', (ttl) => {
-    vi.useFakeTimers({ now: 0 });
-    vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
-    vi.stubEnv('P2P_TURN_SECRET', 'secret');
-    vi.stubEnv('P2P_TURN_TTL_SECONDS', ttl);
+    rs.useFakeTimers({ now: 0 });
+    rs.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
+    rs.stubEnv('P2P_TURN_SECRET', 'secret');
+    rs.stubEnv('P2P_TURN_TTL_SECONDS', ttl);
 
     expect(new IceServersService().forBrowser('i')[1]?.username).toBe('7200:i');
   });
 
   it('should leave TURN out without a secret', () => {
-    vi.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
+    rs.stubEnv('P2P_TURN_URLS', 'turn:t.test:3478');
 
     expect(new IceServersService().forBrowser('i')).toHaveLength(1);
   });

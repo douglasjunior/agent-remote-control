@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, rs } from '@rstest/core';
 
 import { buildArtifact } from '../testing/artifact.fixture.js';
 
@@ -8,8 +8,8 @@ import { ArtifactEventsService } from './artifact-events.service.js';
 describe('ArtifactEventsService', () => {
   it('should deliver every event to every listener until it unsubscribes', () => {
     const events = new ArtifactEventsService();
-    const first = vi.fn();
-    const second = vi.fn();
+    const first = rs.fn();
+    const second = rs.fn();
     const unsubscribe = events.subscribe(first);
     events.subscribe(second);
     const saved = { kind: 'saved' as const, conversationId: 'c1', artifact: buildArtifact({ id: 'T-1' }) };
@@ -24,7 +24,7 @@ describe('ArtifactEventsService', () => {
 
   it('should keep notifying the other listeners when one throws', () => {
     const events = new ArtifactEventsService();
-    const after = vi.fn();
+    const after = rs.fn();
     events.subscribe(() => {
       throw new Error('boom');
     });

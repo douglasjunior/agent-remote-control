@@ -72,9 +72,9 @@ class FakeNativePeer {
   }
 }
 
-const cleanup = vi.fn();
+const cleanup = rs.fn();
 
-vi.mock('node-datachannel', () => ({
+rs.mock('node-datachannel', () => ({
   default: {
     PeerConnection: function PeerConnection(name: string, config: unknown) {
       return new FakeNativePeer(name, config);
@@ -155,7 +155,7 @@ describe('NodeDataChannelPeerAdapter', () => {
 
   it('should end once when the connection fails or closes', () => {
     const { peer, native } = create();
-    const ended = vi.fn();
+    const ended = rs.fn();
     peer.onEnd(ended);
 
     native.emit('state', 'connecting');
@@ -194,7 +194,7 @@ describe('NodeDataChannelPeerAdapter', () => {
 
   it('should report the close of the channel until unsubscribed', () => {
     const { channel, nativeChannel } = openChannel();
-    const closed = vi.fn();
+    const closed = rs.fn();
     const unsubscribe = channel.onClose(closed);
 
     nativeChannel.emit('closed');

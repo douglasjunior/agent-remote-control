@@ -1,19 +1,19 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 
 import { AntigravityAdapter } from './antigravity.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function buildAdapter(preferredConfig?: { modelId?: string }) {
   const { runner, spawn } = createProcessRunnerMock();
@@ -38,7 +38,7 @@ describe('AntigravityAdapter', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   describe('spawnAgentProcess', () => {
@@ -191,7 +191,7 @@ describe('AntigravityAdapter', () => {
 
     it('should run agy /usage and return the parsed quota', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
 
       const quota = await adapter.getQuota();
 
@@ -242,7 +242,7 @@ describe('AntigravityAdapter', () => {
 
       const quotaOf = async (output: string) => {
         const { adapter, runner } = buildAdapter();
-        vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
+        rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
         return adapter.getQuota();
       };
 
@@ -284,17 +284,17 @@ describe('AntigravityAdapter', () => {
 
     it('should return undefined on non-zero exit code', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
 
       expect(await adapter.getQuota()).toBeUndefined();
     });
 
     it('should return undefined when the runner throws', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      rs.mocked(runner.run).mockRejectedValue(new Error('boom'));
       expect(await adapter.getQuota()).toBeUndefined();
 
-      vi.mocked(runner.run).mockRejectedValue('x');
+      rs.mocked(runner.run).mockRejectedValue('x');
       expect(await adapter.getQuota()).toBeUndefined();
     });
   });

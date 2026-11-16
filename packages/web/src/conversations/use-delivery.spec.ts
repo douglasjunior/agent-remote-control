@@ -1,6 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
+import { describe, expect, it } from '@rstest/core';
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
 
 import { useDelivery } from './use-delivery.js';
 

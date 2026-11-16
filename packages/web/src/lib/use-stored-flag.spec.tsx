@@ -1,12 +1,14 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useStoredFlag } from './use-stored-flag.js';
 
 
 describe('useStoredFlag', () => {
   beforeEach(() => localStorage.clear());
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    rs.restoreAllMocks();
+  });
 
   it('should start with the fallback when nothing is stored', () => {
     expect(renderHook(() => useStoredFlag('k', true)).result.current[0]).toBe(true);
@@ -25,10 +27,10 @@ describe('useStoredFlag', () => {
   });
 
   it('should keep working in memory when storage throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
     const { result } = renderHook(() => useStoredFlag('k', true));

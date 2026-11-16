@@ -1,5 +1,5 @@
+import { afterEach, describe, expect, it } from '@rstest/core';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
 
 import { resolveFromRepositoryRoot } from '../../../repository-root.util.js';
 

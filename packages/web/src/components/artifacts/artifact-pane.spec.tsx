@@ -54,7 +54,7 @@ function openArtifact(artifact: ArtifactDetail = api, artifacts = board) {
 }
 
 // Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
+rs.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());
@@ -233,7 +233,7 @@ describe('ArtifactPane', () => {
     expect(box).toHaveValue('Use the shared client');
     await user.click(within(activity).getByRole('button', { name: 'Comment' }));
     answer(app, 'artifact.comment', { ok: true, id: 'T-2' });
-    await vi.waitFor(() => expect(box).toHaveValue(''));
+    await rs.waitFor(() => expect(box).toHaveValue(''));
   });
 
   it('should delete the artifact after a confirmation and return to the board', async () => {
@@ -252,7 +252,7 @@ describe('ArtifactPane', () => {
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
     answer(app, 'artifact.delete', { ok: true, id: 'T-2' });
-    await vi.waitFor(() => expect(app.router.state.location.pathname).toBe('/c/c1/tasks'));
+    await rs.waitFor(() => expect(app.router.state.location.pathname).toBe('/c/c1/tasks'));
   });
 
   it('should list the tasks of a feature and add one to it', async () => {

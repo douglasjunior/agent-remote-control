@@ -195,16 +195,16 @@ describe('usePromptAttachments', () => {
       expect(connection.sent[0]).toEqual({ type: 'upload.start', uploadId: expect.any(String), conversationId: 'c1', name: 'big.bin', size: UPLOAD_CHUNK_BYTES + 10 });
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
-      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
       expect(sent('upload.chunk')[0]).toMatchObject({ index: 0 });
       expect(sent('upload.finish')).toHaveLength(0);
 
       connection.emitEvent({ type: 'upload.ack', uploadId, index: 0 });
-      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(2));
+      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(2));
       expect(sent('upload.chunk')[1]).toMatchObject({ index: 1 });
 
       connection.emitEvent({ type: 'upload.ack', uploadId, index: 1 });
-      await vi.waitFor(() => expect(sent('upload.finish')).toEqual([{ type: 'upload.finish', uploadId }]));
+      await rs.waitFor(() => expect(sent('upload.finish')).toEqual([{ type: 'upload.finish', uploadId }]));
 
       act(() => connection.emitEvent({ type: 'upload.done', uploadId, attachment: stored }));
       await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'ready', attachment: stored }));
@@ -215,7 +215,7 @@ describe('usePromptAttachments', () => {
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
 
-      await vi.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
       expect(sent('upload.chunk')[0]).toMatchObject({ dataBase64: btoa('hello') });
     });
 
@@ -224,7 +224,7 @@ describe('usePromptAttachments', () => {
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
 
-      await vi.waitFor(() => expect(sent('upload.finish')).toHaveLength(1));
+      await rs.waitFor(() => expect(sent('upload.finish')).toHaveLength(1));
       expect(sent('upload.chunk')).toHaveLength(0);
     });
 
@@ -259,7 +259,9 @@ describe('usePromptAttachments', () => {
     });
 
     describe('when the file cannot be read', () => {
-      afterEach(() => vi.unstubAllGlobals());
+      afterEach(() => {
+        rs.unstubAllGlobals();
+      });
 
       it.each([
         ['with the reader error', new Error('unreadable'), 'unreadable'],
@@ -272,7 +274,7 @@ describe('usePromptAttachments', () => {
             queueMicrotask(() => this.onerror?.());
           }
         }
-        vi.stubGlobal('FileReader', FailingReader);
+        rs.stubGlobal('FileReader', FailingReader);
         const { connection, api, sent, uploadId } = await startUpload(new File(['x'], 'a'));
 
         connection.emitEvent({ type: 'upload.ready', uploadId });
@@ -290,7 +292,7 @@ describe('usePromptAttachments', () => {
             failRead = () => this.onerror?.();
           }
         }
-        vi.stubGlobal('FileReader', SlowFailingReader);
+        rs.stubGlobal('FileReader', SlowFailingReader);
         const { connection, api, sent, uploadId } = await startUpload(new File(['x'], 'a'));
         connection.emitEvent({ type: 'upload.ready', uploadId });
 
@@ -307,7 +309,7 @@ describe('usePromptAttachments', () => {
             throw 'boom';
           }
         }
-        vi.stubGlobal('FileReader', ThrowingReader);
+        rs.stubGlobal('FileReader', ThrowingReader);
         const { connection, api, uploadId } = await startUpload(new File(['x'], 'a'));
 
         connection.emitEvent({ type: 'upload.ready', uploadId });

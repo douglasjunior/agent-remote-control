@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import { FakeWorkspaceUpload } from '../testing/fake-workspace-upload.js';

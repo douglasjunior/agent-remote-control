@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
 import { delimiter } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StubAgentPortFactory } from '../../orchestrator/testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../../orchestrator/testing/stub-agent.port.js';
@@ -37,7 +37,7 @@ async function flush(): Promise<void> {
 
 describe('CliAgentAuthAdapter', () => {
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
     delete process.env.AGENT_AUTH_ENABLED;
     delete process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS;
     delete process.env.AGENT_AUTH_STATUS_TIMEOUT_MS;
@@ -122,7 +122,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         factory.agents = [{ agentId: 'agy', displayName: 'Antigravity' }];
-        const built = vi.spyOn(factory, 'create').mockReturnValue(port);
+        const built = rs.spyOn(factory, 'create').mockReturnValue(port);
 
         const info = await adapter.getStatus('agy');
 
@@ -137,7 +137,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.errorToThrowOnCreateSession = new AgentAuthRequiredError('agy', 'Authentication required');
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'unauthenticated' });
       });
@@ -146,21 +146,21 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.errorToThrowOnConnect = new Error('binary crashed');
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'unknown' });
       });
 
       it('should be unknown when the probe outlasts the timeout', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         process.env.AGENT_AUTH_STATUS_TIMEOUT_MS = '500';
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.connect = () => new Promise<void>(() => undefined);
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         const pending = adapter.getStatus('agy');
-        await vi.advanceTimersByTimeAsync(500);
+        await rs.advanceTimersByTimeAsync(500);
 
         await expect(pending).resolves.toMatchObject({ status: 'unknown' });
       });
@@ -174,7 +174,7 @@ describe('CliAgentAuthAdapter', () => {
         port.disconnect = async () => {
           throw new Error('disconnect failed');
         };
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'authenticated' });
       });
@@ -495,26 +495,26 @@ describe('CliAgentAuthAdapter', () => {
       });
 
       it('should kill a process that ignores the first signal', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
         adapter.cancelLogin('claude');
-        await vi.advanceTimersByTimeAsync(3000);
+        await rs.advanceTimersByTimeAsync(3000);
 
         expect(runner.processes[0]?.killSignals).toEqual(['SIGTERM', 'SIGKILL']);
       });
 
       it('should not escalate once the process ended', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
         adapter.cancelLogin('claude');
         runner.processes[0]?.exit(143);
-        await vi.advanceTimersByTimeAsync(3000);
+        await rs.advanceTimersByTimeAsync(3000);
 
         expect(runner.processes[0]?.killSignals).toEqual(['SIGTERM']);
       });
@@ -548,16 +548,16 @@ describe('CliAgentAuthAdapter', () => {
 
     describe('timeout', () => {
       beforeEach(() => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS = '60000';
       });
 
       it('should stop a login that takes too long', async () => {
         const { adapter, runner, events, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
-        await vi.advanceTimersByTimeAsync(60_000);
+        await rs.advanceTimersByTimeAsync(60_000);
         runner.processes[0]?.exit(143);
         await subscription.done;
 
@@ -568,11 +568,11 @@ describe('CliAgentAuthAdapter', () => {
       it('should not time out a login that already ended', async () => {
         const { adapter, runner, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
         runner.processes[0]?.exit(1);
         await subscription.done;
 
-        await vi.advanceTimersByTimeAsync(60_000);
+        await rs.advanceTimersByTimeAsync(60_000);
 
         expect(runner.processes[0]?.killSignals).toEqual([]);
       });

@@ -1,6 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { act, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConnectionProvider } from '../../connection/connection-context.js';
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
@@ -29,20 +29,20 @@ const question = (overrides: Partial<QuestionEntry> = {}): QuestionEntry => ({
 
 const renderCard = (entry: QuestionEntry, active = true) => render(
   <ConnectionProvider connection={new FakeServerConnection()}>
-    <AnswerInputProvider conversationId="c1" questionId={entry.id} onAnswer={vi.fn()}>
-      <QuestionCard entry={entry} active={active} onAnswer={vi.fn()} />
+    <AnswerInputProvider conversationId="c1" questionId={entry.id} onAnswer={rs.fn()}>
+      <QuestionCard entry={entry} active={active} onAnswer={rs.fn()} />
     </AnswerInputProvider>
   </ConnectionProvider>,
 );
 
 describe('QuestionCard countdown', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(NOW);
+    rs.useFakeTimers();
+    rs.setSystemTime(NOW);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should show no countdown when the question never times out', () => {
@@ -58,7 +58,7 @@ describe('QuestionCard countdown', () => {
     expect(screen.getByRole('timer')).toHaveTextContent('The recommended answer is assumed');
 
     act(() => {
-      vi.advanceTimersByTime(5_000);
+      rs.advanceTimersByTime(5_000);
     });
 
     expect(screen.getByRole('timer')).toHaveTextContent('2:00');
@@ -76,12 +76,12 @@ describe('QuestionCard countdown', () => {
     expect(clock()).not.toHaveClass('text-destructive');
 
     act(() => {
-      vi.advanceTimersByTime(2_000);
+      rs.advanceTimersByTime(2_000);
     });
     expect(clock()).toHaveClass('text-destructive');
 
     act(() => {
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
     });
     expect(clock()).toHaveTextContent('0:00');
   });

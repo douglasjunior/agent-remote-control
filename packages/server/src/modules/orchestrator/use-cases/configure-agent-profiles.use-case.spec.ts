@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';

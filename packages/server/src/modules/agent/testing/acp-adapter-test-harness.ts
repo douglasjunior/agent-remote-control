@@ -1,5 +1,6 @@
+import { rs, type Mock } from '@rstest/core';
+import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { vi, type Mock } from 'vitest';
 
 import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
@@ -8,7 +9,7 @@ export type ChildProcessLike = EventEmitter & {
   stdin: NodeJS.WritableStream;
   stdout: NodeJS.ReadableStream;
   stderr: EventEmitter;
-  kill: ReturnType<typeof vi.fn>;
+  kill: ReturnType<typeof rs.fn>;
 };
 
 type ConnectionMethodMock = Mock<(params?: unknown) => Promise<unknown>>;
@@ -74,15 +75,13 @@ function makeSpawnedProc(): ChildProcessLike {
   proc.stdin = new EventEmitter() as unknown as NodeJS.WritableStream;
   proc.stdout = new EventEmitter() as unknown as NodeJS.ReadableStream;
   proc.stderr = new EventEmitter();
-  proc.kill = vi.fn();
+  proc.kill = rs.fn();
   acpHarness.spawnedProcs.push(proc);
   return proc;
 }
 
-export function childProcessMockModule() {
-  return {
-    spawn: vi.fn(() => makeSpawnedProc()),
-  };
+export function spawnFakeProcess(): ChildProcess {
+  return makeSpawnedProc() as unknown as ChildProcess;
 }
 
 export function createProcessRunnerMock(): {
@@ -95,23 +94,23 @@ export function createProcessRunnerMock(): {
     ) => ChildProcessLike
   >;
 } {
-  const spawn = vi.fn(
+  const spawn = rs.fn(
     (_command: string, _args: readonly string[], _options?: unknown) =>
       makeSpawnedProc(),
   );
   const runner = {
-    run: vi.fn(),
-    runInteractive: vi.fn(),
+    run: rs.fn(),
+    runInteractive: rs.fn(),
     spawn,
-    reexec: vi.fn(),
+    reexec: rs.fn(),
   } as unknown as IProcessRunnerPort;
   return { runner, spawn };
 }
 
 export function streamMockModule() {
   return {
-    Readable: { toWeb: vi.fn(() => ({ kind: 'readable-web' })) },
-    Writable: { toWeb: vi.fn(() => ({ kind: 'writable-web' })) },
+    Readable: { toWeb: rs.fn(() => ({ kind: 'readable-web' })) },
+    Writable: { toWeb: rs.fn(() => ({ kind: 'writable-web' })) },
   };
 }
 
@@ -201,14 +200,14 @@ function createActiveSessionMock(
 export function acpSdkMockModule() {
   function client() {
     const instance: ConnectionMock = {
-      initialize: vi.fn(async () => undefined),
-      newSession: vi.fn(async () => ({ sessionId: 'session-1' })),
-      loadSession: vi.fn(async () => ({})),
-      prompt: vi.fn(async () => undefined),
-      steer: vi.fn(async () => ({ outcome: 'injected' })),
-      cancel: vi.fn(async () => undefined),
-      closeSession: vi.fn(async () => undefined),
-      setSessionConfigOption: vi.fn(async () => ({ configOptions: [] })),
+      initialize: rs.fn(async () => undefined),
+      newSession: rs.fn(async () => ({ sessionId: 'session-1' })),
+      loadSession: rs.fn(async () => ({})),
+      prompt: rs.fn(async () => undefined),
+      steer: rs.fn(async () => ({ outcome: 'injected' })),
+      cancel: rs.fn(async () => undefined),
+      closeSession: rs.fn(async () => undefined),
+      setSessionConfigOption: rs.fn(async () => ({ configOptions: [] })),
     };
 
     const handlers: {
@@ -318,7 +317,7 @@ export function acpSdkMockModule() {
           },
           signal: new AbortController().signal,
           closed: Promise.resolve(),
-          close: vi.fn() as Mock,
+          close: rs.fn() as Mock,
         };
       },
     };
@@ -327,7 +326,7 @@ export function acpSdkMockModule() {
 
   return {
     PROTOCOL_VERSION: 'mock-protocol-version',
-    ndJsonStream: vi.fn(() => ({ kind: 'nd-json-stream' })) as Mock,
+    ndJsonStream: rs.fn(() => ({ kind: 'nd-json-stream' })) as Mock,
     client,
   };
 }

@@ -10,12 +10,12 @@ import { AT, userEntry } from '../../test/render-app.js';
 import { FeedList, type FeedHandle } from './feed-list.js';
 
 
-const virtuoso = vi.hoisted(() => ({ range: { startIndex: 0, endIndex: 2 }, scrollToIndex: vi.fn() }));
+const virtuoso = rs.hoisted(() => ({ range: { startIndex: 0, endIndex: 2 }, scrollToIndex: rs.fn() }));
 
 // The real list measures its items, which jsdom cannot do: this stand-in renders only the items of a visible range,
 // reports it, and moves it to the requested index on `scrollToIndex`. Like the real list, it reports indexes offset by
 // `firstItemIndex` and scrolls to an index of `data`.
-vi.mock('react-virtuoso', () => ({
+rs.mock('react-virtuoso', () => ({
   Virtuoso: ({ ref, data, itemContent, context, rangeChanged, firstItemIndex = 0 }: {
     ref: Ref<Pick<VirtuosoHandle, 'scrollToIndex'>>;
     data: readonly unknown[];
@@ -44,7 +44,7 @@ const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', sta
 const entries = [userEntry('u1'), question, userEntry('u2'), userEntry('u3'), userEntry('u4'), reply];
 
 function feed(list: ConversationEntry[], handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
-  return <FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />;
+  return <FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />;
 }
 
 function renderFeed(list: ConversationEntry[] = entries, handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
@@ -95,17 +95,17 @@ describe('FeedList open question out of view', () => {
 
   it('should not snap back to the end when the content grows after scrolling up to the question', async () => {
     const user = userEvent.setup();
-    let grow: () => void = vi.fn();
-    vi.stubGlobal('ResizeObserver', class {
+    let grow: () => void = rs.fn();
+    rs.stubGlobal('ResizeObserver', class {
       constructor(callback: () => void) {
         grow = callback;
       }
 
-      observe = vi.fn();
-      unobserve = vi.fn();
-      disconnect = vi.fn();
+      observe = rs.fn();
+      unobserve = rs.fn();
+      disconnect = rs.fn();
     });
-    const scrollTo = vi.spyOn(Element.prototype, 'scrollTo').mockImplementation(() => undefined);
+    const scrollTo = rs.spyOn(Element.prototype, 'scrollTo').mockImplementation(() => undefined);
     renderFeed();
     const viewport = screen.getByTestId('message-viewport');
     for (const [key, value] of Object.entries({ scrollHeight: 2000, scrollTop: 1700, clientHeight: 400 })) {
@@ -118,7 +118,7 @@ describe('FeedList open question out of view', () => {
     act(() => grow());
 
     expect(scrollTo).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
+    rs.unstubAllGlobals();
     scrollTo.mockRestore();
   });
 });

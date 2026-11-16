@@ -28,7 +28,9 @@ function setup() {
 }
 
 describe('WebConversationTurnsService', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    rs.restoreAllMocks();
+  });
 
   it('should publish running, then idle only after the second of two overlapping turns ends', () => {
     const { turns, states } = setup();
@@ -95,7 +97,7 @@ describe('WebConversationTurnsService', () => {
     turns.end('web-1', turn);
 
     expect(events.hasOpenQuestion('web-1')).toBe(false);
-    await vi.waitFor(() => expect(store.flushed).toEqual(['web-1']));
+    await rs.waitFor(() => expect(store.flushed).toEqual(['web-1']));
     expect(observer.sent).toEqual([
       { type: 'conversation.state', conversationId: 'web-1', state: 'idle' },
       expect.objectContaining({ type: 'conversation.entry', entry: expect.objectContaining({ id: 'q1', closed: true }), position: 0 }),
@@ -105,22 +107,22 @@ describe('WebConversationTurnsService', () => {
 
   it('should survive a flush failure', async () => {
     const { turns, store } = setup();
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    vi.spyOn(store, 'flush').mockRejectedValue(new Error('disk full'));
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    rs.spyOn(store, 'flush').mockRejectedValue(new Error('disk full'));
 
     turns.end('web-1', turns.begin('web-1'));
 
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('disk full')));
+    await rs.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('disk full')));
   });
 
   it('should describe a non-Error flush failure', async () => {
     const { turns, store } = setup();
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    vi.spyOn(store, 'flush').mockRejectedValue('nope');
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    rs.spyOn(store, 'flush').mockRejectedValue('nope');
 
     turns.end('web-1', turns.begin('web-1'));
 
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('nope')));
+    await rs.waitFor(() => expect(warn).toHaveBeenCalledWith(expect.stringContaining('nope')));
   });
 
   it('should be built from the events service and the store', () => {
@@ -137,7 +139,7 @@ describe('WebConversationTurnsService', () => {
     questions.pending = true;
 
     turns.end('web-1', turns.begin('web-1'));
-    await vi.waitFor(() => expect(store.flushed).toContain('web-1'));
+    await rs.waitFor(() => expect(store.flushed).toContain('web-1'));
 
     expect(await store.history('web-1')).toEqual([question]);
   });

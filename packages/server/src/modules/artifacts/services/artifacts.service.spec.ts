@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, rs } from '@rstest/core';
 
 import { createArtifactHarness } from '../testing/artifact-harness.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';
@@ -53,7 +53,7 @@ describe('ArtifactsService', () => {
 
   it('should read, create, update, comment, assign, release and remove through its use cases', async () => {
     const { service, store } = setup();
-    const listener = vi.fn();
+    const listener = rs.fn();
     const unsubscribe = service.onChange(listener);
 
     expect(await service.get('c1', 'T-1')).toBe(store.artifactsOf().get('T-1'));

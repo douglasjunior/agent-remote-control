@@ -1,8 +1,8 @@
 ---
 name: tests-best-practices
 description: >
-  Rules for automated tests with Vitest and the NestJS Testing Module. Covers the
-  golden rule of vi.mock only for external I/O boundaries, creating stubs and
+  Rules for automated tests with Rstest and the NestJS Testing Module. Covers the
+  golden rule of rs.mock only for external I/O boundaries, creating stubs and
   fakes that implement ports with factory functions, replacing providers by Symbol,
   observable-effect assertions, determinism with fake timers and the 100%
   coverage target. Use when creating, modifying or reviewing *.spec.ts files.
@@ -16,35 +16,44 @@ description: >
 > *which* rule — it is the nature of the change: a testing guideline or convention changed →
 > update; a technical refactor that preserves the described practice → leave it alone.
 
-This guideline governs all of the application's automated tests, run via Vitest
+This guideline governs all of the application's automated tests, run via Rstest
 and integrated with the NestJS testing module (`@nestjs/testing`).
 
 ## Stack and commands
 
-- **Framework**: Vitest with `globals: true`.
-- **Environment**: plain Node.js (`environment: 'node'`).
+- **Framework**: Rstest with `globals: true`; specs import `rs`, `describe`, `it` and `expect` from `@rstest/core`.
+- **Environment**: plain Node.js (`testEnvironment: 'node'`).
 - **File location**: `*.spec.ts` placed **side by side** with the corresponding
   production file in `packages/server/src/`.
-- **E2E tests**: located in the `test/` directory and run with `vitest.config.e2e.ts`.
+- **E2E tests**: located in the `test/` directory and run with `rstest.config.e2e.ts`.
 - **Commands**:
   - `pnpm test`: Runs all unit tests once;
   - `pnpm test:cov`: Runs the tests and generates a code coverage report;
   - `pnpm test:e2e`: Runs the end-to-end tests.
 
-## Golden rule: `vi.mock` only for external boundaries
+## Golden rule: `rs.mock` only for external boundaries
 
 **Internal project dependencies (any file located in `packages/server/src/`) must never be
-mocked using `vi.mock`.**
+mocked using `rs.mock`.**
 
-- **Allowed with `vi.mock`**:
+- **Allowed with `rs.mock`**:
   - Native Node platform modules: `node:fs`, `node:child_process`, `node:crypto`, etc.
   - Third-party SDKs and external network clients that perform real I/O (e.g. `@modelcontextprotocol/sdk`,
     the Discord.js client or external protocol libraries).
-- **Forbidden with `vi.mock`**:
+- **Forbidden with `rs.mock`**:
   - Any project port (`*.port.ts`), adapter (`*.adapter.ts`), use case (`*.use-case.ts`),
     service (`*.service.ts`) or controller/handler.
 
-### Why stubs and fakes over `vi.mock`?
+### Writing `rs.mock` factories
+
+- Factories are synchronous: Rstest rejects an `async` factory. To keep part of the real module, import it with
+  `import * as actualFs from 'node:fs/promises' with { rstest: 'importActual' };` and spread it into the factory's
+  return value.
+- A factory runs when the mocked module is first imported, so it may only use bindings from modules imported
+  before that one. The ACP adapter specs import the factories of `agent/testing/acp-adapter-test-harness.ts`
+  statically and mock only `node:stream` and `@agentclientprotocol/sdk`, which the harness itself does not import.
+
+### Why stubs and fakes over `rs.mock`?
 
 Mocking internal modules couples the tests to the file's import structure and hides contract
 breaks: if a method signature on a port changes, the mock keeps passing
@@ -95,9 +104,9 @@ export function createStubAgentClient(
   overrides?: Partial<IAgentClientPort>,
 ): IAgentClientPort {
   return {
-    connect: vi.fn().mockResolvedValue(undefined),
-    createSession: vi.fn().mockResolvedValue('default-session-id'),
-    closeSession: vi.fn().mockResolvedValue(undefined),
+    connect: rs.fn().mockResolvedValue(undefined),
+    createSession: rs.fn().mockResolvedValue('default-session-id'),
+    closeSession: rs.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -177,7 +186,7 @@ was dispatched to the Discord channel with the correct parameters).
 
 ### Using specific matchers
 
-Prefer explicit Vitest matchers to produce clear diagnostics on failure:
+Prefer explicit matchers to produce clear diagnostics on failure:
 
 - `toHaveLength(n)` over `expect(array.length).toBe(n)`;
 - `toBeNull()` and `toBeUndefined()` over `toBe(null)` / `toBe(undefined)`;
@@ -189,10 +198,10 @@ Prefer explicit Vitest matchers to produce clear diagnostics on failure:
 Automated tests must be deterministic and independent of system clock latency:
 
 - **No arbitrary `setTimeout`**: Never use fixed delays to wait for asynchronous executions.
-  Use Vitest's `vi.waitFor(() => expect(...))` to wait for expected events or conditions.
+  Use `rs.waitFor(() => expect(...))` to wait for expected events or conditions.
 - **Fake timers for time-based operations**: When testing timeouts, retries or debouncing,
-  use Vitest's simulated timers (`vi.useFakeTimers()`) and advance time deliberately
-  with `await vi.advanceTimersByTimeAsync(ms)`.
+  use simulated timers (`rs.useFakeTimers()`) and advance time deliberately
+  with `await rs.advanceTimersByTimeAsync(ms)`.
 
 ## Coverage targets
 
@@ -218,11 +227,11 @@ For each use case, adapter or service, ensure tests for:
 
 ## Checklist
 
-- [ ] No `vi.mock` pointing to files in `packages/server/src/`.
+- [ ] No `rs.mock` pointing to files in `packages/server/src/`.
 - [ ] Stubs explicitly implement the port interfaces (`implements I...Port`).
 - [ ] Replacement in the NestJS container done through the port's `Symbol`.
 - [ ] Direct imports from source files, without barrel exports (`index.ts`).
 - [ ] Assertions check state and observable effects before checking method calls.
-- [ ] No real-time delays (`setTimeout`); exclusive use of `vi.waitFor` or fake timers.
+- [ ] No real-time delays (`setTimeout`); exclusive use of `rs.waitFor` or fake timers.
 - [ ] All branches and error handling covered by the spec.
 - [ ] Mandatory validation run with `pnpm lint` and `pnpm test` (and `pnpm test:e2e`).

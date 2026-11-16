@@ -1,4 +1,4 @@
-import type { Mock } from 'vitest';
+import type { Mock } from '@rstest/core';
 
 
 export type FakeDevice = { readonly deviceId: string; readonly kind: MediaDeviceKind; readonly label: string };
@@ -6,12 +6,12 @@ export type FakeDevice = { readonly deviceId: string; readonly kind: MediaDevice
 /** The browser's `navigator.mediaDevices`, with a list of devices the test can change. */
 export class FakeMediaDevices extends EventTarget {
   devices: FakeDevice[] = [];
-  readonly stoppedTracks: Mock = vi.fn();
-  readonly getUserMedia: Mock<(constraints?: MediaStreamConstraints) => Promise<unknown>> = vi.fn((_constraints?: MediaStreamConstraints) => Promise.resolve({
+  readonly stoppedTracks: Mock = rs.fn();
+  readonly getUserMedia: Mock<(constraints?: MediaStreamConstraints) => Promise<unknown>> = rs.fn((_constraints?: MediaStreamConstraints) => Promise.resolve({
     getTracks: () => [{ stop: this.stoppedTracks }],
   }));
 
-  enumerateDevices = vi.fn(() => Promise.resolve(this.devices));
+  enumerateDevices = rs.fn(() => Promise.resolve(this.devices));
 
   /** Browsers hide labels until the microphone was allowed once. */
   grantAccess(): void {

@@ -12,14 +12,14 @@ describe('WebAgentQuotaService', () => {
   let service: WebAgentQuotaService;
 
   beforeEach(() => {
-    vi.useFakeTimers({ now: NOW });
+    rs.useFakeTimers({ now: NOW });
     agentTurn = new StubAgentTurnPort();
     agentTurn.quotaReports = [report('first')];
     service = new WebAgentQuotaService(agentTurn);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should return the reports with the time they were fetched', async () => {
@@ -30,10 +30,10 @@ describe('WebAgentQuotaService', () => {
     await service.read();
     agentTurn.quotaReports = [report('second')];
 
-    vi.advanceTimersByTime(QUOTA_CACHE_TTL_MS - 1);
+    rs.advanceTimersByTime(QUOTA_CACHE_TTL_MS - 1);
     await expect(service.read()).resolves.toMatchObject({ reports: [report('first')], fetchedAt: NOW.toISOString() });
 
-    vi.advanceTimersByTime(1);
+    rs.advanceTimersByTime(1);
     await expect(service.read()).resolves.toMatchObject({ reports: [report('second')] });
   });
 
@@ -45,7 +45,7 @@ describe('WebAgentQuotaService', () => {
   });
 
   it('should share the query in progress, a refresh included', async () => {
-    const getQuota = vi.spyOn(agentTurn, 'getQuota');
+    const getQuota = rs.spyOn(agentTurn, 'getQuota');
 
     const [first, second] = await Promise.all([service.read(), service.read(true)]);
 

@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { LocalWorkspaceFileSearchAdapter } from './adapters/local-workspace-file-search.adapter.js';
 import { LocalWorkspaceUploadAdapter } from './adapters/local-workspace-upload.adapter.js';

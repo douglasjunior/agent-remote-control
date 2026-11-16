@@ -1,5 +1,5 @@
+import { describe, expect, it } from '@rstest/core';
 import type { Channel } from 'discord.js';
-import { describe, expect, it } from 'vitest';
 
 import { resolveConversationKey } from './conversation-key.util.js';
 

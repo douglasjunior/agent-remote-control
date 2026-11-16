@@ -16,17 +16,17 @@ describe('FileConsoleLoggerAdapter', () => {
   const records = () => readFileSync(file(), 'utf8').trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>);
 
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-03-10T12:00:00.000Z'));
-    vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    rs.useFakeTimers({ toFake: ['Date'] });
+    rs.setSystemTime(new Date('2026-03-10T12:00:00.000Z'));
+    rs.spyOn(process.stdout, 'write').mockReturnValue(true);
+    rs.spyOn(process.stderr, 'write').mockReturnValue(true);
     directory = join(mkdtempSync(join(tmpdir(), 'arc-logs-')), 'logs');
     logger = new FileConsoleLoggerAdapter(directory, 14, logContext);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
     Logger.overrideLogger(['log', 'error', 'warn']);
     rmSync(join(directory, '..'), { recursive: true, force: true });
   });
@@ -80,7 +80,7 @@ describe('FileConsoleLoggerAdapter', () => {
     writeFileSync(join(directory, 'server-2026-03-05.jsonl'), '');
     writeFileSync(join(directory, 'notes.txt'), '');
 
-    vi.setSystemTime(new Date('2026-03-11T00:00:01.000Z'));
+    rs.setSystemTime(new Date('2026-03-11T00:00:01.000Z'));
     logger.log('second', 'Context');
 
     expect(existsSync(join(directory, 'server-2026-03-11.jsonl'))).toBe(true);

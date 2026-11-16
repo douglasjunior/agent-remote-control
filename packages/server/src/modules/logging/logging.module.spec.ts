@@ -7,11 +7,11 @@ import { IAppLoggerPort } from './ports/app-logger.port.js';
 
 describe('LoggingModule', () => {
   afterEach(() => {
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
   });
 
   it.each([['7'], ['invalid'], ['0']])('should provide the file logger with LOG_RETENTION_DAYS=%s', async (days) => {
-    vi.stubEnv('LOG_RETENTION_DAYS', days);
+    rs.stubEnv('LOG_RETENTION_DAYS', days);
 
     const module = await Test.createTestingModule({ imports: [LoggingModule] }).compile();
 

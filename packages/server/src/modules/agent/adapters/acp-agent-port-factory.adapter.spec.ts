@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
 import { StubFileSystem } from '../testing/stub-file-system.port.js';

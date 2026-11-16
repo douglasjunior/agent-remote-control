@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { act, cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AT, renderApp } from '../test/render-app.js';
 
@@ -77,10 +77,10 @@ describe('AppLayout', () => {
   });
 
   it('should show when each conversation last changed and keep the label current', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    rs.useFakeTimers({ shouldAdvanceTime: true });
     try {
-      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-      vi.setSystemTime(new Date(AT));
+      const user = userEvent.setup({ advanceTimers: rs.advanceTimersByTime });
+      rs.setSystemTime(new Date(AT));
       const { connection } = renderApp();
       act(() => connection.emitEvent({
         type: 'conversation.list',
@@ -90,11 +90,11 @@ describe('AppLayout', () => {
       const dialog = within(screen.getByRole('dialog'));
       expect(dialog.getByText('just now')).toBeInTheDocument();
 
-      act(() => vi.advanceTimersByTime(5 * 60_000));
+      act(() => rs.advanceTimersByTime(5 * 60_000));
 
       expect(dialog.getByText('5 minutes ago')).toBeInTheDocument();
     } finally {
-      vi.useRealTimers();
+      rs.useRealTimers();
     }
   });
 
@@ -127,14 +127,16 @@ describe('AppLayout', () => {
   });
 
   describe('on wide screens', () => {
-    const wide = (query: string) => ({ matches: query === '(min-width: 768px)', addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    const wide = (query: string) => ({ matches: query === '(min-width: 768px)', addEventListener: rs.fn(), removeEventListener: rs.fn() });
     const defaultMatchMedia = globalThis.matchMedia;
     const dock = () => document.getElementById('conversation-list')!;
 
-    beforeEach(() => vi.stubGlobal('matchMedia', wide));
+    beforeEach(() => {
+      rs.stubGlobal('matchMedia', wide);
+    });
     afterEach(() => {
-      vi.stubGlobal('matchMedia', defaultMatchMedia);
-      vi.restoreAllMocks();
+      rs.stubGlobal('matchMedia', defaultMatchMedia);
+      rs.restoreAllMocks();
     });
 
     it('should dock the list beside the page, closed by default, and toggle it with no drawer', async () => {
@@ -177,7 +179,7 @@ describe('AppLayout', () => {
       cleanup();
 
       const read = Storage.prototype.getItem;
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      rs.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
         if (key === 'arc.conversationListOpen') {
           return 'true';
         }
@@ -187,8 +189,8 @@ describe('AppLayout', () => {
       expect(dock()).toBeVisible();
       cleanup();
 
-      vi.restoreAllMocks();
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      rs.restoreAllMocks();
+      rs.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
         if (key === 'arc.conversationListOpen') {
           throw new Error('blocked');
         }

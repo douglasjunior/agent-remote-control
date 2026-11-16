@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 

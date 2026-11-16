@@ -5,19 +5,19 @@ import { useNow } from './use-now.js';
 
 describe('useNow', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    rs.useFakeTimers();
+    rs.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should tick every second while active', () => {
     const { result } = renderHook(() => useNow(true));
     const start = result.current;
 
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => rs.advanceTimersByTime(3000));
 
     expect(result.current).toBe(start + 3000);
   });
@@ -26,7 +26,7 @@ describe('useNow', () => {
     const { result } = renderHook(() => useNow(false));
     const start = result.current;
 
-    act(() => vi.advanceTimersByTime(3000));
+    act(() => rs.advanceTimersByTime(3000));
 
     expect(result.current).toBe(start);
   });
@@ -34,10 +34,10 @@ describe('useNow', () => {
   it('should stop ticking when it becomes inactive', () => {
     const { result, rerender } = renderHook(({ active }) => useNow(active), { initialProps: { active: true } });
 
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => rs.advanceTimersByTime(1000));
     rerender({ active: false });
     const stopped = result.current;
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => rs.advanceTimersByTime(5000));
 
     expect(result.current).toBe(stopped);
   });

@@ -1,5 +1,5 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';

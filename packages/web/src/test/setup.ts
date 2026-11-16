@@ -1,6 +1,9 @@
-import '@testing-library/jest-dom/vitest';
+import { afterEach, expect } from '@rstest/core';
+import * as jestDomMatchers from '@testing-library/jest-dom/matchers';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+
+
+expect.extend(jestDomMatchers);
 
 
 afterEach(() => {
@@ -8,18 +11,18 @@ afterEach(() => {
 });
 
 class ResizeObserverStub {
-  observe = vi.fn();
-  unobserve = vi.fn();
-  disconnect = vi.fn();
+  observe = rs.fn();
+  unobserve = rs.fn();
+  disconnect = rs.fn();
 }
 
-vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+rs.stubGlobal('ResizeObserver', ResizeObserverStub);
 
-vi.stubGlobal('matchMedia', () => ({
+rs.stubGlobal('matchMedia', () => ({
   matches: false,
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
+  addEventListener: rs.fn(),
+  removeEventListener: rs.fn(),
 }));
 
-Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
-Element.prototype.scrollBy = vi.fn() as unknown as typeof Element.prototype.scrollBy;
+Element.prototype.scrollTo = rs.fn() as unknown as typeof Element.prototype.scrollTo;
+Element.prototype.scrollBy = rs.fn() as unknown as typeof Element.prototype.scrollBy;

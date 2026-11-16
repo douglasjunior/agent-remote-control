@@ -16,7 +16,7 @@ describe('createAppConnection', () => {
   });
 
   it('should reach the server of the page over WebSocket outside the p2p build', () => {
-    const app = createAppConnection('production');
+    const app = createAppConnection('server');
 
     expect(app?.connection).toBeInstanceOf(WebSocketServerConnection);
     expect(app?.basename).toBe('/');

@@ -17,7 +17,7 @@ description: >
 > *which* rule — it is the nature of the change: a layout, connection, import or testing rule
 > changed → update; a visual tweak that preserves the described behavior → leave it alone.
 
-`packages/web` (`@agent-remote-control/web`) is a React + Vite + React Router + Tailwind v4 + shadcn/ui
+`packages/web` (`@agent-remote-control/web`) is a React + Rsbuild + React Router + Tailwind v4 + shadcn/ui
 app. It talks to the server only through `@agent-remote-control/protocol`, over a WebSocket.
 
 ## Layout
@@ -79,12 +79,13 @@ packages/web/src/
   connection); from then on, for the life of the page, they take the relay.
   It refuses an answer whose certificate fingerprint is not the pinned one (`untrusted`) and a host of another
   `PROTOCOL_VERSION` (`incompatible`), and turns its transport to `turn` when the selected candidate pair is relayed.
-- `createAppConnection(import.meta.env.MODE)` picks the transport in `main.tsx`: the `p2p` mode (`vite --mode p2p`,
+- `createAppConnection(import.meta.env.ARC_TARGET)` picks the transport in `main.tsx`: the `p2p` target (`--env-mode p2p`,
   `build:p2p` into `dist-p2p`) is the hosted web app, which reads the remote link (`readRemoteLink`: instance id from
   `/i/<instance id>`, fingerprint from the `fp` fragment parameter, kept as `arc.remote.<id>.fingerprint`, and ignored,
   from the link or from storage, unless it derives the instance id), uses the
   router basename `/i/<instance id>` and a token store per instance, and renders `RemoteLinkMissingPage` without a link.
-  Every other mode reaches the server that serves the page over WebSocket.
+  The `server` target reaches the server that serves the page over WebSocket. `rsbuild.config.ts` defines
+  `import.meta.env.ARC_TARGET` from the env mode, because `--env-mode` leaves `import.meta.env.MODE` untouched.
 - `ConnectionProvider` owns the token state and the connection lifecycle: it asks the connection for the token
   (`hasAccessToken`, `setAccessToken`), connects when one exists and
   exposes `status`, `transport`, `hasToken` and `submitToken` through `useConnection()`. Without a token (or after
@@ -95,11 +96,11 @@ packages/web/src/
   or `arc.accessToken.<instance id>` for a remote host) with `read`, `store`, `clear` and `load`. `load` first takes the
   `token` fragment parameter into storage; `takeFragmentParam` removes the parameter it reads with
   `history.replaceState` and keeps the others. Every storage access is wrapped in `try/catch`.
-- Vite proxies `/ws` and `/health` to the server in `dev` and `preview` without `changeOrigin`, so the server's origin check sees a same-origin request; the target port is the `PORT` of the root `.env` (default `3000`). In the `p2p` mode it proxies `/signal` to the p2p-server on port 3100 instead. nginx proxies the same path in production.
+- Rsbuild proxies `/ws` and `/health` to the server in `dev` and `preview` with `changeOrigin: false` (Rsbuild defaults it to `true`), so the server's origin check sees a same-origin request; the target port is the `PORT` of the root `.env` (default `3000`). In the `p2p` env mode it proxies `/signal` to the p2p-server on port 3100 instead. nginx proxies the same path in production.
 
 ## Imports and vendored UI
 
-- Relative imports with the `.js` suffix, which Vite resolves to `.ts`/`.tsx`. The `@/` alias is not used.
+- Relative imports with the `.js` suffix, which Rsbuild resolves to `.ts`/`.tsx`. The `@/` alias is not used.
 - `components/ui/**` is shadcn code kept as vendored source (style `base-nova`, Base UI); it is excluded from
   coverage. Look for a shadcn component before writing one, install it with the shadcn CLI and restore
   relative imports after each CLI run.
@@ -107,12 +108,12 @@ packages/web/src/
 
 ## Tests
 
-- Specs sit next to the file under test (`*.spec.ts`, `*.spec.tsx`) and run in the Vitest project `web`
-  (jsdom, globals, `@testing-library/jest-dom`).
+- Specs sit next to the file under test (`*.spec.ts`, `*.spec.tsx`) and run in the Rstest project `web`
+  (jsdom, globals, the `@testing-library/jest-dom` matchers registered in `src/test/setup.ts`, and the Rsbuild config through `@rstest/adapter-rsbuild`).
 - Use `FakeServerConnection` from `src/test/fake-server-connection.ts` for components; it records sent
   commands, lets the test emit events and statuses, and keeps the token in memory (`accessToken`, a token at the start;
   set it to `null` for a signed-out spec).
-- The browser `WebSocket` and `RTCPeerConnection` are external I/O boundaries: stub them with `vi.stubGlobal` and fake timers.
+- The browser `WebSocket` and `RTCPeerConnection` are external I/O boundaries: stub them with `rs.stubGlobal` and fake timers.
 - Specs that render the feed wrap it in `VirtuosoMockContext` (`renderApp` already does); the scrolling specs are described in [references/conversation-feed.md](references/conversation-feed.md).
 - Target 100% coverage outside `components/ui`.
 

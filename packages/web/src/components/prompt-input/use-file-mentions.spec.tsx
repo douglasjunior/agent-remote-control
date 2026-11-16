@@ -61,8 +61,12 @@ function setup() {
 }
 
 describe('useFileMentions', () => {
-  beforeEach(() => vi.useFakeTimers());
-  afterEach(() => vi.useRealTimers());
+  beforeEach(() => {
+    rs.useFakeTimers();
+  });
+  afterEach(() => {
+    rs.useRealTimers();
+  });
 
   it('should search on a bare @ without waiting and open the list with the results', () => {
     const { type, searches, answer, state } = setup();
@@ -79,7 +83,7 @@ describe('useFileMentions', () => {
 
     type('@');
     type('@ap');
-    act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
     const ids = searches().map(command => (command.type === 'files.search' ? command.requestId : ''));
     expect(new Set(ids).size).toBe(1);
@@ -126,7 +130,7 @@ describe('useFileMentions', () => {
     expect(state()).toBe('open:1:app/,a.ts');
 
     type('@a');
-    act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
     expect(state()).toBe('open:0:app/,a.ts');
   });
@@ -149,7 +153,7 @@ describe('useFileMentions', () => {
 
     type('@ap');
     expect(searches()).toHaveLength(1);
-    act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
     expect(searches().at(-1)).toMatchObject({ query: 'ap' });
   });
@@ -211,7 +215,7 @@ describe('useFileMentions', () => {
     press('Tab');
 
     expect(field.value).toBe('@app/');
-    act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
     expect(searches().at(-1)).toMatchObject({ query: 'app/' });
     answer([{ path: 'app/main.ts', kind: 'file', matches: [] }]);
     expect(state()).toBe('open:0:app/main.ts');
@@ -271,7 +275,7 @@ describe('useFileMentions', () => {
       const { type, moveCaret, searches, answer, press, field } = setup();
       type('see @app/src now');
       moveCaret(8);
-      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
       expect(searches().at(-1)).toMatchObject({ query: 'app' });
 
@@ -288,7 +292,7 @@ describe('useFileMentions', () => {
       const { type, searches } = setup();
 
       type(value);
-      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
       expect(searches().at(-1)).toMatchObject({ query: value.at(-1) });
     });
@@ -304,7 +308,7 @@ describe('useFileMentions', () => {
 
       type(value);
       moveCaret(caret);
-      act(() => vi.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
 
       expect(state()).toBe('closed');
       expect(closes()).toHaveLength(searches().length);

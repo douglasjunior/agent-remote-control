@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
 
 import type { ArtifactActor } from '../../artifacts/models/artifact.model.js';
 import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';

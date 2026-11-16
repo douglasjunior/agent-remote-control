@@ -20,15 +20,15 @@ describe('RemoteIdentityService', () => {
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
   it('should be enabled only when REMOTE_ENABLED is true', () => {
     expect(service().isEnabled()).toBe(false);
-    vi.stubEnv('REMOTE_ENABLED', 'yes');
+    rs.stubEnv('REMOTE_ENABLED', 'yes');
     expect(service().isEnabled()).toBe(false);
-    vi.stubEnv('REMOTE_ENABLED', 'true');
+    rs.stubEnv('REMOTE_ENABLED', 'true');
     expect(service().isEnabled()).toBe(true);
   });
 
@@ -38,7 +38,7 @@ describe('RemoteIdentityService', () => {
     ['http://127.0.0.1:5173', 'http://127.0.0.1:5173', 'ws://127.0.0.1:5173/signal/host'],
     ['http://[::1]:3100', 'http://[::1]:3100', 'ws://[::1]:3100/signal/host'],
   ])('should reach REMOTE_URL %s over the matching WebSocket scheme', (remoteUrl, baseUrl, signalingUrl) => {
-    vi.stubEnv('REMOTE_URL', remoteUrl);
+    rs.stubEnv('REMOTE_URL', remoteUrl);
 
     expect(service().baseUrl()).toBe(baseUrl);
     expect(service().signalingUrl(baseUrl)).toBe(signalingUrl);
@@ -51,7 +51,7 @@ describe('RemoteIdentityService', () => {
     ['plain HTTP to another machine', 'http://arc.example.com'],
     ['of another scheme', 'ftp://arc.example.com'],
   ])('should have no signaling server when REMOTE_URL is %s', (_name, remoteUrl) => {
-    vi.stubEnv('REMOTE_URL', remoteUrl);
+    rs.stubEnv('REMOTE_URL', remoteUrl);
 
     expect(service().baseUrl()).toBeNull();
   });

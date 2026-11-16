@@ -19,12 +19,12 @@ describe('WsSignalingClientAdapter', () => {
   let received: unknown[];
   let signals: ToHostSignal[];
   let client: WsSignalingClientAdapter;
-  let log: ReturnType<typeof vi.spyOn>;
-  let warn: ReturnType<typeof vi.spyOn>;
-  let error: ReturnType<typeof vi.spyOn>;
+  let log: ReturnType<typeof rs.spyOn>;
+  let warn: ReturnType<typeof rs.spyOn>;
+  let error: ReturnType<typeof rs.spyOn>;
 
   const connection = async (index: number) => {
-    await vi.waitFor(() => expect(sockets.length).toBeGreaterThan(index));
+    await rs.waitFor(() => expect(sockets.length).toBeGreaterThan(index));
     return sockets[index]!;
   };
   let onSignal: (signal: ToHostSignal) => void;
@@ -32,9 +32,9 @@ describe('WsSignalingClientAdapter', () => {
   const start = () => client.start({ url, register: nonce => register(nonce), onSignal: signal => onSignal(signal) });
 
   beforeEach(async () => {
-    log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     sockets = [];
     received = [];
     signals = [];
@@ -53,20 +53,20 @@ describe('WsSignalingClientAdapter', () => {
 
   afterEach(async () => {
     client.onModuleDestroy();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
     await new Promise(done => server.close(done));
   });
 
   it('should answer the challenge with the registration and hand the signals it receives', async () => {
     start();
     const socket = await connection(0);
-    await vi.waitFor(() => expect(received).toEqual([registration(NONCE)]));
+    await rs.waitFor(() => expect(received).toEqual([registration(NONCE)]));
 
     socket.send('{"type":"host.registered"}');
     socket.send('{"type":"unknown"}');
     socket.send('{"type":"session.closed","sessionId":"00000000-0000-4000-8000-000000000001"}');
-    await vi.waitFor(() => expect(signals).toHaveLength(2));
+    await rs.waitFor(() => expect(signals).toHaveLength(2));
 
     expect(signals).toEqual([{ type: 'host.registered' }, { type: 'session.closed', sessionId: '00000000-0000-4000-8000-000000000001' }]);
     expect(log).toHaveBeenCalledWith(expect.stringMatching(/^Remote access ready through 127\.0\.0\.1:\d+$/));
@@ -77,41 +77,41 @@ describe('WsSignalingClientAdapter', () => {
     client.send({ type: 'host.close', sessionId: '00000000-0000-4000-8000-000000000001' });
     start();
     await connection(0);
-    await vi.waitFor(() => expect(received).toHaveLength(1));
+    await rs.waitFor(() => expect(received).toHaveLength(1));
     client.send({ type: 'host.close', sessionId: '00000000-0000-4000-8000-000000000001' });
 
-    await vi.waitFor(() => expect(received).toHaveLength(2));
+    await rs.waitFor(() => expect(received).toHaveLength(2));
     expect(received[1]).toEqual({ type: 'host.close', sessionId: '00000000-0000-4000-8000-000000000001' });
   });
 
   it('should reconnect with backoff, warning once while the server is unreachable', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     start();
     (await connection(0)).close();
-    await vi.waitFor(() => expect(warn).toHaveBeenCalledOnce());
-    vi.advanceTimersByTime(1_000);
+    await rs.waitFor(() => expect(warn).toHaveBeenCalledOnce());
+    rs.advanceTimersByTime(1_000);
     (await connection(1)).close(1011);
-    await vi.waitFor(() => expect(sockets[1]!.readyState).toBe(3));
+    await rs.waitFor(() => expect(sockets[1]!.readyState).toBe(3));
     await new Promise(done => setImmediate(done));
-    vi.advanceTimersByTime(2_000);
+    rs.advanceTimersByTime(2_000);
     const third = await connection(2);
     third.send('{"type":"host.registered"}');
-    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    await rs.waitFor(() => expect(signals).toHaveLength(1));
 
     expect(warn).toHaveBeenCalledOnce();
     expect(warn).toHaveBeenCalledWith(`Remote access unavailable: cannot reach ${url}, retrying`);
   });
 
   it('should drop a socket that stays quiet and reconnect', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     start();
     const first = await connection(0);
-    await vi.waitFor(() => expect(received).toHaveLength(1));
+    await rs.waitFor(() => expect(received).toHaveLength(1));
     first.ping();
     await new Promise(done => setImmediate(done));
-    vi.advanceTimersByTime(70_000);
+    rs.advanceTimersByTime(70_000);
     await new Promise(done => first.once('close', done));
-    vi.advanceTimersByTime(1_000);
+    rs.advanceTimersByTime(1_000);
 
     expect(await connection(1)).toBeDefined();
   });
@@ -123,12 +123,12 @@ describe('WsSignalingClientAdapter', () => {
     };
     start();
     const socket = await connection(0);
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: no key'));
+    await rs.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: no key'));
     socket.send('{"type":"session.closed","sessionId":"00000000-0000-4000-8000-000000000001"}');
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_handler_failed: session.closed: boom'));
+    await rs.waitFor(() => expect(error).toHaveBeenCalledWith('signal_handler_failed: session.closed: boom'));
     register = () => Promise.reject('plain');
     socket.send(JSON.stringify({ type: 'host.challenge', nonce: NONCE }));
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: plain'));
+    await rs.waitFor(() => expect(error).toHaveBeenCalledWith('signal_registration_failed: plain'));
 
     expect(socket.readyState).toBe(1);
   });
@@ -138,22 +138,22 @@ describe('WsSignalingClientAdapter', () => {
     [4403, 'Remote access refused: the signaling server does not serve this instance'],
     [4409, 'Remote access stopped: another server registered the same instance (same DATA_DIR)'],
   ])('should stop reconnecting after the close code %i', async (code, message) => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     start();
     (await connection(0)).close(code);
-    await vi.waitFor(() => expect(error).toHaveBeenCalledWith(message));
-    vi.advanceTimersByTime(120_000);
+    await rs.waitFor(() => expect(error).toHaveBeenCalledWith(message));
+    rs.advanceTimersByTime(120_000);
     await new Promise(done => setImmediate(done));
 
     expect(sockets).toHaveLength(1);
   });
 
   it('should not reconnect after stopping', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     start();
     await connection(0);
     client.stop();
-    vi.advanceTimersByTime(120_000);
+    rs.advanceTimersByTime(120_000);
     await new Promise(done => setImmediate(done));
 
     expect(sockets).toHaveLength(1);

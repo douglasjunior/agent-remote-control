@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { extractUserLanguage, normalizeUserLanguage } from './user-language.util.js';
 

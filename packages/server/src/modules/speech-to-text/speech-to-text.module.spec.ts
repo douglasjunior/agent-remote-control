@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from '@rstest/core';
 
 import { NoopSpeechToTextAdapter } from './adapters/noop-speech-to-text.adapter.js';
 import { WhisperCppAdapter } from './adapters/whisper-cpp.adapter.js';

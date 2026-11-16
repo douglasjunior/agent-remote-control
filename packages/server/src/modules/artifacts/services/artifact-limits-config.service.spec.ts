@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 
 import { ArtifactLimitsConfigService } from './artifact-limits-config.service.js';
 
 
 describe('ArtifactLimitsConfigService', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => {
+    rs.unstubAllEnvs();
+  });
 
   it.each([
     [undefined, 25],
@@ -16,7 +18,7 @@ describe('ArtifactLimitsConfigService', () => {
     ['many', 25],
   ])('should read ARTIFACT_MAX_DELEGATIONS=%j as %d', (raw, expected) => {
     if (raw !== undefined) {
-      vi.stubEnv('ARTIFACT_MAX_DELEGATIONS', raw);
+      rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', raw);
     }
 
     expect(new ArtifactLimitsConfigService().getMaxDelegations()).toBe(expected);

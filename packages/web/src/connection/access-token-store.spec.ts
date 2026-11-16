@@ -10,7 +10,7 @@ describe('AccessTokenStore', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   it('should store, read and clear the token', () => {
@@ -62,13 +62,13 @@ describe('AccessTokenStore', () => {
   });
 
   it('should survive storage that throws', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
       throw new Error('blocked');
     });
 
