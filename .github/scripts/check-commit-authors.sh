@@ -31,6 +31,8 @@ fail() {
 
 while read -r sha; do
   short="${sha:0:7}"
+  subject="$(git show -s --format=%s "$sha")"
+  label="$short \"$subject\""
   author_name="$(git show -s --format=%an "$sha")"
   author_email="$(git show -s --format=%ae "$sha")"
   committer_name="$(git show -s --format=%cn "$sha")"
@@ -41,22 +43,25 @@ while read -r sha; do
   for who in "author|$author_name|$author_email" "committer|$committer_name|$committer_email"; do
     IFS='|' read -r role name email <<<"$who"
     if grep -qiE "$AI_EMAIL" <<<"$email" || grep -qiE "$AI_NAME" <<<"$name"; then
-      fail "$short: $role '$name <$email>' is an AI agent"
+      fail "$label: $role '$name <$email>' is blocked because it is a known AI agent"
     fi
   done
 
-  if grep -qiE "$AI_EMAIL|$AI_NAME" <<<"$coauthors"; then
-    fail "$short: Co-authored-by names an AI agent"
-  fi
-  if grep -qiE "$AI_SIGNATURE" <<<"$message"; then
-    fail "$short: message carries an AI agent signature"
-  fi
+  while IFS= read -r line; do
+    [ -n "$line" ] && fail "$label: '$line' is blocked because it names a known AI agent"
+  done < <(grep -iE "$AI_EMAIL|$AI_NAME" <<<"$coauthors" || true)
+  while IFS= read -r line; do
+    [ -n "$line" ] && fail "$label: '$line' is blocked because it is an AI agent signature"
+  done < <(grep -iE "$AI_SIGNATURE" <<<"$message" || true)
 
   if $check_owner; then
-    grep -qE "$OWNER_EMAIL" <<<"$author_email" || fail "$short: author <$author_email> is not an owner identity"
-    grep -qE "$OWNER_COMMITTER_EMAIL" <<<"$committer_email" || fail "$short: committer <$committer_email> is not an owner identity"
+    grep -qE "$OWNER_EMAIL" <<<"$author_email" || fail "$label: author '$author_name <$author_email>' is not one of the owner's identities"
+    grep -qE "$OWNER_COMMITTER_EMAIL" <<<"$committer_email" || fail "$label: committer '$committer_name <$committer_email>' is not one of the owner's identities"
   fi
 done < <(git rev-list "$range")
 
-[ "$failures" -eq 0 ] || exit 1
+if [ "$failures" -ne 0 ]; then
+  echo "::error::$failures problem(s) found. Fix the commits listed above (git rebase -i, git commit --amend --reset-author or git filter-repo) and force-push the branch."
+  exit 1
+fi
 echo "All commits in $range passed."
