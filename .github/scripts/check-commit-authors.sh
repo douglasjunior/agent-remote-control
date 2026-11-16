@@ -3,8 +3,8 @@
 #
 # Rule 1 (always): no commit may be authored or committed by a known AI agent, name one in a
 #   Co-authored-by trailer or carry an agent signature in its message.
-# Rule 2 (only when the pull request author is the owner): every author, committer and
-#   Co-authored-by trailer must be one of the owner's identities.
+# Rule 2 (only when the pull request author is the owner): every author and committer must be
+#   one of the owner's identities. Co-authored-by trailers are free apart from rule 1.
 set -euo pipefail
 
 range="$1"
@@ -55,9 +55,6 @@ while read -r sha; do
   if $check_owner; then
     grep -qE "$OWNER_EMAIL" <<<"$author_email" || fail "$short: author <$author_email> is not an owner identity"
     grep -qE "$OWNER_COMMITTER_EMAIL" <<<"$committer_email" || fail "$short: committer <$committer_email> is not an owner identity"
-    if [ -n "$coauthors" ]; then
-      fail "$short: Co-authored-by is not allowed in the owner's pull requests"
-    fi
   fi
 done < <(git rev-list "$range")
 
