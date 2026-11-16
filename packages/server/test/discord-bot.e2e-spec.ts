@@ -1,4 +1,4 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { type TestingModule } from '@nestjs/testing';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import type { ChatInputCommandInteraction, Message } from 'discord.js';
 import { Events } from 'discord.js';
@@ -21,6 +21,8 @@ import { DiscordInteractionHandler } from '../src/modules/discord/handlers/disco
 import { DiscordMessageHandler } from '../src/modules/discord/handlers/discord-message.handler.js';
 import { DiscordClientService } from '../src/modules/discord/services/discord-client.service.js';
 import { ISessionStorePort } from '../src/modules/orchestrator/ports/session-store.port.js';
+
+import { createTestingModule } from './testing-module.js';
 
 
 const FOOTER = '-# 🤖 CEO (agy) · 🧠 Fast Model · ⚡ default · 🪙 150 tokens';
@@ -272,7 +274,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     seedAgentSettings(dataDir);
     const fakeAgent = new E2EAgentFake();
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -353,7 +355,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const fakeAgent = new BlockingAgentFake();
     const cancelSpy = rs.spyOn(fakeAgent, 'cancel');
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -442,7 +444,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     const developer = new ScriptedAgentFake(['<artifact_update id="T-1" branch="feat/t-1-login"/>', 'Login screen implemented.']);
     const agents = [ceo, developer];
 
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -512,7 +514,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
   it('should ask for agent, model and effort on the first message and then run the pending prompt', async () => {
     const agents: SelectableAgentFake[] = [];
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -591,7 +593,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
   it('should reopen the model selection through the /model slash command', async () => {
     seedAgentSettings(dataDir, 'channel-model:thread-model');
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -638,7 +640,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
   it('should open the /model selection of a guild channel in a thread answered without mention', async () => {
     seedAgentSettings(dataDir, 'channel-general:thread-selection');
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -696,7 +698,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   it('should switch the agent through the /agent slash command in a bot-owned thread', async () => {
     seedAgentSettings(dataDir, 'channel-general:thread-agent');
     const createdAgentIds: string[] = [];
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -758,7 +760,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
   it('should store the language the CEO detects and change it through the /language slash command', async () => {
     seedAgentSettings(dataDir, 'channel-general:thread-language');
     const agent = new ScriptedAgentFake(['Olá!\n<user_language>Brazilian Portuguese</user_language>', '¡Hola!']);
-    const moduleFixture: TestingModule = await Test.createTestingModule({
+    const moduleFixture: TestingModule = await createTestingModule({
       imports: [AppModule],
     })
       .overrideProvider(IAgentPortFactory)
@@ -818,7 +820,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
   describe('questions to the user', () => {
     const startApp = async (agents: Partial<IAgentPort>[]) => {
-      const moduleFixture: TestingModule = await Test.createTestingModule({
+      const moduleFixture: TestingModule = await createTestingModule({
         imports: [AppModule],
       })
         .overrideProvider(IAgentPortFactory)

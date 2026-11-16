@@ -116,7 +116,7 @@ All commands run from the repository root and apply to every package in `package
 - Two TypeScript compilers are installed: `typescript-native` (TypeScript 7) type checks (`ts` and the check in the web `build`), and `typescript` (TypeScript 6) serves the tools that use the compiler API (typescript-eslint, the Nest CLI) and emits `protocol`. Both ship a `tsc` binary, so package scripts call each one by its path in `node_modules`.
 - Linter: `pnpm lint`
 - Code formatting via ESLint: `pnpm format` (or `pnpm lint:fix`)
-- Run unit tests: `pnpm test`
+- Run unit tests: `pnpm test` (`TEST_LOGS=true pnpm test` also prints the server's Nest logs)
 - Test coverage: `pnpm test:cov`
 - End-to-end (e2e) tests: `pnpm test:e2e`
 
@@ -132,7 +132,7 @@ All commands run from the repository root and apply to every package in `package
 3. **Orchestration via Use Cases**: All business logic and flow coordination is done exclusively by Use Case classes (`*.use-case.ts`). Do not use workflow classes.
 4. **No barrel exports**: Import classes, ports and types directly from their definition file, without `index.ts`.
 5. **No obvious comments**: Do not repeat what the code, typing or signature already says.
-6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in `Test.createTestingModule`; `rs.mock` is reserved for external I/O boundaries.
+6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in the testing module (`createTestingModule` from `test/testing-module.ts`); `rs.mock` is reserved for external I/O boundaries.
 7. **Pruning pass before finishing**: Check comments and text introduced in the diff and remove any noise before submitting.
 8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `pnpm ts`, `pnpm lint` and `pnpm test` (plus `pnpm test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`pnpm format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
 9. **Skills in sync with the code**: Every change to a port contract, public signature, lifecycle or rule described in a skill updates the skill in the same commit. Before finishing, compare the skills of the touched module against the `git diff`.

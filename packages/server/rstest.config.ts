@@ -6,8 +6,7 @@ export default defineConfig({
   globals: true,
   include: ['src/**/*.spec.ts'],
   testEnvironment: 'node',
-  // `@peculiar/x509` (through tsyringe) needs the Reflect polyfill as soon as it is imported, which can precede Nest's.
-  setupFiles: ['reflect-metadata'],
+  setupFiles: ['./test/setup.ts'],
   resolve: {
     conditionNames: ['source', '...'],
   },

@@ -1,4 +1,4 @@
-import { Test } from '@nestjs/testing';
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { FileConsoleLoggerAdapter } from './adapters/file-console-logger.adapter.js';
 import { LoggingModule } from './logging.module.js';
@@ -13,7 +13,7 @@ describe('LoggingModule', () => {
   it.each([['7'], ['invalid'], ['0']])('should provide the file logger with LOG_RETENTION_DAYS=%s', async (days) => {
     rs.stubEnv('LOG_RETENTION_DAYS', days);
 
-    const module = await Test.createTestingModule({ imports: [LoggingModule] }).compile();
+    const module = await createTestingModule({ imports: [LoggingModule] }).compile();
 
     expect(module.get(IAppLoggerPort)).toBeInstanceOf(FileConsoleLoggerAdapter);
   });

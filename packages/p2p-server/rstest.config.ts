@@ -6,6 +6,7 @@ export default defineConfig({
   globals: true,
   include: ['src/**/*.spec.ts'],
   testEnvironment: 'node',
+  setupFiles: ['./test/setup.ts'],
   resolve: {
     conditionNames: ['source', '...'],
   },

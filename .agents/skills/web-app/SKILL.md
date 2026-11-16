@@ -114,6 +114,11 @@ packages/web/src/
   commands, lets the test emit events and statuses, and keeps the token in memory (`accessToken`, a token at the start;
   set it to `null` for a signed-out spec).
 - The browser `WebSocket` and `RTCPeerConnection` are external I/O boundaries: stub them with `rs.stubGlobal` and fake timers.
+- No spec prints "not wrapped in act": events from a fake go through `act` (`await act(async () => ...)` when they
+  settle a promise), waits use `waitFor`/`findBy*` from `@testing-library/react` (never `rs.waitFor` in a spec that
+  renders React), interactions go through `user-event`, and a spec that interacts or waits keeps `setTimeout` real (fake
+  timers cover only the clock the code reads, never with `shouldAdvanceTime`). Read
+  [references/testing.md](references/testing.md) before writing or fixing a component or hook spec.
 - Specs that render the feed wrap it in `VirtuosoMockContext` (`renderApp` already does); the scrolling specs are described in [references/conversation-feed.md](references/conversation-feed.md).
 - Target 100% coverage outside `components/ui`.
 

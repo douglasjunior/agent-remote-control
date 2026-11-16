@@ -63,13 +63,15 @@ export function lastSent<T extends Command>(app: AppHarness, type: T): Extract<C
 }
 
 /** Answers the last mutation of `type` the app sent. */
-export function answer(
+export async function answer(
   app: AppHarness,
   type: 'artifact.create' | 'artifact.update' | 'artifact.comment' | 'artifact.delete',
   result: { ok: true; id: string } | { ok: false; error: string },
-): void {
+): Promise<void> {
   const { requestId } = lastSent(app, type);
-  act(() => app.connection.emitEvent({ type: 'artifact.result', conversationId: CONVERSATION_ID, requestId, ...result }));
+  await act(async () => {
+    app.connection.emitEvent({ type: 'artifact.result', conversationId: CONVERSATION_ID, requestId, ...result });
+  });
 }
 
 /** The `dataTransfer` of a drag, which jsdom does not provide. */

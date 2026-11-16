@@ -1,19 +1,29 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { useRef, useState } from 'react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
 
-import { MENTION_DEBOUNCE_MS, useFileMentions } from './use-file-mentions.js';
+import { useFileMentions } from './use-file-mentions.js';
 
 
 function Harness({ connection }: { readonly connection: FakeServerConnection }) {
   const [text, setText] = useState('');
   const fieldRef = useRef<HTMLTextAreaElement>(null);
+  const pendingCaret = useRef<number | null>(null);
   const mentions = useFileMentions({
     connection,
     value: text,
     onValueChange: setText,
-    placeCaret: offset => fieldRef.current?.setSelectionRange(offset, offset),
+    placeCaret: (offset) => {
+      pendingCaret.current = offset;
+    },
+  });
+  useLayoutEffect(() => {
+    if (pendingCaret.current !== null) {
+      fieldRef.current?.setSelectionRange(pendingCaret.current, pendingCaret.current);
+      pendingCaret.current = null;
+    }
   });
   return (
     <>
@@ -36,14 +46,19 @@ function Harness({ connection }: { readonly connection: FakeServerConnection }) 
 
 const results = [{ path: 'app/', kind: 'directory' as const, matches: [] }, { path: 'a.ts', kind: 'file' as const, matches: [] }];
 
-function setup() {
+async function setup() {
+  const user = userEvent.setup();
   const connection = new FakeServerConnection();
   render(<Harness connection={connection} />);
   const field = screen.getByLabelText<HTMLTextAreaElement>('field');
-  const type = (value: string) => {
-    fireEvent.change(field, { target: { value } });
-    field.setSelectionRange(value.length, value.length);
+  await user.click(field);
+  const type = async (text: string) => {
+    if (text !== '') {
+      await user.keyboard(text.replaceAll('\n', '{Enter}'));
+    }
   };
+  const press = (keys: string) => user.keyboard(keys);
+  const moveCaret = (offset: number) => user.pointer({ target: field, offset, keys: '[MouseLeft]' });
   const searches = () => connection.sent.filter(command => command.type === 'files.search');
   const closes = () => connection.sent.filter(command => command.type === 'files.close');
   const answer = (items = results, walking = false) => {
@@ -51,58 +66,47 @@ function setup() {
     act(() => connection.emitEvent({ type: 'files.results', requestId: last?.type === 'files.search' ? last.requestId : '', items, walking }));
   };
   const state = () => screen.getByLabelText('state').textContent;
-  const press = (key: string, init: object = {}) => fireEvent.keyDown(field, { key, ...init });
-  const moveCaret = (offset: number) => {
-    field.setSelectionRange(offset, offset);
-    fireEvent.select(field);
-  };
-  fireEvent.focus(field);
-  return { connection, field, type, searches, closes, answer, state, press, moveCaret };
+  /** Waits out the typing pause until the search for `query` goes out. */
+  const searched = (query: string) => waitFor(() => expect(searches().at(-1)).toMatchObject({ query }));
+  return { user, connection, field, type, press, moveCaret, searches, closes, answer, state, searched };
 }
 
 describe('useFileMentions', () => {
-  beforeEach(() => {
-    rs.useFakeTimers();
-  });
-  afterEach(() => {
-    rs.useRealTimers();
-  });
+  it('should search on a bare @ without waiting and open the list with the results', async () => {
+    const { type, searches, answer, state } = await setup();
 
-  it('should search on a bare @ without waiting and open the list with the results', () => {
-    const { type, searches, answer, state } = setup();
-
-    type('@');
+    await type('@');
     answer();
 
     expect(searches()).toEqual([{ type: 'files.search', requestId: expect.any(String), query: '' }]);
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('should keep one request id while the list stays open and only changes the query', () => {
-    const { type, searches } = setup();
+  it('should keep one request id while the list stays open and only changes the query', async () => {
+    const { type, searches, searched } = await setup();
 
-    type('@');
-    type('@ap');
-    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    await type('@ap');
+    await searched('ap');
 
     const ids = searches().map(command => (command.type === 'files.search' ? command.requestId : ''));
+    expect(searches()).toHaveLength(2);
     expect(new Set(ids).size).toBe(1);
   });
 
-  it('should close the server search when the list is dismissed and when the @ goes away', () => {
-    const { type, press, searches, closes, answer } = setup();
-    type('@');
+  it('should close the server search when the list is dismissed', async () => {
+    const { type, press, searches, closes, answer } = await setup();
+    await type('@');
     answer();
 
-    press('Escape');
+    await press('{Escape}');
     const id = searches()[0].type === 'files.search' ? searches()[0].requestId : '';
 
     expect(closes()).toEqual([{ type: 'files.close', requestId: id }]);
   });
 
-  it('should report that the server is still walking until the last batch', () => {
-    const { type, answer } = setup();
-    type('@');
+  it('should report that the server is still walking until the last batch', async () => {
+    const { type, answer } = await setup();
+    await type('@');
 
     answer(results, true);
     expect(screen.getByLabelText('walking')).toHaveTextContent('true');
@@ -111,190 +115,187 @@ describe('useFileMentions', () => {
     expect(screen.getByLabelText('walking')).toHaveTextContent('false');
   });
 
-  it('should clear the results when the search closes', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should open a new search without the results of the closed one', async () => {
+    const { type, answer, press, searches, state } = await setup();
+    await type('@');
     answer();
-    press('Escape');
+    await press('{Escape}');
 
-    type('@');
+    await press('{Backspace}');
+    await type('@');
 
+    expect(searches()).toHaveLength(2);
     expect(state()).toBe('closed');
   });
 
-  it('should start at the first item again when the searched query changes', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should start at the first item again when the searched query changes', async () => {
+    const { type, answer, press, state, searched } = await setup();
+    await type('@');
     answer();
-    press('ArrowDown');
+    await press('{ArrowDown}');
     expect(state()).toBe('open:1:app/,a.ts');
 
-    type('@a');
-    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    await type('a');
+    await searched('a');
 
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('should keep the highlight while more results stream in for the same query', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should keep the highlight while more results stream in for the same query', async () => {
+    const { type, answer, press, state } = await setup();
+    await type('@');
     answer();
-    press('ArrowDown');
+    await press('{ArrowDown}');
 
     answer([...results, { path: 'b.ts', kind: 'file', matches: [] }], true);
 
     expect(state()).toBe('open:1:app/,a.ts,b.ts');
   });
 
-  it('should wait for a pause in typing before searching for a query', () => {
-    const { type, searches, answer } = setup();
-    type('@');
+  it('should wait for a pause in typing before searching for a query', async () => {
+    const { type, searches, answer, searched } = await setup();
+    await type('@');
     answer();
 
-    type('@ap');
+    await type('ap');
     expect(searches()).toHaveLength(1);
-    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+    await searched('ap');
 
-    expect(searches().at(-1)).toMatchObject({ query: 'ap' });
+    expect(searches()).toHaveLength(2);
   });
 
-  it('should ignore a response to an earlier request', () => {
-    const { type, connection, state } = setup();
-    type('@');
+  it('should ignore a response to an earlier request', async () => {
+    const { type, connection, state } = await setup();
+    await type('@');
 
     act(() => connection.emitEvent({ type: 'files.results', requestId: 'stale', items: results, walking: false }));
 
     expect(state()).toBe('closed');
   });
 
-  it('should stay closed without results, without an @ and without focus', () => {
-    const { type, answer, state, field } = setup();
+  it('should stay closed without results, without an @ and without focus', async () => {
+    const { user, field, type, answer, state } = await setup();
 
-    type('plain');
+    await type('plain');
     expect(state()).toBe('closed');
 
-    type('@');
+    await user.clear(field);
+    await type('@');
     answer([]);
     expect(state()).toBe('closed');
 
     answer();
-    fireEvent.blur(field);
+    await user.click(document.body);
     expect(state()).toBe('closed');
   });
 
-  it('should move the highlight with the arrows and stop at the ends', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should move the highlight with the arrows and stop at the ends', async () => {
+    const { type, answer, press, state } = await setup();
+    await type('@');
     answer();
 
-    press('ArrowDown');
-    press('ArrowDown');
+    await press('{ArrowDown}{ArrowDown}');
     expect(state()).toBe('open:1:app/,a.ts');
-    press('ArrowUp');
-    press('ArrowUp');
+    await press('{ArrowUp}{ArrowUp}');
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('should accept the highlighted file with Enter, add a space and move the caret after it', () => {
-    const { type, answer, press, field } = setup();
-    type('see @');
+  it('should accept the highlighted file with Enter, add a space and move the caret after it', async () => {
+    const { type, answer, press, field } = await setup();
+    await type('see @');
     answer();
-    press('ArrowDown');
+    await press('{ArrowDown}');
 
-    press('Enter');
+    await press('{Enter}');
 
     expect(field.value).toBe('see @a.ts ');
     expect(field.selectionStart).toBe('see @a.ts '.length);
   });
 
-  it('should accept a directory with Tab and leave the list open for the next level', () => {
-    const { type, answer, press, field, searches, state } = setup();
-    type('@');
+  it('should accept a directory with Tab and leave the list open for the next level', async () => {
+    const { type, answer, press, field, state, searched } = await setup();
+    await type('@');
     answer();
 
-    press('Tab');
+    await press('{Tab}');
 
     expect(field.value).toBe('@app/');
-    act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
-    expect(searches().at(-1)).toMatchObject({ query: 'app/' });
+    expect(field).toHaveFocus();
+    await searched('app/');
     answer([{ path: 'app/main.ts', kind: 'file', matches: [] }]);
     expect(state()).toBe('open:0:app/main.ts');
   });
 
-  it('should dismiss the list with Esc until the mention ends', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should dismiss the list with Esc until the mention ends', async () => {
+    const { type, answer, press, state } = await setup();
+    await type('@');
     answer();
 
-    press('Escape');
+    await press('{Escape}');
     expect(state()).toBe('closed');
 
-    type('');
-    type('@');
+    await press('{Backspace}');
+    await type('@');
     answer();
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('should stay closed after Esc while the caret moves inside the same mention', () => {
-    const { type, answer, press, field, state } = setup();
-    type('@ab');
+  it('should stay closed after Esc while the caret moves inside the same mention', async () => {
+    const { type, answer, press, moveCaret, state } = await setup();
+    await type('@ab');
     answer();
 
-    press('Escape');
-    field.setSelectionRange(2, 2);
-    fireEvent.select(field);
+    await press('{Escape}');
+    await moveCaret(2);
 
     expect(state()).toBe('closed');
   });
 
   it.each([
-    ['shift', { shiftKey: true }],
-    ['ctrl', { ctrlKey: true }],
-  ])('should leave the arrows alone with %s', (_label, init) => {
-    const { type, answer, press, state } = setup();
-    type('@');
+    ['shift', '{Shift>}{ArrowDown}{/Shift}'],
+    ['ctrl', '{Control>}{ArrowDown}{/Control}'],
+  ])('should leave the arrows alone with %s', async (_label, keys) => {
+    const { type, answer, press, state } = await setup();
+    await type('@');
     answer();
 
-    press('ArrowDown', init);
+    await press(keys);
 
     expect(state()).toBe('open:0:app/,a.ts');
   });
 
-  it('should leave other keys alone', () => {
-    const { type, answer, press, state } = setup();
-    type('@');
+  it('should leave the keys it does not handle to the field', async () => {
+    const { type, answer, press, field, state } = await setup();
+    await type('@');
     answer();
 
-    press('a');
+    await press('{Home}');
 
-    expect(state()).toBe('open:0:app/,a.ts');
+    expect(field.selectionStart).toBe(0);
+    expect(state()).toBe('closed');
   });
 
   describe('the mention under the caret', () => {
-    it('should read the query between the @ and the caret and replace the whole token when accepting', () => {
-      const { type, moveCaret, searches, answer, press, field } = setup();
-      type('see @app/src now');
-      moveCaret(8);
-      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
-
-      expect(searches().at(-1)).toMatchObject({ query: 'app' });
+    it('should read the query between the @ and the caret and replace the whole token when accepting', async () => {
+      const { type, moveCaret, answer, press, field, searched } = await setup();
+      await type('see @app/src now');
+      await moveCaret(8);
+      await searched('app');
 
       answer();
-      press('ArrowDown');
-      press('Enter');
+      await press('{ArrowDown}{Enter}');
       expect(field.value).toBe('see @a.ts  now');
     });
 
     it.each([
       ['after whitespace', 'a b @c'],
       ['after a line break', 'a\n@b'],
-    ])('should find the @ %s', (_label, value) => {
-      const { type, searches } = setup();
+    ])('should find the @ %s', async (_label, text) => {
+      const { type, searched } = await setup();
 
-      type(value);
-      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+      await type(text);
 
-      expect(searches().at(-1)).toMatchObject({ query: value.at(-1) });
+      await searched(text.at(-1)!);
     });
 
     it.each([
@@ -303,23 +304,22 @@ describe('useFileMentions', () => {
       ['whitespace between the @ and the caret', '@a b', 4],
       ['the caret before the @', 'x @a', 1],
       ['an empty text', '', 0],
-    ])('should have no mention to search for with %s', (_label, value, caret) => {
-      const { type, moveCaret, searches, closes, state } = setup();
+    ])('should have no mention to search for with %s', async (_label, text, caret) => {
+      const { type, moveCaret, searches, closes, state } = await setup();
 
-      type(value);
-      moveCaret(caret);
-      act(() => rs.advanceTimersByTime(MENTION_DEBOUNCE_MS));
+      await type(text);
+      await moveCaret(caret);
 
       expect(state()).toBe('closed');
       expect(closes()).toHaveLength(searches().length);
     });
 
-    it('should quote the path of a file that has whitespace', () => {
-      const { type, answer, field, press } = setup();
-      type('@');
+    it('should quote the path of a file that has whitespace', async () => {
+      const { type, answer, field, press } = await setup();
+      await type('@');
       answer([{ path: 'my app/a b.ts', kind: 'file', matches: [] }]);
 
-      press('Enter');
+      await press('{Enter}');
 
       expect(field.value).toBe('@"my app/a b.ts" ');
     });

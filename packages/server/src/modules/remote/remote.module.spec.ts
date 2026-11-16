@@ -1,4 +1,4 @@
-import { Test } from '@nestjs/testing';
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { NodeDataChannelPeerAdapter } from './adapters/node-datachannel-peer.adapter.js';
 import { RemoteClientTransportAdapter } from './adapters/remote-client-transport.adapter.js';
@@ -10,7 +10,7 @@ import { RemoteModule } from './remote.module.js';
 
 describe('RemoteModule', () => {
   it('should bind the ports to their adapters and resolve the transport', async () => {
-    const module = await Test.createTestingModule({ imports: [RemoteModule] }).compile();
+    const module = await createTestingModule({ imports: [RemoteModule] }).compile();
 
     expect(module.get(IRemotePeerFactoryPort)).toBeInstanceOf(NodeDataChannelPeerAdapter);
     expect(module.get(ISignalingClientPort)).toBeInstanceOf(WsSignalingClientAdapter);

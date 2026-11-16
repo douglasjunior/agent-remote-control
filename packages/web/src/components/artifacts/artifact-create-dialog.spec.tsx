@@ -52,7 +52,7 @@ describe('ArtifactCreateDialog', () => {
       businessRefinement: false,
       technicalRefinement: false,
     });
-    answer(app, 'artifact.create', { ok: true, id: 'F-2' });
+    await answer(app, 'artifact.create', { ok: true, id: 'F-2' });
     expect(await screen.findByText('F-2 created')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -83,7 +83,7 @@ describe('ArtifactCreateDialog', () => {
       businessRefinement: true,
       technicalRefinement: true,
     });
-    answer(app, 'artifact.create', { ok: false, error: 'Unknown feature' });
+    await answer(app, 'artifact.create', { ok: false, error: 'Unknown feature' });
     expect(await screen.findByText('Unknown feature')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 

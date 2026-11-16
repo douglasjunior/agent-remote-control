@@ -1,5 +1,7 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from '@rstest/core';
+
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { LocalWorkspaceFileSearchAdapter } from './adapters/local-workspace-file-search.adapter.js';
 import { LocalWorkspaceUploadAdapter } from './adapters/local-workspace-upload.adapter.js';
@@ -12,7 +14,7 @@ import { WorkspaceModule } from './workspace.module.js';
 
 describe('WorkspaceModule', () => {
   it('should compile the module and resolve the workspace port', async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       imports: [WorkspaceModule],
     }).compile();
 

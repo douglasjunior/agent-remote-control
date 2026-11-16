@@ -1,5 +1,7 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from '@rstest/core';
+
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { DiscordModule } from './discord.module.js';
 import { DiscordActivityFormatter } from './formatters/discord-activity.formatter.js';
@@ -13,7 +15,7 @@ import { DiscordClientService } from './services/discord-client.service.js';
 
 describe('DiscordModule', () => {
   it('should compile the module and resolve all discord providers', async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       imports: [DiscordModule],
     }).compile();
 

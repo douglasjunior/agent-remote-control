@@ -26,6 +26,11 @@ and integrated with the NestJS testing module (`@nestjs/testing`).
 - **File location**: `*.spec.ts` placed **side by side** with the corresponding
   production file in `packages/server/src/`.
 - **E2E tests**: located in the `test/` directory and run with `rstest.config.e2e.ts`.
+- **Logs**: a run prints only the results. `test/testing-module.ts` of the server and the p2p-server gives the logger
+  of the run, silent by default and every level with `TEST_LOGS=true pnpm test`; `test/setup.ts` installs it for every
+  `Logger`, and `createTestingModule` from the same file passes it to the testing module, whose `compile()` would
+  otherwise install Nest's logger that prints errors. Assert on a log by spying on `Logger.prototype`, which still
+  receives every call.
 - **Commands**:
   - `pnpm test`: Runs all unit tests once;
   - `pnpm test:cov`: Runs the tests and generates a code coverage report;
@@ -112,13 +117,16 @@ export function createStubAgentClient(
 }
 ```
 
-### Dependency injection in `Test.createTestingModule`
+### Dependency injection in a testing module
 
-When using the NestJS testing utility, replace the concrete implementation by binding the
+Build testing modules with `createTestingModule` from `test/testing-module.ts`, never `Test.createTestingModule`
+directly, so they keep the logger of the run. Replace the concrete implementation by binding the
 port's `Symbol` to the corresponding stub:
 
 ```typescript
-import { Test, TestingModule } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
+
+import { createTestingModule } from '../../../../test/testing-module.js';
 import { ConnectAgentUseCase } from './connect-agent.use-case.ts';
 import { IAgentClientPort } from '../ports/agent-client.port.ts';
 import { StubAgentClientPort } from '../testing/agent-client.stub.ts';
@@ -130,7 +138,7 @@ describe('ConnectAgentUseCase', () => {
   beforeEach(async () => {
     stubAgentClient = new StubAgentClientPort();
 
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       providers: [
         ConnectAgentUseCase,
         {
@@ -198,7 +206,8 @@ Prefer explicit matchers to produce clear diagnostics on failure:
 Automated tests must be deterministic and independent of system clock latency:
 
 - **No arbitrary `setTimeout`**: Never use fixed delays to wait for asynchronous executions.
-  Use `rs.waitFor(() => expect(...))` to wait for expected events or conditions.
+  Use `rs.waitFor(() => expect(...))` to wait for expected events or conditions. Specs that render React wait
+  with Testing Library's `waitFor` instead (see the `web-app` skill, `references/testing.md`).
 - **Fake timers for time-based operations**: When testing timeouts, retries or debouncing,
   use simulated timers (`rs.useFakeTimers()`) and advance time deliberately
   with `await rs.advanceTimersByTimeAsync(ms)`.

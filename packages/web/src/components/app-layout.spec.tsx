@@ -77,9 +77,10 @@ describe('AppLayout', () => {
   });
 
   it('should show when each conversation last changed and keep the label current', async () => {
-    rs.useFakeTimers({ shouldAdvanceTime: true });
+    // Only the clock of the label: the dialog and user-event keep their real timers.
+    rs.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
     try {
-      const user = userEvent.setup({ advanceTimers: rs.advanceTimersByTime });
+      const user = userEvent.setup();
       rs.setSystemTime(new Date(AT));
       const { connection } = renderApp();
       act(() => connection.emitEvent({

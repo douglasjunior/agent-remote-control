@@ -1,8 +1,9 @@
 import { Logger } from '@nestjs/common';
-import { Test, type TestingModule } from '@nestjs/testing';
+import { type TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { Events, type Message, type ThreadChannel } from 'discord.js';
 
+import { createTestingModule } from '../../../../test/testing-module.js';
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
@@ -148,7 +149,7 @@ describe('DiscordMessageHandler', () => {
   beforeEach(async () => {
     rs.useFakeTimers();
 
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       providers: [
         DiscordMessageHandler,
         DiscordActivityFormatter,

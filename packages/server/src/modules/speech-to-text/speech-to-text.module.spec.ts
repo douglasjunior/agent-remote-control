@@ -1,5 +1,6 @@
-import { Test } from '@nestjs/testing';
 import { afterEach, describe, expect, it } from '@rstest/core';
+
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { NoopSpeechToTextAdapter } from './adapters/noop-speech-to-text.adapter.js';
 import { WhisperCppAdapter } from './adapters/whisper-cpp.adapter.js';
@@ -20,7 +21,7 @@ describe('SpeechToTextModule', () => {
   });
 
   const resolveProvider = async () => {
-    const module = await Test.createTestingModule({ imports: [SpeechToTextModule] }).compile();
+    const module = await createTestingModule({ imports: [SpeechToTextModule] }).compile();
     return module.get<unknown>(ISpeechToTextPort);
   };
 

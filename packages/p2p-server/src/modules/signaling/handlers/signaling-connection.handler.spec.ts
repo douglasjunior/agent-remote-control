@@ -1,7 +1,7 @@
 import { SIGNALING_CLOSE_CODES, type ToHostSignal } from '@agent-remote-control/protocol/signaling';
 import { Logger } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 
+import { createTestingModule } from '../../../../test/testing-module.js';
 import { ISignalingTransportPort } from '../ports/signaling-transport.port.js';
 import { SignalingRegistryService } from '../services/signaling-registry.service.js';
 import { SignalingModule } from '../signaling.module.js';
@@ -57,7 +57,7 @@ describe('SignalingConnectionHandler', () => {
     rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     transport = new FakeSignalingTransport();
-    const moduleRef = await Test.createTestingModule({ imports: [SignalingModule] })
+    const moduleRef = await createTestingModule({ imports: [SignalingModule] })
       .overrideProvider(ISignalingTransportPort).useValue(transport)
       .compile();
     await moduleRef.init();
@@ -96,7 +96,7 @@ describe('SignalingConnectionHandler', () => {
     it('should be refused when P2P_ALLOWED_INSTANCES leaves its instance out', async () => {
       rs.stubEnv('P2P_ALLOWED_INSTANCES', ` ${OTHER_HOST!.instanceId} , `);
       await close();
-      const moduleRef = await Test.createTestingModule({ imports: [SignalingModule] })
+      const moduleRef = await createTestingModule({ imports: [SignalingModule] })
         .overrideProvider(ISignalingTransportPort).useValue(transport = new FakeSignalingTransport())
         .compile();
       await moduleRef.init();

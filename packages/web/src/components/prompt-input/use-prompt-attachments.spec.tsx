@@ -195,16 +195,16 @@ describe('usePromptAttachments', () => {
       expect(connection.sent[0]).toEqual({ type: 'upload.start', uploadId: expect.any(String), conversationId: 'c1', name: 'big.bin', size: UPLOAD_CHUNK_BYTES + 10 });
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
-      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      await waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
       expect(sent('upload.chunk')[0]).toMatchObject({ index: 0 });
       expect(sent('upload.finish')).toHaveLength(0);
 
       connection.emitEvent({ type: 'upload.ack', uploadId, index: 0 });
-      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(2));
+      await waitFor(() => expect(sent('upload.chunk')).toHaveLength(2));
       expect(sent('upload.chunk')[1]).toMatchObject({ index: 1 });
 
       connection.emitEvent({ type: 'upload.ack', uploadId, index: 1 });
-      await rs.waitFor(() => expect(sent('upload.finish')).toEqual([{ type: 'upload.finish', uploadId }]));
+      await waitFor(() => expect(sent('upload.finish')).toEqual([{ type: 'upload.finish', uploadId }]));
 
       act(() => connection.emitEvent({ type: 'upload.done', uploadId, attachment: stored }));
       await waitFor(() => expect(api.current.items[0]).toMatchObject({ status: 'ready', attachment: stored }));
@@ -215,7 +215,7 @@ describe('usePromptAttachments', () => {
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
 
-      await rs.waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
+      await waitFor(() => expect(sent('upload.chunk')).toHaveLength(1));
       expect(sent('upload.chunk')[0]).toMatchObject({ dataBase64: btoa('hello') });
     });
 
@@ -224,7 +224,7 @@ describe('usePromptAttachments', () => {
 
       connection.emitEvent({ type: 'upload.ready', uploadId });
 
-      await rs.waitFor(() => expect(sent('upload.finish')).toHaveLength(1));
+      await waitFor(() => expect(sent('upload.finish')).toHaveLength(1));
       expect(sent('upload.chunk')).toHaveLength(0);
     });
 

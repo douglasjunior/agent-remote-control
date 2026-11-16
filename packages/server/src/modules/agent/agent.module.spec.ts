@@ -1,5 +1,7 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from '@rstest/core';
+
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { AcpAgentPortFactoryAdapter } from './adapters/acp-agent-port-factory.adapter.js';
 import { NodeFileSystemAdapter } from './adapters/node-file-system.adapter.js';
@@ -12,7 +14,7 @@ import { IProcessRunnerPort } from './ports/process-runner.port.js';
 
 describe('AgentModule', () => {
   it('should compile the module and resolve all port providers', async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       imports: [AgentModule],
     }).compile();
 
