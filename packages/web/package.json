@@ -8,9 +8,9 @@
   "scripts": {
     "dev": "rsbuild dev",
     "dev:p2p": "rsbuild dev --env-mode p2p",
-    "build": "tsc --noEmit && rsbuild build",
-    "build:p2p": "tsc --noEmit && rsbuild build --env-mode p2p",
-    "ts": "tsc --noEmit",
+    "build": "node ../../node_modules/typescript-native/bin/tsc --noEmit && rsbuild build",
+    "build:p2p": "node ../../node_modules/typescript-native/bin/tsc --noEmit && rsbuild build --env-mode p2p",
+    "ts": "node ../../node_modules/typescript-native/bin/tsc --noEmit",
     "preview": "rsbuild preview",
     "ui:relativize": "node scripts/relativize-imports.mjs",
     "ui:add": "shadcn add"

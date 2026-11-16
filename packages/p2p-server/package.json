@@ -10,7 +10,7 @@
     "dev": "nest start --watch",
     "start": "nest start",
     "start:prod": "node dist/main",
-    "ts": "tsc --noEmit"
+    "ts": "node ../../node_modules/typescript-native/bin/tsc --noEmit"
   },
   "dependencies": {
     "@agent-remote-control/protocol": "workspace:*",

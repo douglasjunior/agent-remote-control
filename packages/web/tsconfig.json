@@ -8,7 +8,6 @@
     "customConditions": ["source"],
     "noEmit": true,
     "paths": { "@/*": ["./src/*"] },
-    "incremental": false,
     "emitDecoratorMetadata": false,
     "experimentalDecorators": false,
     "types": ["@rsbuild/core/types", "@rstest/core/globals", "@testing-library/jest-dom"]

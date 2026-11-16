@@ -113,6 +113,7 @@ All commands run from the repository root and apply to every package in `package
 - Every package script runs from its own folder (`packages/server`, `packages/web`); the root scripts delegate to them. The server resolves `.env`, `data/` and `workspaces/` from the repository root through `repository-root.util.ts`, whatever the working directory.
 - Build: `pnpm build`
 - TypeScript static type checking: `pnpm ts`
+- Two TypeScript compilers are installed: `typescript-native` (TypeScript 7) type checks (`ts` and the check in the web `build`), and `typescript` (TypeScript 6) serves the tools that use the compiler API (typescript-eslint, the Nest CLI) and emits `protocol`. Both ship a `tsc` binary, so package scripts call each one by its path in `node_modules`.
 - Linter: `pnpm lint`
 - Code formatting via ESLint: `pnpm format` (or `pnpm lint:fix`)
 - Run unit tests: `pnpm test`
