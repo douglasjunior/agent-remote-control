@@ -1,0 +1,38 @@
+name: Commit authors
+
+on:
+  pull_request:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check commit authors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check pull request commits
+        if: github.event_name == 'pull_request'
+        run: >
+          bash .github/scripts/check-commit-authors.sh
+          "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          "${{ github.repository_owner }}"
+          "${{ github.event.pull_request.user.login }}"
+      - name: Check pushed commits
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            range="origin/$DEFAULT_BRANCH..$AFTER"
+          else
+            range="$BEFORE..$AFTER"
+          fi
+          bash .github/scripts/check-commit-authors.sh "$range"
