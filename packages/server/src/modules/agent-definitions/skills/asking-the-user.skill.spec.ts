@@ -9,7 +9,7 @@ describe('asking-the-user skill', () => {
   const skill = ASKING_THE_USER_SKILL.buildContent(skillContext());
 
   it('should be read by the roles that ask the user', () => {
-    expect(ASKING_THE_USER_SKILL).toMatchObject({ name: 'asking-the-user', roles: ['CEO', 'PRODUCT_OWNER', 'TECH_LEAD'] });
+    expect(ASKING_THE_USER_SKILL).toMatchObject({ name: 'asking-the-user', roles: ['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT'] });
   });
 
   it('should teach the question grammar and how each question stands on its own', () => {

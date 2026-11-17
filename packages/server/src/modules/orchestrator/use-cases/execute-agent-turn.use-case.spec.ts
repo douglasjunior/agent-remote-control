@@ -548,6 +548,36 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
   });
 
+  describe('delegation only on the user\'s decision', () => {
+    const onlyOnUserDecision = { project: 'optional', userInitiatedOnly: true } as const;
+
+    it('should delegate when the user\'s message leads to it', async () => {
+      agentRegistry.getDelegationContract.mockReturnValue(onlyOnUserDecision);
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Installing it">Install Docker.</delegate>', 'Installed.'];
+      delegateStubPort.mockResponses = ['Docker installed.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Installed.' });
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
+    });
+
+    it('should send the CEO back to ask the user when it delegates on its own after an agent result', async () => {
+      agentRegistry.getDelegationContract.mockReturnValue(onlyOnUserDecision);
+      stubAgentPort.mockResponses = [
+        '<delegate role="DEVELOPER" summary="Installing it">Install Docker.</delegate>',
+        '<delegate role="DEVELOPER" summary="Tuning it">Tune the system.</delegate>',
+        'May I ask the IT agent to tune it?',
+      ];
+      delegateStubPort.mockResponses = ['Docker installed.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[2]).toContain('DEVELOPER is delegated to only on the user\'s decision');
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
+    });
+  });
+
   describe('delegation repair', () => {
     it('should send a repair prompt with the reason and delegate once the CEO fixes the tag', async () => {
       stubAgentPort.mockResponses = [

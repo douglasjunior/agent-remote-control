@@ -413,15 +413,16 @@ export class ExecuteAgentTurnUseCase {
     ));
 
     let response = await runCeo(prompt, isUserMessage, answerDelivery);
+    let userInitiated = isUserMessage;
     for (;;) {
-      let decision = await this.delegationValidator.decide(response, request);
+      let decision = await this.delegationValidator.decide(response, request, userInitiated);
       for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
         this.logger.warn(
           `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
         );
         request.onDraft?.('');
         response = await runCeo(buildDelegationRepairPrompt(decision.reason));
-        decision = await this.delegationValidator.decide(response, request);
+        decision = await this.delegationValidator.decide(response, request, userInitiated);
       }
       if (decision.kind !== 'ask') {
         const requestResults = pending.take();
@@ -429,6 +430,7 @@ export class ExecuteAgentTurnUseCase {
       }
 
       const answers = await this.agentQuestions.ask(request, this.agentQuestions.askerFor(request.agentRole, undefined), decision.message, decision.questions, workId);
+      userInitiated = true;
       response = await runCeo(buildUserAnswersPrompt(answers), true);
     }
   }

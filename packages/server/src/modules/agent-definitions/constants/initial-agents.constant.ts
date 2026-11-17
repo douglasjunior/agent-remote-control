@@ -6,6 +6,7 @@ import {
 } from '../prompts/code-reviewer.prompt.js';
 import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from '../prompts/developer.prompt.js';
 import { GIT_OPS_SYSTEM_PROMPT, GIT_OPS_TURN_REMINDER } from '../prompts/git-ops.prompt.js';
+import { IT_SUPPORT_SYSTEM_PROMPT, IT_SUPPORT_TURN_REMINDER } from '../prompts/it-support.prompt.js';
 import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from '../prompts/product-owner.prompt.js';
 import { QA_SYSTEM_PROMPT, QA_TURN_REMINDER } from '../prompts/qa.prompt.js';
 import { TECH_LEAD_SYSTEM_PROMPT, TECH_LEAD_TURN_REMINDER } from '../prompts/tech-lead.prompt.js';
@@ -15,6 +16,7 @@ import {
   CODE_REVIEWER_ARTIFACT_ACCESS,
   DEVELOPER_ARTIFACT_ACCESS,
   GIT_OPS_ARTIFACT_ACCESS,
+  IT_SUPPORT_ARTIFACT_ACCESS,
   PRODUCT_OWNER_ARTIFACT_ACCESS,
   QA_ARTIFACT_ACCESS,
   TECH_LEAD_ARTIFACT_ACCESS,
@@ -98,5 +100,16 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     delegation: { project: 'required', sessionMode: 'overridable', artifact: 'required', needsReviewableWork: true },
     artifacts: QA_ARTIFACT_ACCESS,
     turnReminder: QA_TURN_REMINDER,
+  },
+  {
+    role: 'IT_SUPPORT',
+    name: 'IT Support Agent',
+    description:
+      'IT support and system administration for the machine the agents run on, Windows, Linux or macOS: installing programs, SDKs and runtimes, operating system settings, environment variables, and fixing the environment, such as starting Docker or another service a project needs. It investigates the environment first, read-only, then asks the user to approve a plain-language plan and changes nothing before the approval. Never delegate to it on your own: suggest it to the user with a question and delegate only when the user agrees or asks for it explicitly. Delegate to it without a project folder for work on the machine, or with one for an environment problem of that project. Resume it to continue the same environment work; start a new session for a new subject.',
+    buildSystemPrompt: () => IT_SUPPORT_SYSTEM_PROMPT,
+    defaultSessionMode: 'resume',
+    delegation: { project: 'optional', sessionMode: 'overridable', asksUser: true, userInitiatedOnly: true },
+    artifacts: IT_SUPPORT_ARTIFACT_ACCESS,
+    turnReminder: IT_SUPPORT_TURN_REMINDER,
   },
 ];

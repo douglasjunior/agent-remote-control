@@ -13,7 +13,7 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 |---|---|
 | CEO | `agent-team`, `artifact-board`, `delegation-protocol`, `response-protocol`, `workspace-navigation`, `skill-authoring` |
 | Every executor (GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
-| CEO, PRODUCT_OWNER, TECH_LEAD | `asking-the-user` |
+| CEO, PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
 
 ### `asking-the-user`

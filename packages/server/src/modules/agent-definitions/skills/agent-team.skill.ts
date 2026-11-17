@@ -33,7 +33,7 @@ ${agent.description}
 - ${formatSessionMode(agent)}
 - ${formatProjectAccess(agent)}
 - ${formatArtifactUse(agent)}
-- ${formatUserQuestions(agent)}`)
+- ${formatUserQuestions(agent)}${formatUserDecision(agent)}`)
     .join('\n\n');
 }
 
@@ -60,6 +60,12 @@ function formatSessionMode(agent: AgentDefinition): string {
   return agent.delegation.sessionMode
     ? `Runs in "${mode}" session mode unless you set session="new" or session="resume".`
     : `Always runs in "${mode}" session mode, so never set the session attribute.`;
+}
+
+function formatUserDecision(agent: AgentDefinition): string {
+  return agent.delegation.userInitiatedOnly
+    ? `\n- Delegate to it only on the user's decision: suggest it with a \`<question>\` (options to go ahead or not) and delegate once the user agrees or asks for it explicitly. A delegation after an agent result, or without the user's say, is rejected.`
+    : '';
 }
 
 function formatUserQuestions(agent: AgentDefinition): string {

@@ -60,6 +60,13 @@ const GLYPHS: Readonly<Record<MarkId, ReactNode>> = {
       <circle className="g-bubble" cx="18" cy="23" r="1.1" {...DOT} />
     </>
   ),
+  it: (
+    <>
+      <rect x="5" y="7" width="22" height="15" rx="2.5" />
+      <path d="M12 27 H20 M16 22 V27" />
+      <path className="g-dot" d="M11 13 L14.5 16 L11 19" />
+    </>
+  ),
   git: (
     <>
       <path d="M9 7 V25" />

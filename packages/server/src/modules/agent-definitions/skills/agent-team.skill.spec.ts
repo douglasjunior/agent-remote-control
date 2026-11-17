@@ -40,6 +40,13 @@ describe('agent-team skill', () => {
     expect(AGENT_TEAM_SKILL.buildContent(skillContext({ team: [owner] }))).toContain('- Asks the user directly for the decisions it needs while it works.');
   });
 
+  it('should tell which agents are delegated to only on the user\'s decision', () => {
+    const support = { ...gitOps, role: 'IT_SUPPORT' as const, delegation: { ...gitOps.delegation, userInitiatedOnly: true as const } };
+
+    expect(AGENT_TEAM_SKILL.buildContent(skillContext({ team: [support] }))).toContain('- Delegate to it only on the user\'s decision: suggest it with a `<question>`');
+    expect(skill).not.toContain('only on the user\'s decision');
+  });
+
   it('should describe how each agent uses the board, its project and its session', () => {
     const contentFor = (overrides: Partial<AgentDefinition>) => AGENT_TEAM_SKILL.buildContent(skillContext({ team: [{ ...gitOps, ...overrides }] }));
 

@@ -2,7 +2,7 @@
 name: agent-definitions
 description: >
   Standard for defining, parameterizing and registering AI agent personas in the system.
-  Governs the AgentRole roles (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD, PRODUCT_OWNER and QA), the
+  Governs the AgentRole roles (CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD, PRODUCT_OWNER, QA and IT_SUPPORT), the
   AgentDefinition contract with its delegation contract, the AgentRegistryService implementation (IAgentRegistryPort),
   the specialized system prompts, the skills agents read on demand (built-in and the user's own in DATA_DIR/skills),
   the instructions for asking the user questions, the CEO's lean core prompt and task routing. Use when creating,
@@ -41,7 +41,8 @@ export type AgentRole =
   | 'CODE_REVIEWER'
   | 'TECH_LEAD'
   | 'PRODUCT_OWNER'
-  | 'QA';
+  | 'QA'
+  | 'IT_SUPPORT';
 ```
 
 | Role | Summary | Prompt reference |
@@ -53,6 +54,7 @@ export type AgentRole =
 | `DEVELOPER` | Implements a task with tests, adapting to the project; local Git only. | [developer-prompt.md](references/developer-prompt.md) |
 | `CODE_REVIEWER` | Independent review of a task's pull request or branch without running it; APPROVED or CHANGES_REQUESTED. | [code-reviewer-prompt.md](references/code-reviewer-prompt.md) |
 | `QA` | Tests a reviewed task by running the application, preparing its own environment with local changes it never commits; PASSED or FAILED. | [qa-prompt.md](references/qa-prompt.md) |
+| `IT_SUPPORT` | Environment and system administration of the machine (installs, OS settings, services, variables, SDKs): investigates read-only, asks the user to approve a plain-language plan and changes nothing before the approval. The CEO only suggests it. | [it-support-prompt.md](references/it-support-prompt.md) |
 
 ## Definition Contract (`AgentDefinition`)
 
@@ -68,7 +70,8 @@ export type AgentRole =
   - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer, and the orchestrator admits only one writer per folder at a time. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test;
   - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
-  - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD): the agent asks the user directly; the questions of any other delegate are sent back to it, for its result to carry the decision, and the `agent-team` skill tells the CEO which agents ask;
+  - `userInitiatedOnly: true` (IT_SUPPORT): the CEO delegates to the agent only in a turn that answers the user's message or answers; the validator rejects the delegation in a turn that follows an agent result, and the repair prompt sends the CEO to suggest the agent to the user with a `<question>` first. The `agent-team` skill and the `delegation-protocol` skill say so to the CEO;
+  - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; the questions of any other delegate are sent back to it, for its result to carry the decision, and the `agent-team` skill tells the CEO which agents ask;
 - `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for DEVELOPER, GIT_OPS, CODE_REVIEWER and QA), `create`, the writable `sections` and the writable `fields`. The orchestrator enforces it on every artifact request, and the board prompts and the `board-requests` skill turn it into the agent's grammar;
 - `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills;
 - `turnReminder`: optional turn reminder (`string`) appended to the prompt of each of the agent's rounds;
@@ -139,14 +142,14 @@ skills live in `DATA_DIR/skills/<skill>/SKILL.md` and replace a built-in one of 
 
 ## Questions to the user
 
-The CEO, PRODUCT_OWNER and TECH_LEAD ask the user directly when they need a decision from them to proceed, with
+The CEO, PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT ask the user directly when they need a decision from them to proceed, with
 `<question rationale="…">text<option>…</option></question>` tags in their final response. The instructions:
 
-- the guide lives only in the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER
-  and TECH_LEAD; its content is in [references/agent-skills.md](references/agent-skills.md));
+- the guide lives only in the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER,
+  TECH_LEAD and IT_SUPPORT; its content is in [references/agent-skills.md](references/agent-skills.md));
 - `USER_QUESTIONS_BRIEF` (`prompts/user-questions.prompt.ts`): the tag in brief under `### Asking the User` and the
-  skill to read before the first question of a session, in the system prompt of PRODUCT_OWNER and TECH_LEAD;
-- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those two agents, which also names the skill.
+  skill to read before the first question of a session, in the system prompt of PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT;
+- `USER_QUESTIONS_REMINDER`: the line included in the `turnReminder` of those agents, which also names the skill.
 
 DEVELOPER and GIT_OPS never ask: a decision only the user can make ends their turn with the decision and its options
 in their final answer (their turn reminder says so), and the CEO asks the user and delegates again with the answer

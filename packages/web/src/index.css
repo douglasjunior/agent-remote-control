@@ -49,6 +49,7 @@
   --agent-code-reviewer: oklch(0.55 0.2 350);
   --agent-git-ops: oklch(0.6 0.17 50);
   --agent-qa: oklch(0.55 0.15 135);
+  --agent-it-support: oklch(0.55 0.15 235);
   --attention: oklch(0.6 0.15 70);
   --good: oklch(0.52 0.14 160);
   --frozen: oklch(0.58 0.11 230);
@@ -95,6 +96,7 @@
   --agent-code-reviewer: oklch(0.77 0.16 350);
   --agent-git-ops: oklch(0.8 0.15 55);
   --agent-qa: oklch(0.82 0.15 130);
+  --agent-it-support: oklch(0.8 0.13 235);
   --attention: oklch(0.82 0.15 80);
   --good: oklch(0.78 0.15 160);
   --frozen: oklch(0.82 0.09 225);

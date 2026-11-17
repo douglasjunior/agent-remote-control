@@ -59,3 +59,10 @@ export const QA_ARTIFACT_ACCESS: ArtifactAccess = {
   sections: ['test_report'],
   fields: [],
 };
+
+/** The IT support agent does not use the board; the role reads tasks only, as the registry fallback does. */
+export const IT_SUPPORT_ARTIFACT_ACCESS: ArtifactAccess = {
+  scope: 'task',
+  sections: [],
+  fields: [],
+};

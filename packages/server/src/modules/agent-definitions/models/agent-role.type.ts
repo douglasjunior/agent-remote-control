@@ -6,6 +6,7 @@ export const AGENT_ROLES = [
   'TECH_LEAD',
   'PRODUCT_OWNER',
   'QA',
+  'IT_SUPPORT',
 ] as const;
 
 export type AgentRole = (typeof AGENT_ROLES)[number];
