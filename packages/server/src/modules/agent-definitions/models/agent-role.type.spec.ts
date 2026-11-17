@@ -4,7 +4,7 @@ import { AGENT_ROLES } from './agent-role.type.js';
 
 
 describe('agent-role.type', () => {
-  it('should define CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD, PRODUCT_OWNER and QA roles in AGENT_ROLES', () => {
+  it('should define CEO, GIT_OPS, DEVELOPER, CODE_REVIEWER, TECH_LEAD, PRODUCT_OWNER, QA and IT_SUPPORT roles in AGENT_ROLES', () => {
     expect(AGENT_ROLES).toContain('CEO');
     expect(AGENT_ROLES).toContain('GIT_OPS');
     expect(AGENT_ROLES).toContain('DEVELOPER');
@@ -12,6 +12,7 @@ describe('agent-role.type', () => {
     expect(AGENT_ROLES).toContain('TECH_LEAD');
     expect(AGENT_ROLES).toContain('PRODUCT_OWNER');
     expect(AGENT_ROLES).toContain('QA');
-    expect(AGENT_ROLES).toHaveLength(7);
+    expect(AGENT_ROLES).toContain('IT_SUPPORT');
+    expect(AGENT_ROLES).toHaveLength(8);
   });
 });

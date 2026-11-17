@@ -11,6 +11,8 @@ export interface DelegationContract {
   readonly needsReviewableWork?: true;
   /** The agent asks the user directly; without it, a decision it needs comes back in its result. */
   readonly asksUser?: true;
+  /** The CEO may delegate to the agent only in a turn that answers the user's message or answers, never on its own after an agent result. */
+  readonly userInitiatedOnly?: true;
 }
 
 /** The artifact fields besides the sections; `pull_requests` adds or updates the links of the artifact. */

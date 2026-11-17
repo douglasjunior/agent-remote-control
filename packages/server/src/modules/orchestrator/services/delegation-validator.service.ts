@@ -23,7 +23,7 @@ export class DelegationValidatorService {
   ) {}
 
   /** Reads the CEO response and checks every delegation in it, so an invalid one goes back to the CEO before any agent starts. */
-  async decide(response: string, request: TurnRequest): Promise<ValidatedDecision> {
+  async decide(response: string, request: TurnRequest, userInitiated: boolean): Promise<ValidatedDecision> {
     const decision = this.delegationDetector.detect(response);
     if (decision.kind !== 'delegate') {
       return decision;
@@ -31,7 +31,7 @@ export class DelegationValidatorService {
 
     const delegations: ValidatedDelegation[] = [];
     for (const delegation of decision.delegations) {
-      const validated = await this.validateDelegation(delegation, request);
+      const validated = await this.validateDelegation(delegation, request, userInitiated);
       if ('reason' in validated) {
         return { kind: 'invalid', reason: validated.reason };
       }
@@ -45,6 +45,7 @@ export class DelegationValidatorService {
   private async validateDelegation(
     delegation: DelegationResult,
     request: TurnRequest,
+    userInitiated: boolean,
   ): Promise<ValidatedDelegation | { readonly reason: string }> {
     const { delegateToRole } = delegation;
     if (delegateToRole === request.agentRole.toUpperCase() || !this.agentRegistry.hasRole(delegateToRole)) {
@@ -52,6 +53,9 @@ export class DelegationValidatorService {
     }
 
     const contract = this.agentRegistry.getDelegationContract(delegateToRole);
+    if (contract.userInitiatedOnly && !userInitiated) {
+      return { reason: `${delegateToRole} is delegated to only on the user's decision. Suggest it to the user with a <question> and delegate only after the user agrees or asks for it explicitly.` };
+    }
     const withArtifact = await this.applyArtifact(delegation, contract, request.conversationId);
     if ('reason' in withArtifact) {
       return withArtifact;

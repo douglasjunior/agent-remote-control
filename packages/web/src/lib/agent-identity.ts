@@ -1,4 +1,4 @@
-export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'generic';
+export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'it' | 'generic';
 
 export interface AgentIdentity {
   /** Which glyph `AgentMark` draws. */
@@ -77,6 +77,15 @@ const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
     responsibility: 'Prepares the repository and opens the pull request that delivers the work.',
     example: 'Clone a repository for me',
     color: 'var(--agent-git-ops)',
+  },
+  IT_SUPPORT: {
+    mark: 'it',
+    label: 'IT Support',
+    tagline: 'Sets up and fixes the machine',
+    stage: 'Environment',
+    responsibility: 'Installs programs, changes system settings and fixes the environment, after you approve a plain-language plan.',
+    example: 'Install Docker for me',
+    color: 'var(--agent-it-support)',
   },
 };
 

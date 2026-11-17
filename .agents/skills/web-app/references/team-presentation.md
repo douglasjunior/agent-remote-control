@@ -18,7 +18,7 @@
 
 ## Squad panel
 
-- `SquadPanel` (`components/squad/`) renders the roster: the seven team roles (CEO, Product Owner, Tech Lead, Developer, Reviewer, QA, Git Ops, in `TEAM_ROLES` order, which `TeamIntro` follows too) plus an unknown role only if it was delegated to in the current turn.
+- `SquadPanel` (`components/squad/`) renders the roster: the eight team roles (CEO, Product Owner, Tech Lead, Developer, Reviewer, QA, Git Ops, IT Support, in `TEAM_ROLES` order, which `TeamIntro` follows too) plus an unknown role only if it was delegated to in the current turn.
 - A `Station` has the mark, name, stage, time, the role's profile from the conversation (`profileSummary`, `lib/role-profile.ts`: "agent · model · effort", "Not configured", and "not installed" for a missing CLI; the settings sheet uses the same summary), a summary clamped to two lines and one ticker line with the latest action.
 - The CEO reads "Coordinating the squad" and looks active while delegates work, "Thinking" when it works itself. Selecting a station reveals only its static `responsibility`.
 - The header carries the live tally (`squadStatus`), which also labels the Squad tab, and the "Agent settings" `IconButton` that opens the settings sheet (`onSettings`). The panel scrolls only when the window is shorter than the roster, and resets with each new user message.

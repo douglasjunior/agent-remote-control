@@ -4,7 +4,7 @@ import { INITIAL_AGENT_DEFINITIONS } from './initial-agents.constant.js';
 
 
 describe('initial-agents.constant', () => {
-  it('should contain definitions for CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER and QA roles', () => {
+  it('should contain definitions for CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA and IT_SUPPORT roles', () => {
     const roles = INITIAL_AGENT_DEFINITIONS.map(def => def.role);
     expect(roles).toContain('CEO');
     expect(roles).toContain('GIT_OPS');
@@ -13,7 +13,8 @@ describe('initial-agents.constant', () => {
     expect(roles).toContain('CODE_REVIEWER');
     expect(roles).toContain('PRODUCT_OWNER');
     expect(roles).toContain('QA');
-    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(7);
+    expect(roles).toContain('IT_SUPPORT');
+    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(8);
   });
 
   it('should test a reviewed task in practice, modifying the project while it runs', () => {
@@ -67,8 +68,16 @@ describe('initial-agents.constant', () => {
     }
   });
 
-  it('should let only the agents that run discovery and planning ask the user', () => {
-    expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.asksUser).map(def => def.role)).toEqual(['PRODUCT_OWNER', 'TECH_LEAD']);
+  it('should let only the agents that run discovery, planning and environment work ask the user', () => {
+    expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.asksUser).map(def => def.role)).toEqual(['PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT']);
+  });
+
+  it('should let the CEO delegate to the IT support agent only on the user\'s decision, with no board and no project required', () => {
+    const itSupport = INITIAL_AGENT_DEFINITIONS.find(def => def.role === 'IT_SUPPORT');
+
+    expect(itSupport?.delegation).toEqual({ project: 'optional', sessionMode: 'overridable', asksUser: true, userInitiatedOnly: true });
+    expect(itSupport?.artifacts).toEqual({ scope: 'task', sections: [], fields: [] });
+    expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.userInitiatedOnly).map(def => def.role)).toEqual(['IT_SUPPORT']);
   });
 
   it('should send the CEO prompt with every turn and let only the CEO write skills', () => {

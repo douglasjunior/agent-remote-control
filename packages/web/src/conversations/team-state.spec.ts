@@ -27,7 +27,7 @@ describe('deriveTeam', () => {
   it('should list the whole team, idle, when nothing happened', () => {
     const team = deriveTeam([], false);
 
-    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS']);
+    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS', 'IT_SUPPORT']);
     expect(team.every(member => member.state === 'idle')).toBe(true);
   });
 

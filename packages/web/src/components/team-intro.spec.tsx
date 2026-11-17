@@ -9,7 +9,7 @@ describe('TeamIntro', () => {
     render(<TeamIntro onPick={rs.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Meet your team' })).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(7);
+    expect(screen.getAllByRole('listitem')).toHaveLength(8);
     expect(screen.getByText('Writes the code')).toBeInTheDocument();
   });
 
