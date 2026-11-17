@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { ConfigureProfilesResult } from '../models/configure-profiles.model.js';
 import { buildStubProfile } from '../testing/stub-agent-settings-store.js';
@@ -21,23 +21,23 @@ describe('AgentConfigurationService', () => {
 
   beforeEach(() => {
     capabilities = {
-      listAgentOptions: vi.fn().mockReturnValue([AGENT]),
-      listModelOptions: vi.fn().mockResolvedValue([{ id: 'fast', name: 'Fast' }]),
-      listEffortOptions: vi.fn().mockResolvedValue([{ id: 'high', name: 'High' }]),
-      resolveAgent: vi.fn().mockReturnValue(AGENT),
+      listAgentOptions: rs.fn().mockReturnValue([AGENT]),
+      listModelOptions: rs.fn().mockResolvedValue([{ id: 'fast', name: 'Fast' }]),
+      listEffortOptions: rs.fn().mockResolvedValue([{ id: 'high', name: 'High' }]),
+      resolveAgent: rs.fn().mockReturnValue(AGENT),
     } as unknown as AgentCapabilitiesService;
     profiles = {
-      current: vi.fn().mockResolvedValue(null),
-      list: vi.fn().mockResolvedValue([]),
-      listRoles: vi.fn().mockReturnValue([{ role: 'CEO', roleName: 'CEO' }]),
-      save: vi.fn().mockResolvedValue({ profiles: {}, updatedAt: '' }),
-      ensure: vi.fn().mockResolvedValue('configured'),
+      current: rs.fn().mockResolvedValue(null),
+      list: rs.fn().mockResolvedValue([]),
+      listRoles: rs.fn().mockReturnValue([{ role: 'CEO', roleName: 'CEO' }]),
+      save: rs.fn().mockResolvedValue({ profiles: {}, updatedAt: '' }),
+      ensure: rs.fn().mockResolvedValue('configured'),
     } as unknown as AgentProfilesService;
     language = {
-      get: vi.fn().mockResolvedValue('Spanish'),
-      set: vi.fn().mockResolvedValue('French'),
+      get: rs.fn().mockResolvedValue('Spanish'),
+      set: rs.fn().mockResolvedValue('French'),
     } as unknown as UserLanguageService;
-    configure = { execute: vi.fn().mockResolvedValue({ ok: true }) } as unknown as ConfigureAgentProfilesUseCase;
+    configure = { execute: rs.fn().mockResolvedValue({ ok: true }) } as unknown as ConfigureAgentProfilesUseCase;
     service = new AgentConfigurationService(capabilities, profiles, language, configure);
   });
 
@@ -51,7 +51,7 @@ describe('AgentConfigurationService', () => {
 
   it('should resolve the default agent, and the current agent from the conversation settings', async () => {
     const settings = { profiles: { CEO: buildStubProfile('stub') }, updatedAt: '' };
-    vi.mocked(profiles.current).mockResolvedValue(settings);
+    rs.mocked(profiles.current).mockResolvedValue(settings);
 
     expect(service.getDefaultAgent()).toEqual(AGENT);
     expect(capabilities.resolveAgent).toHaveBeenCalledWith(null);
@@ -70,7 +70,7 @@ describe('AgentConfigurationService', () => {
   it('should report whether the conversation has settings to run with, without changing anything', async () => {
     await expect(service.hasSettings('conv-1')).resolves.toBe(false);
 
-    vi.mocked(profiles.current).mockResolvedValue({ profiles: {}, updatedAt: '' });
+    rs.mocked(profiles.current).mockResolvedValue({ profiles: {}, updatedAt: '' });
 
     await expect(service.hasSettings('conv-1')).resolves.toBe(true);
     expect(profiles.ensure).not.toHaveBeenCalled();

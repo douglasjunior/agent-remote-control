@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import type { OpenWork } from '../models/open-work.model.js';
 import { OpenWorkService } from '../services/open-work.service.js';

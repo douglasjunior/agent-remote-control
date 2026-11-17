@@ -1,5 +1,5 @@
 import { ARTIFACT_STATUSES as PROTOCOL_STATUSES, WORK_ENDING_STATUSES as PROTOCOL_WORK_ENDING_STATUSES } from '@agent-remote-control/protocol/artifact';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { ARTIFACT_STATUSES, WORK_ENDING_STATUSES } from './artifact-catalog.constant.js';
 

@@ -23,7 +23,7 @@ describe('JsonConversationStoreAdapter', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -37,21 +37,21 @@ describe('JsonConversationStoreAdapter', () => {
   });
 
   it('should list the most recently updated conversation first', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    rs.useFakeTimers({ toFake: ['Date'] });
+    rs.setSystemTime(new Date('2026-01-01T00:00:00Z'));
     const first = await store.create();
-    vi.setSystemTime(new Date('2026-01-01T00:00:01Z'));
+    rs.setSystemTime(new Date('2026-01-01T00:00:01Z'));
     const second = await store.create();
-    vi.setSystemTime(new Date('2026-01-01T00:00:02Z'));
+    rs.setSystemTime(new Date('2026-01-01T00:00:02Z'));
     await store.touch(first.id);
 
     expect((await store.list()).map(summary => summary.id)).toEqual([first.id, second.id]);
   });
 
   it('should rename and archive without moving the conversation in the list, and restore it', async () => {
-    vi.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
+    rs.useFakeTimers({ now: new Date('2026-03-01T10:00:00.000Z') });
     const { id, updatedAt } = await store.create();
-    vi.setSystemTime(new Date('2026-03-02T10:00:00.000Z'));
+    rs.setSystemTime(new Date('2026-03-02T10:00:00.000Z'));
 
     expect(await store.rename(id, 'Renamed')).toMatchObject({ title: 'Renamed', updatedAt });
     expect(await store.archive(id, true)).toMatchObject({ archivedAt: '2026-03-02T10:00:00.000Z', updatedAt });
@@ -87,12 +87,12 @@ describe('JsonConversationStoreAdapter', () => {
   });
 
   it('should write the files after the debounce interval', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { id } = await store.create();
     await store.upsertEntry(id, note('a'));
     expect(() => readFileSync(join(webDir(), 'conversations.json'))).toThrow();
 
-    await vi.advanceTimersByTimeAsync(1_000);
+    await rs.advanceTimersByTimeAsync(1_000);
     await store.onModuleDestroy();
 
     expect(JSON.parse(readFileSync(join(webDir(), 'conversations.json'), 'utf-8'))).toHaveLength(1);
@@ -101,13 +101,13 @@ describe('JsonConversationStoreAdapter', () => {
   });
 
   it('should coalesce many updates into one write', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { id } = await store.create();
 
     for (let index = 0; index < 5; index += 1) {
       await store.upsertEntry(id, note('a', `v${index}`));
     }
-    await vi.advanceTimersByTimeAsync(1_000);
+    await rs.advanceTimersByTimeAsync(1_000);
     await store.onModuleDestroy();
 
     expect(JSON.parse(readFileSync(join(webDir(), 'history', `${id}.json`), 'utf-8'))).toEqual([note('a', 'v4')]);

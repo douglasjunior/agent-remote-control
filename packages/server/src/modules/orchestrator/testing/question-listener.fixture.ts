@@ -1,8 +1,8 @@
-import { vi } from 'vitest';
+import { rs } from '@rstest/core';
 
 import type { QuestionListener } from '../models/question-event.model.js';
 
 
 export function questionListener(overrides: Partial<QuestionListener> = {}): QuestionListener {
-  return { asked: vi.fn(), timedOut: vi.fn(), ...overrides };
+  return { asked: rs.fn(), timedOut: rs.fn(), ...overrides };
 }

@@ -1,21 +1,21 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { ClaudeCodeAdapter } from './claude-code.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function fileSystemStub(binaryPath: string | null = null): StubFileSystem {
   const fileSystem = new StubFileSystem();
@@ -173,8 +173,8 @@ describe('ClaudeCodeAdapter', () => {
     it('should restore bypassPermissions on a loaded session', async () => {
       const { adapter } = buildAdapter();
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn(async () => ({ agentCapabilities: { loadSession: true } })),
-        loadSession: vi.fn(async () => ({
+        initialize: rs.fn(async () => ({ agentCapabilities: { loadSession: true } })),
+        loadSession: rs.fn(async () => ({
           configOptions: [modeConfigOption('auto', ['auto', 'bypassPermissions'])],
         })),
       };
@@ -209,7 +209,7 @@ describe('ClaudeCodeAdapter', () => {
 
     it('should run claude /usage and return the parsed quota', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
 
       const quota = await adapter.getQuota();
 
@@ -232,17 +232,17 @@ What's contributing to your usage?
 `;
 
       beforeEach(() => {
-        vi.useFakeTimers();
-        vi.setSystemTime(new Date('2026-10-30T20:00:00Z'));
+        rs.useFakeTimers();
+        rs.setSystemTime(new Date('2026-10-30T20:00:00Z'));
       });
 
       afterEach(() => {
-        vi.useRealTimers();
+        rs.useRealTimers();
       });
 
       const bucketsOf = async (usage: string) => {
         const { adapter, runner } = buildAdapter();
-        vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: usage });
+        rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: usage });
         return (await adapter.getQuota())?.groups[0]?.buckets;
       };
 
@@ -303,17 +303,17 @@ What's contributing to your usage?
 
     it('should return undefined on non-zero exit code', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 1, output });
 
       expect(await adapter.getQuota()).toBeUndefined();
     });
 
     it('should return undefined when the runner throws', async () => {
       const { adapter, runner } = buildAdapter();
-      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      rs.mocked(runner.run).mockRejectedValue(new Error('boom'));
       expect(await adapter.getQuota()).toBeUndefined();
 
-      vi.mocked(runner.run).mockRejectedValue('x');
+      rs.mocked(runner.run).mockRejectedValue('x');
       expect(await adapter.getQuota()).toBeUndefined();
     });
   });

@@ -1,16 +1,16 @@
 import type { ClientConnection, SessionNotification } from '@agentclientprotocol/sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, rs } from '@rstest/core';
 
 import { ResumedSession } from './resumed-session.js';
 
 
 type FakeConnection = {
   readonly connection: ClientConnection;
-  readonly request: ReturnType<typeof vi.fn>;
+  readonly request: ReturnType<typeof rs.fn>;
 };
 
 function buildConnection(): FakeConnection {
-  const request = vi.fn(async () => ({ stopReason: 'end_turn' }));
+  const request = rs.fn(async () => ({ stopReason: 'end_turn' }));
   return { connection: { agent: { request } } as unknown as ClientConnection, request };
 }
 

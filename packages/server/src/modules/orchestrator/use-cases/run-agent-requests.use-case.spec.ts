@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { ARTIFACT_AT, buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
@@ -252,7 +252,7 @@ describe('RunAgentRequestsUseCase', () => {
         ],
       };
 
-      const onSkill = vi.fn();
+      const onSkill = rs.fn();
       const results = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }], as('QA'), onSkill);
       await useCase.execute([{ kind: 'list' }], as('QA'), onSkill);
 
@@ -272,7 +272,7 @@ describe('RunAgentRequestsUseCase', () => {
       const { useCase, skills } = setupSkills();
       skills.skills = { QA: [{ name: 'playwright-web', description: 'Web.', content: 'Open the browser.' }] };
 
-      const onSkill = vi.fn();
+      const onSkill = rs.fn();
       const unknown = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'cypress'] }], as('QA'), onSkill);
       expect(onSkill).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: 'Unknown skill "cypress". Your skills are: playwright-web.' }));
       const none = await useCase.execute([{ kind: 'skill_read', names: ['cypress'] }], as('CEO'));
@@ -304,7 +304,7 @@ describe('RunAgentRequestsUseCase', () => {
       const { useCase, skills } = setupSkills();
       const write = { kind: 'skill_write' as const, name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' };
 
-      const onSkill = vi.fn();
+      const onSkill = rs.fn();
       const created = await useCase.execute([write], as('CEO'), onSkill);
       skills.writeResult = { ok: true, created: false };
       const updated = await useCase.execute([write], as('CEO'), onSkill);

@@ -21,8 +21,6 @@ const typo = summary({ id: 'T-3', title: 'Fix typo', projectName: 'site', status
 const old = summary({ id: 'T-4', title: 'Old idea', projectName: 'site', status: 'cancelled' });
 const artifacts = [feature, form, api, typo, old];
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());

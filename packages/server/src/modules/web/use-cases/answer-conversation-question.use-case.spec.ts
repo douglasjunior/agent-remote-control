@@ -54,7 +54,7 @@ describe('AnswerConversationQuestionUseCase', () => {
 
     await useCase.execute('web-1', { kind: 'option', optionIndex: 1 });
 
-    await vi.waitFor(() => expect(agentTurn.deliveredAnswers).toEqual([restoredWork]));
+    await rs.waitFor(() => expect(agentTurn.deliveredAnswers).toEqual([restoredWork]));
   });
 
   describe('with attachments', () => {

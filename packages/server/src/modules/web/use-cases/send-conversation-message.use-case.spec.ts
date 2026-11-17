@@ -1,6 +1,6 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { Logger } from '@nestjs/common';
-import { vi } from 'vitest';
+import { rs } from '@rstest/core';
 
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -46,10 +46,12 @@ function deferred() {
 
 describe('SendConversationMessageUseCase', () => {
   beforeEach(() => {
-    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
   });
 
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    rs.restoreAllMocks();
+  });
 
   describe('user message', () => {
     it('should record the message and rename the conversation after its first line, cut at 60 characters', async () => {
@@ -246,7 +248,7 @@ describe('SendConversationMessageUseCase', () => {
         context.agentTurn.turnBehavior = async (request) => {
           request.onQuestion?.({ kind: 'asked', prompt });
           request.onQuestion?.(timedOut);
-          await vi.waitFor(() => expect(context.types()).toContain('notice'));
+          await rs.waitFor(() => expect(context.types()).toContain('notice'));
           whileRunning = [...context.entries()];
         };
         await context.useCase.execute('web-1', 'go');
@@ -405,7 +407,7 @@ describe('SendConversationMessageUseCase', () => {
         }
       };
       const first = useCase.execute('web-1', 'first');
-      await vi.waitFor(() => expect(agentTurn.turnRequests).toHaveLength(1));
+      await rs.waitFor(() => expect(agentTurn.turnRequests).toHaveLength(1));
       agentTurn.turnResult = { response: '', status: 'steered' };
 
       await useCase.execute('web-1', 'also this');
@@ -431,9 +433,9 @@ describe('SendConversationMessageUseCase', () => {
       };
 
       const first = useCase.execute('web-1', 'first');
-      await vi.waitFor(() => expect(started).toBe(1));
+      await rs.waitFor(() => expect(started).toBe(1));
       const second = useCase.execute('web-1', 'second');
-      await vi.waitFor(() => expect(started).toBe(2));
+      await rs.waitFor(() => expect(started).toBe(2));
       gates[1].resolve();
       await second;
       expect(states()).toEqual(['running']);
@@ -442,7 +444,7 @@ describe('SendConversationMessageUseCase', () => {
       gates[0].resolve();
       await first;
       expect(states()).toEqual(['running', 'idle']);
-      await vi.waitFor(() => expect(store.flushed).toEqual(['web-1']));
+      await rs.waitFor(() => expect(store.flushed).toEqual(['web-1']));
     });
 
     it('should close the question still open when the conversation goes idle', async () => {
@@ -453,7 +455,7 @@ describe('SendConversationMessageUseCase', () => {
 
       await useCase.execute('web-1', 'go');
 
-      await vi.waitFor(() => expect(entries().find(entry => entry.type === 'question')).toMatchObject({ closed: true }));
+      await rs.waitFor(() => expect(entries().find(entry => entry.type === 'question')).toMatchObject({ closed: true }));
     });
 
     it('should publish a failed turn result and return to idle', async () => {
@@ -484,7 +486,7 @@ describe('SendConversationMessageUseCase', () => {
 
     it('should report a failure before the turn without changing the state', async () => {
       const { useCase, configuration, entries, states } = setup();
-      vi.spyOn(configuration, 'ensureSettings').mockRejectedValue('plain failure');
+      rs.spyOn(configuration, 'ensureSettings').mockRejectedValue('plain failure');
 
       await useCase.execute('web-1', 'go');
 

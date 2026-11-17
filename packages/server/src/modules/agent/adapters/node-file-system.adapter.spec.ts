@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { NodeFileSystemAdapter } from './node-file-system.adapter.js';
 
@@ -12,25 +12,25 @@ function enoent(): NodeJS.ErrnoException {
   return error;
 }
 
-vi.mock('node:fs', () => ({
-  accessSync: vi.fn(),
+rs.mock('node:fs', () => ({
+  accessSync: rs.fn(),
   constants: { R_OK: 4 },
-  existsSync: vi.fn(),
-  readdirSync: vi.fn(),
-  statSync: vi.fn(),
-  watch: vi.fn(),
+  existsSync: rs.fn(),
+  readdirSync: rs.fn(),
+  statSync: rs.fn(),
+  watch: rs.fn(),
 }));
 
-vi.mock('node:fs/promises', () => ({
-  chmod: vi.fn(),
-  mkdir: vi.fn(),
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  rm: vi.fn(),
+rs.mock('node:fs/promises', () => ({
+  chmod: rs.fn(),
+  mkdir: rs.fn(),
+  readFile: rs.fn(),
+  writeFile: rs.fn(),
+  rm: rs.fn(),
 }));
 
-vi.mock('node:os', () => ({
-  homedir: vi.fn(() => '/home/user'),
+rs.mock('node:os', () => ({
+  homedir: rs.fn(() => '/home/user'),
 }));
 
 const { accessSync, existsSync, readdirSync, statSync, watch } =
@@ -39,10 +39,10 @@ const { chmod, mkdir, readFile, rm, writeFile } = await import('node:fs/promises
 const { homedir } = await import('node:os');
 
 describe('NodeFileSystemAdapter', () => {
-  let debugSpy: ReturnType<typeof vi.spyOn>;
+  let debugSpy: ReturnType<typeof rs.spyOn>;
 
   beforeEach(() => {
-    debugSpy = vi.spyOn(Logger.prototype, 'debug').mockImplementation(vi.fn());
+    debugSpy = rs.spyOn(Logger.prototype, 'debug').mockImplementation(rs.fn());
   });
 
   afterEach(() => {
@@ -53,7 +53,7 @@ describe('NodeFileSystemAdapter', () => {
     const originalPath = process.env.PATH;
 
     beforeEach(() => {
-      vi.mocked(existsSync).mockReset();
+      rs.mocked(existsSync).mockReset();
       process.env.PATH = '/usr/local/bin:/usr/bin';
     });
 
@@ -62,7 +62,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return true when the binary exists in any PATH directory', () => {
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/usr/local/bin/agy',
       );
 
@@ -72,7 +72,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false when the binary is not found in any PATH directory', () => {
-      vi.mocked(existsSync).mockReturnValue(false);
+      rs.mocked(existsSync).mockReturnValue(false);
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -81,7 +81,7 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should ignore empty PATH segments', () => {
       process.env.PATH = ':/usr/local/bin::';
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/usr/local/bin/agy',
       );
 
@@ -92,7 +92,7 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should fall back to an empty PATH when the env var is missing', () => {
       delete process.env.PATH;
-      vi.mocked(existsSync).mockReturnValue(false);
+      rs.mocked(existsSync).mockReturnValue(false);
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -109,7 +109,7 @@ describe('NodeFileSystemAdapter', () => {
       });
       process.env.PATH = '/win-bin';
       process.env.PATHEXT = '.EXE;.CMD';
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/win-bin/agy.CMD',
       );
 
@@ -134,7 +134,7 @@ describe('NodeFileSystemAdapter', () => {
       });
       process.env.PATH = '/win-bin';
       delete process.env.PATHEXT;
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/win-bin/agy.COM',
       );
 
@@ -156,7 +156,7 @@ describe('NodeFileSystemAdapter', () => {
     const originalPath = process.env.PATH;
 
     beforeEach(() => {
-      vi.mocked(existsSync).mockReset();
+      rs.mocked(existsSync).mockReset();
       process.env.PATH = '/usr/local/bin:/usr/bin';
     });
 
@@ -165,7 +165,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return the absolute path of the first PATH directory that contains the binary', () => {
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/usr/bin/agy',
       );
 
@@ -175,7 +175,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return null when the binary is not found in any PATH directory', () => {
-      vi.mocked(existsSync).mockReturnValue(false);
+      rs.mocked(existsSync).mockReturnValue(false);
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -191,7 +191,7 @@ describe('NodeFileSystemAdapter', () => {
       });
       process.env.PATH = '/win-bin';
       process.env.PATHEXT = '.EXE;.CMD';
-      vi.mocked(existsSync).mockImplementation(
+      rs.mocked(existsSync).mockImplementation(
         path => path === '/win-bin/agy.CMD',
       );
 
@@ -210,8 +210,8 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('isReadableDirectory', () => {
     it('should return true when the path is readable and is a directory', () => {
-      vi.mocked(accessSync).mockReturnValueOnce(undefined);
-      vi.mocked(statSync).mockReturnValueOnce({
+      rs.mocked(accessSync).mockReturnValueOnce(undefined);
+      rs.mocked(statSync).mockReturnValueOnce({
         isDirectory: () => true,
       } as ReturnType<typeof statSync>);
 
@@ -221,7 +221,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false without logging when the path does not exist (ENOENT)', () => {
-      vi.mocked(accessSync).mockImplementationOnce(() => {
+      rs.mocked(accessSync).mockImplementationOnce(() => {
         throw enoent();
       });
 
@@ -232,7 +232,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false and log when accessSync throws a non-ENOENT error', () => {
-      vi.mocked(accessSync).mockImplementationOnce(() => {
+      rs.mocked(accessSync).mockImplementationOnce(() => {
         throw new Error('EACCES');
       });
 
@@ -245,8 +245,8 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false when the path exists but is not a directory', () => {
-      vi.mocked(accessSync).mockReturnValueOnce(undefined);
-      vi.mocked(statSync).mockReturnValueOnce({
+      rs.mocked(accessSync).mockReturnValueOnce(undefined);
+      rs.mocked(statSync).mockReturnValueOnce({
         isDirectory: () => false,
       } as ReturnType<typeof statSync>);
 
@@ -256,8 +256,8 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false and log when statSync throws after accessSync succeeds', () => {
-      vi.mocked(accessSync).mockReturnValueOnce(undefined);
-      vi.mocked(statSync).mockImplementationOnce(() => {
+      rs.mocked(accessSync).mockReturnValueOnce(undefined);
+      rs.mocked(statSync).mockImplementationOnce(() => {
         throw new Error('stat failed');
       });
 
@@ -272,8 +272,8 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('isReadableFile', () => {
     it('should return true when the path is readable and is a file', () => {
-      vi.mocked(accessSync).mockReturnValueOnce(undefined);
-      vi.mocked(statSync).mockReturnValueOnce({
+      rs.mocked(accessSync).mockReturnValueOnce(undefined);
+      rs.mocked(statSync).mockReturnValueOnce({
         isFile: () => true,
       } as ReturnType<typeof statSync>);
 
@@ -283,8 +283,8 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false when the path exists but is not a file', () => {
-      vi.mocked(accessSync).mockReturnValueOnce(undefined);
-      vi.mocked(statSync).mockReturnValueOnce({
+      rs.mocked(accessSync).mockReturnValueOnce(undefined);
+      rs.mocked(statSync).mockReturnValueOnce({
         isFile: () => false,
       } as ReturnType<typeof statSync>);
 
@@ -294,7 +294,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false without logging when the path does not exist (ENOENT)', () => {
-      vi.mocked(accessSync).mockImplementationOnce(() => {
+      rs.mocked(accessSync).mockImplementationOnce(() => {
         throw enoent();
       });
 
@@ -305,7 +305,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return false and log when accessSync throws a non-ENOENT error', () => {
-      vi.mocked(accessSync).mockImplementationOnce(() => {
+      rs.mocked(accessSync).mockImplementationOnce(() => {
         throw new Error('EACCES');
       });
 
@@ -320,7 +320,7 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('readDirectoryNames', () => {
     it('should return the directory entry names', () => {
-      vi.mocked(readdirSync).mockReturnValueOnce([
+      rs.mocked(readdirSync).mockReturnValueOnce([
         '001-test',
         '002-test',
       ] as unknown as ReturnType<typeof readdirSync>);
@@ -335,7 +335,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return an empty array without logging when the path does not exist (ENOENT)', () => {
-      vi.mocked(readdirSync).mockImplementationOnce(() => {
+      rs.mocked(readdirSync).mockImplementationOnce(() => {
         throw enoent();
       });
 
@@ -346,7 +346,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return an empty array and log when readdirSync throws a non-ENOENT error', () => {
-      vi.mocked(readdirSync).mockImplementationOnce(() => {
+      rs.mocked(readdirSync).mockImplementationOnce(() => {
         throw new Error('EACCES');
       });
 
@@ -361,7 +361,7 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('readJson', () => {
     it('should parse and return the JSON content of the file', async () => {
-      vi.mocked(readFile).mockResolvedValueOnce(
+      rs.mocked(readFile).mockResolvedValueOnce(
         JSON.stringify({ hello: 'world' }),
       );
 
@@ -375,7 +375,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return null without logging when the file does not exist (ENOENT)', async () => {
-      vi.mocked(readFile).mockRejectedValueOnce(enoent());
+      rs.mocked(readFile).mockRejectedValueOnce(enoent());
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -384,7 +384,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return null and log when the file contains invalid JSON', async () => {
-      vi.mocked(readFile).mockResolvedValueOnce('{not json');
+      rs.mocked(readFile).mockResolvedValueOnce('{not json');
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -395,8 +395,8 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('writeJson', () => {
     it('should ensure the parent directory exists before writing', async () => {
-      vi.mocked(mkdir).mockResolvedValueOnce(undefined);
-      vi.mocked(writeFile).mockResolvedValueOnce(undefined);
+      rs.mocked(mkdir).mockResolvedValueOnce(undefined);
+      rs.mocked(writeFile).mockResolvedValueOnce(undefined);
 
       const adapter = new NodeFileSystemAdapter();
       await adapter.writeJson('/repo/state.json', { agent: 'agy' });
@@ -409,8 +409,8 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should apply restrictive file and directory modes when provided', async () => {
-      vi.mocked(mkdir).mockResolvedValueOnce(undefined);
-      vi.mocked(writeFile).mockResolvedValueOnce(undefined);
+      rs.mocked(mkdir).mockResolvedValueOnce(undefined);
+      rs.mocked(writeFile).mockResolvedValueOnce(undefined);
 
       const adapter = new NodeFileSystemAdapter();
       await adapter.writeJson(
@@ -433,7 +433,7 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('readText', () => {
     it('should return the raw text content of the file', async () => {
-      vi.mocked(readFile).mockResolvedValueOnce('# Content\n');
+      rs.mocked(readFile).mockResolvedValueOnce('# Content\n');
 
       const adapter = new NodeFileSystemAdapter();
       const result = await adapter.readText('/repo/file.md');
@@ -443,7 +443,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return null without logging when the file does not exist (ENOENT)', async () => {
-      vi.mocked(readFile).mockRejectedValueOnce(enoent());
+      rs.mocked(readFile).mockRejectedValueOnce(enoent());
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -452,7 +452,7 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return null and log when readFile throws a non-ENOENT error', async () => {
-      vi.mocked(readFile).mockRejectedValueOnce(new Error('EACCES'));
+      rs.mocked(readFile).mockRejectedValueOnce(new Error('EACCES'));
 
       const adapter = new NodeFileSystemAdapter();
 
@@ -463,8 +463,8 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('writeText', () => {
     it('should ensure the parent directory exists before writing', async () => {
-      vi.mocked(mkdir).mockResolvedValueOnce(undefined);
-      vi.mocked(writeFile).mockResolvedValueOnce(undefined);
+      rs.mocked(mkdir).mockResolvedValueOnce(undefined);
+      rs.mocked(writeFile).mockResolvedValueOnce(undefined);
 
       const adapter = new NodeFileSystemAdapter();
       await adapter.writeText('/repo/file.md', '# Content\n');
@@ -476,9 +476,9 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('writeExecutable', () => {
     it('should write the file and mark it executable', async () => {
-      vi.mocked(mkdir).mockResolvedValueOnce(undefined);
-      vi.mocked(writeFile).mockResolvedValueOnce(undefined);
-      vi.mocked(chmod).mockResolvedValueOnce(undefined);
+      rs.mocked(mkdir).mockResolvedValueOnce(undefined);
+      rs.mocked(writeFile).mockResolvedValueOnce(undefined);
+      rs.mocked(chmod).mockResolvedValueOnce(undefined);
 
       await new NodeFileSystemAdapter().writeExecutable('/tmp/openers/xdg-open', '#!/bin/sh\nexit 0\n');
 
@@ -489,7 +489,7 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('deleteFile', () => {
     it('should remove the file forcing a no-op when it does not exist', async () => {
-      vi.mocked(rm).mockResolvedValueOnce(undefined);
+      rs.mocked(rm).mockResolvedValueOnce(undefined);
 
       const adapter = new NodeFileSystemAdapter();
       await adapter.deleteFile('/repo/state.json');
@@ -522,7 +522,7 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('resolveUserConfigDir', () => {
     beforeEach(() => {
-      vi.mocked(homedir).mockReturnValue('/home/user');
+      rs.mocked(homedir).mockReturnValue('/home/user');
     });
 
     it('should always resolve to <home>/.config/<appName>', () => {
@@ -536,15 +536,15 @@ describe('NodeFileSystemAdapter', () => {
 
   describe('watchDirectory', () => {
     function fakeWatcher() {
-      return { on: vi.fn(), close: vi.fn() };
+      return { on: rs.fn(), close: rs.fn() };
     }
 
     it('should watch the directory and forward entry changes to the callback', () => {
       const watcher = fakeWatcher();
-      vi.mocked(watch).mockReturnValueOnce(
+      rs.mocked(watch).mockReturnValueOnce(
         watcher as unknown as ReturnType<typeof watch>,
       );
-      const onChange = vi.fn();
+      const onChange = rs.fn();
 
       const adapter = new NodeFileSystemAdapter();
       adapter.watchDirectory('/repo', onChange);
@@ -555,7 +555,7 @@ describe('NodeFileSystemAdapter', () => {
         expect.any(Function),
       );
 
-      const [, , listener] = vi.mocked(watch).mock.calls[0] as unknown as [
+      const [, , listener] = rs.mocked(watch).mock.calls[0] as unknown as [
         string,
         unknown,
         (event: string, filename: string | Buffer | null) => void,
@@ -573,12 +573,12 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should return an unsubscribe that closes the watcher', () => {
       const watcher = fakeWatcher();
-      vi.mocked(watch).mockReturnValueOnce(
+      rs.mocked(watch).mockReturnValueOnce(
         watcher as unknown as ReturnType<typeof watch>,
       );
 
       const adapter = new NodeFileSystemAdapter();
-      const stop = adapter.watchDirectory('/repo', vi.fn());
+      const stop = adapter.watchDirectory('/repo', rs.fn());
       stop();
 
       expect(watcher.close).toHaveBeenCalledTimes(1);
@@ -586,12 +586,12 @@ describe('NodeFileSystemAdapter', () => {
 
     it('should log watcher error events at debug level', () => {
       const watcher = fakeWatcher();
-      vi.mocked(watch).mockReturnValueOnce(
+      rs.mocked(watch).mockReturnValueOnce(
         watcher as unknown as ReturnType<typeof watch>,
       );
 
       const adapter = new NodeFileSystemAdapter();
-      adapter.watchDirectory('/repo', vi.fn());
+      adapter.watchDirectory('/repo', rs.fn());
 
       const errorHandler = watcher.on.mock.calls.find(
         ([event]) => event === 'error',
@@ -602,12 +602,12 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should log and return a no-op when watch throws a non-ENOENT error', () => {
-      vi.mocked(watch).mockImplementationOnce(() => {
+      rs.mocked(watch).mockImplementationOnce(() => {
         throw new Error('EACCES');
       });
 
       const adapter = new NodeFileSystemAdapter();
-      const stop = adapter.watchDirectory('/forbidden', vi.fn());
+      const stop = adapter.watchDirectory('/forbidden', rs.fn());
 
       expect(debugSpy).toHaveBeenCalledWith(
         'watch_directory_failed: /forbidden',
@@ -616,12 +616,12 @@ describe('NodeFileSystemAdapter', () => {
     });
 
     it('should return a no-op without logging when watch throws ENOENT', () => {
-      vi.mocked(watch).mockImplementationOnce(() => {
+      rs.mocked(watch).mockImplementationOnce(() => {
         throw enoent();
       });
 
       const adapter = new NodeFileSystemAdapter();
-      const stop = adapter.watchDirectory('/missing', vi.fn());
+      const stop = adapter.watchDirectory('/missing', rs.fn());
 
       expect(debugSpy).not.toHaveBeenCalled();
       expect(() => stop()).not.toThrow();

@@ -1,7 +1,7 @@
 import { SIGNALING_CLOSE_CODES, type ToHostSignal } from '@agent-remote-control/protocol/signaling';
 import { Logger } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
 
+import { createTestingModule } from '../../../../test/testing-module.js';
 import { ISignalingTransportPort } from '../ports/signaling-transport.port.js';
 import { SignalingRegistryService } from '../services/signaling-registry.service.js';
 import { SignalingModule } from '../signaling.module.js';
@@ -53,11 +53,11 @@ describe('SignalingConnectionHandler', () => {
   };
 
   beforeEach(async () => {
-    vi.useFakeTimers();
-    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    rs.useFakeTimers();
+    rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     transport = new FakeSignalingTransport();
-    const moduleRef = await Test.createTestingModule({ imports: [SignalingModule] })
+    const moduleRef = await createTestingModule({ imports: [SignalingModule] })
       .overrideProvider(ISignalingTransportPort).useValue(transport)
       .compile();
     await moduleRef.init();
@@ -67,9 +67,9 @@ describe('SignalingConnectionHandler', () => {
 
   afterEach(async () => {
     await close();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-    vi.unstubAllEnvs();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
+    rs.unstubAllEnvs();
   });
 
   describe('a host', () => {
@@ -94,9 +94,9 @@ describe('SignalingConnectionHandler', () => {
     });
 
     it('should be refused when P2P_ALLOWED_INSTANCES leaves its instance out', async () => {
-      vi.stubEnv('P2P_ALLOWED_INSTANCES', ` ${OTHER_HOST!.instanceId} , `);
+      rs.stubEnv('P2P_ALLOWED_INSTANCES', ` ${OTHER_HOST!.instanceId} , `);
       await close();
-      const moduleRef = await Test.createTestingModule({ imports: [SignalingModule] })
+      const moduleRef = await createTestingModule({ imports: [SignalingModule] })
         .overrideProvider(ISignalingTransportPort).useValue(transport = new FakeSignalingTransport())
         .compile();
       await moduleRef.init();
@@ -137,7 +137,7 @@ describe('SignalingConnectionHandler', () => {
 
     it('should be closed when it does not register in time', async () => {
       const host = transport.connectHost();
-      await vi.advanceTimersByTimeAsync(5_000);
+      await rs.advanceTimersByTimeAsync(5_000);
 
       expect(host.closed).toEqual({ code: 1008, reason: 'no registration' });
     });
@@ -308,11 +308,11 @@ describe('SignalingConnectionHandler', () => {
 
     it('should be closed when it does not connect in time and after the negotiation time', async () => {
       const silent = transport.connectClient();
-      await vi.advanceTimersByTimeAsync(5_000);
+      await rs.advanceTimersByTimeAsync(5_000);
       expect(silent.closed).toEqual({ code: 1008, reason: 'no connect' });
 
       const { client } = requestSession();
-      await vi.advanceTimersByTimeAsync(60_000);
+      await rs.advanceTimersByTimeAsync(60_000);
       expect(client.closed).toEqual({ code: undefined, reason: undefined });
     });
 

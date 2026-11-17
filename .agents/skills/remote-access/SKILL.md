@@ -118,7 +118,7 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 ## Browser (`packages/web`)
 
-- The `p2p` mode of Vite (`build:p2p`, `dev:p2p`) builds `dist-p2p`, where `createAppConnection` reads the link:
+- The `p2p` env mode of Rsbuild (`build:p2p`, `dev:p2p`) builds `dist-p2p`, where `createAppConnection` reads the link:
   routes live under `/i/<instance id>`, the token and the fingerprint are kept per instance, a fingerprint that does
   not derive the instance id is ignored, and a page without them shows `RemoteLinkMissingPage`.
 - `WebRtcServerConnection` negotiates through `/signal/client` of the page's origin with a fresh certificate per
@@ -155,5 +155,5 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 - `p2p-server` specs replace the transport with `FakeSignalingTransport` and register hosts with `TEST_HOSTS`
   (fixed test certificates that sign challenges); the WebSocket adapter and `AppModule` run real sockets on port 0.
 - Server specs replace the ports with `FakeSignalingClient` and `FakeRemotePeerFactory`; `node-datachannel` is mocked
-  with `vi.mock` in the adapter spec only.
-- Web specs stub `WebSocket` and `RTCPeerConnection` with `vi.stubGlobal`.
+  with `rs.mock` in the adapter spec only.
+- Web specs stub `WebSocket` and `RTCPeerConnection` with `rs.stubGlobal`.

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { AGENT_AUTH_PROVIDERS } from './agent-auth-providers.constant.js';
 

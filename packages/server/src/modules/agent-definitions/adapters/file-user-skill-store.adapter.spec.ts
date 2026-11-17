@@ -1,7 +1,7 @@
+import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { skillContext } from '../testing/skill-context.fixture.js';

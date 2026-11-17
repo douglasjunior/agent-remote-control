@@ -19,7 +19,9 @@ function setup() {
 }
 
 describe('WebUploadSessionsService', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    rs.useRealTimers();
+  });
 
   it('should open a writer in the conversation upload directory and answers upload.ready', async () => {
     const { start, files, last } = setup();
@@ -144,7 +146,7 @@ describe('WebUploadSessionsService', () => {
   it('should report a write failure and discard the upload', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
-    vi.spyOn(files.writers[0], 'append').mockRejectedValueOnce(new Error('disk full'));
+    rs.spyOn(files.writers[0], 'append').mockRejectedValueOnce(new Error('disk full'));
 
     await service.chunk(connection, { uploadId: 'u1', index: 0, dataBase64: base64('data') });
 
@@ -155,7 +157,7 @@ describe('WebUploadSessionsService', () => {
   it('should report a failure that carries no message', async () => {
     const { service, connection, start, files, last } = setup();
     await start();
-    vi.spyOn(files.writers[0], 'append').mockRejectedValueOnce('boom');
+    rs.spyOn(files.writers[0], 'append').mockRejectedValueOnce('boom');
 
     await service.chunk(connection, { uploadId: 'u1', index: 0, dataBase64: base64('data') });
 
@@ -184,27 +186,27 @@ describe('WebUploadSessionsService', () => {
   });
 
   it('should fail an upload that stays silent, and keep one that keeps sending', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { service, connection, start, files, last } = setup();
     await start('u1', 100);
-    await vi.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS - 1);
+    await rs.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS - 1);
     await service.chunk(connection, { uploadId: 'u1', index: 0, dataBase64: base64('x') });
 
-    await vi.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS - 1);
+    await rs.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS - 1);
     expect(files.writers[0].aborted).toBe(false);
 
-    await vi.advanceTimersByTimeAsync(1);
+    await rs.advanceTimersByTimeAsync(1);
     expect(files.writers[0].aborted).toBe(true);
     expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'Upload timed out' });
   });
 
   it('should not time out an upload that finished', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { service, connection, start, files } = setup();
     await start('u1', 0);
     await service.finish(connection, 'u1');
 
-    await vi.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS * 2);
+    await rs.advanceTimersByTimeAsync(UPLOAD_IDLE_TIMEOUT_MS * 2);
 
     expect(files.writers[0].aborted).toBe(false);
   });

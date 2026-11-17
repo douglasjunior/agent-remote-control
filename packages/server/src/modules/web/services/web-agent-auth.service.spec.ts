@@ -22,7 +22,7 @@ describe('WebAgentAuthService', () => {
   let service: WebAgentAuthService;
 
   beforeEach(() => {
-    vi.useFakeTimers({ now: NOW });
+    rs.useFakeTimers({ now: NOW });
     agentAuth = new StubAgentAuthPort();
     agentAuth.infos = [info('unauthenticated')];
     registry = new WebConnectionRegistryService();
@@ -34,8 +34,8 @@ describe('WebAgentAuthService', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
   });
 
   describe('read', () => {
@@ -50,10 +50,10 @@ describe('WebAgentAuthService', () => {
       await service.read();
       agentAuth.infos = [info('authenticated')];
 
-      vi.advanceTimersByTime(AUTH_STATUS_CACHE_TTL_MS - 1);
+      rs.advanceTimersByTime(AUTH_STATUS_CACHE_TTL_MS - 1);
       await expect(service.read()).resolves.toMatchObject({ agents: [info('unauthenticated')] });
 
-      vi.advanceTimersByTime(1);
+      rs.advanceTimersByTime(1);
       await expect(service.read()).resolves.toMatchObject({ agents: [info('authenticated')] });
     });
 
@@ -65,7 +65,7 @@ describe('WebAgentAuthService', () => {
     });
 
     it('should share the query in progress', async () => {
-      const list = vi.spyOn(agentAuth, 'listAuthInfo');
+      const list = rs.spyOn(agentAuth, 'listAuthInfo');
 
       const [first, second] = await Promise.all([service.read(), service.read(true)]);
 
@@ -109,7 +109,7 @@ describe('WebAgentAuthService', () => {
       service.login(requester, 'claude');
 
       agentAuth.emit('claude', { kind: 'completed' });
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
 
       for (const connection of [requester, other]) {
         expect(connection.sent.at(-1)).toEqual({
@@ -124,18 +124,18 @@ describe('WebAgentAuthService', () => {
       service.login(requester, 'claude');
 
       agentAuth.emit('claude', { kind: 'failed', reason: 'Invalid code.' });
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
 
       expect(requester.sent).toEqual([{ type: 'auth.login', agentId: 'claude', event: { kind: 'failed', reason: 'Invalid code.' } }]);
     });
 
     it('should keep quiet about a state that cannot be read after a completed login', async () => {
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       service.login(requester, 'claude');
       agentAuth.statusError = new Error('probe down');
 
       agentAuth.emit('claude', { kind: 'completed' });
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
 
       expect(warn).toHaveBeenCalledWith('auth_status_failed: probe down');
       expect(requester.sent.map(event => event.type)).toEqual(['auth.login']);

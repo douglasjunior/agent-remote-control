@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { EventEmitter } from 'node:events';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { NodeProcessRunnerAdapter } from './node-process-runner.adapter.js';
 
@@ -11,8 +11,8 @@ type ChildProcessLike = EventEmitter & {
 
 let spawnedProcs: ChildProcessLike[] = [];
 
-vi.mock('node:child_process', () => ({
-  spawn: vi.fn(() => {
+rs.mock('node:child_process', () => ({
+  spawn: rs.fn(() => {
     const proc = new EventEmitter() as ChildProcessLike;
     proc.stdout = new EventEmitter();
     proc.stderr = new EventEmitter();
@@ -22,7 +22,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 const { spawn } = await import('node:child_process');
-const spawnMock = vi.mocked(spawn);
+const spawnMock = rs.mocked(spawn);
 
 describe('NodeProcessRunnerAdapter', () => {
   beforeEach(() => {
@@ -31,7 +31,7 @@ describe('NodeProcessRunnerAdapter', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   describe('spawn', () => {
@@ -221,7 +221,7 @@ describe('NodeProcessRunnerAdapter', () => {
     });
 
     it('should exit the current process with the child exit code', () => {
-      const exitSpy = vi
+      const exitSpy = rs
         .spyOn(process, 'exit')
         .mockImplementation((() => undefined) as never);
       const adapter = new NodeProcessRunnerAdapter();
@@ -233,7 +233,7 @@ describe('NodeProcessRunnerAdapter', () => {
     });
 
     it('should default a null child exit code to 0 when re-executing', () => {
-      const exitSpy = vi
+      const exitSpy = rs
         .spyOn(process, 'exit')
         .mockImplementation((() => undefined) as never);
       const adapter = new NodeProcessRunnerAdapter();

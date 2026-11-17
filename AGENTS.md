@@ -17,7 +17,7 @@ agent-remote-control/
 ├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and global preferences (user language)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
-│   ├── web/                        # @agent-remote-control/web: React + Vite web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access
+│   ├── web/                        # @agent-remote-control/web: React + Rsbuild web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access
 │   ├── p2p-server/                 # @agent-remote-control/p2p-server: NestJS signaling server of remote access; serves the `p2p` build of the web app
 │   └── server/                     # @agent-remote-control/server: the NestJS application
 │       ├── src/                    # NestJS application source code
@@ -55,8 +55,8 @@ agent-remote-control/
 │       ├── nest-cli.json           # NestJS CLI configuration
 │       ├── tsconfig.json           # Server TypeScript configuration (extends tsconfig.base.json)
 │       ├── tsconfig.build.json     # Build TypeScript configuration
-│       ├── vitest.config.ts        # Vitest project "server" (unit tests)
-│       ├── vitest.config.e2e.ts    # Vitest configuration for e2e tests
+│       ├── rstest.config.ts        # Rstest project "server" (unit tests)
+│       ├── rstest.config.e2e.ts    # Rstest configuration for e2e tests
 │       └── package.json            # Server dependencies and scripts
 ├── .github/workflows/              # CI (type check, lint and tests) on pull requests; commit author check (no AI agent as author, committer or co-author; the owner's own pull requests have only the owner's identities as author and committer); publishes the multi-platform Docker image to Docker Hub and deploys the p2p-server and coturn on CapRover on every GitHub release
 ├── captain-definition-*            # CapRover definitions of the p2p-server and of the coturn TURN relay
@@ -66,7 +66,7 @@ agent-remote-control/
 ├── Dockerfile.p2p                  # Image of the p2p-server with the hosted web app
 ├── docker-entrypoint.sh            # Provides the CLIs listed in ARC_AGENTS at container startup
 ├── .dockerignore                   # Files excluded from the Docker build context
-├── vitest.config.ts                # Vitest root configuration: test projects and coverage
+├── rstest.config.ts                # Rstest root configuration: test projects and coverage
 ├── tsconfig.base.json              # Compiler options shared by every package
 ├── eslint.config.js                # ESLint flat configuration for the whole repository
 └── package.json                    # pnpm workspaces root: shared devDependencies and scripts
@@ -83,10 +83,10 @@ Before creating or changing any code, consult the catalog in `.agents/skills/`, 
 - **Commit messages**: Conventional Commits (Angular) in **English**, imperative mood in the present tense (e.g. "add", "fix"), subject line of up to 50 characters with no trailing period. When there is detailed context, separate the body with a blank line.
 - **No agent attribution**: Nothing written for the repository says that an AI agent produced or helped with it. Commits carry no `Co-Authored-By` trailer naming an agent and no session link, and pull request descriptions, issue and review comments, code comments and documentation carry no "Generated with" line or similar signature.
 - **Language**: Everything in **English** — identifiers, file names, classes, interfaces, methods, variables, test descriptions (`describe`, `it`), comments, documentation, skills and commit messages.
-- **Testing with Vitest**:
+- **Testing with Rstest**:
   - Unit tests live side by side with the files under test, following the `*.spec.ts` pattern.
   - Target of **100% coverage** of executable production code lines.
-  - `vi.mock` is restricted **exclusively to external I/O boundaries** (third-party SDKs such as Discord.js and the ACP SDK, and native Node modules such as `node:fs` and `node:child_process`). Internal code in `packages/server/src/` is **never** mocked with `vi.mock`; use stubs/fakes that implement the ports (`implements IMyPort`).
+  - `rs.mock` is restricted **exclusively to external I/O boundaries** (third-party SDKs such as Discord.js and the ACP SDK, and native Node modules such as `node:fs` and `node:child_process`). Internal code in `packages/server/src/` is **never** mocked with `rs.mock`; use stubs/fakes that implement the ports (`implements IMyPort`).
 - **Ban on barrel exports (`index.ts`)**:
   - Do not use `index.ts` files that re-export symbols from folders or modules. Always import directly from the symbol's source file to avoid unnecessary coupling and circular dependencies.
 
@@ -113,9 +113,10 @@ All commands run from the repository root and apply to every package in `package
 - Every package script runs from its own folder (`packages/server`, `packages/web`); the root scripts delegate to them. The server resolves `.env`, `data/` and `workspaces/` from the repository root through `repository-root.util.ts`, whatever the working directory.
 - Build: `pnpm build`
 - TypeScript static type checking: `pnpm ts`
+- Two TypeScript compilers are installed: `typescript-native` (TypeScript 7) type checks (`ts` and the check in the web `build`), and `typescript` (TypeScript 6) serves the tools that use the compiler API (typescript-eslint, the Nest CLI) and emits `protocol`. Both ship a `tsc` binary, so package scripts call each one by its path in `node_modules`.
 - Linter: `pnpm lint`
 - Code formatting via ESLint: `pnpm format` (or `pnpm lint:fix`)
-- Run unit tests: `pnpm test`
+- Run unit tests: `pnpm test` (`TEST_LOGS=true pnpm test` also prints the server's Nest logs)
 - Test coverage: `pnpm test:cov`
 - End-to-end (e2e) tests: `pnpm test:e2e`
 
@@ -131,7 +132,7 @@ All commands run from the repository root and apply to every package in `package
 3. **Orchestration via Use Cases**: All business logic and flow coordination is done exclusively by Use Case classes (`*.use-case.ts`). Do not use workflow classes.
 4. **No barrel exports**: Import classes, ports and types directly from their definition file, without `index.ts`.
 5. **No obvious comments**: Do not repeat what the code, typing or signature already says.
-6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in `Test.createTestingModule`; `vi.mock` is reserved for external I/O boundaries.
+6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in the testing module (`createTestingModule` from `test/testing-module.ts`); `rs.mock` is reserved for external I/O boundaries.
 7. **Pruning pass before finishing**: Check comments and text introduced in the diff and remove any noise before submitting.
 8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `pnpm ts`, `pnpm lint` and `pnpm test` (plus `pnpm test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`pnpm format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
 9. **Skills in sync with the code**: Every change to a port contract, public signature, lifecycle or rule described in a skill updates the skill in the same commit. Before finishing, compare the skills of the touched module against the `git diff`.

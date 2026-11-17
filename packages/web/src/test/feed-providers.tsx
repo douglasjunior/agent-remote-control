@@ -12,7 +12,7 @@ export function FeedProviders({ children }: { readonly children: ReactNode }) {
   return (
     <MemoryRouter>
       <ConnectionProvider connection={new FakeServerConnection()}>
-        <AnswerInputProvider conversationId="c1" questionId={undefined} onAnswer={vi.fn()}>
+        <AnswerInputProvider conversationId="c1" questionId={undefined} onAnswer={rs.fn()}>
           {children}
         </AnswerInputProvider>
       </ConnectionProvider>

@@ -1,22 +1,22 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 import { StubFileSystem } from '../testing/stub-file-system.port.js';
 
 import { CodexAdapter } from './codex.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function fileSystemStub(binaryPath: string | null = null): StubFileSystem {
   const fileSystem = new StubFileSystem();
@@ -186,14 +186,14 @@ describe('CodexAdapter', () => {
 
     function fakeAppServer(reply: (request: { id?: number; method: string }) => string | undefined) {
       const proc = new EventEmitter() as EventEmitter & {
-        stdin: { write: ReturnType<typeof vi.fn> };
+        stdin: { write: ReturnType<typeof rs.fn> };
         stdout: EventEmitter;
-        kill: ReturnType<typeof vi.fn>;
+        kill: ReturnType<typeof rs.fn>;
       };
       proc.stdout = new EventEmitter();
-      proc.kill = vi.fn();
+      proc.kill = rs.fn();
       proc.stdin = {
-        write: vi.fn((line: string) => {
+        write: rs.fn((line: string) => {
           const response = reply(JSON.parse(line));
           if (response !== undefined) {
             queueMicrotask(() => proc.stdout.emit('data', Buffer.from(response)));
@@ -296,23 +296,23 @@ describe('CodexAdapter', () => {
     });
 
     it('should prefer CODEX_PATH over the PATH lookup', async () => {
-      vi.stubEnv('CODEX_PATH', '/opt/codex');
+      rs.stubEnv('CODEX_PATH', '/opt/codex');
       const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
       spawn.mockReturnValueOnce(fakeAppServer(respond({ result: rateLimits })) as never);
 
       await adapter.getQuota();
 
       expect(spawn.mock.calls[0]?.[0]).toBe('/opt/codex');
-      vi.unstubAllEnvs();
+      rs.unstubAllEnvs();
     });
 
     it('should return undefined when codex is not installed', async () => {
-      vi.stubEnv('CODEX_PATH', '');
+      rs.stubEnv('CODEX_PATH', '');
       const { adapter, spawn } = buildAdapter();
 
       expect(await adapter.getQuota()).toBeUndefined();
       expect(spawn).not.toHaveBeenCalled();
-      vi.unstubAllEnvs();
+      rs.unstubAllEnvs();
     });
 
     it('should return undefined when the server answers with an error', async () => {
@@ -345,17 +345,17 @@ describe('CodexAdapter', () => {
     });
 
     it('should give up when the server does not answer in time', async () => {
-      vi.useFakeTimers();
+      rs.useFakeTimers();
       const { adapter, spawn } = buildAdapter(fileSystemStub('/usr/bin/codex'));
       const proc = fakeAppServer(() => undefined);
       spawn.mockReturnValueOnce(proc as never);
 
       const pending = adapter.getQuota();
-      await vi.advanceTimersByTimeAsync(10_000);
+      await rs.advanceTimersByTimeAsync(10_000);
 
       expect(await pending).toBeUndefined();
       expect(proc.kill).toHaveBeenCalled();
-      vi.useRealTimers();
+      rs.useRealTimers();
     });
   });
 });

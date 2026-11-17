@@ -16,8 +16,6 @@ function updates(app: ReturnType<typeof openBoard>) {
   return app.connection.sent.filter(command => command.type === 'artifact.update');
 }
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { AGENT_ROLES } from '../models/agent-role.type.js';
 import { skillContext } from '../testing/skill-context.fixture.js';

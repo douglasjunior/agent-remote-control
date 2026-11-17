@@ -1,4 +1,4 @@
-import { Test } from '@nestjs/testing';
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { CombinedClientTransportAdapter } from './adapters/combined-client-transport.adapter.js';
 import { JsonConversationStoreAdapter } from './adapters/json-conversation-store.adapter.js';
@@ -12,7 +12,7 @@ import { WebModule } from './web.module.js';
 
 describe('WebModule', () => {
   it('should bind the ports to their adapters and resolve the handler', async () => {
-    const module = await Test.createTestingModule({ imports: [WebModule] }).compile();
+    const module = await createTestingModule({ imports: [WebModule] }).compile();
 
     expect(module.get(IClientTransportPort)).toBeInstanceOf(CombinedClientTransportAdapter);
     expect(module.get(IConversationStorePort)).toBeInstanceOf(JsonConversationStoreAdapter);

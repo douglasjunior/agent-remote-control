@@ -14,7 +14,7 @@ if (import.meta.env.DEV) {
   void import('react-grab');
 }
 
-const app = createAppConnection(import.meta.env.MODE);
+const app = createAppConnection(import.meta.env.ARC_TARGET);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

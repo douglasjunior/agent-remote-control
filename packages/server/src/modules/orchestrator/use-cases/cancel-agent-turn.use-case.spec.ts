@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';

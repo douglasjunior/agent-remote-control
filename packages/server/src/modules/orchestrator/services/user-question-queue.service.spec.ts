@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import type { QuestionAsker, UserQuestion } from '../models/user-question.model.js';
@@ -22,7 +22,7 @@ describe('UserQuestionQueueService', () => {
   });
 
   it('should show the first question with the agent message when the request reaches an empty queue', () => {
-    const notify = vi.fn();
+    const notify = rs.fn();
 
     void queue.ask('conv-1', OWNER, 'I understood X.', [CHOICE, OPEN], questionListener({ asked: notify }));
 
@@ -88,8 +88,8 @@ describe('UserQuestionQueueService', () => {
   });
 
   it('should queue agents in the order they asked and hand over the next one with the last answer', async () => {
-    const ownerNotify = vi.fn();
-    const leadNotify = vi.fn();
+    const ownerNotify = rs.fn();
+    const leadNotify = rs.fn();
     const ownerAnswers = queue.ask('conv-1', OWNER, '', [OPEN], questionListener({ asked: ownerNotify }));
     const leadAnswers = queue.ask('conv-1', LEAD, 'Lead message', [CHOICE], questionListener({ asked: leadNotify }));
 
@@ -127,7 +127,7 @@ describe('UserQuestionQueueService', () => {
   });
 
   it('should discard the request of a replaced agent and show the next one when it was on screen', async () => {
-    const leadNotify = vi.fn();
+    const leadNotify = rs.fn();
     const owner = queue.ask('conv-1', OWNER, '', [OPEN], questionListener());
     void queue.ask('conv-1', LEAD, '', [CHOICE], questionListener({ asked: leadNotify }));
 
@@ -138,7 +138,7 @@ describe('UserQuestionQueueService', () => {
   });
 
   it('should discard a request waiting behind another without showing anything', async () => {
-    const ownerNotify = vi.fn();
+    const ownerNotify = rs.fn();
     void queue.ask('conv-1', OWNER, '', [OPEN], questionListener({ asked: ownerNotify }));
     const lead = queue.ask('conv-1', LEAD, '', [CHOICE], questionListener());
 
@@ -164,13 +164,13 @@ describe('UserQuestionQueueService', () => {
     const RECOMMENDED: UserQuestion = { text: 'Which database?', options: ['SQLite', 'Postgres'], recommendedIndex: 2 };
 
     beforeEach(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(1_000_000);
+      rs.useFakeTimers();
+      rs.setSystemTime(1_000_000);
       timeoutMs = 60_000;
     });
 
     afterEach(() => {
-      vi.useRealTimers();
+      rs.useRealTimers();
     });
 
     it('should expose when the question at the front times out', () => {
@@ -180,10 +180,10 @@ describe('UserQuestionQueueService', () => {
     });
 
     it('should answer with the recommended option once the timeout passes and report it', async () => {
-      const timedOut = vi.fn();
+      const timedOut = rs.fn();
       const answers = queue.ask('conv-1', OWNER, '', [RECOMMENDED], questionListener({ timedOut }));
 
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
 
       const answered = { question: RECOMMENDED, answer: 'Postgres', optionNumber: 2, timedOut: true };
       await expect(answers).resolves.toEqual([answered]);
@@ -194,8 +194,8 @@ describe('UserQuestionQueueService', () => {
     it('should answer with nothing when the question has no recommended option', async () => {
       const answers = queue.ask('conv-1', OWNER, '', [OPEN, CHOICE], questionListener());
 
-      vi.advanceTimersByTime(60_000);
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
 
       await expect(answers).resolves.toEqual([
         { question: OPEN, answer: '', timedOut: true },
@@ -204,10 +204,10 @@ describe('UserQuestionQueueService', () => {
     });
 
     it('should restart the countdown for each question of a request and report the next one', () => {
-      const timedOut = vi.fn();
+      const timedOut = rs.fn();
       void queue.ask('conv-1', OWNER, '', [RECOMMENDED, OPEN], questionListener({ timedOut }));
 
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
 
       expect(timedOut).toHaveBeenCalledWith(expect.objectContaining({
         next: { asker: OWNER, question: OPEN, number: 2, total: 2, waitingAskers: 0, timeout: { expiresAt: 1_120_000, durationMs: 60_000 } },
@@ -215,25 +215,25 @@ describe('UserQuestionQueueService', () => {
     });
 
     it('should hand the countdown to the next request when the first one times out', () => {
-      const leadTimedOut = vi.fn();
+      const leadTimedOut = rs.fn();
       void queue.ask('conv-1', OWNER, '', [RECOMMENDED], questionListener());
       void queue.ask('conv-1', LEAD, '', [RECOMMENDED], questionListener({ timedOut: leadTimedOut }));
-      const timedOut = vi.fn();
+      const timedOut = rs.fn();
       void queue.ask('conv-1', OWNER, '', [OPEN], questionListener({ timedOut }));
 
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
       expect(queue.current('conv-1')).toMatchObject({ asker: LEAD, timeout: { expiresAt: 1_120_000, durationMs: 60_000 } });
 
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
       expect(leadTimedOut).toHaveBeenCalledWith(expect.objectContaining({ next: expect.objectContaining({ asker: OWNER }) }));
     });
 
     it('should stop the countdown when the user answers', async () => {
-      const timedOut = vi.fn();
+      const timedOut = rs.fn();
       const answers = queue.ask('conv-1', OWNER, '', [RECOMMENDED], questionListener({ timedOut }));
 
       queue.submit('conv-1', { kind: 'option', optionIndex: 1 });
-      vi.advanceTimersByTime(120_000);
+      rs.advanceTimersByTime(120_000);
 
       await expect(answers).resolves.toEqual([{ question: RECOMMENDED, answer: 'SQLite', optionNumber: 1 }]);
       expect(timedOut).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe('UserQuestionQueueService', () => {
 
     it('should restart the countdown when the user answers the first of several questions', () => {
       void queue.ask('conv-1', OWNER, '', [RECOMMENDED, OPEN], questionListener());
-      vi.advanceTimersByTime(30_000);
+      rs.advanceTimersByTime(30_000);
 
       queue.submit('conv-1', { kind: 'option', optionIndex: 1 });
 
@@ -257,13 +257,13 @@ describe('UserQuestionQueueService', () => {
     });
 
     it('should stop the countdown of a cancelled or discarded request', async () => {
-      const timedOut = vi.fn();
+      const timedOut = rs.fn();
       const cancelled = queue.ask('conv-1', OWNER, '', [RECOMMENDED], questionListener({ timedOut }));
       const discarded = queue.ask('conv-2', LEAD, '', [RECOMMENDED], questionListener({ timedOut }));
 
       queue.cancel('conv-1');
       queue.discard('conv-2', 'TECH_LEAD', 'my-app');
-      vi.advanceTimersByTime(120_000);
+      rs.advanceTimersByTime(120_000);
 
       await expect(cancelled).rejects.toBeInstanceOf(PromptCancelledError);
       await expect(discarded).rejects.toBeInstanceOf(PromptCancelledError);
@@ -271,9 +271,9 @@ describe('UserQuestionQueueService', () => {
     });
 
     it('should not count down for a request restored after a restart', () => {
-      queue.restore('conv-1', 'work-1', OWNER, { message: '', questions: [RECOMMENDED], answers: [] }, vi.fn());
+      queue.restore('conv-1', 'work-1', OWNER, { message: '', questions: [RECOMMENDED], answers: [] }, rs.fn());
 
-      vi.advanceTimersByTime(120_000);
+      rs.advanceTimersByTime(120_000);
 
       expect(queue.current('conv-1')).toEqual(expect.not.objectContaining({ timeout: expect.anything() }));
       expect(queue.hasPending('conv-1')).toBe(true);
@@ -283,7 +283,7 @@ describe('UserQuestionQueueService', () => {
       timeoutMs = 0;
       void queue.ask('conv-1', OWNER, '', [RECOMMENDED], questionListener());
 
-      vi.advanceTimersByTime(3_600_000);
+      rs.advanceTimersByTime(3_600_000);
 
       expect(queue.hasPending('conv-1')).toBe(true);
       expect(queue.current('conv-1')).toEqual(expect.not.objectContaining({ timeout: expect.anything() }));

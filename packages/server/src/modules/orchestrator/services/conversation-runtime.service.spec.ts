@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
@@ -22,14 +22,14 @@ describe('ConversationRuntimeService', () => {
   });
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     ports = [];
     factory = buildTrackedFactory();
     runtime = new ConversationRuntimeService(factory, IDLE_MS);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
     delete process.env.SESSION_IDLE_TIMEOUT_MS;
   });
 
@@ -62,7 +62,7 @@ describe('ConversationRuntimeService', () => {
   it('should run turns of the same session one at a time in arrival order', async () => {
     const order: string[] = [];
     const first = deferred();
-    const onQueued = vi.fn();
+    const onQueued = rs.fn();
 
     const one = runtime.run('a', 'stub', async () => {
       order.push('one:start');
@@ -73,7 +73,7 @@ describe('ConversationRuntimeService', () => {
       order.push('two');
     }, onQueued);
 
-    await vi.advanceTimersByTimeAsync(0);
+    await rs.advanceTimersByTimeAsync(0);
     expect(order).toEqual(['one:start']);
     expect(onQueued).toHaveBeenCalledTimes(1);
 
@@ -84,7 +84,7 @@ describe('ConversationRuntimeService', () => {
   });
 
   it('should not notify onQueued when the session is idle', async () => {
-    const onQueued = vi.fn();
+    const onQueued = rs.fn();
 
     await runtime.run('a', 'stub', async () => undefined, onQueued);
 
@@ -107,7 +107,7 @@ describe('ConversationRuntimeService', () => {
       await gate.promise;
       turn.throwIfCancelled();
     });
-    await vi.advanceTimersByTimeAsync(0);
+    await rs.advanceTimersByTimeAsync(0);
 
     await expect(runtime.cancel('a')).resolves.toBe(true);
     gate.resolve();
@@ -121,7 +121,7 @@ describe('ConversationRuntimeService', () => {
   it('should expire an idle session by closing its agent', async () => {
     await runtime.run('a', 'stub', async () => undefined);
 
-    await vi.advanceTimersByTimeAsync(IDLE_MS);
+    await rs.advanceTimersByTimeAsync(IDLE_MS);
 
     expect(ports[0]!.closeSessionCalls).toBe(1);
     expect(ports[0]!.connected).toBe(false);
@@ -132,13 +132,13 @@ describe('ConversationRuntimeService', () => {
 
   it('should restart the idle countdown when a new turn arrives', async () => {
     await runtime.run('a', 'stub', async () => undefined);
-    await vi.advanceTimersByTimeAsync(IDLE_MS - 1);
+    await rs.advanceTimersByTimeAsync(IDLE_MS - 1);
 
     await runtime.run('a', 'stub', async () => undefined);
-    await vi.advanceTimersByTimeAsync(IDLE_MS - 1);
+    await rs.advanceTimersByTimeAsync(IDLE_MS - 1);
 
     expect(ports[0]!.closeSessionCalls).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
+    await rs.advanceTimersByTimeAsync(1);
     expect(ports[0]!.closeSessionCalls).toBe(1);
   });
 
@@ -146,7 +146,7 @@ describe('ConversationRuntimeService', () => {
     const gate = deferred();
     const running = runtime.run('a', 'stub', async () => gate.promise);
 
-    await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
+    await rs.advanceTimersByTimeAsync(IDLE_MS * 2);
     expect(ports[0]!.closeSessionCalls).toBe(0);
 
     gate.resolve();
@@ -160,7 +160,7 @@ describe('ConversationRuntimeService', () => {
     await runtime.onApplicationShutdown();
 
     expect(ports.every(port => !port.connected)).toBe(true);
-    await vi.advanceTimersByTimeAsync(IDLE_MS);
+    await rs.advanceTimersByTimeAsync(IDLE_MS);
     expect(ports.every(port => port.closeSessionCalls === 0)).toBe(true);
   });
 
@@ -170,15 +170,15 @@ describe('ConversationRuntimeService', () => {
     const trackingFactory = factory;
     const envRuntime = new ConversationRuntimeService(trackingFactory);
     await envRuntime.run('a', 'stub', async () => undefined);
-    await vi.advanceTimersByTimeAsync(50);
+    await rs.advanceTimersByTimeAsync(50);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
     delete process.env.SESSION_IDLE_TIMEOUT_MS;
     const defaultRuntime = new ConversationRuntimeService(trackingFactory);
     await defaultRuntime.run('b', 'stub', async () => undefined);
-    await vi.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+    await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
     expect(created[1]!.closeSessionCalls).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
+    await rs.advanceTimersByTimeAsync(1);
     expect(created[1]!.closeSessionCalls).toBe(1);
   });
 
@@ -247,7 +247,7 @@ describe('ConversationRuntimeService', () => {
         order.push(`second:firstClosed=${ports[0]!.closeSessionCalls}`);
       });
 
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
       expect(order).toEqual(['first:start']);
 
       gate.resolve();
@@ -285,7 +285,7 @@ describe('ConversationRuntimeService', () => {
     const startRunningCeo = async (agentId = 'stub') => {
       const gate = deferred();
       const running = runtime.run('a', agentId, async () => gate.promise);
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
       return { gate, running };
     };
 
@@ -392,9 +392,9 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/my-app',
         startedAt: Date.now(),
         agentPort: delegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -424,9 +424,9 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/backend',
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
       const frontend = { ...backend, projectName: 'frontend', cwd: '/mock/frontend', agentPort: new StubAgentPort() };
       const planner = { ...backend, role: 'TECH_LEAD', roleName: 'Tech Lead', agentPort: new StubAgentPort() };
@@ -455,9 +455,9 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/my-app',
         startedAt: Date.now(),
         agentPort: delegatePort1,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
       const delegation2 = {
         ...delegation1,
@@ -479,7 +479,7 @@ describe('ConversationRuntimeService', () => {
 
     it('should cancel both active turn and active delegations', async () => {
       const delegatePort = new StubAgentPort();
-      const cancelTurnMock = vi.fn().mockResolvedValue(undefined);
+      const cancelTurnMock = rs.fn().mockResolvedValue(undefined);
       const delegation = {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -493,8 +493,8 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: cancelTurnMock } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -504,7 +504,7 @@ describe('ConversationRuntimeService', () => {
         await gate.promise;
         turn.throwIfCancelled();
       });
-      await vi.advanceTimersByTimeAsync(0);
+      await rs.advanceTimersByTimeAsync(0);
 
       await expect(runtime.cancel('a')).resolves.toBe(true);
       expect(cancelTurnMock).toHaveBeenCalled();
@@ -514,8 +514,8 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should cancel active delegations concurrently and rethrow if any cancel rejects', async () => {
-      const cancelMock1 = vi.fn().mockRejectedValue(new Error('fail 1'));
-      const cancelMock2 = vi.fn().mockResolvedValue(undefined);
+      const cancelMock1 = rs.fn().mockRejectedValue(new Error('fail 1'));
+      const cancelMock2 = rs.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('a', {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -529,8 +529,8 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
         delegationId: 'd-1',
@@ -545,8 +545,8 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
 
       await expect(runtime.cancel('a')).rejects.toThrow('fail 1');
@@ -555,8 +555,8 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should cancel active delegations concurrently when all succeed', async () => {
-      const cancelMock1 = vi.fn().mockResolvedValue(undefined);
-      const cancelMock2 = vi.fn().mockResolvedValue(undefined);
+      const cancelMock1 = rs.fn().mockResolvedValue(undefined);
+      const cancelMock2 = rs.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('a', {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -570,8 +570,8 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
         delegationId: 'd-1',
@@ -586,8 +586,8 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
 
       await expect(runtime.cancel('a')).resolves.toBe(true);
@@ -610,9 +610,9 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/my-app',
         startedAt: Date.now(),
         agentPort: delegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -637,24 +637,24 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/my-app',
         startedAt: Date.now(),
         agentPort: delegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
       await runtime.run('a', 'stub', async () => undefined);
       runtime.registerDelegation('a', delegation);
-      await vi.advanceTimersByTimeAsync(IDLE_MS * 2);
+      await rs.advanceTimersByTimeAsync(IDLE_MS * 2);
       expect(ports[0]!.closeSessionCalls).toBe(0);
 
       runtime.unregisterDelegation('a', delegation);
-      await vi.advanceTimersByTimeAsync(IDLE_MS);
+      await rs.advanceTimersByTimeAsync(IDLE_MS);
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
 
     it('should schedule expiration when runOnCeo completes and no other turns or delegations are active', async () => {
       await runtime.runOnCeo('a', 'stub', async () => undefined);
-      await vi.advanceTimersByTimeAsync(IDLE_MS);
+      await rs.advanceTimersByTimeAsync(IDLE_MS);
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
 
@@ -673,9 +673,9 @@ describe('ConversationRuntimeService', () => {
         cwd: '/mock/my-app',
         startedAt: Date.now(),
         agentPort: delegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
@@ -734,7 +734,7 @@ describe('ConversationRuntimeService', () => {
       await runtime.run('a', 'stub', async () => undefined);
       runtime.addCeoNotice('a', 'first');
 
-      await vi.advanceTimersByTimeAsync(IDLE_MS + 1);
+      await rs.advanceTimersByTimeAsync(IDLE_MS + 1);
 
       expect(runtime.getCeoPort('a')).toBeUndefined();
       expect(runtime.pendingCeoNotices('a')).toEqual(['first']);
@@ -765,9 +765,9 @@ describe('ConversationRuntimeService', () => {
       cwd: '/mock',
       startedAt: Date.now(),
       agentPort: port,
-      turn: { cancel: vi.fn() } as any,
-      steer: vi.fn(),
-      stop: vi.fn(),
+      turn: { cancel: rs.fn() } as any,
+      steer: rs.fn(),
+      stop: rs.fn(),
     });
 
     it('should tear down every agent on shutdown even when disconnecting fails', async () => {

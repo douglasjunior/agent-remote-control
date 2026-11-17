@@ -1,5 +1,5 @@
 import type { AgentLoginEvent } from '@agent-remote-control/protocol/agent-auth';
-import { act, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
@@ -30,11 +30,9 @@ function emitLogin(connection: FakeServerConnection, agentId: string, event: Age
 const sentOfType = (connection: FakeServerConnection, type: string) =>
   connection.sent.filter(command => command.type === type);
 
-// Each case mounts the whole app and waits on sonner's animated toasts, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
-
 describe('AgentAuthController', () => {
   afterEach(() => {
+    rs.useRealTimers();
     toast.dismiss();
   });
 
@@ -73,11 +71,11 @@ describe('AgentAuthController', () => {
 
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'AB12-CD34' });
 
-    const link = await screen.findByRole('link', { name: /Open login page/ }, { timeout: 5000 });
+    const link = await screen.findByRole('link', { name: /Open login page/ });
     expect(link).toHaveAttribute('href', 'https://claude.com/oauth');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    expect((await screen.findAllByText('AB12-CD34', {}, { timeout: 5000 })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('AB12-CD34', {})).length).toBeGreaterThan(0);
   });
 
   it('should never render a link that is not https', async () => {
@@ -120,14 +118,17 @@ describe('AgentAuthController', () => {
 
   it('should keep the login toast after its action opens the code input', async () => {
     const { connection } = renderApp();
-    const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
 
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
-    await user.keyboard('{Escape}');
+    const enterCode = await screen.findByRole('button', { name: 'Enter code' });
+    rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    fireEvent.click(enterCode);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     // Sonner removes a toast 200 ms after an action click that does not prevent the default.
-    await act(() => new Promise(resolve => setTimeout(resolve, 400)));
+    act(() => {
+      rs.advanceTimersByTime(400);
+    });
 
     expect(screen.getByText('Log in to Claude Code')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Enter code' })).toBeInTheDocument();
@@ -145,7 +146,7 @@ describe('AgentAuthController', () => {
     await user.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByRole('status')).toHaveTextContent('Checking the code…');
-    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2), { timeout: 5000 });
+    await waitFor(() => expect(screen.getAllByText('Checking the code…')).toHaveLength(2));
     expect(screen.queryByLabelText('Paste the code the browser shows')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Open login page/ })).toBeInTheDocument();
   });
@@ -332,7 +333,7 @@ describe('AgentAuthPopover', () => {
     const { connection } = renderApp();
     emitStatus(connection, ['claude', 'authenticated']);
     const user = await open();
-    const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+    const writeText = rs.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
     await user.click(screen.getByRole('button', { name: 'Re-authenticate Claude Code' }));
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'AB12-CD34' });
 

@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -9,10 +9,6 @@ import { DiscordAgentAuthNotifierService } from './discord-agent-auth-notifier.s
 
 
 const claude = { agentId: 'claude', displayName: 'Claude Code' };
-
-async function flush(): Promise<void> {
-  await new Promise(resolve => setImmediate(resolve));
-}
 
 describe('DiscordAgentAuthNotifierService', () => {
   let agentAuth: StubAgentAuthPort;
@@ -33,7 +29,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   it('should start the login and announce it', async () => {
@@ -48,31 +44,26 @@ describe('DiscordAgentAuthNotifierService', () => {
     await notifier.start('conv-1', claude, channel);
 
     agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth' });
-    await flush();
 
-    expect(sent.at(-1)).toBe([
+    await rs.waitFor(() => expect(sent.at(-1)).toBe([
       '🔗 **Claude Code login** — open this link in your browser and sign in with your subscription account:',
       'https://claude.com/oauth',
       '⏳ Waiting for you to finish in the browser. Use /cancel to stop.',
-    ].join('\n'));
+    ].join('\n')));
   });
 
   it('should post the one-time code with the link', async () => {
     await notifier.start('conv-1', claude, channel);
 
     agentAuth.emit('claude', { kind: 'url', url: 'https://auth.openai.com/codex/device', code: 'ABCD-12345' });
-    await flush();
-
-    expect(sent.at(-1)).toContain('Enter this one-time code: `ABCD-12345`');
+    await rs.waitFor(() => expect(sent.at(-1)).toContain('Enter this one-time code: `ABCD-12345`'));
   });
 
   it('should ask for the pasted code and route the next message to the login', async () => {
     await notifier.start('conv-1', claude, channel);
 
     agentAuth.emit('claude', { kind: 'prompt', hint: 'Paste code here >' });
-    await flush();
-
-    expect(sent.at(-1)).toContain('reply in this thread with the code');
+    await rs.waitFor(() => expect(sent.at(-1)).toContain('reply in this thread with the code'));
     expect(requests.loginAwaitingCode('conv-1')).toBe('claude');
   });
 
@@ -85,9 +76,7 @@ describe('DiscordAgentAuthNotifierService', () => {
     agentAuth.emit('claude', { kind: 'prompt', hint: 'x' });
 
     agentAuth.emit('claude', event);
-    await flush();
-
-    expect(sent.at(-1)).toBe(message);
+    await rs.waitFor(() => expect(sent.at(-1)).toBe(message));
     expect(requests.runningLogin('conv-1')).toBeUndefined();
   });
 
@@ -97,9 +86,7 @@ describe('DiscordAgentAuthNotifierService', () => {
     agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth' });
     agentAuth.emit('claude', { kind: 'prompt', hint: 'x' });
     agentAuth.emit('claude', { kind: 'completed' });
-    await flush();
-
-    expect(sent.slice(1).map(message => Array.from(message)[0])).toEqual(['🔗', '🔑', '✅']);
+    await rs.waitFor(() => expect(sent.slice(1).map(message => Array.from(message)[0])).toEqual(['🔗', '🔑', '✅']));
   });
 
   it('should report a login that cannot start', async () => {
@@ -120,7 +107,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log a failed post and carry on', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const failing = { send: async () => Promise.reject(new Error('Missing Access')) };
 
     await notifier.start('conv-1', claude, failing);
@@ -129,7 +116,7 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log a post failure that is not an error', async () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const failing = { send: async () => Promise.reject('nope') };
 
     await notifier.start('conv-1', claude, failing);
@@ -138,14 +125,12 @@ describe('DiscordAgentAuthNotifierService', () => {
   });
 
   it('should log the outcome of a login without the link or the code', async () => {
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     await notifier.start('conv-1', claude, channel);
 
     agentAuth.emit('claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'ABCD-12345' });
     agentAuth.emit('claude', { kind: 'completed' });
-    await flush();
-
-    expect(log).toHaveBeenCalledWith('[Agent Login] completed (conversation=conv-1)');
+    await rs.waitFor(() => expect(log).toHaveBeenCalledWith('[Agent Login] completed (conversation=conv-1)'));
     expect(JSON.stringify(log.mock.calls)).not.toContain('claude.com');
     expect(JSON.stringify(log.mock.calls)).not.toContain('ABCD');
   });

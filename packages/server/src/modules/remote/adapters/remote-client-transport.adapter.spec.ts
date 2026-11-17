@@ -35,7 +35,7 @@ describe('RemoteClientTransportAdapter', () => {
   let accessToken: AccessTokenService;
   let connections: IClientConnection[];
   let proof: string;
-  let warn: ReturnType<typeof vi.spyOn>;
+  let warn: ReturnType<typeof rs.spyOn>;
 
   const create = (client = signaling) => new RemoteClientTransportAdapter(identity, accessToken, client, peers);
   const request = (index = 1, withProof = proof, source = SOURCE) =>
@@ -50,12 +50,12 @@ describe('RemoteClientTransportAdapter', () => {
   };
 
   beforeEach(async () => {
-    vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     dataDir = mkdtempSync(join(tmpdir(), 'remote-transport-'));
-    vi.stubEnv('REMOTE_ENABLED', 'true');
-    vi.stubEnv('REMOTE_URL', 'http://localhost:3100');
-    vi.stubEnv('WEB_ACCESS_TOKEN', TOKEN);
+    rs.stubEnv('REMOTE_ENABLED', 'true');
+    rs.stubEnv('REMOTE_URL', 'http://localhost:3100');
+    rs.stubEnv('WEB_ACCESS_TOKEN', TOKEN);
     identity = new RemoteIdentityService(dataDirectoryAt(dataDir));
     accessToken = new AccessTokenService(dataDirectoryAt(dataDir));
     signaling = new FakeSignalingClient();
@@ -68,9 +68,9 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.unstubAllEnvs();
+    rs.restoreAllMocks();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
@@ -90,7 +90,7 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should not reach the signaling server unless remote access is on', async () => {
-    vi.stubEnv('REMOTE_ENABLED', '');
+    rs.stubEnv('REMOTE_ENABLED', '');
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
 
@@ -101,8 +101,8 @@ describe('RemoteClientTransportAdapter', () => {
     ['missing', undefined],
     ['plain HTTP to another machine', 'http://arc.example.com'],
   ])('should stay off with REMOTE_URL %s', async (_name, remoteUrl) => {
-    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    vi.stubEnv('REMOTE_URL', remoteUrl);
+    const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    rs.stubEnv('REMOTE_URL', remoteUrl);
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
 
@@ -111,8 +111,8 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should stay off with an access token too short to face the Internet', async () => {
-    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'short');
+    const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    rs.stubEnv('WEB_ACCESS_TOKEN', 'short');
     accessToken = new AccessTokenService(dataDirectoryAt(dataDir));
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
@@ -129,18 +129,18 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should reject a wrong proof and check no request of its source until the backoff, which doubles per rejection', () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    rs.useFakeTimers({ toFake: ['Date'] });
     const wrong = wrongProof();
     request(1, wrong);
     request(2);
-    vi.advanceTimersByTime(1_000);
+    rs.advanceTimersByTime(1_000);
     request(3, wrong);
-    vi.advanceTimersByTime(1_999);
+    rs.advanceTimersByTime(1_999);
     request(4);
-    vi.advanceTimersByTime(1);
+    rs.advanceTimersByTime(1);
     request(5);
     request(6, wrong);
-    vi.advanceTimersByTime(1_000);
+    rs.advanceTimersByTime(1_000);
     request(7);
 
     expect(signaling.sent).toEqual([
@@ -156,7 +156,7 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should keep checking the requests of other sources while one backs off', () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    rs.useFakeTimers({ toFake: ['Date'] });
     request(1, wrongProof());
     request(2, wrongProof());
     request(3, proof, OTHER_SOURCE);
@@ -169,7 +169,7 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should forget the source rejected longest ago past the sources it remembers', () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    rs.useFakeTimers({ toFake: ['Date'] });
     const sourceOf = (index: number) => `source-${String(index).padStart(15, '0')}`;
     Array.from({ length: 1_025 }, (_, index) => request(index + 1, wrongProof(), sourceOf(index)));
     signaling.sent.splice(0);
@@ -331,9 +331,9 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should give up a session that opens no channel in time', () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     negotiate();
-    vi.advanceTimersByTime(30_000);
+    rs.advanceTimersByTime(30_000);
 
     expect(peers.peers[0]!.closed).toBe(true);
     expect(signaling.sent.at(-1)).toEqual({ type: 'host.close', sessionId: sessionId(1) });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import {
   type DiscordAttachment,
@@ -6,9 +6,9 @@ import {
 } from './discord-attachment.service.js';
 
 
-vi.mock('node:fs/promises', () => ({
-  mkdir: vi.fn().mockResolvedValue(undefined),
-  writeFile: vi.fn().mockResolvedValue(undefined),
+rs.mock('node:fs/promises', () => ({
+  mkdir: rs.fn().mockResolvedValue(undefined),
+  writeFile: rs.fn().mockResolvedValue(undefined),
 }));
 
 const { mkdir, writeFile } = await import('node:fs/promises');
@@ -17,7 +17,7 @@ describe('DiscordAttachmentService', () => {
   let service: DiscordAttachmentService;
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    rs.clearAllMocks();
     service = new DiscordAttachmentService();
   });
 
@@ -182,7 +182,7 @@ describe('DiscordAttachmentService', () => {
   describe('downloadAttachments', () => {
     it('should download attachments and return TurnAttachment array', async () => {
       const fileBytes = Buffer.from('file-content');
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
@@ -220,9 +220,9 @@ describe('DiscordAttachmentService', () => {
     });
 
     it('should configure fetch request with timeout abort signal', async () => {
-      const timeoutSpy = vi.spyOn(AbortSignal, 'timeout');
+      const timeoutSpy = rs.spyOn(AbortSignal, 'timeout');
       const fileBytes = Buffer.from('test');
-      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      const fetchSpy = rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
@@ -249,7 +249,7 @@ describe('DiscordAttachmentService', () => {
 
     it('should throw error when download aborts due to timeout', async () => {
       const timeoutError = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
+      rs.spyOn(globalThis, 'fetch').mockRejectedValue(timeoutError);
 
       const attachments: DiscordAttachment[] = [
         {
@@ -267,7 +267,7 @@ describe('DiscordAttachmentService', () => {
 
     it('should sanitize path traversal characters in attachment names', async () => {
       const fileBytes = Buffer.from('test');
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
@@ -292,7 +292,7 @@ describe('DiscordAttachmentService', () => {
 
     it('should handle attachment with null name and null contentType', async () => {
       const fileBytes = Buffer.from('test');
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',
@@ -315,7 +315,7 @@ describe('DiscordAttachmentService', () => {
     });
 
     it('should throw error when download HTTP request fails', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: false,
         status: 404,
         statusText: 'Not Found',
@@ -336,7 +336,7 @@ describe('DiscordAttachmentService', () => {
     });
 
     it('should throw error when fetch throws network error', async () => {
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection reset'));
+      rs.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Connection reset'));
 
       const attachments: DiscordAttachment[] = [
         {
@@ -353,7 +353,7 @@ describe('DiscordAttachmentService', () => {
     });
 
     it('should throw error when fetch throws non-Error object', async () => {
-      vi.spyOn(globalThis, 'fetch').mockRejectedValue('Network timeout string');
+      rs.spyOn(globalThis, 'fetch').mockRejectedValue('Network timeout string');
 
       const attachments: DiscordAttachment[] = [
         {
@@ -371,7 +371,7 @@ describe('DiscordAttachmentService', () => {
 
     it('should omit url property when attachment url is empty', async () => {
       const fileBytes = Buffer.from('test');
-      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      rs.spyOn(globalThis, 'fetch').mockResolvedValue({
         ok: true,
         status: 200,
         statusText: 'OK',

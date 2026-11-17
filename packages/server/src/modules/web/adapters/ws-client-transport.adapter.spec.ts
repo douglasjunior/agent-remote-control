@@ -28,7 +28,7 @@ describe('WsClientTransportAdapter', () => {
     });
 
   beforeEach(async () => {
-    vi.stubEnv('WEB_ALLOWED_ORIGINS', 'http://localhost:5173');
+    rs.stubEnv('WEB_ALLOWED_ORIGINS', 'http://localhost:5173');
     httpServer = createServer((_req, res) => res.end());
     await new Promise<void>(done => httpServer.listen(0, '127.0.0.1', done));
     port = (httpServer.address() as AddressInfo).port;
@@ -39,7 +39,7 @@ describe('WsClientTransportAdapter', () => {
   });
 
   afterEach(async () => {
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
     for (const client of clients.splice(0)) {
       client.terminate();
     }
@@ -71,7 +71,7 @@ describe('WsClientTransportAdapter', () => {
   describe('the list in WEB_ALLOWED_ORIGINS', () => {
     const restartWith = async (raw: string | undefined) => {
       await adapter.onModuleDestroy();
-      vi.stubEnv('WEB_ALLOWED_ORIGINS', raw);
+      rs.stubEnv('WEB_ALLOWED_ORIGINS', raw);
       adapter = new WsClientTransportAdapter({ httpAdapter: { getHttpServer: () => httpServer } } as HttpAdapterHost);
       adapter.onModuleInit();
     };
@@ -112,7 +112,7 @@ describe('WsClientTransportAdapter', () => {
 
     client.send(JSON.stringify({ type: 'auth', token: 't' }));
     client.send('not json');
-    await vi.waitFor(() => expect(received).toHaveLength(2));
+    await rs.waitFor(() => expect(received).toHaveLength(2));
     connection.send({ type: 'auth.ok' });
 
     expect(received).toEqual([{ type: 'auth', token: 't' }, 'not json']);

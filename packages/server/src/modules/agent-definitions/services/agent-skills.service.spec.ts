@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import type { AgentSkillInput } from '../../orchestrator/models/agent-skill.model.js';
 import { workspaceDirectoryAt } from '../../paths/testing/fixed-directories.js';

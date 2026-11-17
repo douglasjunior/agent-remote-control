@@ -10,8 +10,8 @@ function Probe() {
 
 describe('useConversations', () => {
   it('should throw outside the provider', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rs.spyOn(console, 'error').mockImplementation(() => undefined);
     expect(() => render(<Probe />)).toThrow('useConversations must be used inside ConversationsProvider');
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { agentIdentity, TEAM_ROLES } from './agent-identity.js';
 

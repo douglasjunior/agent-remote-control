@@ -49,8 +49,8 @@ describe('WebSocketServerConnection', () => {
   let events: ServerEvent[];
 
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.stubGlobal('WebSocket', FakeWebSocket);
+    rs.useFakeTimers();
+    rs.stubGlobal('WebSocket', FakeWebSocket);
     FakeWebSocket.instances = [];
     localStorage.clear();
     tokens = new AccessTokenStore();
@@ -63,9 +63,9 @@ describe('WebSocketServerConnection', () => {
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.unstubAllGlobals();
+    rs.restoreAllMocks();
   });
 
   function authenticate() {
@@ -87,7 +87,7 @@ describe('WebSocketServerConnection', () => {
   });
 
   it('should use wss on https pages', () => {
-    vi.stubGlobal('location', { protocol: 'https:', host: 'example.com' });
+    rs.stubGlobal('location', { protocol: 'https:', host: 'example.com' });
     connection.connect();
     expect(latest().url).toBe('wss://example.com/ws');
   });
@@ -118,7 +118,7 @@ describe('WebSocketServerConnection', () => {
   });
 
   it('should forward valid events and drop invalid frames with a warning', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(console, 'warn').mockImplementation(() => undefined);
     authenticate();
 
     latest().receive({ type: 'conversation.list', conversations: [] });
@@ -172,7 +172,7 @@ describe('WebSocketServerConnection', () => {
     expect(latest().closed).toBe(true);
 
     latest().serverClose(4401);
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
@@ -182,7 +182,7 @@ describe('WebSocketServerConnection', () => {
 
     expect(statuses.at(-1)).toBe('unauthorized');
     expect(tokens.read()).toBeNull();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
@@ -193,9 +193,9 @@ describe('WebSocketServerConnection', () => {
     delays.forEach((delay, index) => {
       latest().serverClose();
       expect(statuses.at(-1)).toBe('closed');
-      vi.advanceTimersByTime(delay - 1);
+      rs.advanceTimersByTime(delay - 1);
       expect(FakeWebSocket.instances).toHaveLength(index + 1);
-      vi.advanceTimersByTime(1);
+      rs.advanceTimersByTime(1);
       expect(FakeWebSocket.instances).toHaveLength(index + 2);
     });
   });
@@ -203,17 +203,17 @@ describe('WebSocketServerConnection', () => {
   it('should reset the backoff after a successful authentication', () => {
     connection.connect();
     latest().serverClose();
-    vi.advanceTimersByTime(500);
+    rs.advanceTimersByTime(500);
     latest().serverClose();
-    vi.advanceTimersByTime(1000);
+    rs.advanceTimersByTime(1000);
     latest().open();
     latest().receive({ type: 'auth.ok' });
 
     latest().serverClose();
     const count = FakeWebSocket.instances.length;
-    vi.advanceTimersByTime(499);
+    rs.advanceTimersByTime(499);
     expect(FakeWebSocket.instances).toHaveLength(count);
-    vi.advanceTimersByTime(1);
+    rs.advanceTimersByTime(1);
     expect(FakeWebSocket.instances).toHaveLength(count + 1);
   });
 
@@ -225,7 +225,7 @@ describe('WebSocketServerConnection', () => {
     expect(socket.closed).toBe(true);
     expect(statuses.at(-1)).toBe('closed');
     socket.serverClose();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(1);
   });
 
@@ -233,14 +233,14 @@ describe('WebSocketServerConnection', () => {
     connection.connect();
     latest().serverClose();
     connection.disconnect();
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(1);
 
     connection.connect();
     latest().serverClose();
     connection.connect();
     expect(FakeWebSocket.instances).toHaveLength(3);
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
     expect(FakeWebSocket.instances).toHaveLength(3);
   });
 

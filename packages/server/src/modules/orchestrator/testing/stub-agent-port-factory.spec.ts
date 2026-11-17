@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { StubAgentPortFactory } from './stub-agent-port-factory.js';
 import { StubAgentPort } from './stub-agent.port.js';

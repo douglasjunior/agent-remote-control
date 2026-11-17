@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
@@ -57,28 +57,28 @@ import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachment
 
 
 class StubAgentRegistryPort implements IAgentRegistryPort {
-  getDefaultModel = vi.fn().mockReturnValue('mock-model-v1');
-  getSystemPrompt = vi.fn().mockReturnValue('Mock system prompt.');
-  getDisplayName = vi.fn((role: string) => role);
-  listRoles = vi.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'PRODUCT_OWNER']);
-  hasRole = vi.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD'].includes(role));
-  getDefaultSessionMode = vi.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
-  getDelegationContract = vi.fn(
+  getDefaultModel = rs.fn().mockReturnValue('mock-model-v1');
+  getSystemPrompt = rs.fn().mockReturnValue('Mock system prompt.');
+  getDisplayName = rs.fn((role: string) => role);
+  listRoles = rs.fn((): string[] => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'PRODUCT_OWNER']);
+  hasRole = rs.fn((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD'].includes(role));
+  getDefaultSessionMode = rs.fn((role: string) => (role === 'CODE_REVIEWER' ? 'new' : 'resume'));
+  getDelegationContract = rs.fn(
     (_role: string) => ({ project: 'optional', sessionMode: 'overridable', asksUser: true }) as DelegationContract,
   );
 
-  getArtifactAccess = vi.fn((_role: string): ArtifactAccess => ({ scope: 'task', sections: [], fields: [] }));
-  getTurnReminder = vi.fn().mockReturnValue('');
-  isSystemPromptEveryTurn = vi.fn().mockReturnValue(false);
+  getArtifactAccess = rs.fn((_role: string): ArtifactAccess => ({ scope: 'task', sections: [], fields: [] }));
+  getTurnReminder = rs.fn().mockReturnValue('');
+  isSystemPromptEveryTurn = rs.fn().mockReturnValue(false);
 }
 
 class StubWorkspacePort implements IWorkspacePort {
-  getBaseDirectory = vi.fn().mockReturnValue('/mock/workspace');
-  resolveRepositoryPath = vi.fn().mockReturnValue('/mock/workspace/my-app');
-  ensureDirectory = vi.fn().mockResolvedValue(undefined);
-  listProjectFolders = vi.fn().mockResolvedValue(['my-app', 'project-a', 'project-b']);
-  writeFile = vi.fn().mockResolvedValue(undefined);
-  ensureSymlink = vi.fn().mockResolvedValue(undefined);
+  getBaseDirectory = rs.fn().mockReturnValue('/mock/workspace');
+  resolveRepositoryPath = rs.fn().mockReturnValue('/mock/workspace/my-app');
+  ensureDirectory = rs.fn().mockResolvedValue(undefined);
+  listProjectFolders = rs.fn().mockResolvedValue(['my-app', 'project-a', 'project-b']);
+  writeFile = rs.fn().mockResolvedValue(undefined);
+  ensureSymlink = rs.fn().mockResolvedValue(undefined);
 }
 
 const toCeo = (prompt: string) => `${prompt}\n\n${buildCeoLanguagePrompt('English')}`;
@@ -670,7 +670,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     agentSkills.skills = { DEVELOPER: [{ name: 'testing', description: 'How to test.', content: 'Test it.' }] };
     stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Done.'];
     delegateStubPort.mockResponses = ['<final_response><skill_read name="testing"/></final_response>', 'Built.'];
-    const onActivity = vi.fn();
+    const onActivity = rs.fn();
 
     await useCase.execute(turnRequest({ onActivity }));
 
@@ -681,7 +681,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   it('should answer a skill request with the skill content in the next prompt', async () => {
     agentSkills.skills = { CEO: [{ name: 'board', description: 'Routing the board.', content: 'Route it.' }] };
     stubAgentPort.mockResponses = ['<final_response><skill_read name="board"/></final_response>', 'Done.'];
-    const onActivity = vi.fn();
+    const onActivity = rs.fn();
 
     const result = await useCase.execute(turnRequest({ onActivity }));
 
@@ -737,12 +737,12 @@ describe('ExecuteAgentTurnUseCase', () => {
         yield textChunk(`reply to ${text}`);
       };
     });
-    const onQueued = vi.fn();
+    const onQueued = rs.fn();
 
     const first = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'one' }));
     await firstStarted;
     const second = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'two', onQueued }));
-    await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+    await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
     expect(stubAgentPort.promptCalls).toHaveLength(1);
 
@@ -877,7 +877,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       yield textChunk('');
       yield textChunk('second');
     };
-    const onActivity = vi.fn();
+    const onActivity = rs.fn();
 
     await useCase.execute(turnRequest({ onActivity }));
 
@@ -901,7 +901,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         '<user_language>English</user_language>\n\nAll done. <attach',
         '<user_language>English</user_language>\n\nAll done.',
       ], 'All done.');
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       await useCase.execute(turnRequest({ onDraft }));
 
@@ -910,7 +910,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should hand the channel the answer without the envelope', async () => {
       writeAnswer(stubAgentPort, ['<final_response>Done.'], '<final_response>Done.</final_response>');
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
@@ -921,7 +921,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should leave out the answers other agents write', async () => {
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Go.</delegate>', 'Ok.'];
       writeAnswer(delegateStubPort, ['The delegate answer'], 'Done.');
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       await useCase.execute(turnRequest({ onDraft }));
 
@@ -1636,8 +1636,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       const activePort = new StubAgentPort();
       activePort.agentName = 'dev-a';
       activePort.supportsSteering = true;
-      const cancel = vi.fn();
-      const steer = vi.fn().mockResolvedValue(true);
+      const cancel = rs.fn();
+      const steer = rs.fn().mockResolvedValue(true);
       runtime.registerDelegation('conv-1', {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -1652,7 +1652,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activePort,
         turn: { cancel } as any,
         steer,
-        stop: vi.fn(),
+        stop: rs.fn(),
       });
       settingsStore.settings = buildStubSettings({ CEO: ceoProfile, DEVELOPER: developerProfile('dev-b') });
       responses.set('stub', ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Change course.</delegate>', 'Ok.']);
@@ -1743,7 +1743,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should not send an interim message when a delegation has no text around it', async () => {
-      const onInterimMessage = vi.fn();
+      const onInterimMessage = rs.fn();
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Go.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['Implemented.'];
 
@@ -1843,7 +1843,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should tell the channel what was transcribed before the agents run', async () => {
       stubAgentPort.mockResponses = ['Done.'];
       speechToText.transcripts[voice.path] = 'hello there';
-      const onTranscription = vi.fn();
+      const onTranscription = rs.fn();
 
       await useCase.execute(turnRequest({ attachments: [voice], onTranscription }));
 
@@ -1856,7 +1856,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should keep the audio as an attachment, and warn, when nothing could be transcribed', async () => {
       stubAgentPort.mockResponses = ['Done.'];
       speechToText.failures[voice.path] = 'whisper crashed';
-      const onTranscription = vi.fn();
+      const onTranscription = rs.fn();
 
       await useCase.execute(turnRequest({ prompt: '', attachments: [voice], onTranscription }));
 
@@ -1879,7 +1879,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should not report anything when the message has no audio', async () => {
       stubAgentPort.mockResponses = ['Done.'];
-      const onTranscription = vi.fn();
+      const onTranscription = rs.fn();
 
       await useCase.execute(turnRequest({ attachments: [photo], onTranscription }));
 
@@ -1889,7 +1889,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should hand the asking agent the transcript of an answer spoken as audio', async () => {
       stubAgentPort.mockResponses = ['<question>Which colour?</question>', 'Thanks.'];
       speechToText.transcripts[voice.path] = 'Blue please';
-      const onTranscription = vi.fn();
+      const onTranscription = rs.fn();
 
       await useCase.execute(turnRequest({
         onTranscription,
@@ -1906,7 +1906,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should leave answers without audio untouched', async () => {
       stubAgentPort.mockResponses = ['<question>Which colour?</question>', 'Thanks.'];
-      const onTranscription = vi.fn();
+      const onTranscription = rs.fn();
 
       await useCase.execute(turnRequest({
         onTranscription,
@@ -1958,7 +1958,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should inject a message that arrives while the CEO is running into the running round', async () => {
       stubAgentPort.supportsSteering = true;
       const gate = await holdFirstPrompt();
-      const onQueued = vi.fn();
+      const onQueued = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
@@ -2017,7 +2017,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const running = runtime.run(conversationKey, 'stub', () => new Promise<void>((resolve) => {
         release = resolve;
       }));
-      await vi.waitFor(() => expect(runtime.getCeoPort(conversationKey)).toBe(stubAgentPort));
+      await rs.waitFor(() => expect(runtime.getCeoPort(conversationKey)).toBe(stubAgentPort));
 
       const result = await useCase.execute(turnRequest({ prompt: 'two' }));
 
@@ -2043,9 +2043,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace/my-app',
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
       const gate = await holdFirstPrompt();
 
@@ -2065,12 +2065,12 @@ describe('ExecuteAgentTurnUseCase', () => {
       stubAgentPort.supportsSteering = true;
       stubAgentPort.steeringResult = false;
       const gate = await holdFirstPrompt();
-      const onQueued = vi.fn();
+      const onQueued = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
       const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       expect(stubAgentPort.steeringPrompts[0]).toContain('two');
@@ -2085,12 +2085,12 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should queue the message when the agent does not support steering', async () => {
       const gate = await holdFirstPrompt();
-      const onQueued = vi.fn();
+      const onQueued = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
       const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
       expect(stubAgentPort.steeringPrompts).toEqual([]);
 
@@ -2103,7 +2103,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should queue the message when the configured agent differs from the running CEO agent', async () => {
       stubAgentPort.supportsSteering = true;
       const gate = await holdFirstPrompt();
-      const onQueued = vi.fn();
+      const onQueued = rs.fn();
       delegateStubPort.agentName = 'other';
       delegateStubPort.mockResponses = ['other agent reply'];
 
@@ -2111,7 +2111,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await gate.firstStarted;
       settingsStore.settings = buildStubSettings({ CEO: buildStubProfile('other', { agentName: 'Other' }) });
       const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await vi.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
 
       expect(stubAgentPort.steeringPrompts).toEqual([]);
 
@@ -2139,9 +2139,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
         agentPort: activeDelegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
       runtime.registerDelegation(conversationKey, {
         delegationId: 'd-1',
@@ -2155,9 +2155,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace',
         startedAt: Date.now(),
         agentPort: activeDelegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
 
       stubAgentPort.mockResponses = ['Understood, letting developer continue.'];
@@ -2172,7 +2172,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should steer active delegation when CEO delegates to an already active role with native steering', async () => {
       delegateStubPort.supportsSteering = true;
-      const steerSpy = vi.fn().mockResolvedValue(true);
+      const steerSpy = rs.fn().mockResolvedValue(true);
       const conversationKey = 'conv-1';
       runtime.registerDelegation(conversationKey, {
         delegationId: 'd-1',
@@ -2186,9 +2186,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
         agentPort: delegateStubPort,
-        turn: { cancel: vi.fn() } as any,
+        turn: { cancel: rs.fn() } as any,
         steer: steerSpy,
-        stop: vi.fn(),
+        stop: rs.fn(),
       });
 
       stubAgentPort.mockResponses = [
@@ -2250,8 +2250,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should restart the delegate when its agent supports steering but does not accept the message', async () => {
       const activeDelegatePort = new StubAgentPort();
       activeDelegatePort.supportsSteering = true;
-      const cancelSpy = vi.fn().mockResolvedValue(undefined);
-      const steerSpy = vi.fn().mockResolvedValue(false);
+      const cancelSpy = rs.fn().mockResolvedValue(undefined);
+      const steerSpy = rs.fn().mockResolvedValue(false);
       runtime.registerDelegation('conv-1', {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -2266,7 +2266,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: activeDelegatePort,
         turn: { cancel: cancelSpy } as any,
         steer: steerSpy,
-        stop: vi.fn(),
+        stop: rs.fn(),
       });
       delegateStubPort.mockResponses = ['Restarted task done.'];
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Change course.</delegate>', 'Finished.'];
@@ -2285,9 +2285,9 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should cancel, close, unregister and recreate the delegate in the same project when supportsSteering is false', async () => {
       const firstDelegatePort = new StubAgentPort();
       firstDelegatePort.supportsSteering = false;
-      const firstCancelSpy = vi.fn().mockResolvedValue(undefined);
-      const firstCloseSessionSpy = vi.spyOn(firstDelegatePort, 'closeSession').mockRejectedValueOnce(new Error('close failed'));
-      const firstDisconnectSpy = vi.spyOn(firstDelegatePort, 'disconnect');
+      const firstCancelSpy = rs.fn().mockResolvedValue(undefined);
+      const firstCloseSessionSpy = rs.spyOn(firstDelegatePort, 'closeSession').mockRejectedValueOnce(new Error('close failed'));
+      const firstDisconnectSpy = rs.spyOn(firstDelegatePort, 'disconnect');
 
       workspacePort.resolveRepositoryPath.mockImplementation((proj: string) => `/mock/workspace/${proj}`);
 
@@ -2305,8 +2305,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         startedAt: Date.now() - 5000,
         agentPort: firstDelegatePort,
         turn: { cancel: firstCancelSpy } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
 
       delegateStubPort.supportsSteering = false;
@@ -2345,12 +2345,12 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace/project-a',
         startedAt: Date.now(),
         agentPort: newerDelegatePort,
-        turn: { cancel: vi.fn() } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn() } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       };
 
-      const unregisterSpy = vi.spyOn(runtime, 'unregisterDelegation');
+      const unregisterSpy = rs.spyOn(runtime, 'unregisterDelegation');
 
       delegateStubPort.prompt = async function* () {
         runtime.registerDelegation(conversationKey, newerDelegation);
@@ -2405,9 +2405,9 @@ describe('ExecuteAgentTurnUseCase', () => {
       cwd: `/mock/workspace/${projectName}`,
       startedAt: Date.now(),
       agentPort: new StubAgentPort(),
-      turn: { cancel: vi.fn() } as any,
-      steer: vi.fn().mockResolvedValue(false),
-      stop: vi.fn(),
+      turn: { cancel: rs.fn() } as any,
+      steer: rs.fn().mockResolvedValue(false),
+      stop: rs.fn(),
     });
 
     beforeEach(() => {
@@ -2647,6 +2647,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should hand over together the results that finish while the CEO is busy', async () => {
+      rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const developer = gatedPort('Implemented.');
       const reviewer = gatedPort('Reviewed.');
       const planner = delegatePort('Planned.');
@@ -2661,12 +2662,13 @@ describe('ExecuteAgentTurnUseCase', () => {
         if (this.promptCalls.length === 1) {
           developer.release();
           reviewer.release();
-          await new Promise(resolve => setTimeout(resolve, 0));
+          await rs.advanceTimersByTimeAsync(0);
         }
         yield* ceoPrompt(text);
       };
 
       const result = await useCase.execute(turnRequest());
+      rs.useRealTimers();
 
       expect(result.response).toBe('Everything handled.');
       expect(stubAgentPort.promptCalls).toHaveLength(3);
@@ -2839,7 +2841,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         const developer = delegatePort('Built.');
         const original = developer.prompt.bind(developer);
         developer.prompt = async function* (text: string) {
-          await vi.waitFor(() => expect(questionQueue.hasPending('conv-1')).toBe(true));
+          await rs.waitFor(() => expect(questionQueue.hasPending('conv-1')).toBe(true));
           yield* original(text);
         };
         const reviewer = delegatePort('<question>Which one?</question>');
@@ -2850,7 +2852,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
         ];
 
-        const result = await useCase.execute(turnRequest({ onQuestion: vi.fn() }));
+        const result = await useCase.execute(turnRequest({ onQuestion: rs.fn() }));
 
         return { result, reviewer };
       };
@@ -2995,7 +2997,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         it('should take the question of a replaced agent out of the queue and go on with the new agent', async () => {
           const asking = delegatePort('<question>Which?</question>');
-          const onQuestion = vi.fn();
+          const onQuestion = rs.fn();
           const rebuilt = delegatePort('Rebuilt.');
           let pendingWhenRebuiltStarted: boolean | undefined;
           const original = rebuilt.prompt.bind(rebuilt);
@@ -3006,7 +3008,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           const plan = delegatePort('Plan ready.');
           const planOriginal = plan.prompt.bind(plan);
           plan.prompt = async function* (text: string) {
-            await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+            await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
             yield* planOriginal(text);
           };
           delegatePorts = [asking, plan, rebuilt];
@@ -3060,12 +3062,12 @@ describe('ExecuteAgentTurnUseCase', () => {
           ];
 
           const first = useCase.execute(turnRequest({ prompt: 'First' }));
-          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'TECH_LEAD')).toBeDefined());
+          await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'TECH_LEAD')).toBeDefined());
           const second = useCase.execute(turnRequest({ prompt: 'Second' }));
-          await vi.waitFor(() => expect(replacementStarted).toBe(true));
+          await rs.waitFor(() => expect(replacementStarted).toBe(true));
           releaseLead();
-          await vi.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(4));
-          await vi.waitFor(() => expect(lead.closeSessionCalls).toBe(1));
+          await rs.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(4));
+          await rs.waitFor(() => expect(lead.closeSessionCalls).toBe(1));
           const replacementCancels = replacement.cancelCalls;
           releaseOld(new Error('Resumed session disposed'));
           releaseReplacement();
@@ -3086,7 +3088,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           ];
 
           const first = useCase.execute(turnRequest({ prompt: 'First' }));
-          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
           const second = await useCase.execute(turnRequest({ prompt: 'Second' }));
 
           await expect(first).resolves.toMatchObject({ status: 'steered', response: '' });
@@ -3106,7 +3108,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           };
           delegatePorts = [beforeRestart];
           void useCase.execute(turnRequest({ resumable: true }));
-          await vi.waitFor(() => expect(openWorkStore.saved['conv-1']?.some(work => work.role === 'DEVELOPER')).toBe(true));
+          await rs.waitFor(() => expect(openWorkStore.saved['conv-1']?.some(work => work.role === 'DEVELOPER')).toBe(true));
           openWork.onModuleDestroy();
 
           const ceo = new StubAgentPort();
@@ -3120,7 +3122,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           const [work] = openWork.continuable('conv-1');
 
           const resumed = useCase.resume(work!.id, turnRequest());
-          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
           const second = await useCase.execute(turnRequest({ resumable: true }));
 
           await expect(resumed).resolves.toMatchObject({ status: 'steered', response: '' });
@@ -3135,7 +3137,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>'];
 
           const turn = useCase.execute(turnRequest());
-          await vi.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
+          await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
           await expect(runtime.cancel('conv-1')).resolves.toBe(true);
 
           await expect(turn).resolves.toMatchObject({ status: 'cancelled' });
@@ -3233,9 +3235,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         cwd: '/mock/workspace',
         startedAt: Date.now(),
         agentPort: staleDelegatePort,
-        turn: { cancel: vi.fn().mockResolvedValue(undefined) } as any,
-        steer: vi.fn(),
-        stop: vi.fn(),
+        turn: { cancel: rs.fn().mockResolvedValue(undefined) } as any,
+        steer: rs.fn(),
+        stop: rs.fn(),
       });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['Done.'];
@@ -3339,12 +3341,12 @@ describe('ExecuteAgentTurnUseCase', () => {
     describe('when the user does not answer in time', () => {
       beforeEach(() => {
         questionTimeoutMs = 60_000;
-        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       });
 
       afterEach(() => {
         questionTimeoutMs = 0;
-        vi.useRealTimers();
+        rs.useRealTimers();
       });
 
       it('should tell the agent the recommended answer was assumed because the user was absent', async () => {
@@ -3352,11 +3354,11 @@ describe('ExecuteAgentTurnUseCase', () => {
           '<question>Which database?<option>Postgres</option><option recommended>SQLite</option></question>',
           'Using SQLite.',
         ];
-        const onQuestion = vi.fn();
+        const onQuestion = rs.fn();
 
         const turn = useCase.execute(turnRequest({ onQuestion }));
-        await vi.waitFor(() => expect(onQuestion).toHaveBeenCalledWith(expect.objectContaining({ kind: 'asked' })));
-        vi.advanceTimersByTime(60_000);
+        await rs.waitFor(() => expect(onQuestion).toHaveBeenCalledWith(expect.objectContaining({ kind: 'asked' })));
+        rs.advanceTimersByTime(60_000);
         const result = await turn;
 
         expect(result).toMatchObject({ status: 'completed', response: 'Using SQLite.' });
@@ -3368,11 +3370,11 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it('should tell the agent nothing was assumed when the question had no recommended option', async () => {
         stubAgentPort.mockResponses = ['<question>What is the limit?</question>', 'I will pick one.'];
-        const onQuestion = vi.fn();
+        const onQuestion = rs.fn();
 
         const turn = useCase.execute(turnRequest({ onQuestion }));
-        await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-        vi.advanceTimersByTime(60_000);
+        await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+        rs.advanceTimersByTime(60_000);
         await turn;
 
         const answers = stubAgentPort.promptCalls[1]!;
@@ -3394,6 +3396,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should ask the user in the order the parallel delegates asked', async () => {
+      rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const ports = [new StubAgentPort(), new StubAgentPort()];
       let releaseSecond!: () => void;
       const secondMayAsk = new Promise<void>((resolve) => {
@@ -3425,10 +3428,11 @@ describe('ExecuteAgentTurnUseCase', () => {
           shown.push(`${event.prompt.question.text} (${event.prompt.waitingAskers} waiting)`);
           if (shown.length === 1) {
             releaseSecond();
-            setTimeout(answers, 0);
+            void rs.advanceTimersByTimeAsync(0).then(answers);
           }
         },
       }));
+      rs.useRealTimers();
 
       expect(result.response).toBe('Both done.');
       expect(shown).toEqual(['First? (0 waiting)']);
@@ -3470,7 +3474,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', sessionMode: 'overridable' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it">Go.</delegate>', 'Ok.'];
       delegateStubPort.mockResponses = ['<question>Q?</question>', 'I need the user to choose between A and B.'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
 
       await useCase.execute(turnRequest({ onQuestion }));
 
@@ -3505,8 +3509,8 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should replace a delegate waiting for answers instead of steering it', async () => {
       const waitingPort = new StubAgentPort();
       waitingPort.supportsSteering = true;
-      const steer = vi.fn().mockResolvedValue(true);
-      const cancel = vi.fn().mockResolvedValue(undefined);
+      const steer = rs.fn().mockResolvedValue(true);
+      const cancel = rs.fn().mockResolvedValue(undefined);
       runtime.registerDelegation('conv-1', {
         delegationId: 'd-1',
         role: 'DEVELOPER',
@@ -3521,7 +3525,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         agentPort: waitingPort,
         turn: { cancel } as any,
         steer,
-        stop: vi.fn(),
+        stop: rs.fn(),
       });
       const waiting = questionQueue.ask('conv-1', { role: 'DEVELOPER', roleName: 'Developer', projectName: 'my-app' }, '', [{ text: 'Q?', options: [] }], questionListener());
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">New task.</delegate>', 'Ok.'];
@@ -3573,12 +3577,12 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should keep the answers on disk as they arrive and forget the questions once answered', async () => {
       stubAgentPort.mockResponses = [delegation, 'Done.'];
       delegateStubPort.mockResponses = ['<question>First?</question><question>Second?</question>', 'Built.'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       const turn = useCase.execute(turnRequest({ resumable: true, onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
 
       questionQueue.submit('conv-1', { kind: 'text', text: 'one' });
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions?.answers.map(answer => answer.answer)).toEqual(['one']));
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions?.answers.map(answer => answer.answer)).toEqual(['one']));
       questionQueue.submit('conv-1', { kind: 'text', text: 'two' });
 
       await expect(turn).resolves.toMatchObject({ status: 'completed' });
@@ -3588,10 +3592,10 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should deliver the answers given after the restart like any answer and hand the delegate result to the CEO', async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.mockResponses = ['<question>Which colour?<option>Red</option><option>Blue</option></question>'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
 
       const { ceo, developer } = await restart();
       ceo.mockResponses = ['All done.'];
@@ -3622,9 +3626,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         await new Promise(() => undefined);
         yield* [];
       };
-      const onDelegation = vi.fn();
+      const onDelegation = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, onDelegation }));
-      await vi.waitFor(() => expect(records().some(work => work.role === 'DEVELOPER')).toBe(true));
+      await rs.waitFor(() => expect(records().some(work => work.role === 'DEVELOPER')).toBe(true));
 
       const { ceo, developer } = await restart();
       ceo.mockResponses = ['All done.'];
@@ -3642,10 +3646,10 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should resume a CEO that asked, with the answers', async () => {
       stubAgentPort.mockResponses = ['<question>Go on?</question>'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, prompt: 'Plan it', onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-      await vi.waitFor(() => expect(records()[0]?.questions).toBeDefined());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(records()[0]?.questions).toBeDefined());
 
       const { ceo } = await restart();
       ceo.mockResponses = ['Planned.'];
@@ -3663,10 +3667,10 @@ describe('ExecuteAgentTurnUseCase', () => {
     const answeredAfterRestart = async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.mockResponses = ['<question>Which?</question>'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
       const { ceo, developer } = await restart();
       ceo.mockResponses = ['All done.'];
       developer.mockResponses = ['Built.'];
@@ -3704,7 +3708,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
 
       const turn = useCase.deliverAnswers(restoredWork, turnRequest());
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
       expect(questionsWhenSent).toBe('not sent');
       connected();
       await turn;
@@ -3714,10 +3718,10 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should give the task along with the answers to a CEO whose session is lost', async () => {
       stubAgentPort.mockResponses = ['<question>Go on?</question>'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, prompt: 'Plan it', onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-      await vi.waitFor(() => expect(records()[0]?.questions).toBeDefined());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(records()[0]?.questions).toBeDefined());
       const { ceo } = await restart();
       ceo.loadSessionResult = false;
       ceo.mockResponses = ['Planned.'];
@@ -3737,10 +3741,10 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should replace what a restart left stopped when the role is delegated again', async () => {
       stubAgentPort.mockResponses = [delegation];
       delegateStubPort.mockResponses = ['<question>Which?</question>'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
       void useCase.execute(turnRequest({ resumable: true, onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.questions).toBeDefined());
 
       const { ceo, developer } = await restart();
       ceo.mockResponses = [delegation, 'Done.'];
@@ -3760,12 +3764,12 @@ describe('ExecuteAgentTurnUseCase', () => {
         yield* [];
       };
       void useCase.execute(turnRequest({ resumable: true }));
-      await vi.waitFor(() => expect(records().some(work => work.role === 'DEVELOPER')).toBe(true));
+      await rs.waitFor(() => expect(records().some(work => work.role === 'DEVELOPER')).toBe(true));
 
       const delegationNow = runtime.findActiveDelegation('conv-1', 'DEVELOPER')!;
       await delegationNow.steer('Build more.');
 
-      await vi.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.taskSpec).toBe('Build more.'));
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.taskSpec).toBe('Build more.'));
     });
   });
 
@@ -3792,7 +3796,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should answer the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
       stubAgentPort.mockResponses = ['Creating it. <artifact_create type="task" title="Login" project="my-app"/>', 'Created T-1.'];
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
@@ -3817,10 +3821,10 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should hand the results of requests that go with questions over with the answers', async () => {
       stubAgentPort.mockResponses = ['<artifact_list/>\n<question>Which project?<option>demo</option></question>', 'Ok.'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
 
       const turn = useCase.execute(turnRequest({ onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
       questionQueue.submit('conv-1', { kind: 'option', optionIndex: 1 });
 
       expect(await turn).toMatchObject({ status: 'completed', response: 'Ok.' });
@@ -3831,10 +3835,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="T-1">Plan T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Starting.</artifact_comment><question>Which name?</question>', 'Planned.'];
-      const onQuestion = vi.fn();
+      const onQuestion = rs.fn();
 
       const turn = useCase.execute(turnRequest({ onQuestion }));
-      await vi.waitFor(() => expect(onQuestion).toHaveBeenCalled());
+      await rs.waitFor(() => expect(onQuestion).toHaveBeenCalled());
       questionQueue.submit('conv-1', { kind: 'text', text: 'multiply' });
 
       expect((await turn).status).toBe('completed');
@@ -3847,7 +3851,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         '<final_response><artifact_list status="all"/></final_response>',
         'Nothing on the board yet.',
       ];
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
@@ -3861,7 +3865,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_comment id="T-1">x</artifact_comment><final_response>Built.</final_response>', 'Built.'];
-      const onDraft = vi.fn();
+      const onDraft = rs.fn();
 
       await useCase.execute(turnRequest({ onDraft }));
 
@@ -3882,7 +3886,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       seed({ id: 'T-1', title: 'Login', sections: { technical_solution: 'Use JWT.' } });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building the login" artifact="t-1">Implement T-1.</delegate>', 'Done.'];
       delegateStubPort.mockResponses = ['<artifact_update id="T-1" branch="feat/t-1"/>', 'Built on feat/t-1.'];
-      const onDelegation = vi.fn();
+      const onDelegation = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDelegation }));
 
@@ -3958,9 +3962,9 @@ describe('ExecuteAgentTurnUseCase', () => {
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Noted.'];
       whileDelegateWorks(async () => {
         await artifacts.update('conv-1', 'T-1', { status: 'cancelled' }, { kind: 'user', channel: 'web' });
-        await vi.waitFor(() => expect(delegateStubPort.cancelCalls).toBe(1));
+        await rs.waitFor(() => expect(delegateStubPort.cancelCalls).toBe(1));
       }, 'Built anyway.');
-      const onDelegation = vi.fn();
+      const onDelegation = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDelegation }));
       stopWork.onModuleDestroy();

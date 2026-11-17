@@ -1,7 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AT, openConversation, userEntry } from '../test/render-app.js';
 
@@ -19,8 +19,8 @@ const defaultMatchMedia = globalThis.matchMedia;
 describe('ConversationView squad', () => {
   beforeEach(() => localStorage.clear());
   afterEach(() => {
-    vi.stubGlobal('matchMedia', defaultMatchMedia);
-    vi.restoreAllMocks();
+    rs.stubGlobal('matchMedia', defaultMatchMedia);
+    rs.restoreAllMocks();
   });
 
   it('should show the chat and the squad panel side by side on a wide window', () => {
@@ -32,7 +32,7 @@ describe('ConversationView squad', () => {
   });
 
   it('should turn chat and squad into two tabs on a narrow window, the Squad tab carrying the tally', async () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
     const user = userEvent.setup();
     const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
     setState(connection, 'running');
@@ -48,7 +48,7 @@ describe('ConversationView squad', () => {
   it('should continue an agent a restart stopped from its station', async () => {
     const user = userEvent.setup();
     const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
-    const send = vi.spyOn(connection, 'send');
+    const send = rs.spyOn(connection, 'send');
     act(() => connection.emitEvent({
       type: 'conversation.interrupted',
       conversationId: 'c1',
@@ -89,8 +89,8 @@ describe('ConversationView squad', () => {
     });
 
     it('should switch to the chat tab of a narrow window first', async () => {
-      vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-      vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
+      rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
+      rs.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
         callback(0);
         return 0;
       });
@@ -208,7 +208,7 @@ describe('ConversationView squad', () => {
       cleanup();
 
       const read = Storage.prototype.getItem;
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      rs.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
         return key === 'arc.squadPanelOpen' ? 'false' : read.call(this, key);
       });
       openConversation();
@@ -220,13 +220,13 @@ describe('ConversationView squad', () => {
     it('should still toggles when storage throws', async () => {
       const read = Storage.prototype.getItem;
       const write = Storage.prototype.setItem;
-      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      rs.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
         if (key === 'arc.squadPanelOpen') {
           throw new Error('blocked');
         }
         return read.call(this, key);
       });
-      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      rs.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
         if (key === 'arc.squadPanelOpen') {
           throw new Error('blocked');
         }
@@ -267,7 +267,7 @@ describe('ConversationView squad', () => {
     });
 
     it('should offer no toggle on narrow windows, where the tabs switch the panel', () => {
-      vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+      rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
       openConversation();
 
       expect(screen.queryByRole('button', { name: /squad panel/ })).not.toBeInTheDocument();

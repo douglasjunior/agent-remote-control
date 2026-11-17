@@ -129,7 +129,7 @@ one origin. When it is empty nothing is served. `SERVER_ROUTES` in `web-static.m
 server answers itself (`/health`, `/ws`); a new HTTP route of the server is added there, or the fallback
 shadows it. The Docker image sets `WEB_STATIC_DIR`.
 
-Without it, the web app is a separate app (Vite dev server or preview locally, any static host otherwise)
+Without it, the web app is a separate app (Rsbuild dev server or preview locally, any static host otherwise)
 that reaches the server through the WebSocket, so its origin must be listed in `WEB_ALLOWED_ORIGINS` unless
 a proxy in front of both makes the upgrade same-origin.
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { createWebHarness } from '../testing/web-harness.js';

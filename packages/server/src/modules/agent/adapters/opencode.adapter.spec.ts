@@ -1,19 +1,19 @@
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 
 import { OpenCodeAdapter } from './opencode.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function buildAdapter(preferredConfig?: { modelId?: string }) {
   const { runner, spawn } = createProcessRunnerMock();

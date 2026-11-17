@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import type { AgentConfigSelection } from '../models/agent-config-selection.model.js';
 

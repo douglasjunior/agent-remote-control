@@ -35,13 +35,13 @@ describe('WebStaticModule', () => {
     mkdirSync(join(webDir, 'assets'));
     writeFileSync(join(webDir, 'index.html'), '<html>arc</html>');
     writeFileSync(join(webDir, 'assets', 'app.js'), 'console.log("arc");');
-    vi.stubEnv('WEB_STATIC_DIR', webDir);
+    rs.stubEnv('WEB_STATIC_DIR', webDir);
   });
 
   afterEach(async () => {
     await app?.close();
     app = undefined;
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
     rmSync(webDir, { recursive: true, force: true });
   });
 
@@ -73,7 +73,7 @@ describe('WebStaticModule', () => {
   });
 
   it('should serve nothing when WEB_STATIC_DIR is not set', async () => {
-    vi.stubEnv('WEB_STATIC_DIR', ' ');
+    rs.stubEnv('WEB_STATIC_DIR', ' ');
     const server = await startApp();
 
     const response = await request(server).get('/');

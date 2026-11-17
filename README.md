@@ -78,11 +78,11 @@ Conversations are listed in the left sidebar, where each one can be renamed or a
 | Mode | Command | URL |
 |---|---|---|
 | Development | `pnpm dev:web` | `http://localhost:5173` |
-| Production build | `pnpm build && pnpm preview:web` | `http://localhost:4173` |
+| Production build | `pnpm build && pnpm preview:web` | `http://localhost:5173` |
 | Production (server) | `WEB_STATIC_DIR=packages/web/dist`, the server serves the build on `PORT` (the Docker image does) | `http://localhost:3000` |
 | Production (nginx) | nginx serving `packages/web/dist` | your domain |
 
-Vite (`dev` and `preview`) proxies `/ws` and `/health` to the server, using the `PORT` from the root `.env` (default `3000`), so the browser sees a single origin and the server's origin check passes. If the web app reaches the server directly instead, list its origin in `WEB_ALLOWED_ORIGINS`.
+Rsbuild (`dev` and `preview`) proxies `/ws` and `/health` to the server, using the `PORT` from the root `.env` (default `3000`), so the browser sees a single origin and the server's origin check passes. If the web app reaches the server directly instead, list its origin in `WEB_ALLOWED_ORIGINS`.
 
 **nginx example**
 

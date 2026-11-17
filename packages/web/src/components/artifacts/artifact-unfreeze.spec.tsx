@@ -1,4 +1,4 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
@@ -12,8 +12,6 @@ function messagesSent(app: ReturnType<typeof openBoard>) {
   return app.connection.sent.filter(command => command.type === 'message.send');
 }
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());
@@ -32,10 +30,10 @@ describe('Unfreezing a task', () => {
     await user.type(within(dialog).getByLabelText('Instruction for the CEO'), '  Split it in two  ');
     await user.click(within(dialog).getByRole('button', { name: 'Unfreeze' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-6', changes: { status: 'blocked' } });
-    answer(app, 'artifact.update', { ok: true, id: 'T-6' });
-    await vi.waitFor(() => expect(lastSent(app, 'artifact.comment')).toMatchObject({ id: 'T-6', text: 'Split it in two' }));
-    answer(app, 'artifact.comment', { ok: true, id: 'T-6' });
-    await vi.waitFor(() => expect(messagesSent(app)).toEqual([
+    await answer(app, 'artifact.update', { ok: true, id: 'T-6' });
+    await waitFor(() => expect(lastSent(app, 'artifact.comment')).toMatchObject({ id: 'T-6', text: 'Split it in two' }));
+    await answer(app, 'artifact.comment', { ok: true, id: 'T-6' });
+    await waitFor(() => expect(messagesSent(app)).toEqual([
       {
         type: 'message.send',
         conversationId: CONVERSATION_ID,
@@ -55,8 +53,8 @@ describe('Unfreezing a task', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Unfreeze T-6' });
     await user.click(within(dialog).getByRole('button', { name: 'Unfreeze' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ changes: { status: 'ready' } });
-    answer(app, 'artifact.update', { ok: true, id: 'T-6' });
-    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await answer(app, 'artifact.update', { ok: true, id: 'T-6' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(app.connection.sent.some(command => command.type === 'artifact.comment')).toBe(false);
     expect(messagesSent(app)).toEqual([]);
 
@@ -101,7 +99,7 @@ describe('Unfreezing a task', () => {
     expect(within(dialog).getByRole('combobox', { name: 'Move to' })).toHaveTextContent('Approved');
     await user.type(within(dialog).getByLabelText('Instruction for the CEO'), 'Ship it');
     await user.click(within(dialog).getByRole('button', { name: 'Unfreeze' }));
-    answer(app, 'artifact.update', { ok: false, error: 'Only the user can unfreeze it' });
+    await answer(app, 'artifact.update', { ok: false, error: 'Only the user can unfreeze it' });
     expect(await screen.findByText('Only the user can unfreeze it')).toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Unfreeze T-6' })).toBeInTheDocument();
     expect(app.connection.sent.some(command => command.type === 'artifact.comment')).toBe(false);

@@ -38,16 +38,16 @@ describe('useAgentAuthStatus', () => {
   };
 
   beforeEach(() => {
-    vi.useFakeTimers({ now: NOW });
+    rs.useFakeTimers({ now: NOW });
     localStorage.clear();
     connection = new FakeServerConnection();
     visibility = 'visible';
-    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    rs.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   });
 
   afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
   });
 
   it('should ask when the connection opens, and again after a reconnection', () => {
@@ -76,7 +76,7 @@ describe('useAgentAuthStatus', () => {
   it('should ask every five minutes while the tab is visible', () => {
     renderAuth();
 
-    act(() => vi.advanceTimersByTime(AUTH_REFRESH_MS));
+    act(() => rs.advanceTimersByTime(AUTH_REFRESH_MS));
     expect(requests()).toHaveLength(2);
   });
 
@@ -84,7 +84,7 @@ describe('useAgentAuthStatus', () => {
     renderAuth();
     visibility = 'hidden';
 
-    act(() => vi.advanceTimersByTime(AUTH_REFRESH_MS));
+    act(() => rs.advanceTimersByTime(AUTH_REFRESH_MS));
 
     expect(requests()).toHaveLength(1);
   });
@@ -100,9 +100,9 @@ describe('useAgentAuthStatus', () => {
     setVisibility('visible');
     expect(requests()).toHaveLength(2);
 
-    act(() => vi.advanceTimersByTime(AUTH_REFRESH_MS - 1));
+    act(() => rs.advanceTimersByTime(AUTH_REFRESH_MS - 1));
     setVisibility('hidden');
-    act(() => vi.advanceTimersByTime(1));
+    act(() => rs.advanceTimersByTime(1));
     setVisibility('visible');
     expect(requests()).toHaveLength(3);
   });
@@ -111,7 +111,7 @@ describe('useAgentAuthStatus', () => {
     const { unmount } = renderAuth();
     unmount();
 
-    act(() => vi.advanceTimersByTime(AUTH_REFRESH_MS));
+    act(() => rs.advanceTimersByTime(AUTH_REFRESH_MS));
 
     expect(requests()).toHaveLength(1);
   });
@@ -174,7 +174,7 @@ describe('useAgentAuthStatus', () => {
     });
 
     it('should report a completed login, refresh the state and return to idle', () => {
-      const onCompleted = vi.fn();
+      const onCompleted = rs.fn();
       const { result } = renderAuth(onCompleted);
 
       emitLogin({ type: 'auth.login', agentId: 'claude', event: { kind: 'completed' } });

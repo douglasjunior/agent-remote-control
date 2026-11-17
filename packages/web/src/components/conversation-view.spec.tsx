@@ -458,7 +458,7 @@ describe('ConversationView', () => {
 
     /** Plays the server's side of one upload of a small file. */
     async function completeUpload(connection: ReturnType<typeof openConversation>['connection']) {
-      const start = await vi.waitFor(() => {
+      const start = await waitFor(() => {
         const command = connection.sent.find(sent => sent.type === 'upload.start');
         expect(command).toBeDefined();
         return command as Extract<typeof connection.sent[number], { type: 'upload.start' }>;
@@ -467,7 +467,9 @@ describe('ConversationView', () => {
       await waitFor(() => expect(connection.sent.some(sent => sent.type === 'upload.chunk')).toBe(true));
       act(() => connection.emitEvent({ type: 'upload.ack', uploadId: start.uploadId, index: 0 }));
       await waitFor(() => expect(connection.sent.some(sent => sent.type === 'upload.finish')).toBe(true));
-      act(() => connection.emitEvent({ type: 'upload.done', uploadId: start.uploadId, attachment: stored }));
+      await act(async () => {
+        connection.emitEvent({ type: 'upload.done', uploadId: start.uploadId, attachment: stored });
+      });
     }
 
     const attach = (file: File) => fireEvent.change(screen.getByLabelText('Attach files'), { target: { files: [file] } });
@@ -509,7 +511,7 @@ describe('ConversationView', () => {
       let media: FakeMediaDevices;
 
       beforeEach(() => {
-        vi.stubGlobal('MediaRecorder', RecorderStub);
+        rs.stubGlobal('MediaRecorder', RecorderStub);
         media = new FakeMediaDevices();
         media.devices = [audioInput('a', 'Headset'), audioInput('b', 'Desk mic')];
         media.install();
@@ -583,7 +585,7 @@ describe('ConversationView', () => {
     it('should open the file picker from the attach button', async () => {
       const user = userEvent.setup();
       openConversation();
-      const click = vi.spyOn(screen.getByLabelText('Attach files'), 'click');
+      const click = rs.spyOn(screen.getByLabelText('Attach files'), 'click');
 
       await user.click(screen.getByRole('button', { name: 'Attach' }));
 
@@ -623,7 +625,7 @@ describe('ConversationView', () => {
       const user = userEvent.setup();
       const { connection } = openConversation();
       attach(new File(['x'], 'broken.bin'));
-      const start = await vi.waitFor(() => connection.sent.find(sent => sent.type === 'upload.start') as { uploadId: string });
+      const start = await waitFor(() => connection.sent.find(sent => sent.type === 'upload.start') as { uploadId: string });
 
       act(() => connection.emitEvent({ type: 'upload.failed', uploadId: start.uploadId, reason: 'File is too large' }));
       await user.click(await screen.findByRole('button', { name: 'Remove broken.bin' }));

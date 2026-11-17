@@ -16,7 +16,7 @@ type ObserverRecord = { callback: () => void; targets: Element[] };
 
 function stubResizeObserver() {
   const records: ObserverRecord[] = [];
-  vi.stubGlobal('ResizeObserver', class {
+  rs.stubGlobal('ResizeObserver', class {
     private readonly record: ObserverRecord;
     constructor(callback: () => void) {
       this.record = { callback, targets: [] };
@@ -24,7 +24,7 @@ function stubResizeObserver() {
     }
 
     observe(target: Element) { this.record.targets.push(target); }
-    unobserve = vi.fn();
+    unobserve = rs.fn();
     disconnect() { this.record.targets = []; }
   });
   return (content: Element | null) => act(() => {
@@ -52,7 +52,7 @@ const toolEntry = (id: string): ConversationEntry => ({ id, at: AT, type: 'tool'
 function renderFeed(entries: ConversationEntry[], draft = '', focus: string | null = null) {
   const tree = (list: ConversationEntry[], text: string) => (
     <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-      <FeedList team={[]} entries={list} draft={text} running={false} focus={focus} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
+      <FeedList team={[]} entries={list} draft={text} running={false} focus={focus} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
     </VirtuosoMockContext.Provider>
   );
   const view = render(tree(entries, draft));
@@ -60,18 +60,18 @@ function renderFeed(entries: ConversationEntry[], draft = '', focus: string | nu
 }
 
 describe('FeedList', () => {
-  let scrollSpy: ReturnType<typeof vi.spyOn>;
+  let scrollSpy: ReturnType<typeof rs.spyOn>;
   let trigger: ReturnType<typeof stubResizeObserver>;
   const growContent = () => trigger(viewport().firstElementChild);
 
   beforeEach(() => {
     trigger = stubResizeObserver();
-    scrollSpy = vi.spyOn(Element.prototype, 'scrollTo').mockImplementation(() => undefined);
+    scrollSpy = rs.spyOn(Element.prototype, 'scrollTo').mockImplementation(() => undefined);
   });
 
   afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+    rs.unstubAllGlobals();
+    rs.restoreAllMocks();
   });
 
   function viewport() {
@@ -233,10 +233,10 @@ describe('FeedList', () => {
     });
     const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'Merge requests are open' };
 
-    function renderQuestionFeed(entries: ConversationEntry[], viewportHeight: number, onAnswer = vi.fn(), handle = createRef<FeedHandle>()) {
+    function renderQuestionFeed(entries: ConversationEntry[], viewportHeight: number, onAnswer = rs.fn(), handle = createRef<FeedHandle>()) {
       render(
         <VirtuosoMockContext.Provider value={{ viewportHeight, itemHeight: 100 }}>
-          <FeedList ref={handle} team={[]} entries={entries} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={onAnswer} />
+          <FeedList ref={handle} team={[]} entries={entries} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={onAnswer} />
         </VirtuosoMockContext.Provider>,
       );
       return { onAnswer, handle };
@@ -269,7 +269,7 @@ describe('FeedList', () => {
     it('should keep the agents shown as working unless the open question is the last entry', () => {
       const { unmount } = render(
         <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-          <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
+          <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
         </VirtuosoMockContext.Provider>,
       );
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -277,7 +277,7 @@ describe('FeedList', () => {
 
       render(
         <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-          <FeedList team={[]} entries={[question(false), userEntry('u2')]} draft="" running focus={null} onFocus={vi.fn()} onHover={vi.fn()} onAnswer={vi.fn()} />
+          <FeedList team={[]} entries={[question(false), userEntry('u2')]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
         </VirtuosoMockContext.Provider>,
       );
       expect(screen.getByRole('status')).toBeInTheDocument();

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import { createArtifactHarness } from '../testing/artifact-harness.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';

@@ -8,7 +8,7 @@ import { DataChannelClientConnection } from './data-channel-client-connection.js
 
 describe('DataChannelClientConnection', () => {
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
   });
 
   it('should send each event in frames', () => {
@@ -33,7 +33,7 @@ describe('DataChannelClientConnection', () => {
   });
 
   it('should close the channel on a malformed frame', () => {
-    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const channel = new FakeRemoteChannel();
     new DataChannelClientConnection(channel).onMessage(() => undefined);
 
@@ -46,7 +46,7 @@ describe('DataChannelClientConnection', () => {
   it('should report the close of the channel and close it', () => {
     const channel = new FakeRemoteChannel();
     const connection = new DataChannelClientConnection(channel);
-    const closed = vi.fn();
+    const closed = rs.fn();
     connection.onClose(closed);
 
     channel.emitClose();

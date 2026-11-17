@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';

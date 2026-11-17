@@ -1,8 +1,9 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import * as actualFs from 'node:fs/promises' with { rstest: 'importActual' };
 import { writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
@@ -11,10 +12,7 @@ import type { AgentProfileSettings, AgentSettings } from '../models/agent-settin
 import { JsonAgentSettingsStoreAdapter } from './json-agent-settings-store.adapter.js';
 
 
-vi.mock('node:fs/promises', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, writeFile: vi.fn(actual.writeFile) };
-});
+rs.mock('node:fs/promises', () => ({ ...actualFs, writeFile: rs.fn(actualFs.writeFile) }));
 
 class ExtendedRegistry extends AgentRegistryService {
   override listRoles(): string[] {
@@ -82,20 +80,28 @@ describe('JsonAgentSettingsStoreAdapter', () => {
   it('should leave the last saved settings on disk when saves overlap', async () => {
     const store = new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(rootDir));
     const later: AgentSettings = { ...SETTINGS, updatedAt: '2026-01-02T00:00:00.000Z' };
-    const realWriteFile = vi.mocked(writeFile).getMockImplementation()!;
-    vi.mocked(writeFile).mockImplementationOnce(async (...args) => {
-      await new Promise(resolve => setTimeout(resolve, 30));
+    const realWriteFile = rs.mocked(writeFile).getMockImplementation()!;
+    let releaseFirstWrite!: () => void;
+    const firstWriteHeld = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    rs.mocked(writeFile).mockImplementationOnce(async (...args) => {
+      await firstWriteHeld;
       return realWriteFile(...args);
     });
 
-    await Promise.all([store.save('conv', SETTINGS), store.save('conv', later)]);
+    rs.mocked(writeFile).mockClear();
+    const saving = Promise.all([store.save('conv', SETTINGS), store.save('conv', later)]);
+    await rs.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    releaseFirstWrite();
+    await saving;
 
     expect(JSON.parse(readFileSync(join(rootDir, 'agent-settings.json'), 'utf-8'))).toEqual({ conv: later });
   });
 
   it('should keep saving after a failed write', async () => {
     const store = new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(rootDir));
-    vi.mocked(writeFile).mockRejectedValueOnce(new Error('disk full'));
+    rs.mocked(writeFile).mockRejectedValueOnce(new Error('disk full'));
 
     await expect(store.save('conv', SETTINGS)).rejects.toThrow('disk full');
     await store.save('conv', SETTINGS);

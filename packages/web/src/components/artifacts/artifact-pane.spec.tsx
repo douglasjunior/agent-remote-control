@@ -1,5 +1,5 @@
 import type { ArtifactDetail } from '@agent-remote-control/protocol/artifact';
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
@@ -53,8 +53,6 @@ function openArtifact(artifact: ArtifactDetail = api, artifacts = board) {
   return { user, app };
 }
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());
@@ -114,10 +112,10 @@ describe('ArtifactPane', () => {
     await user.type(input, 'Sign-in API');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-2', changes: { title: 'Sign-in API' } });
-    answer(app, 'artifact.update', { ok: false, error: 'Too long' });
+    await answer(app, 'artifact.update', { ok: false, error: 'Too long' });
     expect(await screen.findByRole('textbox', { name: 'Title' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    answer(app, 'artifact.update', { ok: true, id: 'T-2' });
+    await answer(app, 'artifact.update', { ok: true, id: 'T-2' });
     expect(await screen.findByRole('button', { name: 'Rename' })).toBeInTheDocument();
   });
 
@@ -177,10 +175,10 @@ describe('ArtifactPane', () => {
     await user.type(editor, '  People sign in with email.  ');
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ changes: { sections: { overview: 'People sign in with email.' } } });
-    answer(app, 'artifact.update', { ok: false, error: 'Busy' });
+    await answer(app, 'artifact.update', { ok: false, error: 'Busy' });
     expect(screen.getByRole('textbox', { name: 'Overview' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    answer(app, 'artifact.update', { ok: true, id: 'T-2' });
+    await answer(app, 'artifact.update', { ok: true, id: 'T-2' });
     expect(await screen.findByRole('button', { name: 'Edit Overview' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Add section' }));
@@ -228,12 +226,12 @@ describe('ArtifactPane', () => {
     await user.type(box, 'Use the shared client');
     await user.click(within(activity).getByRole('button', { name: 'Comment' }));
     expect(lastSent(app, 'artifact.comment')).toMatchObject({ id: 'T-2', text: 'Use the shared client' });
-    answer(app, 'artifact.comment', { ok: false, error: 'Busy' });
+    await answer(app, 'artifact.comment', { ok: false, error: 'Busy' });
     expect(await screen.findByText('Busy')).toBeInTheDocument();
     expect(box).toHaveValue('Use the shared client');
     await user.click(within(activity).getByRole('button', { name: 'Comment' }));
-    answer(app, 'artifact.comment', { ok: true, id: 'T-2' });
-    await vi.waitFor(() => expect(box).toHaveValue(''));
+    await answer(app, 'artifact.comment', { ok: true, id: 'T-2' });
+    await waitFor(() => expect(box).toHaveValue(''));
   });
 
   it('should delete the artifact after a confirmation and return to the board', async () => {
@@ -246,13 +244,13 @@ describe('ArtifactPane', () => {
     const confirm = await screen.findByRole('alertdialog');
     await user.click(within(confirm).getByRole('button', { name: 'Delete' }));
     expect(lastSent(app, 'artifact.delete')).toMatchObject({ id: 'T-2' });
-    answer(app, 'artifact.delete', { ok: false, error: 'Held by the Developer' });
+    await answer(app, 'artifact.delete', { ok: false, error: 'Held by the Developer' });
     expect(app.router.state.location.pathname).toBe('/c/c1/tasks/T-2');
 
     await user.click(screen.getByRole('button', { name: 'Delete' }));
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
-    answer(app, 'artifact.delete', { ok: true, id: 'T-2' });
-    await vi.waitFor(() => expect(app.router.state.location.pathname).toBe('/c/c1/tasks'));
+    await answer(app, 'artifact.delete', { ok: true, id: 'T-2' });
+    await waitFor(() => expect(app.router.state.location.pathname).toBe('/c/c1/tasks'));
   });
 
   it('should list the tasks of a feature and add one to it', async () => {

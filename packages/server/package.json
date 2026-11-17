@@ -11,8 +11,8 @@
     "start": "nest start",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
-    "ts": "tsc --noEmit",
-    "test:e2e": "vitest run --config vitest.config.e2e.ts"
+    "ts": "node ../../node_modules/typescript-native/bin/tsc --noEmit",
+    "test:e2e": "rstest run --config rstest.config.e2e.ts"
   },
   "dependencies": {
     "@agent-remote-control/protocol": "workspace:*",

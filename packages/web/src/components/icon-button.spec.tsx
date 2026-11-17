@@ -7,7 +7,7 @@ import { IconButton } from './icon-button.js';
 describe('IconButton', () => {
   it('should name the button with the label and show it as a tooltip on hover', async () => {
     const user = userEvent.setup();
-    const onClick = vi.fn();
+    const onClick = rs.fn();
     render(<IconButton label="Send" onClick={onClick}><svg /></IconButton>);
 
     await user.hover(screen.getByRole('button', { name: 'Send' }));

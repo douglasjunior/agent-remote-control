@@ -1,19 +1,19 @@
+import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 
 import { CopilotAdapter } from './copilot.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function buildAdapter() {
   const { runner, spawn } = createProcessRunnerMock();
@@ -127,8 +127,8 @@ describe('CopilotAdapter', () => {
     it('should restore tool autonomy on a loaded session', async () => {
       const { adapter } = buildAdapter();
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn(async () => ({ agentCapabilities: { loadSession: true } })),
-        loadSession: vi.fn(async () => ({
+        initialize: rs.fn(async () => ({ agentCapabilities: { loadSession: true } })),
+        loadSession: rs.fn(async () => ({
           configOptions: [permissionsConfigOption('off', ['off', 'on'])],
         })),
       };
@@ -165,7 +165,7 @@ describe('CopilotAdapter', () => {
 
     it('should run gh api and return the parsed quota', async () => {
       const { runner, adapter } = buildAdapterWithRunner();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output: payload });
 
       const quota = await adapter.getQuota();
 
@@ -193,7 +193,7 @@ describe('CopilotAdapter', () => {
 
       const quotaOf = async (output: string) => {
         const { runner, adapter } = buildAdapterWithRunner();
-        vi.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
+        rs.mocked(runner.run).mockResolvedValue({ exitCode: 0, output });
         return adapter.getQuota();
       };
 
@@ -240,17 +240,17 @@ describe('CopilotAdapter', () => {
 
     it('should return undefined on non-zero exit code', async () => {
       const { runner, adapter } = buildAdapterWithRunner();
-      vi.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
+      rs.mocked(runner.run).mockResolvedValue({ exitCode: 1, output: payload });
 
       expect(await adapter.getQuota()).toBeUndefined();
     });
 
     it('should return undefined when the runner throws', async () => {
       const { runner, adapter } = buildAdapterWithRunner();
-      vi.mocked(runner.run).mockRejectedValue(new Error('boom'));
+      rs.mocked(runner.run).mockRejectedValue(new Error('boom'));
       expect(await adapter.getQuota()).toBeUndefined();
 
-      vi.mocked(runner.run).mockRejectedValue('x');
+      rs.mocked(runner.run).mockRejectedValue('x');
       expect(await adapter.getQuota()).toBeUndefined();
     });
   });

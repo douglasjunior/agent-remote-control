@@ -37,12 +37,12 @@ describe('WebAppModule', () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
-    vi.unstubAllEnvs();
+    rs.unstubAllEnvs();
     rmSync(webDir, { recursive: true, force: true });
   });
 
   it('should answer the routes of an instance with the index page and keep /health', async () => {
-    vi.stubEnv('P2P_WEB_DIR', webDir);
+    rs.stubEnv('P2P_WEB_DIR', webDir);
     const server = await startApp();
 
     expect((await request(server).get('/i/0123456789abcdef0123/c/web-1')).text).toContain('<html>arc');
@@ -50,14 +50,14 @@ describe('WebAppModule', () => {
   });
 
   it('should serve nothing without P2P_WEB_DIR', async () => {
-    vi.stubEnv('P2P_WEB_DIR', '');
+    rs.stubEnv('P2P_WEB_DIR', '');
     const server = await startApp();
 
     expect((await request(server).get('/')).status).toBe(404);
   });
 
   it('should send the security headers, allowing only the inline scripts of the index page', async () => {
-    vi.stubEnv('P2P_WEB_DIR', webDir);
+    rs.stubEnv('P2P_WEB_DIR', webDir);
     const server = await startApp();
     const page = await request(server).get('/i/0123456789abcdef0123');
     const asset = await request(server).get('/assets/app.js');
@@ -78,7 +78,7 @@ describe('WebAppModule', () => {
   });
 
   it('should allow no inline script when the web app is not served', async () => {
-    vi.stubEnv('P2P_WEB_DIR', '');
+    rs.stubEnv('P2P_WEB_DIR', '');
     const server = await startApp();
 
     expect((await request(server).get('/health')).headers['content-security-policy']).toContain('script-src \'self\';');

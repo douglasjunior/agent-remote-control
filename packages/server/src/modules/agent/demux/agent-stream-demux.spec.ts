@@ -2,7 +2,7 @@ import type {
   SessionNotification,
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { AgentActivity } from '../ports/agent.port.js';
 
@@ -111,11 +111,11 @@ function thoughts(emitted: AgentActivity[]) {
 
 describe('AgentStreamDemux', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    rs.useFakeTimers({ toFake: ['Date'] });
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should accumulate chunks of the same message into one thought', () => {
@@ -383,7 +383,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('Investigating...', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(textNotif('Found it.', 'm2'));
 
     expect(thoughts(emitted).find(t => t.final === true)).toEqual({
@@ -398,7 +398,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('Reading file...', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(
       toolCallNotif({ toolCallId: 'c1', title: 'Read', status: 'pending' }),
     );
@@ -415,7 +415,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('Part 1. ', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(textNotif('Part 2.', 'm1'));
 
     expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
@@ -426,7 +426,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('Investigating...', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS - 1);
+    rs.advanceTimersByTime(IDLE_MS - 1);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
     expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
@@ -436,7 +436,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('First block.', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
     demux.handle(textNotif('Second block.', 'm1'));
 
@@ -451,10 +451,10 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('Block 1.', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
     demux.handle(textNotif('Block 2.', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
 
     expect(thoughts(emitted).filter(t => t.final === true)).toEqual([
@@ -467,12 +467,12 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux();
 
     demux.handle(textNotif('waiting', 'm1'));
-    vi.advanceTimersByTime(2_999);
+    rs.advanceTimersByTime(2_999);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
     expect(thoughts(emitted).some(t => t.final === true)).toBe(false);
 
-    vi.advanceTimersByTime(1);
+    rs.advanceTimersByTime(1);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
 
     expect(thoughts(emitted).at(-1)).toMatchObject({ id: 'm1', final: true });
@@ -483,7 +483,7 @@ describe('AgentStreamDemux', () => {
 
     demux.handle(textNotif('synthetic preamble'));
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c2', status: 'pending' }));
 
     expect(thoughts(emitted).filter(t => t.final === true)).toEqual([expect.objectContaining({ text: 'synthetic preamble', final: true })]);
@@ -493,7 +493,7 @@ describe('AgentStreamDemux', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(textNotif('   ', 'm1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(toolCallNotif({ toolCallId: 'c1', status: 'pending' }));
 
     expect(thoughts(emitted)).toHaveLength(0);
@@ -502,11 +502,11 @@ describe('AgentStreamDemux', () => {
 
 describe('AgentStreamDemux protocol tags', () => {
   beforeEach(() => {
-    vi.useFakeTimers({ toFake: ['Date'] });
+    rs.useFakeTimers({ toFake: ['Date'] });
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   it('should hand over what the agent wrote with the tags it used', () => {
@@ -533,7 +533,7 @@ describe('AgentStreamDemux protocol tags', () => {
     const { demux, emitted } = createDemux(IDLE_MS);
 
     demux.handle(thoughtNotif('Thinking.', 't1'));
-    vi.advanceTimersByTime(IDLE_MS);
+    rs.advanceTimersByTime(IDLE_MS);
     demux.handle(textNotif('Answer.', 'm1'));
 
     expect(thoughts(emitted)).toEqual([

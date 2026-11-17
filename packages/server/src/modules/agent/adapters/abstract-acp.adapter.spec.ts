@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
+import type { ChildProcess } from 'node:child_process';
 
 import {
   AgentAuthRequiredError,
@@ -11,11 +11,14 @@ import {
 } from '../ports/agent.port.js';
 import {
   acpHarness,
+  acpSdkMockModule,
   effortConfigOption,
   messageChunk,
   modelConfigOption,
   permissionsConfigOption,
   resetAcpHarness,
+  spawnFakeProcess,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 
 import {
@@ -26,20 +29,14 @@ import {
 } from './abstract-acp.adapter.js';
 
 
-vi.mock('node:child_process', async () =>
-  (
-    await import('../testing/acp-adapter-test-harness.js')
-  ).childProcessMockModule());
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 class TestAcpAdapter extends AbstractAcpAdapter {
   readonly agentName = 'test';
 
   protected spawnAgentProcess(): ChildProcess {
-    return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    return spawnFakeProcess();
   }
 }
 
@@ -47,7 +44,7 @@ class PresetAcpAdapter extends AbstractAcpAdapter {
   readonly agentName = 'preset';
 
   protected spawnAgentProcess(): ChildProcess {
-    return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    return spawnFakeProcess();
   }
 
   protected override sessionConfigPresets(): readonly SessionConfigPreset[] {
@@ -59,7 +56,7 @@ class ExtensionAcpAdapter extends AbstractAcpAdapter {
   readonly agentName = 'extension';
 
   protected spawnAgentProcess(): ChildProcess {
-    return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    return spawnFakeProcess();
   }
 
   protected override agentExtensionRequests(): readonly AgentExtensionRequest[] {
@@ -80,7 +77,7 @@ class FallbackAcpAdapter extends AbstractAcpAdapter {
   readonly collectFallbackCalls: string[] = [];
 
   protected spawnAgentProcess(): ChildProcess {
-    return spawn('test-agent', [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    return spawnFakeProcess();
   }
 
   protected override async collectFallbackUsage(
@@ -97,11 +94,10 @@ class FallbackAcpAdapter extends AbstractAcpAdapter {
 describe('AbstractAcpAdapter', () => {
   beforeEach(() => {
     resetAcpHarness();
-    vi.mocked(spawn).mockClear();
   });
 
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
   });
 
   describe('connect', () => {
@@ -142,7 +138,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should cache configOptions returned by the discovery session', async () => {
       acpHarness.pendingConnectionOverrides = {
-        newSession: vi.fn().mockResolvedValue({
+        newSession: rs.fn().mockResolvedValue({
           sessionId: 'discovery-session',
           configOptions: [
             modelConfigOption({
@@ -154,7 +150,7 @@ describe('AbstractAcpAdapter', () => {
             }),
           ],
         }),
-        closeSession: vi.fn().mockResolvedValue(undefined),
+        closeSession: rs.fn().mockResolvedValue(undefined),
       };
 
       const adapter = new TestAcpAdapter();
@@ -181,12 +177,12 @@ describe('AbstractAcpAdapter', () => {
 
     it('should swallow errors during discovery without breaking connect()', async () => {
       const adapter = new TestAcpAdapter();
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       acpHarness.pendingConnectionOverrides = {
-        newSession: vi.fn().mockRejectedValue(new Error('discovery failed')),
+        newSession: rs.fn().mockRejectedValue(new Error('discovery failed')),
       };
 
       try {
@@ -211,7 +207,7 @@ describe('AbstractAcpAdapter', () => {
             stdin: null,
             stdout: null,
             stderr: null,
-            kill: vi.fn(),
+            kill: rs.fn(),
           } as unknown as ChildProcess;
         }
       }
@@ -224,7 +220,7 @@ describe('AbstractAcpAdapter', () => {
     it('should report a missing agent CLI when the process cannot be spawned', async () => {
       const enoent = Object.assign(new Error('spawn test-agent ENOENT'), { code: 'ENOENT' });
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockImplementation(async () => {
+        initialize: rs.fn().mockImplementation(async () => {
           acpHarness.spawnedProcs[0]!.emit('error', enoent);
           throw new Error('write EPIPE');
         }),
@@ -238,7 +234,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should keep the transport error for process errors other than a missing binary', async () => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockImplementation(async () => {
+        initialize: rs.fn().mockImplementation(async () => {
           acpHarness.spawnedProcs[0]!.emit('error', new Error('spawn EACCES'));
           throw new Error('write EPIPE');
         }),
@@ -249,12 +245,12 @@ describe('AbstractAcpAdapter', () => {
 
     it('should log "Unknown error" when discovery fails with a non-Error value', async () => {
       const adapter = new TestAcpAdapter();
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       acpHarness.pendingConnectionOverrides = {
-        newSession: vi.fn().mockRejectedValue('discovery string boom'),
+        newSession: rs.fn().mockRejectedValue('discovery string boom'),
       };
 
       try {
@@ -282,7 +278,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should detect steering support from initializeResponse', async () => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockResolvedValue({
+        initialize: rs.fn().mockResolvedValue({
           _meta: { steering: { supported: true } },
         }),
       };
@@ -676,7 +672,7 @@ describe('AbstractAcpAdapter', () => {
       [{ title: 'Model mismatch', description: 'Consider switching back.' }, 'agent_notice (warning): Model mismatch: Consider switching back.'],
       [{ title: 'Model mismatch' }, 'agent_notice (warning): Model mismatch'],
     ])('should log a notice and keep it out of the agent activity: %j', async (notice, expected) => {
-      const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       const adapter = new TestAcpAdapter();
       const activities: unknown[] = [];
       adapter.onActivity(activity => activities.push(activity));
@@ -738,7 +734,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should not touch the cached options for unrelated session updates', async () => {
       acpHarness.pendingConnectionOverrides = {
-        newSession: vi.fn().mockResolvedValue({
+        newSession: rs.fn().mockResolvedValue({
           sessionId: 'discovery-session',
           configOptions: [
             modelConfigOption({
@@ -1047,9 +1043,9 @@ describe('AbstractAcpAdapter', () => {
       await adapter.connect();
       await adapter.createSession('/repo');
 
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       await adapter.setConfig({ modelId: 'gpt-5' });
 
@@ -1078,9 +1074,9 @@ describe('AbstractAcpAdapter', () => {
       });
       await adapter.createSession('/repo');
 
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       await adapter.setConfig({ modelId: 'nonexistent' });
 
@@ -1497,9 +1493,9 @@ describe('AbstractAcpAdapter', () => {
     });
 
     it('should swallow a throwing collectFallbackUsage and resolve to undefined', async () => {
-      const debugSpy = vi
+      const debugSpy = rs
         .spyOn(Logger.prototype, 'debug')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
       const adapter = new FallbackAcpAdapter();
       await adapter.connect();
       await adapter.createSession('/repo');
@@ -1625,7 +1621,7 @@ describe('AbstractAcpAdapter', () => {
   describe('sendSteeringPrompt', () => {
     const connectWithSteering = async (): Promise<TestAcpAdapter> => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockResolvedValue({
+        initialize: rs.fn().mockResolvedValue({
           _meta: { steering: { supported: true } },
         }),
       };
@@ -1675,14 +1671,14 @@ describe('AbstractAcpAdapter', () => {
       acpHarness.connectionInstance?.prompt.mockRejectedValueOnce(
         new Error('fail steer'),
       );
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       try {
         await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(true);
 
-        await vi.waitFor(() => {
+        await rs.waitFor(() => {
           expect(warnSpy).toHaveBeenCalledWith(
             expect.stringContaining('steering_prompt_failed (session-1): fail steer'),
           );
@@ -1698,14 +1694,14 @@ describe('AbstractAcpAdapter', () => {
       await adapter.createSession('/repo');
 
       acpHarness.connectionInstance?.prompt.mockRejectedValueOnce('boom');
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       try {
         await adapter.sendSteeringPrompt('redirect');
 
-        await vi.waitFor(() => {
+        await rs.waitFor(() => {
           expect(warnSpy).toHaveBeenCalledWith(
             expect.stringContaining('steering_prompt_failed (session-1): Unknown error'),
           );
@@ -1755,9 +1751,9 @@ describe('AbstractAcpAdapter', () => {
       acpHarness.connectionInstance?.steer.mockRejectedValueOnce(
         new Error('fail steer wire'),
       );
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       try {
         await expect(adapter.sendSteeringPrompt('redirect wire')).resolves.toBe(false);
@@ -1773,9 +1769,9 @@ describe('AbstractAcpAdapter', () => {
     it('should log a generic message when the _session/steering request rejects with a non-Error value', async () => {
       const adapter = await connectWithSteering();
       acpHarness.connectionInstance?.steer.mockRejectedValueOnce('boom');
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
 
       try {
         await expect(adapter.sendSteeringPrompt('redirect')).resolves.toBe(false);
@@ -1840,7 +1836,7 @@ describe('AbstractAcpAdapter', () => {
     });
 
     it('should resend session/cancel without an abort prompt when steering is unsupported', async () => {
-      vi.useFakeTimers();
+      rs.useFakeTimers();
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       await adapter.createSession('/repo');
@@ -1864,7 +1860,7 @@ describe('AbstractAcpAdapter', () => {
         sessionId: 'session-1',
       });
 
-      await vi.advanceTimersByTimeAsync(5000);
+      await rs.advanceTimersByTimeAsync(5000);
       expect(acpHarness.connectionInstance?.cancel).toHaveBeenCalledTimes(2);
       expect(acpHarness.connectionInstance?.prompt).not.toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1872,15 +1868,15 @@ describe('AbstractAcpAdapter', () => {
         }),
       );
 
-      await vi.advanceTimersByTimeAsync(15000);
+      await rs.advanceTimersByTimeAsync(15000);
 
       await rejection;
     });
 
     it('should inject the abort prompt through steering when supported', async () => {
-      vi.useFakeTimers();
+      rs.useFakeTimers();
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockResolvedValue({
+        initialize: rs.fn().mockResolvedValue({
           _meta: { steering: { supported: true } },
         }),
       };
@@ -1901,7 +1897,7 @@ describe('AbstractAcpAdapter', () => {
         expect(promptPromise).rejects.toBeInstanceOf(PromptCancelledError);
 
       await adapter.cancel();
-      await vi.advanceTimersByTimeAsync(5000);
+      await rs.advanceTimersByTimeAsync(5000);
 
       expect(acpHarness.connectionInstance?.steer).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -1910,12 +1906,12 @@ describe('AbstractAcpAdapter', () => {
       );
       expect(acpHarness.connectionInstance?.cancel).toHaveBeenCalledTimes(1);
 
-      await vi.advanceTimersByTimeAsync(15000);
+      await rs.advanceTimersByTimeAsync(15000);
       await rejection;
     });
 
     it('should drop the session and the transport when the cancel is forced', async () => {
-      vi.useFakeTimers();
+      rs.useFakeTimers();
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       await adapter.createSession('/repo');
@@ -1933,7 +1929,7 @@ describe('AbstractAcpAdapter', () => {
         expect(promptPromise).rejects.toBeInstanceOf(PromptCancelledError);
 
       await adapter.cancel();
-      await vi.advanceTimersByTimeAsync(20000);
+      await rs.advanceTimersByTimeAsync(20000);
       await rejection;
 
       expect(proc?.kill).toHaveBeenCalled();
@@ -1988,9 +1984,9 @@ describe('AbstractAcpAdapter', () => {
       acpHarness.connectionInstance?.cancel.mockImplementationOnce(() => {
         throw new Error('cancel notify boom');
       });
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
       const iterator = adapter.prompt('hi')[Symbol.asyncIterator]();
       void iterator.next().catch(() => undefined);
 
@@ -2008,9 +2004,9 @@ describe('AbstractAcpAdapter', () => {
     it.each(['exit', 'error'])(
       'should reset the session when the agent process emits %s',
       async (event) => {
-        const warnSpy = vi
+        const warnSpy = rs
           .spyOn(Logger.prototype, 'warn')
-          .mockImplementation(vi.fn());
+          .mockImplementation(rs.fn());
         const adapter = new TestAcpAdapter();
         await adapter.connect();
         await adapter.createSession('/repo');
@@ -2064,7 +2060,7 @@ describe('AbstractAcpAdapter', () => {
   describe('loadSession', () => {
     const loadCapable = () => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockResolvedValue({
+        initialize: rs.fn().mockResolvedValue({
           agentCapabilities: { loadSession: true },
         }),
       };
@@ -2169,9 +2165,9 @@ describe('AbstractAcpAdapter', () => {
 
     it('should return false and log when the agent rejects the load', async () => {
       loadCapable();
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       acpHarness.connectionInstance?.loadSession.mockRejectedValueOnce(
@@ -2190,9 +2186,9 @@ describe('AbstractAcpAdapter', () => {
 
     it('should log a generic message when the load rejects with a non-Error', async () => {
       loadCapable();
-      const warnSpy = vi
+      const warnSpy = rs
         .spyOn(Logger.prototype, 'warn')
-        .mockImplementation(vi.fn());
+        .mockImplementation(rs.fn());
       const adapter = new TestAcpAdapter();
       await adapter.connect();
       acpHarness.connectionInstance?.loadSession.mockRejectedValueOnce('boom');
@@ -2229,7 +2225,7 @@ describe('AbstractAcpAdapter', () => {
   describe('transport errors', () => {
     it('should wrap initialize() rejections from connect() with agent name', async () => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockRejectedValueOnce(new Error('init fail')),
+        initialize: rs.fn().mockRejectedValueOnce(new Error('init fail')),
       };
 
       const adapter = new TestAcpAdapter();
@@ -2240,7 +2236,7 @@ describe('AbstractAcpAdapter', () => {
 
     it('should release the failed transport so a later connect() spawns a fresh agent', async () => {
       acpHarness.pendingConnectionOverrides = {
-        initialize: vi.fn().mockRejectedValueOnce(new Error('init fail')),
+        initialize: rs.fn().mockRejectedValueOnce(new Error('init fail')),
       };
       const adapter = new TestAcpAdapter();
 

@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
 import { availableParallelism } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { IProcessRunnerPort, ProcessRunResult } from '../../agent/ports/process-runner.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';

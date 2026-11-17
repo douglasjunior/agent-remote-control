@@ -15,17 +15,17 @@ describe('AccessTokenService', () => {
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'web-token-'));
-    vi.stubEnv('WEB_ACCESS_TOKEN', '');
+    rs.stubEnv('WEB_ACCESS_TOKEN', '');
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
-    vi.restoreAllMocks();
+    rs.unstubAllEnvs();
+    rs.restoreAllMocks();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
   it('should prefer WEB_ACCESS_TOKEN over the stored file', () => {
-    vi.stubEnv('WEB_ACCESS_TOKEN', ' from-env ');
+    rs.stubEnv('WEB_ACCESS_TOKEN', ' from-env ');
     const service = createService();
 
     expect(service.verify('from-env')).toBe(true);
@@ -55,7 +55,7 @@ describe('AccessTokenService', () => {
   });
 
   it('should verify true for the token, false for a wrong one and false on length mismatch', () => {
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
+    rs.stubEnv('WEB_ACCESS_TOKEN', 'secret');
     const service = createService();
 
     expect(service.verify('secret')).toBe(true);
@@ -65,8 +65,8 @@ describe('AccessTokenService', () => {
   });
 
   it('should log the token on bootstrap', () => {
-    vi.stubEnv('WEB_ACCESS_TOKEN', 'secret');
-    const log = vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+    rs.stubEnv('WEB_ACCESS_TOKEN', 'secret');
+    const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
     createService().onApplicationBootstrap();
 

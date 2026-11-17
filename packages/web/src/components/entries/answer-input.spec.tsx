@@ -1,7 +1,7 @@
+import { describe, expect, it, rs } from '@rstest/core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
 
 import { ConnectionProvider } from '../../connection/connection-context.js';
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
@@ -28,7 +28,7 @@ function Harness({ onAnswer }: { readonly onAnswer: () => void }) {
 }
 
 function setup() {
-  const onAnswer = vi.fn();
+  const onAnswer = rs.fn();
   render(<ConnectionProvider connection={new FakeServerConnection()}><Harness onAnswer={onAnswer} /></ConnectionProvider>);
   return { onAnswer };
 }
@@ -64,7 +64,7 @@ describe('AnswerInputProvider', () => {
   });
 
   it('should refuse a field outside the provider', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    rs.spyOn(console, 'error').mockImplementation(() => undefined);
 
     expect(() => render(<Field />)).toThrow('useAnswerInput needs an AnswerInputProvider');
   });

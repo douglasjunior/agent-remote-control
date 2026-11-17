@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@rstest/core';
 
 import type { ArtifactActor, ArtifactHistoryEvent } from '../models/artifact.model.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';

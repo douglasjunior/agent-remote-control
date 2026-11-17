@@ -1,6 +1,6 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
 import { delimiter } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { StubAgentPortFactory } from '../../orchestrator/testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../../orchestrator/testing/stub-agent.port.js';
@@ -31,13 +31,9 @@ function setup() {
   return { adapter, factory, runner, fileSystem, events, record: (event: AgentLoginEvent) => events.push(event) };
 }
 
-async function flush(): Promise<void> {
-  await new Promise(resolve => setImmediate(resolve));
-}
-
 describe('CliAgentAuthAdapter', () => {
   afterEach(() => {
-    vi.useRealTimers();
+    rs.useRealTimers();
     delete process.env.AGENT_AUTH_ENABLED;
     delete process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS;
     delete process.env.AGENT_AUTH_STATUS_TIMEOUT_MS;
@@ -122,7 +118,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         factory.agents = [{ agentId: 'agy', displayName: 'Antigravity' }];
-        const built = vi.spyOn(factory, 'create').mockReturnValue(port);
+        const built = rs.spyOn(factory, 'create').mockReturnValue(port);
 
         const info = await adapter.getStatus('agy');
 
@@ -137,7 +133,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.errorToThrowOnCreateSession = new AgentAuthRequiredError('agy', 'Authentication required');
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'unauthenticated' });
       });
@@ -146,21 +142,21 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.errorToThrowOnConnect = new Error('binary crashed');
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'unknown' });
       });
 
       it('should be unknown when the probe outlasts the timeout', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         process.env.AGENT_AUTH_STATUS_TIMEOUT_MS = '500';
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.connect = () => new Promise<void>(() => undefined);
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         const pending = adapter.getStatus('agy');
-        await vi.advanceTimersByTimeAsync(500);
+        await rs.advanceTimersByTimeAsync(500);
 
         await expect(pending).resolves.toMatchObject({ status: 'unknown' });
       });
@@ -174,7 +170,7 @@ describe('CliAgentAuthAdapter', () => {
         port.disconnect = async () => {
           throw new Error('disconnect failed');
         };
-        vi.spyOn(factory, 'create').mockReturnValue(port);
+        rs.spyOn(factory, 'create').mockReturnValue(port);
 
         await expect(adapter.getStatus('agy')).resolves.toMatchObject({ status: 'authenticated' });
       });
@@ -207,7 +203,7 @@ describe('CliAgentAuthAdapter', () => {
       process.env.PATH = '/usr/bin';
 
       adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       const [spawned] = runner.spawns;
       expect(spawned?.command).toBe('claude');
@@ -228,9 +224,7 @@ describe('CliAgentAuthAdapter', () => {
         fileSystem.addBinary('copilot').addBinary('script');
 
         adapter.startLogin('copilot', record);
-        await flush();
-
-        expect(runner.spawns[0]?.command).toBe('script');
+        await rs.waitFor(() => expect(runner.spawns[0]?.command).toBe('script'));
         expect(runner.spawns[0]?.args).toEqual(['-qfec', '\'copilot\' \'login\' \'--device-code\'', '/dev/null']);
       });
 
@@ -239,9 +233,7 @@ describe('CliAgentAuthAdapter', () => {
         fileSystem.addBinary('copilot');
 
         adapter.startLogin('copilot', record);
-        await flush();
-
-        expect(runner.spawns[0]?.command).toBe('copilot');
+        await rs.waitFor(() => expect(runner.spawns[0]?.command).toBe('copilot'));
         expect(runner.spawns[0]?.args).toEqual(['login', '--device-code']);
       });
 
@@ -249,7 +241,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, runner, fileSystem, events, record } = setup();
         fileSystem.addBinary('copilot').addBinary('script');
         adapter.startLogin('copilot', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
         runner.processes[0]?.print('System keychain unavailable. Store token in plaintext config file? (y/N) ');
 
@@ -260,7 +252,7 @@ describe('CliAgentAuthAdapter', () => {
       it('should pass a question it has no answer for to the user as a prompt', async () => {
         const { adapter, runner, events, record } = setup();
         adapter.startLogin('claude', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
         runner.processes[0]?.print('Overwrite the existing login? (y/N) ');
 
@@ -275,7 +267,7 @@ describe('CliAgentAuthAdapter', () => {
       delete process.env.PATH;
 
       adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
       process.env.PATH = originalPath;
 
       expect(runner.spawns[0]?.options?.env?.PATH).toBe(`${tmpdir()}/arc-agent-auth-openers`);
@@ -283,21 +275,19 @@ describe('CliAgentAuthAdapter', () => {
 
     it('should write the opener stand-ins once for every login', async () => {
       const { adapter, runner, record } = setup();
-      adapter.startLogin('claude', record);
-      await flush();
+      const first = adapter.startLogin('claude', record);
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
       runner.processes[0]?.exit(1);
-      await flush();
+      await first.done;
 
       adapter.startLogin('codex', record);
-      await flush();
-
-      expect(runner.spawns.map(spawned => spawned.command)).toEqual(['claude', 'codex']);
+      await rs.waitFor(() => expect(runner.spawns.map(spawned => spawned.command)).toEqual(['claude', 'codex']));
     });
 
     it('should forward the link, the code and the prompt as the CLI prints them', async () => {
       const { adapter, runner, events, record } = setup();
       adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.print('visit https://claude.com/cai/oauth/authorize?x=1\nPaste code here if prompted > ');
       runner.processes[0]?.print('Waiting\n', 'stderr');
@@ -312,7 +302,7 @@ describe('CliAgentAuthAdapter', () => {
       const { adapter, runner, events, record } = setup();
       runner.runResult = async () => ({ exitCode: 0, output: CLAUDE_LOGGED_IN });
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.exit(0);
       await subscription.done;
@@ -324,7 +314,7 @@ describe('CliAgentAuthAdapter', () => {
       const { adapter, runner, events, record } = setup();
       runner.runResult = async () => ({ exitCode: 0, output: 'garbage' });
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.exit(0);
       await subscription.done;
@@ -336,7 +326,7 @@ describe('CliAgentAuthAdapter', () => {
       const { adapter, runner, events, record } = setup();
       runner.runResult = async () => ({ exitCode: 1, output: CLAUDE_LOGGED_OUT });
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.exit(0);
       await subscription.done;
@@ -347,7 +337,7 @@ describe('CliAgentAuthAdapter', () => {
     it('should fail with the last message the CLI printed, cut to a safe length', async () => {
       const { adapter, runner, events, record } = setup();
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.print(`open https://example.com/x\n${'e'.repeat(300)}\n`);
       runner.processes[0]?.exit(1);
@@ -359,7 +349,7 @@ describe('CliAgentAuthAdapter', () => {
     it('should fail with the exit code when the CLI printed nothing useful', async () => {
       const { adapter, runner, events, record } = setup();
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.exit(3);
       await subscription.done;
@@ -380,7 +370,7 @@ describe('CliAgentAuthAdapter', () => {
     it('should fail when the process reports a spawn error', async () => {
       const { adapter, runner, events, record } = setup();
       const subscription = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
       runner.processes[0]?.emit('error', new Error('ENOENT'));
       await subscription.done;
@@ -391,21 +381,19 @@ describe('CliAgentAuthAdapter', () => {
     it('should free the agent for a new login once one ended', async () => {
       const { adapter, runner, record } = setup();
       const first = adapter.startLogin('claude', record);
-      await flush();
+      await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
       runner.processes[0]?.exit(1);
       await first.done;
 
       adapter.startLogin('claude', record);
-      await flush();
-
-      expect(runner.spawns).toHaveLength(2);
+      await rs.waitFor(() => expect(runner.spawns).toHaveLength(2));
     });
 
     describe('joining a running login', () => {
       it('should share the process and replay the last link and prompt to the newcomer', async () => {
         const { adapter, runner, events, record } = setup();
         const first = adapter.startLogin('claude', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
         runner.processes[0]?.print('https://example.com/login\nPaste code here > ');
         const lateEvents: AgentLoginEvent[] = [];
 
@@ -436,7 +424,7 @@ describe('CliAgentAuthAdapter', () => {
       it('should stop notifying a listener that unsubscribed', async () => {
         const { adapter, runner, events, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
         subscription.unsubscribe();
         runner.processes[0]?.print('https://example.com/login\n');
@@ -449,9 +437,7 @@ describe('CliAgentAuthAdapter', () => {
       it('should write a line to the CLI that waits for a code', async () => {
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await flush();
-
-        expect(adapter.submitInput('claude', 'abc#def')).toBe(true);
+        await rs.waitFor(() => expect(adapter.submitInput('claude', 'abc#def')).toBe(true));
 
         expect(runner.processes[0]?.written).toEqual(['abc#def\n']);
       });
@@ -470,7 +456,7 @@ describe('CliAgentAuthAdapter', () => {
       it('should refuse input once stdin closed', async () => {
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
         const process = runner.processes[0];
         if (process) {
           process.stdin.writable = false;
@@ -484,7 +470,7 @@ describe('CliAgentAuthAdapter', () => {
       it('should stop the process and report the cancellation', async () => {
         const { adapter, runner, events, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(1));
 
         adapter.cancelLogin('claude');
         runner.processes[0]?.exit(143);
@@ -495,26 +481,26 @@ describe('CliAgentAuthAdapter', () => {
       });
 
       it('should kill a process that ignores the first signal', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
         adapter.cancelLogin('claude');
-        await vi.advanceTimersByTimeAsync(3000);
+        await rs.advanceTimersByTimeAsync(3000);
 
         expect(runner.processes[0]?.killSignals).toEqual(['SIGTERM', 'SIGKILL']);
       });
 
       it('should not escalate once the process ended', async () => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
         adapter.cancelLogin('claude');
         runner.processes[0]?.exit(143);
-        await vi.advanceTimersByTimeAsync(3000);
+        await rs.advanceTimersByTimeAsync(3000);
 
         expect(runner.processes[0]?.killSignals).toEqual(['SIGTERM']);
       });
@@ -538,7 +524,7 @@ describe('CliAgentAuthAdapter', () => {
         const { adapter, runner, record } = setup();
         adapter.startLogin('claude', record);
         adapter.startLogin('codex', record);
-        await flush();
+        await rs.waitFor(() => expect(runner.processes).toHaveLength(2));
 
         adapter.onModuleDestroy();
 
@@ -548,16 +534,16 @@ describe('CliAgentAuthAdapter', () => {
 
     describe('timeout', () => {
       beforeEach(() => {
-        vi.useFakeTimers();
+        rs.useFakeTimers();
         process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS = '60000';
       });
 
       it('should stop a login that takes too long', async () => {
         const { adapter, runner, events, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
 
-        await vi.advanceTimersByTimeAsync(60_000);
+        await rs.advanceTimersByTimeAsync(60_000);
         runner.processes[0]?.exit(143);
         await subscription.done;
 
@@ -568,11 +554,11 @@ describe('CliAgentAuthAdapter', () => {
       it('should not time out a login that already ended', async () => {
         const { adapter, runner, record } = setup();
         const subscription = adapter.startLogin('claude', record);
-        await vi.advanceTimersByTimeAsync(0);
+        await rs.advanceTimersByTimeAsync(0);
         runner.processes[0]?.exit(1);
         await subscription.done;
 
-        await vi.advanceTimersByTimeAsync(60_000);
+        await rs.advanceTimersByTimeAsync(60_000);
 
         expect(runner.processes[0]?.killSignals).toEqual([]);
       });

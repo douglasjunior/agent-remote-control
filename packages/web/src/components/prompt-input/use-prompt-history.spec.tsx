@@ -35,7 +35,9 @@ function setup() {
 }
 
 describe('usePromptHistory', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    rs.useRealTimers();
+  });
 
   it('should open the history on the first ArrowUp and show the most recent prompt', async () => {
     const { field, press, answer, connection } = setup();
@@ -122,11 +124,11 @@ describe('usePromptHistory', () => {
   });
 
   it('should give up after the timeout and ask again on the next ArrowUp', async () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const { press, connection } = setup();
 
     press('ArrowUp');
-    await act(async () => vi.advanceTimersByTimeAsync(HISTORY_REQUEST_TIMEOUT_MS));
+    await act(async () => rs.advanceTimersByTimeAsync(HISTORY_REQUEST_TIMEOUT_MS));
     press('ArrowUp');
 
     expect(connection.sent).toHaveLength(2);

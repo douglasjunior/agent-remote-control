@@ -5,7 +5,6 @@ import { FileSearchIndex } from './file-search-index.service.js';
 
 const file = (path: string, depth = path.split('/').length - 1): WorkspaceEntry => ({ path, kind: 'file', depth });
 const directory = (path: string, depth = path.split('/').length - 1): WorkspaceEntry => ({ path, kind: 'directory', depth });
-const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 
 function setup() {
   const published: (readonly WorkspaceFileMatch[])[] = [];
@@ -34,9 +33,7 @@ describe('FileSearchIndex', () => {
     ]);
 
     index.setQuery('klist-site/components');
-    await settle();
-
-    expect(latest()).toEqual(['klist-workspace-sdd/repositories/klist-site/app/components/']);
+    await rs.waitFor(() => expect(latest()).toEqual(['klist-workspace-sdd/repositories/klist-site/app/components/']));
   });
 
   it('should match case-insensitively and report the matched character indexes', async () => {
@@ -44,9 +41,7 @@ describe('FileSearchIndex', () => {
     index.addEntries([file('Docs/Guide.md')]);
 
     index.setQuery('guide');
-    await settle();
-
-    expect(published.at(-1)).toEqual([{ path: 'Docs/Guide.md', kind: 'file', matches: [5, 6, 7, 8, 9] }]);
+    await rs.waitFor(() => expect(published.at(-1)).toEqual([{ path: 'Docs/Guide.md', kind: 'file', matches: [5, 6, 7, 8, 9] }]));
   });
 
   it('should put the better match first and cap the results', async () => {
@@ -54,17 +49,14 @@ describe('FileSearchIndex', () => {
     index.addEntries([file('src/application/main.ts'), file('app.ts'), file('a/p/p.ts')]);
 
     index.setQuery('app');
-    await settle();
-
-    expect(latest()?.[0]).toBe('app.ts');
+    await rs.waitFor(() => expect(latest()?.[0]).toBe('app.ts'));
   });
 
   it('should merge a batch that arrives after the query into the results', async () => {
     const { index, latest } = setup();
     index.addEntries([file('one.ts')]);
     index.setQuery('two');
-    await settle();
-    expect(latest()).toEqual([]);
+    await rs.waitFor(() => expect(latest()).toEqual([]));
 
     index.addEntries([file('two.ts'), file('three.ts')]);
 
@@ -74,7 +66,7 @@ describe('FileSearchIndex', () => {
   it('should not republish for a batch without matches', async () => {
     const { index, published } = setup();
     index.setQuery('zzz');
-    await settle();
+    await rs.waitFor(() => expect(published).toHaveLength(1));
     const before = published.length;
 
     index.addEntries([file('a.ts')]);
@@ -88,9 +80,7 @@ describe('FileSearchIndex', () => {
 
     index.setQuery('ts');
     index.addEntries([file('second.ts')]);
-    await settle();
-
-    expect(latest()).toEqual(expect.arrayContaining(['first.ts', 'second.ts']));
+    await rs.waitFor(() => expect(latest()).toEqual(expect.arrayContaining(['first.ts', 'second.ts'])));
   });
 
   it('should score a large index in several slices and still finds a match in the last one', async () => {
@@ -99,10 +89,7 @@ describe('FileSearchIndex', () => {
     index.addEntries([file('needle.ts')]);
 
     index.setQuery('needle');
-    await settle();
-    await settle();
-
-    expect(latest()).toEqual(['needle.ts']);
+    await rs.waitFor(() => expect(latest()).toEqual(['needle.ts']));
   });
 
   it('should drop the results of a query that was replaced', async () => {
@@ -111,16 +98,14 @@ describe('FileSearchIndex', () => {
 
     index.setQuery('alpha');
     index.setQuery('beta');
-    await settle();
-
-    expect(latest()).toEqual(['beta.ts']);
+    await rs.waitFor(() => expect(latest()).toEqual(['beta.ts']));
   });
 
   it('should return to the base directory when the query is cleared', async () => {
     const { index, latest } = setup();
     index.addEntries([file('a.ts'), file('src/b.ts')]);
     index.setQuery('b');
-    await settle();
+    await rs.waitFor(() => expect(latest()).toContain('src/b.ts'));
 
     index.setQuery('');
 
@@ -145,8 +130,6 @@ describe('FileSearchIndex', () => {
     index.stop();
     index.setQuery('a');
     index.addEntries([file('b.ts')]);
-    await settle();
-
-    expect(published).toHaveLength(before);
+    await rs.waitFor(() => expect(published).toHaveLength(before));
   });
 });

@@ -6,7 +6,7 @@ import { TeamIntro } from './team-intro.js';
 
 describe('TeamIntro', () => {
   it('should introduce every member of the team with what it does', () => {
-    render(<TeamIntro onPick={vi.fn()} />);
+    render(<TeamIntro onPick={rs.fn()} />);
 
     expect(screen.getByRole('heading', { name: 'Meet your team' })).toBeInTheDocument();
     expect(screen.getAllByRole('listitem')).toHaveLength(7);
@@ -14,7 +14,7 @@ describe('TeamIntro', () => {
   });
 
   it('should offer the example request of the member that was picked', async () => {
-    const onPick = vi.fn();
+    const onPick = rs.fn();
     render(<TeamIntro onPick={onPick} />);
 
     await userEvent.click(screen.getByRole('button', { name: /Developer/ }));

@@ -1,11 +1,13 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { tmpdir } from 'node:os';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acpHarness,
+  acpSdkMockModule,
   createProcessRunnerMock,
   modelConfigOption,
   resetAcpHarness,
+  streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
 import { StubFileSystem } from '../testing/stub-file-system.port.js';
 import { StubProcessRunner } from '../testing/stub-process-runner.port.js';
@@ -13,10 +15,8 @@ import { StubProcessRunner } from '../testing/stub-process-runner.port.js';
 import { CursorAdapter } from './cursor.adapter.js';
 
 
-vi.mock('node:stream', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).streamMockModule());
-vi.mock('@agentclientprotocol/sdk', async () =>
-  (await import('../testing/acp-adapter-test-harness.js')).acpSdkMockModule());
+rs.mock('node:stream', () => streamMockModule());
+rs.mock('@agentclientprotocol/sdk', () => acpSdkMockModule());
 
 function fileSystemStub(binariesInPath: readonly string[] = []): StubFileSystem {
   const fileSystem = new StubFileSystem();
@@ -166,7 +166,7 @@ describe('CursorAdapter quota', () => {
     ...overrides,
   });
 
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: ReturnType<typeof rs.fn>;
   let runner: StubProcessRunner;
   let fileSystem: StubFileSystem;
 
@@ -175,27 +175,27 @@ describe('CursorAdapter quota', () => {
   const quota = () => new CursorAdapter(fileSystem, runner).getQuota();
 
   beforeEach(() => {
-    fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    fetchMock = rs.fn();
+    rs.stubGlobal('fetch', fetchMock);
     runner = new StubProcessRunner();
     fileSystem = new StubFileSystem();
     setPlatform('linux');
-    vi.stubEnv('CURSOR_AUTH_TOKEN', '');
-    vi.stubEnv('CURSOR_API_ENDPOINT', '');
-    vi.stubEnv('AGENT_CLI_CREDENTIAL_STORE', '');
-    vi.stubEnv('XDG_CONFIG_HOME', '/xdg');
-    vi.stubEnv('APPDATA', '');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', '');
+    rs.stubEnv('CURSOR_API_ENDPOINT', '');
+    rs.stubEnv('AGENT_CLI_CREDENTIAL_STORE', '');
+    rs.stubEnv('XDG_CONFIG_HOME', '/xdg');
+    rs.stubEnv('APPDATA', '');
   });
 
   afterEach(() => {
     setPlatform(realPlatform);
-    vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
+    rs.unstubAllGlobals();
+    rs.unstubAllEnvs();
   });
 
   it('should read the plan usage with the token of the environment and map the monthly cycle', async () => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', ' token ');
-    vi.stubEnv('CURSOR_API_ENDPOINT', 'https://cursor.example/');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', ' token ');
+    rs.stubEnv('CURSOR_API_ENDPOINT', 'https://cursor.example/');
     respond(usage());
 
     expect(await quota()).toEqual({
@@ -221,14 +221,14 @@ describe('CursorAdapter quota', () => {
     [7, 'weekly'],
     [3, 'cycle'],
   ])('should name a cycle of %d days %s', async (days, window) => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond(usage({ billingCycleEnd: start + days * DAY }));
 
     expect((await quota())?.groups[0]?.buckets[0]?.window).toBe(window);
   });
 
   it('should derive the included usage from the spend without a percent, and read a cycle without dates', async () => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond({ planUsage: { limit: '2000', includedSpend: '500' } });
 
     const [included, auto] = (await quota())!.groups[0]!.buckets;
@@ -238,7 +238,7 @@ describe('CursorAdapter quota', () => {
   });
 
   it('should count nothing used when the plan reports neither percent nor spend', async () => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond({ planUsage: {} });
 
     expect((await quota())?.groups[0]?.buckets[0]?.remainingFraction).toBe(1);
@@ -249,27 +249,27 @@ describe('CursorAdapter quota', () => {
     ['an unexpected payload', { planUsage: { totalPercentUsed: 'x' } }, 200],
     ['a refused token', {}, 401],
   ])('should report no quota for %s', async (_name, body, status) => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     respond(body, status);
 
     expect(await quota()).toBeUndefined();
   });
 
   it.each([new Error('offline'), 'offline'])('should report no quota when the request fails (%#)', async (failure) => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', 'token');
+    rs.stubEnv('CURSOR_AUTH_TOKEN', 'token');
     fetchMock.mockRejectedValue(failure);
 
     expect(await quota()).toBeUndefined();
   });
 
   it('should never send an expired token, and send one it cannot read the expiry of', async () => {
-    vi.stubEnv('CURSOR_AUTH_TOKEN', jwt({ exp: 1 }));
+    rs.stubEnv('CURSOR_AUTH_TOKEN', jwt({ exp: 1 }));
     expect(await quota()).toBeUndefined();
     expect(fetchMock).not.toHaveBeenCalled();
 
     respond(usage());
     for (const token of [jwt({ exp: Math.floor(Date.now() / 1000) + 3600 }), jwt({}), 'h.!!!.s']) {
-      vi.stubEnv('CURSOR_AUTH_TOKEN', token);
+      rs.stubEnv('CURSOR_AUTH_TOKEN', token);
       expect(await quota()).toBeDefined();
     }
   });
@@ -295,7 +295,7 @@ describe('CursorAdapter quota', () => {
     ['win32', '', '/AppData/Roaming/Cursor/auth.json'],
   ] as const)('should read the token from the auth file on %s with store %j', async (platform, store, suffix) => {
     setPlatform(platform);
-    vi.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
+    rs.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
     fileSystem.text = JSON.stringify({ accessToken: ' file-token ' });
     respond(usage());
 
@@ -307,10 +307,10 @@ describe('CursorAdapter quota', () => {
     fileSystem.text = JSON.stringify({ accessToken: 'file-token' });
     respond(usage());
     setPlatform('win32');
-    vi.stubEnv('APPDATA', '/appdata');
+    rs.stubEnv('APPDATA', '/appdata');
     await quota();
     setPlatform('linux');
-    vi.stubEnv('XDG_CONFIG_HOME', '');
+    rs.stubEnv('XDG_CONFIG_HOME', '');
     await quota();
 
     expect(fileSystem.reads).toEqual(['/appdata/Cursor/auth.json', expect.stringMatching(/\/\.config\/cursor\/auth\.json$/)]);
@@ -324,7 +324,7 @@ describe('CursorAdapter quota', () => {
     ['an auth file with a blank token', 'linux', '', '{"accessToken":"  "}'],
   ] as const)('should have no token with %s', async (_name, platform, store, text) => {
     setPlatform(platform);
-    vi.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
+    rs.stubEnv('AGENT_CLI_CREDENTIAL_STORE', store);
     fileSystem.text = text;
 
     expect(await quota()).toBeUndefined();

@@ -11,7 +11,7 @@ describe('readRemoteLink', () => {
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    rs.restoreAllMocks();
     history.replaceState(null, '', '/');
   });
 
@@ -33,10 +33,10 @@ describe('readRemoteLink', () => {
   });
 
   it('should use the fingerprint of the link when storage throws', () => {
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
     history.replaceState(null, '', `/i/${INSTANCE}#fp=${FINGERPRINT}`);

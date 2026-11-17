@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import type { AgentSettings } from '../models/agent-settings.model.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';

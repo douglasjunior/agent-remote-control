@@ -1,5 +1,7 @@
-import { Test, type TestingModule } from '@nestjs/testing';
-import { describe, expect, it } from 'vitest';
+import { type TestingModule } from '@nestjs/testing';
+import { describe, expect, it } from '@rstest/core';
+
+import { createTestingModule } from '../../../test/testing-module.js';
 
 import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
@@ -16,7 +18,7 @@ import { UserQuestionService } from './services/user-question.service.js';
 
 describe('OrchestratorModule', () => {
   it('should compile the module and bind the ports to their implementations', async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    const module: TestingModule = await createTestingModule({
       imports: [OrchestratorModule],
     }).compile();
 

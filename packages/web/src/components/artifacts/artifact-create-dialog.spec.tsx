@@ -11,8 +11,6 @@ const done = summary({ id: 'T-4', title: 'Shipped', status: 'done' });
 const form = summary({ id: 'T-5', title: 'Login form', parentId: 'F-1' });
 const landing = summary({ id: 'F-2', type: 'feature', title: 'Landing', projectName: 'site' });
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-vi.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());
@@ -52,7 +50,7 @@ describe('ArtifactCreateDialog', () => {
       businessRefinement: false,
       technicalRefinement: false,
     });
-    answer(app, 'artifact.create', { ok: true, id: 'F-2' });
+    await answer(app, 'artifact.create', { ok: true, id: 'F-2' });
     expect(await screen.findByText('F-2 created')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
@@ -83,7 +81,7 @@ describe('ArtifactCreateDialog', () => {
       businessRefinement: true,
       technicalRefinement: true,
     });
-    answer(app, 'artifact.create', { ok: false, error: 'Unknown feature' });
+    await answer(app, 'artifact.create', { ok: false, error: 'Unknown feature' });
     expect(await screen.findByText('Unknown feature')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 

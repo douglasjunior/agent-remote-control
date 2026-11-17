@@ -1,7 +1,7 @@
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { deriveTeam } from '../../conversations/team-state.js';
 
@@ -20,14 +20,16 @@ const finished = (id: string, role: string, roleName: string, phase: 'finished' 
 
 function renderPanel(entries: readonly ConversationEntry[], running: boolean, props: Partial<Parameters<typeof SquadPanel>[0]> = {}) {
   const members = deriveTeam(entries, running);
-  return render(<SquadPanel members={members} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={vi.fn()} {...props} />);
+  return render(<SquadPanel members={members} focus={null} highlight={null} delivery={0} onSelect={rs.fn()} onContinue={rs.fn()} {...props} />);
 }
 
 const station = (name: RegExp) => screen.getByRole('button', { name });
 const stationStates = () => screen.getAllByRole('button').map(button => [button.dataset.role, button.dataset.state]);
 
 describe('SquadPanel', () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    rs.useRealTimers();
+  });
 
   it('should show one station per role of the team and be ready when nothing runs', () => {
     renderPanel([], false);
@@ -39,7 +41,7 @@ describe('SquadPanel', () => {
   });
 
   it('should open the agent settings from its header', async () => {
-    const onSettings = vi.fn();
+    const onSettings = rs.fn();
     renderPanel([], false, { onSettings });
 
     await userEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Agent settings' }));
@@ -163,14 +165,14 @@ describe('SquadPanel', () => {
   });
 
   it('should reveal only the static responsibility of the selected station', async () => {
-    const onSelect = vi.fn();
+    const onSelect = rs.fn();
     const { rerender } = renderPanel([], false, { onSelect });
     expect(screen.queryByText('Responsibility')).not.toBeInTheDocument();
 
     await userEvent.setup().click(station(/Developer/));
     expect(onSelect).toHaveBeenCalledWith('DEVELOPER');
 
-    rerender(<SquadPanel members={deriveTeam([], false)} focus="DEVELOPER" highlight="GIT_OPS" delivery={0} onSelect={onSelect} onContinue={vi.fn()} />);
+    rerender(<SquadPanel members={deriveTeam([], false)} focus="DEVELOPER" highlight="GIT_OPS" delivery={0} onSelect={onSelect} onContinue={rs.fn()} />);
     expect(screen.getAllByText('Responsibility')).toHaveLength(1);
     expect(station(/Developer/)).toHaveAttribute('aria-pressed', 'true');
     expect(station(/Developer/)).toHaveTextContent('Builds the plan, writes the tests, and fixes what the review finds.');
@@ -178,33 +180,33 @@ describe('SquadPanel', () => {
   });
 
   it('should play the delivery moment once per delivery and then clear it', () => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     const members = deriveTeam([], false);
-    const { rerender, container } = render(<SquadPanel members={members} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={vi.fn()} />);
+    const { rerender, container } = render(<SquadPanel members={members} focus={null} highlight={null} delivery={0} onSelect={rs.fn()} onContinue={rs.fn()} />);
     const panel = container.querySelector('.squad-panel') as HTMLElement;
     expect(panel).not.toHaveAttribute('data-delivered');
 
-    rerender(<SquadPanel members={members} focus={null} highlight={null} delivery={1} onSelect={vi.fn()} onContinue={vi.fn()} />);
+    rerender(<SquadPanel members={members} focus={null} highlight={null} delivery={1} onSelect={rs.fn()} onContinue={rs.fn()} />);
     expect(panel).toHaveAttribute('data-delivered', 'true');
 
-    act(() => vi.advanceTimersByTime(1500));
+    act(() => rs.advanceTimersByTime(1500));
     expect(panel).not.toHaveAttribute('data-delivered');
   });
 
   it('should tick the clock of an agent that works', () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date(AT).getTime());
+    rs.useFakeTimers();
+    rs.setSystemTime(new Date(AT).getTime());
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
     expect(station(/Developer/)).toHaveTextContent('0 s');
 
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => rs.advanceTimersByTime(5000));
     expect(station(/Developer/)).toHaveTextContent('5 s');
   });
 
   it('should offer to continue an agent a restart stopped', async () => {
-    const onContinue = vi.fn();
+    const onContinue = rs.fn();
     const work = { id: 'w', role: 'DEVELOPER', roleName: 'Developer', projectName: 'app', summary: 'Build the form' };
-    render(<SquadPanel members={deriveTeam([started('s', 'DEVELOPER', 'Developer')], false, [work])} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={onContinue} />);
+    render(<SquadPanel members={deriveTeam([started('s', 'DEVELOPER', 'Developer')], false, [work])} focus={null} highlight={null} delivery={0} onSelect={rs.fn()} onContinue={onContinue} />);
 
     expect(screen.getByText('Interrupted unexpectedly')).toBeInTheDocument();
     expect(screen.getByText('1 stopped')).toBeInTheDocument();

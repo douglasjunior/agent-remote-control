@@ -21,7 +21,7 @@ beforeEach(() => {
 
 afterEach(() => {
   FakeMediaDevices.uninstall();
-  vi.restoreAllMocks();
+  rs.restoreAllMocks();
 });
 
 describe('useMicrophones', () => {
@@ -104,7 +104,7 @@ describe('useMicrophones', () => {
   });
 
   it('should stop following devices after unmount', async () => {
-    const remove = vi.spyOn(media, 'removeEventListener');
+    const remove = rs.spyOn(media, 'removeEventListener');
     const { unmount } = renderHook(() => useMicrophones());
 
     unmount();
@@ -130,10 +130,10 @@ describe('useMicrophones', () => {
   });
 
   it('should still selects when the storage is blocked', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    rs.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('blocked');
     });
     const { result } = renderHook(() => useMicrophones());

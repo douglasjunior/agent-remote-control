@@ -1,5 +1,5 @@
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { act, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { TeamMember } from '../../conversations/team-state.js';
 
@@ -18,9 +18,9 @@ describe('SquadPanel motion', () => {
   let flights: Flight[];
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     flights = [];
-    Element.prototype.animate = vi.fn(() => {
+    Element.prototype.animate = rs.fn(() => {
       const flight: Flight = { onfinish: null, oncancel: null };
       flights.push(flight);
       return flight;
@@ -29,24 +29,24 @@ describe('SquadPanel motion', () => {
 
   afterEach(() => {
     delete (Element.prototype as { animate?: unknown }).animate;
-    vi.useRealTimers();
-    vi.stubGlobal('matchMedia', defaultMatchMedia);
+    rs.useRealTimers();
+    rs.stubGlobal('matchMedia', defaultMatchMedia);
   });
 
-  const panel = (members: readonly TeamMember[], delivery = 0) => <SquadPanel members={members} focus={null} highlight={null} delivery={delivery} onSelect={vi.fn()} onContinue={vi.fn()} />;
+  const panel = (members: readonly TeamMember[], delivery = 0) => <SquadPanel members={members} focus={null} highlight={null} delivery={delivery} onSelect={rs.fn()} onContinue={rs.fn()} />;
   const pulses = (container: HTMLElement) => container.querySelectorAll('.squad-pulse');
 
   it('should send a bigger pulse when an agent starts and repeat on an interval', () => {
     const { container } = render(panel(team(['DEVELOPER'])));
     expect(pulses(container)).toHaveLength(1);
 
-    act(() => vi.advanceTimersByTime(1150));
+    act(() => rs.advanceTimersByTime(1150));
     expect(pulses(container)).toHaveLength(2);
   });
 
   it('should remove each pulse when its flight ends or is cancelled', () => {
     const { container } = render(panel(team(['DEVELOPER', 'GIT_OPS'])));
-    act(() => vi.advanceTimersByTime(1150));
+    act(() => rs.advanceTimersByTime(1150));
     expect(pulses(container)).toHaveLength(4);
 
     flights.splice(0).forEach((flight, index) => (index % 2 === 0 ? flight.onfinish!() : flight.oncancel!()));
@@ -56,7 +56,7 @@ describe('SquadPanel motion', () => {
   it('should keep no more pulses than the ones in flight over a long session', () => {
     const { container } = render(panel(team(['DEVELOPER'])));
     for (let tick = 0; tick < 300; tick++) {
-      act(() => vi.advanceTimersByTime(1150));
+      act(() => rs.advanceTimersByTime(1150));
       flights.splice(0).forEach(flight => flight.onfinish!());
     }
 
@@ -71,14 +71,14 @@ describe('SquadPanel motion', () => {
     expect(pulses(container)).toHaveLength(1);
     flights.splice(0).forEach(flight => flight.onfinish!());
 
-    act(() => vi.advanceTimersByTime(5000));
+    act(() => rs.advanceTimersByTime(5000));
     expect(pulses(container)).toHaveLength(0);
   });
 
   it('should send a pulse to every station on a delivery', () => {
     const { container, rerender } = render(panel(team([])));
     rerender(panel(team([]), 1));
-    act(() => vi.advanceTimersByTime(1000));
+    act(() => rs.advanceTimersByTime(1000));
 
     expect(pulses(container)).toHaveLength(6);
   });
@@ -92,7 +92,7 @@ describe('SquadPanel motion', () => {
   });
 
   it('should send nothing under reduced motion', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
     const { container } = render(panel(team(['DEVELOPER'])));
 
     expect(pulses(container)).toHaveLength(0);
@@ -108,14 +108,16 @@ describe('SquadPanel motion', () => {
 });
 
 describe('SquadPanel spine', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    rs.restoreAllMocks();
+  });
 
   it('should join the first and last lens and stay neutral whatever the roles do', () => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+    rs.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       const index = ROLES.indexOf(this.dataset.lens ?? '');
       return { top: index < 0 ? 0 : index * 100, height: index < 0 ? 0 : 36 } as DOMRect;
     });
-    const { container } = render(<SquadPanel members={team(['GIT_OPS'])} focus={null} highlight={null} delivery={0} onSelect={vi.fn()} onContinue={vi.fn()} />);
+    const { container } = render(<SquadPanel members={team(['GIT_OPS'])} focus={null} highlight={null} delivery={0} onSelect={rs.fn()} onContinue={rs.fn()} />);
 
     const spine = container.querySelector('.squad-spine') as HTMLElement;
     expect(spine.style.top).toBe('18px');

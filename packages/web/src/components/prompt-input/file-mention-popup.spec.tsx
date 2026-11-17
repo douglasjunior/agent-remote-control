@@ -9,8 +9,8 @@ const items = [
 ];
 
 function setup(highlightedIndex = 0, isWalking = false) {
-  const onAccept = vi.fn();
-  const onHighlightChange = vi.fn();
+  const onAccept = rs.fn();
+  const onHighlightChange = rs.fn();
   render(
     <FileMentionPopup
       id="list"
@@ -84,7 +84,7 @@ describe('FileMentionPopup', () => {
   });
 
   it('should scroll the highlighted option into view', () => {
-    const scrollIntoView = vi.fn();
+    const scrollIntoView = rs.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     setup(1);
 

@@ -44,7 +44,7 @@ describe('ChannelServerConnection', () => {
   const latest = () => connection.channels.at(-1)!;
 
   beforeEach(() => {
-    vi.useFakeTimers();
+    rs.useFakeTimers();
     localStorage.clear();
     const tokens = new AccessTokenStore();
     tokens.store('secret');
@@ -53,13 +53,13 @@ describe('ChannelServerConnection', () => {
     transports = [];
     connection.onStatus(status => statuses.push(status));
     visibility = 'visible';
-    vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+    rs.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
   });
 
   afterEach(() => {
     connection.disconnect();
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+    rs.useRealTimers();
+    rs.restoreAllMocks();
   });
 
   it('should open each channel with the stored access token', () => {
@@ -85,7 +85,7 @@ describe('ChannelServerConnection', () => {
     connection.connect();
     connection.send({ type: 'conversation.list' });
     latest().handlers.onClose(reason);
-    vi.advanceTimersByTime(60_000);
+    rs.advanceTimersByTime(60_000);
 
     expect(statuses).toEqual(['connecting', reason]);
     expect(connection.channels).toHaveLength(1);
@@ -129,12 +129,12 @@ describe('ChannelServerConnection', () => {
       const events: unknown[] = [];
       connection.onEvent(event => events.push(event));
       connection.connect();
-      vi.advanceTimersByTime(30_000);
+      rs.advanceTimersByTime(30_000);
       expect(pings()).toBe(0);
 
       latest().handlers.onMessage('{"type":"auth.ok"}');
       for (let beat = 0; beat < 4; beat += 1) {
-        vi.advanceTimersByTime(5_000);
+        rs.advanceTimersByTime(5_000);
         latest().handlers.onMessage('{"type":"pong"}');
       }
 
@@ -145,9 +145,9 @@ describe('ChannelServerConnection', () => {
 
     it('should take any message from the server as an answer', () => {
       authenticate();
-      vi.advanceTimersByTime(5_000);
+      rs.advanceTimersByTime(5_000);
       latest().handlers.onMessage('{"type":"conversation.list","conversations":[]}');
-      vi.advanceTimersByTime(10_000);
+      rs.advanceTimersByTime(10_000);
 
       expect(statuses.at(-1)).toBe('open');
       expect(pings()).toBe(2);
@@ -156,7 +156,7 @@ describe('ChannelServerConnection', () => {
     it('should keep a connection that is still receiving a long message', () => {
       authenticate();
       for (let beat = 0; beat < 6; beat += 1) {
-        vi.advanceTimersByTime(5_000);
+        rs.advanceTimersByTime(5_000);
         latest().handlers.onProgress();
       }
 
@@ -167,16 +167,16 @@ describe('ChannelServerConnection', () => {
     it('should drop a connection whose ping goes unanswered for 10 s and reconnect', () => {
       authenticate();
       const silent = latest();
-      vi.advanceTimersByTime(5_000);
-      vi.advanceTimersByTime(5_000);
+      rs.advanceTimersByTime(5_000);
+      rs.advanceTimersByTime(5_000);
       expect(statuses.at(-1)).toBe('open');
 
-      vi.advanceTimersByTime(5_000);
+      rs.advanceTimersByTime(5_000);
       expect(statuses.at(-1)).toBe('closed');
       expect(silent.closed).toBe(true);
       expect(pings(silent)).toBe(1);
 
-      vi.advanceTimersByTime(500);
+      rs.advanceTimersByTime(500);
       expect(connection.channels).toHaveLength(2);
     });
 
@@ -188,7 +188,7 @@ describe('ChannelServerConnection', () => {
       authenticate();
       const channel = latest();
       stop();
-      vi.advanceTimersByTime(60_000);
+      rs.advanceTimersByTime(60_000);
 
       expect(pings(channel)).toBe(0);
     });
