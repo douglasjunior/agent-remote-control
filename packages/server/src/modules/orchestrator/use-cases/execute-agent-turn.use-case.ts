@@ -412,27 +412,31 @@ export class ExecuteAgentTurnUseCase {
       activity => request.onActivity?.(activity, requester.role),
     ));
 
-    let response = await runCeo(prompt, isUserMessage, answerDelivery);
-    let userInitiated = isUserMessage;
-    for (;;) {
-      let decision = await this.delegationValidator.decide(response, request, userInitiated);
-      for (let attempt = 1; decision.kind === 'invalid' && attempt <= this.MAX_REPAIR_ATTEMPTS; attempt++) {
-        this.logger.warn(
-          `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
-        );
-        request.onDraft?.('');
-        response = await runCeo(buildDelegationRepairPrompt(decision.reason));
-        decision = await this.delegationValidator.decide(response, request, userInitiated);
+    /** `userInitiated` is whether the CEO is answering the user, which a delegation that only the user may start requires. */
+    const decide = async (response: string, userInitiated: boolean, attempt = 1): Promise<{ response: string; decision: ValidatedDecision }> => {
+      const decision = await this.delegationValidator.decide(response, request, userInitiated);
+      if (decision.kind !== 'invalid' || attempt > this.MAX_REPAIR_ATTEMPTS) {
+        return { response, decision };
       }
-      if (decision.kind !== 'ask') {
+      this.logger.warn(
+        `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
+      );
+      request.onDraft?.('');
+      return decide(await runCeo(buildDelegationRepairPrompt(decision.reason)), userInitiated, attempt + 1);
+    };
+
+    const settle = async (response: string, userInitiated: boolean): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> => {
+      const settled = await decide(response, userInitiated);
+      if (settled.decision.kind !== 'ask') {
         const requestResults = pending.take();
-        return { response, decision, ...(requestResults ? { requestResults } : {}) };
+        return { response: settled.response, decision: settled.decision, ...(requestResults ? { requestResults } : {}) };
       }
 
-      const answers = await this.agentQuestions.ask(request, this.agentQuestions.askerFor(request.agentRole, undefined), decision.message, decision.questions, workId);
-      userInitiated = true;
-      response = await runCeo(buildUserAnswersPrompt(answers), true);
-    }
+      const answers = await this.agentQuestions.ask(request, this.agentQuestions.askerFor(request.agentRole, undefined), settled.decision.message, settled.decision.questions, workId);
+      return settle(await runCeo(buildUserAnswersPrompt(answers), true), true);
+    };
+
+    return settle(await runCeo(prompt, isUserMessage, answerDelivery), isUserMessage);
   }
 
   /**

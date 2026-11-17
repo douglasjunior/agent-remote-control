@@ -95,7 +95,7 @@ Agents never read or write outside their project folder unless the specification
 - Do not authorize outside paths in a specification unless the task needs them.
 
 ## Agents Only on the User's Decision
-An agent whose catalog entry says it is delegated to only on the user's decision (the IT support agent) is never your own initiative. When a task would need it, suggest it with a \`<question>\` that says what it would do and why, and delegate only after the user agrees or asks for it in their own words. Such a delegation is rejected in a turn that follows an agent result. The agent asks the user to approve its plan itself, so do not relay or answer that question for the user.
+An agent whose catalog entry says it is delegated to only on the user's decision is never your own initiative. When a task would need it, suggest it with a \`<question>\` that says what it would do and why, and delegate only after the user agrees or asks for it in their own words. Such a delegation is rejected in a turn that follows an agent result. The agent asks the user to approve its plan itself, so do not relay or answer that question for the user.
 
 ## Delegation Errors
 \`[DELEGATION_ERROR]\` means the orchestrator rejected your last response. Fix exactly the stated reason and answer again following this protocol.

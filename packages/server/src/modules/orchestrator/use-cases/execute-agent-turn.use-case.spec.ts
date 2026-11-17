@@ -3413,6 +3413,21 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
     });
 
+    it('should delegate to an agent only the user may start once the user has answered the CEO', async () => {
+      agentRegistry.getDelegationContract.mockReturnValue({ project: 'optional', userInitiatedOnly: true });
+      stubAgentPort.mockResponses = [
+        'Shall I bring in IT?\n<question>Go ahead?<option>Yes</option></question>',
+        '<delegate role="DEVELOPER" summary="Installing it">Install Docker.</delegate>',
+        'Installed.',
+      ];
+      delegateStubPort.mockResponses = ['Docker installed.'];
+
+      const result = await useCase.execute(turnRequest({ onQuestion: answerWith('1') }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Installed.' });
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
+    });
+
     it('should hand the user answers to the CEO with its system prompt and finish with its next answer', async () => {
       agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
       stubAgentPort.mockResponses = ['Before I start:\n<question>Which project?<option>Backend</option></question>', 'Starting on the backend.'];
