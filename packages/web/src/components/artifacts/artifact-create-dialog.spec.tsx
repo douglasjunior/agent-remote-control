@@ -11,8 +11,6 @@ const done = summary({ id: 'T-4', title: 'Shipped', status: 'done' });
 const form = summary({ id: 'T-5', title: 'Login form', parentId: 'F-1' });
 const landing = summary({ id: 'F-2', type: 'feature', title: 'Landing', projectName: 'site' });
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-rs.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());

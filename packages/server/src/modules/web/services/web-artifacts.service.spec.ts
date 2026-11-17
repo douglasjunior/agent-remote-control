@@ -1,3 +1,5 @@
+import { expect, it, rs } from '@rstest/core';
+
 import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import { FakeClientConnection } from '../testing/fake-client-connection.js';
@@ -107,12 +109,14 @@ describe('WebArtifactsService', () => {
   });
 
   it.each([new Error('store down'), 'store down'])('should log a broadcast that fails (%#)', async (failure) => {
+    rs.useFakeTimers();
     const { service, artifacts, store, observer } = setup();
     store.exists = () => Promise.reject(failure);
     service.onModuleInit();
 
     await artifacts.service.comment('web-1', 'F-1', 'Hi', user);
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await rs.advanceTimersByTimeAsync(0);
+    rs.useRealTimers();
 
     expect(observer.sent).toEqual([]);
   });

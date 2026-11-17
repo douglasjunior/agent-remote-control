@@ -16,7 +16,7 @@ describe('ConversationLogContextService', () => {
 
   it('should keep parallel conversations apart', async () => {
     const seenIn = (id: string) => context.run(id, async () => {
-      await new Promise(resolve => setTimeout(resolve, 1));
+      await Promise.resolve();
       return context.current();
     });
 

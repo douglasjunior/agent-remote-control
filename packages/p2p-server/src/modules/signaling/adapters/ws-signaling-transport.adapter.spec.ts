@@ -115,7 +115,8 @@ describe('WsSignalingTransportAdapter', () => {
     const terminated = new Promise<void>(done => silent.once('close', () => done()));
 
     rs.advanceTimersByTime(25_000);
-    await rs.waitFor(() => new Promise(done => setTimeout(done, 20)));
+    const { server, alive } = adapter as unknown as { server: { clients: Set<WebSocket> }; alive: WeakSet<WebSocket> };
+    await rs.waitFor(() => expect([...server.clients].filter(client => alive.has(client))).toHaveLength(1));
     rs.advanceTimersByTime(25_000);
 
     await terminated;

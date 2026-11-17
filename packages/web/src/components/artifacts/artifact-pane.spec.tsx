@@ -53,8 +53,6 @@ function openArtifact(artifact: ArtifactDetail = api, artifacts = board) {
   return { user, app };
 }
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-rs.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());

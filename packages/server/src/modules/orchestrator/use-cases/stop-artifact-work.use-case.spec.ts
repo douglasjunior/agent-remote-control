@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { ArtifactActor } from '../../artifacts/models/artifact.model.js';
 import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';
@@ -35,9 +35,10 @@ describe('StopArtifactWorkUseCase', () => {
   };
 
   /** Lets the listener, which runs without being awaited, finish its work. */
-  const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+  const settle = () => rs.advanceTimersByTimeAsync(0);
 
   beforeEach(async () => {
+    rs.useFakeTimers();
     ({ service: artifacts } = createArtifactsService({
       conversationId: CONVERSATION,
       initial: [buildArtifact({ id: 'T-1', status: 'in_progress' })],
@@ -52,6 +53,7 @@ describe('StopArtifactWorkUseCase', () => {
 
   afterEach(() => {
     useCase.onModuleDestroy();
+    rs.useRealTimers();
   });
 
   it.each(['done', 'blocked', 'cancelled'] as const)('should stop the agent holding the artifact when the user moves it to %s', async (status) => {

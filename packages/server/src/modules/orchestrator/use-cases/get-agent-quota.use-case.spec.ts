@@ -160,8 +160,8 @@ describe('GetAgentQuotaUseCase', () => {
       await rs.advanceTimersByTimeAsync(15_000);
       await pending;
       rejectLate(new Error('connection closed'));
+      await rs.advanceTimersByTimeAsync(0);
       rs.useRealTimers();
-      await new Promise(resolve => setImmediate(resolve));
     } finally {
       process.off('unhandledRejection', record);
     }

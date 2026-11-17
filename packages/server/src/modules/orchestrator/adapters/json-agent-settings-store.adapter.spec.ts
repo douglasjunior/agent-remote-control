@@ -81,12 +81,20 @@ describe('JsonAgentSettingsStoreAdapter', () => {
     const store = new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(rootDir));
     const later: AgentSettings = { ...SETTINGS, updatedAt: '2026-01-02T00:00:00.000Z' };
     const realWriteFile = rs.mocked(writeFile).getMockImplementation()!;
+    let releaseFirstWrite!: () => void;
+    const firstWriteHeld = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
     rs.mocked(writeFile).mockImplementationOnce(async (...args) => {
-      await new Promise(resolve => setTimeout(resolve, 30));
+      await firstWriteHeld;
       return realWriteFile(...args);
     });
 
-    await Promise.all([store.save('conv', SETTINGS), store.save('conv', later)]);
+    rs.mocked(writeFile).mockClear();
+    const saving = Promise.all([store.save('conv', SETTINGS), store.save('conv', later)]);
+    await rs.waitFor(() => expect(writeFile).toHaveBeenCalledTimes(1));
+    releaseFirstWrite();
+    await saving;
 
     expect(JSON.parse(readFileSync(join(rootDir, 'agent-settings.json'), 'utf-8'))).toEqual({ conv: later });
   });

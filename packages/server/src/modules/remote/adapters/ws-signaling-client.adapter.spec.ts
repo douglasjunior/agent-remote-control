@@ -92,7 +92,7 @@ describe('WsSignalingClientAdapter', () => {
     rs.advanceTimersByTime(1_000);
     (await connection(1)).close(1011);
     await rs.waitFor(() => expect(sockets[1]!.readyState).toBe(3));
-    await new Promise(done => setImmediate(done));
+    await rs.advanceTimersByTimeAsync(0);
     rs.advanceTimersByTime(2_000);
     const third = await connection(2);
     third.send('{"type":"host.registered"}');
@@ -108,7 +108,7 @@ describe('WsSignalingClientAdapter', () => {
     const first = await connection(0);
     await rs.waitFor(() => expect(received).toHaveLength(1));
     first.ping();
-    await new Promise(done => setImmediate(done));
+    await rs.advanceTimersByTimeAsync(0);
     rs.advanceTimersByTime(70_000);
     await new Promise(done => first.once('close', done));
     rs.advanceTimersByTime(1_000);
@@ -143,7 +143,7 @@ describe('WsSignalingClientAdapter', () => {
     (await connection(0)).close(code);
     await rs.waitFor(() => expect(error).toHaveBeenCalledWith(message));
     rs.advanceTimersByTime(120_000);
-    await new Promise(done => setImmediate(done));
+    await rs.advanceTimersByTimeAsync(0);
 
     expect(sockets).toHaveLength(1);
   });
@@ -154,7 +154,7 @@ describe('WsSignalingClientAdapter', () => {
     await connection(0);
     client.stop();
     rs.advanceTimersByTime(120_000);
-    await new Promise(done => setImmediate(done));
+    await rs.advanceTimersByTimeAsync(0);
 
     expect(sockets).toHaveLength(1);
     expect(warn).not.toHaveBeenCalled();

@@ -12,8 +12,6 @@ function messagesSent(app: ReturnType<typeof openBoard>) {
   return app.connection.sent.filter(command => command.type === 'message.send');
 }
 
-// Each case mounts the whole app with its dialogs and selects, which is slow on a busy machine.
-rs.setConfig({ testTimeout: 20_000 });
 
 afterEach(() => {
   act(() => toast.dismiss());

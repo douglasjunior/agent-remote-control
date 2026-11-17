@@ -2647,6 +2647,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should hand over together the results that finish while the CEO is busy', async () => {
+      rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const developer = gatedPort('Implemented.');
       const reviewer = gatedPort('Reviewed.');
       const planner = delegatePort('Planned.');
@@ -2661,12 +2662,13 @@ describe('ExecuteAgentTurnUseCase', () => {
         if (this.promptCalls.length === 1) {
           developer.release();
           reviewer.release();
-          await new Promise(resolve => setTimeout(resolve, 0));
+          await rs.advanceTimersByTimeAsync(0);
         }
         yield* ceoPrompt(text);
       };
 
       const result = await useCase.execute(turnRequest());
+      rs.useRealTimers();
 
       expect(result.response).toBe('Everything handled.');
       expect(stubAgentPort.promptCalls).toHaveLength(3);
@@ -3394,6 +3396,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should ask the user in the order the parallel delegates asked', async () => {
+      rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       const ports = [new StubAgentPort(), new StubAgentPort()];
       let releaseSecond!: () => void;
       const secondMayAsk = new Promise<void>((resolve) => {
@@ -3425,10 +3428,11 @@ describe('ExecuteAgentTurnUseCase', () => {
           shown.push(`${event.prompt.question.text} (${event.prompt.waitingAskers} waiting)`);
           if (shown.length === 1) {
             releaseSecond();
-            setTimeout(answers, 0);
+            void rs.advanceTimersByTimeAsync(0).then(answers);
           }
         },
       }));
+      rs.useRealTimers();
 
       expect(result.response).toBe('Both done.');
       expect(shown).toEqual(['First? (0 waiting)']);

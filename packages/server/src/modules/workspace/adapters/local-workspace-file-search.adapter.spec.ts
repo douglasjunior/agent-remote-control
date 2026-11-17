@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
+import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -41,16 +41,18 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
       session.setQuery(query);
     });
     await finished;
-    await new Promise(resolve => setImmediate(resolve));
+    await rs.advanceTimersByTimeAsync(0);
     return { paths: results.map(match => match.path), states };
   };
 
   beforeEach(() => {
+    rs.useFakeTimers({ toFake: ['setImmediate'] });
     baseDirectory = mkdtempSync(join(tmpdir(), 'arc-file-search-'));
     search = new LocalWorkspaceFileSearchAdapter(new LocalWorkspaceAdapter(workspaceDirectoryAt(baseDirectory)));
   });
 
   afterEach(() => {
+    rs.useRealTimers();
     sessions.splice(0).forEach(session => session.stop());
     rmSync(baseDirectory, { recursive: true, force: true });
   });
@@ -117,7 +119,8 @@ describe('LocalWorkspaceFileSearchAdapter', () => {
     const session = search.start({ onResults: () => undefined, onWalking: walking => states.push(walking) });
 
     session.stop();
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // A later walk of the same directory ends after the stopped one, which has already seen the abort.
+    await run();
 
     expect(states).toEqual([true]);
   });

@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@rstest/core';
+import { afterEach, describe, expect, it, rs } from '@rstest/core';
 
 import { type DelegationOutcome, RunningDelegations } from './running-delegations.model.js';
 
@@ -14,6 +14,10 @@ const deferred = () => {
 const result = (block: string): DelegationOutcome => ({ kind: 'result', block });
 
 describe('RunningDelegations', () => {
+  afterEach(() => {
+    rs.useRealTimers();
+  });
+
   it('should be empty until a delegation starts and again once its result is handed over', async () => {
     const running = new RunningDelegations();
     const developer = deferred();
@@ -90,6 +94,7 @@ describe('RunningDelegations', () => {
     const replaced: DelegationOutcome = { kind: 'replaced' };
 
     it('should not hand over a replaced delegation and keep waiting for a pending result', async () => {
+      rs.useFakeTimers();
       const running = new RunningDelegations();
       const old = deferred();
       const current = deferred();
@@ -104,7 +109,7 @@ describe('RunningDelegations', () => {
       const waiting = running.nextResults().then((blocks) => {
         handedOver = blocks;
       });
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await rs.advanceTimersByTimeAsync(0);
       expect(handedOver).toBeUndefined();
       expect(running.pendingRoles).toEqual(['TECH_LEAD']);
 
