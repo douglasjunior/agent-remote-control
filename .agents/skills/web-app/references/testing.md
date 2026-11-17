@@ -44,6 +44,10 @@ output hides real failures. A spec run prints no such warning.
 - `user-event`, `waitFor` and `findBy*` wait on `setTimeout` and only advance Jest's fake timers: under
   `rs.useFakeTimers()` with `setTimeout` faked they hang until the test times out. A spec that interacts or waits
   keeps `setTimeout` real.
+- A negative check that needs the clock (a toast that must still be there after its removal delay) waits for the
+  element first, turns the fake timers on, acts with `fireEvent` (a `user-event` call would hang), advances with
+  `act(() => rs.advanceTimersByTime(ms))` and restores real timers in `afterEach`, as `agent-auth-controller.spec.tsx`
+  does.
 - Fake only the clock the code under test reads: `rs.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })`
   for a label refreshed by `useNow`, and advance it with `act(() => rs.advanceTimersByTime(ms))`.
 - Do not use `shouldAdvanceTime: true`: the clock then moves with real time, timers fire whenever the machine gets

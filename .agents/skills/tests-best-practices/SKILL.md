@@ -4,8 +4,9 @@ description: >
   Rules for automated tests with Rstest and the NestJS Testing Module. Covers the
   golden rule of rs.mock only for external I/O boundaries, creating stubs and
   fakes that implement ports with factory functions, replacing providers by Symbol,
-  observable-effect assertions, determinism with fake timers and the 100%
-  coverage target. Use when creating, modifying or reviewing *.spec.ts files.
+  observable-effect assertions, determinism (no setTimeout or setImmediate in
+  specs: waitFor, act and fake timers instead) and the 100% coverage target. Use
+  when creating, modifying or reviewing *.spec.ts files.
 ---
 
 # Automated testing best practices
@@ -203,14 +204,30 @@ Prefer explicit matchers to produce clear diagnostics on failure:
 
 ## Determinism and time handling
 
-Automated tests must be deterministic and independent of system clock latency:
+Automated tests are deterministic and independent of the machine's speed. A test never waits for a duration: it
+waits for a condition, or it controls the clock.
 
-- **No arbitrary `setTimeout`**: Never use fixed delays to wait for asynchronous executions.
-  Use `rs.waitFor(() => expect(...))` to wait for expected events or conditions. Specs that render React wait
-  with Testing Library's `waitFor` instead (see the `web-app` skill, `references/testing.md`).
-- **Fake timers for time-based operations**: When testing timeouts, retries or debouncing,
-  use simulated timers (`rs.useFakeTimers()`) and advance time deliberately
-  with `await rs.advanceTimersByTimeAsync(ms)`.
+`setTimeout` and `setImmediate` are not used in a spec, whether as a pause (`setTimeout(resolve, 50)`) or as a
+"flush" that lets pending work finish (`new Promise(resolve => setImmediate(resolve))`). A fixed pause is too short
+on a busy machine and wastes time on a fast one, and a flush only works while the work happens to finish in one
+macrotask. Pick the replacement by what the test is waiting for:
+
+| The test waits for | Use |
+|---|---|
+| A result or state to appear | `rs.waitFor(() => expect(...))` on that result. In a spec that renders React, `waitFor` and `findBy*` from Testing Library, and `act` around the event that changes state (see the `web-app` skill, `references/testing.md`). |
+| A timer of the code under test (timeout, retry, debounce, heartbeat) | `rs.useFakeTimers()` and `await rs.advanceTimersByTimeAsync(ms)`. |
+| Something that must **not** happen (no reconnection, no publication, no unhandled rejection) | Fake timers and `await rs.advanceTimersByTimeAsync(0)`, or past the delay the code would wait: `waitFor` would pass on its first check without proving anything. |
+| Work the code defers with `setImmediate` | `rs.useFakeTimers({ toFake: ['setImmediate'] })` and `await rs.advanceTimersByTimeAsync(0)`. |
+| Two calls to overlap in a certain order | A promise the test releases (`let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; })`) after `rs.waitFor` sees the first call start. |
+| A fake or stub to react later | A deferred promise or an event the stub emits, never a delay inside the stub. |
+
+- Fake timers fake only what the test needs (`toFake: ['setTimeout', 'clearTimeout']`, `['setInterval', 'clearInterval']`,
+  `['Date']`, `['setImmediate']`), and every spec that turns them on restores them with `rs.useRealTimers()` in `afterEach`,
+  or in the test itself when only that test uses them, so a failing test does not leave them on for the next one.
+- A spec that fakes `setTimeout` cannot also use `rs.waitFor`, which polls on `setTimeout`: it waits for the
+  condition before turning the fake timers on, or it advances the clock itself.
+- `testTimeout` is not raised to hide a slow or badly awaited test. A test that needs more than the default is
+  waiting on the wrong thing.
 
 ## Coverage targets
 
@@ -241,6 +258,7 @@ For each use case, adapter or service, ensure tests for:
 - [ ] Replacement in the NestJS container done through the port's `Symbol`.
 - [ ] Direct imports from source files, without barrel exports (`index.ts`).
 - [ ] Assertions check state and observable effects before checking method calls.
-- [ ] No real-time delays (`setTimeout`); exclusive use of `rs.waitFor` or fake timers.
+- [ ] No `setTimeout` or `setImmediate` in a spec: conditions are awaited with `rs.waitFor`, timers are controlled with fake timers and restored in `afterEach`.
+- [ ] No `testTimeout` raised to make a test pass.
 - [ ] All branches and error handling covered by the spec.
 - [ ] Mandatory validation run with `pnpm lint` and `pnpm test` (and `pnpm test:e2e`).
