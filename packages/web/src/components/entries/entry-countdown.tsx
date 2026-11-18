@@ -9,9 +9,15 @@ const URGENT_MS = 30_000;
 function useRemainingMs(expiresAt: number): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= expiresAt) {
+        clearInterval(timer);
+      }
+    }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [expiresAt]);
   return Math.max(0, expiresAt - now);
 }
 

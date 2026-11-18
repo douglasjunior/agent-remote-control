@@ -73,7 +73,7 @@ export class WebConversationTurnsService {
         if (event.kind === 'scheduled') {
           publish(this.entries.retry(event.prompt));
         } else {
-          void this.events.closeOpenRetries(conversationId);
+          this.events.closeOpenRetries(conversationId).catch(error => this.logger.error(`retry_not_closed: ${conversationId}: ${error instanceof Error ? error.message : String(error)}`));
         }
       },
       onTranscription: ({ transcripts, warnings }) => {

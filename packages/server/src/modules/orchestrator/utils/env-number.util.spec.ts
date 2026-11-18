@@ -18,8 +18,8 @@ describe('readNonNegativeInteger', () => {
     expect(readNonNegativeInteger('ARC_TEST_NUMBER', 7)).toBe(7);
   });
 
-  it('should read the trimmed value, rounded down', () => {
-    process.env.ARC_TEST_NUMBER = ' 12.9 ';
+  it('should read the trimmed value', () => {
+    process.env.ARC_TEST_NUMBER = ' 12 ';
 
     expect(readNonNegativeInteger('ARC_TEST_NUMBER', 7)).toBe(12);
   });
@@ -30,7 +30,7 @@ describe('readNonNegativeInteger', () => {
     expect(readNonNegativeInteger('ARC_TEST_NUMBER', 7)).toBe(0);
   });
 
-  it.each(['abc', '-1', 'Infinity'])('should return the fallback for %s', (value) => {
+  it.each(['abc', '-1', 'Infinity', '12.9', '0.5', '1e3', '0x10', '15s'])('should return the fallback for %s', (value) => {
     process.env.ARC_TEST_NUMBER = value;
 
     expect(readNonNegativeInteger('ARC_TEST_NUMBER', 7)).toBe(7);

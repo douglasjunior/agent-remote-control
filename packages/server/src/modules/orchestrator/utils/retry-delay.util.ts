@@ -9,11 +9,12 @@ export type RetryPolicy = {
 
 /**
  * The wait before retry number `attempt` (from 1), after `elapsedMs` since the first failure; the last wait is cut
- * to what is left of `maxTotalMs`. `undefined` when the retries are disabled or their time is spent.
+ * to what is left of `maxTotalMs`. `undefined` when the retries are disabled or what is left is shorter than
+ * `baseDelayMs`, which would only flash a retry the user cannot act on.
  */
 export function nextRetryDelay({ baseDelayMs, maxDelayMs, maxTotalMs }: RetryPolicy, attempt: number, elapsedMs: number): number | undefined {
   const remainingMs = maxTotalMs - elapsedMs;
-  if (baseDelayMs <= 0 || maxDelayMs <= 0 || remainingMs <= 0) {
+  if (baseDelayMs <= 0 || maxDelayMs <= 0 || remainingMs < baseDelayMs) {
     return undefined;
   }
   return Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs, remainingMs);

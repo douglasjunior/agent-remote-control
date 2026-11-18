@@ -54,6 +54,17 @@ describe('RetryCard', () => {
     expect(screen.getByRole('timer')).toHaveTextContent('2:00');
   });
 
+  it('should stop ticking once the time is spent', () => {
+    renderCard(retry());
+
+    act(() => {
+      rs.advanceTimersByTime(125_000);
+    });
+
+    expect(screen.getByRole('timer')).toHaveTextContent('0:00');
+    expect(rs.getTimerCount()).toBe(0);
+  });
+
   it('should retry now or stop retrying from the buttons', async () => {
     rs.useRealTimers();
     const onRetryNow = rs.fn();

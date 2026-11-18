@@ -154,19 +154,19 @@ describe('RetryCeoRoundUseCase', () => {
   });
 
   it('should give up with the last failure once the time of the retries is spent, cutting the last wait', async () => {
-    policy = { baseDelayMs: 15 * SECOND, maxDelayMs: 2 * 60 * MINUTE, maxTotalMs: 20 * SECOND };
+    policy = { baseDelayMs: 15 * SECOND, maxDelayMs: 2 * 60 * MINUTE, maxTotalMs: 40 * SECOND };
     const failure = new Error('still down');
     const { run } = attemptsThat(new Error('down'), new Error('still down'), failure);
 
     const result = useCase.execute(request, run, invalidAsFailure);
     const rejected = expect(result).rejects.toBe(failure);
     await rs.advanceTimersByTimeAsync(15 * SECOND);
-    await rs.advanceTimersByTimeAsync(5 * SECOND);
+    await rs.advanceTimersByTimeAsync(25 * SECOND);
 
     await rejected;
     expect(run).toHaveBeenCalledTimes(3);
     const waits = events.flatMap(event => (event.kind === 'scheduled' ? [event.prompt.timeout.durationMs] : []));
-    expect(waits).toEqual([15_000, 5_000]);
+    expect(waits).toEqual([15_000, 25_000]);
   });
 
   it('should not wait at all when the retries are disabled', async () => {

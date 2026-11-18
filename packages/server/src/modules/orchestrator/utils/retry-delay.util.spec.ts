@@ -22,6 +22,11 @@ describe('nextRetryDelay', () => {
     expect(nextRetryDelay(policy, 12, 4 * HOUR + 40 * MINUTE)).toBe(20 * MINUTE);
   });
 
+  it('should stop when what is left is shorter than the base wait', () => {
+    expect(nextRetryDelay(policy, 12, 5 * HOUR - 14_999)).toBeUndefined();
+    expect(nextRetryDelay(policy, 12, 5 * HOUR - 15_000)).toBe(15_000);
+  });
+
   it('should stop once the time is spent', () => {
     expect(nextRetryDelay(policy, 3, 5 * HOUR)).toBeUndefined();
     expect(nextRetryDelay(policy, 3, 6 * HOUR)).toBeUndefined();
