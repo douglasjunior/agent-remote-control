@@ -71,8 +71,9 @@ export class WebConversationEventsService implements OnModuleDestroy {
 
   /** Closes the retries the history shows as waiting although this process has none: an earlier process left them open. */
   async settleOrphanedRetries(conversationId: string): Promise<void> {
+    const history = await this.store.history(conversationId);
     const tracked = this.openRetries.get(conversationId);
-    const orphaned = (await this.store.history(conversationId)).filter(
+    const orphaned = history.filter(
       (entry): entry is RetryEntry => entry.type === 'retry' && !entry.closed && !tracked?.has(entry.id),
     );
     await Promise.all(orphaned.map(retry => this.publishEntry(conversationId, { ...retry, closed: true })));

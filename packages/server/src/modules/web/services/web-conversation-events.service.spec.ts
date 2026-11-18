@@ -282,6 +282,27 @@ describe('WebConversationEventsService', () => {
 
       expect(await store.history('web-1')).toEqual([retry]);
     });
+
+    it('should keep open a retry published while the history is being read', async () => {
+      const { events, store } = createWebHarness();
+      store.seed('web-1');
+      const readHistory = store.history.bind(store);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      rs.spyOn(store, 'history').mockImplementationOnce(async (id) => {
+        await gate;
+        return readHistory(id);
+      });
+
+      const settling = events.settleOrphanedRetries('web-1');
+      await events.publishEntry('web-1', retry);
+      release();
+      await settling;
+
+      expect(await store.history('web-1')).toEqual([retry]);
+    });
   });
 
   describe('settleOrphanedQuestions', () => {
