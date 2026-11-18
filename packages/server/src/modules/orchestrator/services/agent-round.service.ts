@@ -15,6 +15,7 @@ import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
+import { buildAgentRetryPrompt } from '../prompts/agent-retry.prompt.js';
 import { buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
 import { buildLostSessionTaskPrompt } from '../prompts/resumed-work.prompt.js';
 import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
@@ -26,8 +27,10 @@ import {
 } from '../prompts/user-language.prompt.js';
 import { resolveProfile } from '../utils/agent-profile.util.js';
 import { previewForLog } from '../utils/log-preview.util.js';
+import { isRetryableAgentError } from '../utils/retryable-agent-error.util.js';
 
 import { AgentProtocolService } from './agent-protocol.service.js';
+import { AgentRetryConfigService } from './agent-retry-config.service.js';
 import { OpenWorkService } from './open-work.service.js';
 
 
@@ -63,14 +66,43 @@ export class AgentRoundService {
     private readonly agentProtocol: AgentProtocolService,
     private readonly openWork: OpenWorkService,
     @Inject(IAgentSkillsPort) private readonly agentSkills: IAgentSkillsPort,
+    private readonly retryConfig: AgentRetryConfigService,
   ) {}
 
   /**
-   * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
-   * for the role and project, adds the system prompt to a new session, the reminder and the language, applies the
-   * role's profile and returns the final response, after one repair when protocol tags were written outside it.
+   * Sends one prompt to the agent, and sends it again when the attempt fails with an error a new attempt can fix
+   * (see `isRetryableAgentError`), up to the retries of `AgentRetryConfigService`, waiting twice as long before each
+   * one. Every agent goes through here, so the CEO and the delegates alike survive a dropped process or a failed
+   * request; the error that ends the last attempt is the one thrown.
    */
-  async run({
+  async run(input: AgentRoundInput): Promise<string> {
+    const { maxRetries, baseDelayMs } = this.retryConfig.getPolicy();
+    let attemptInput = input;
+    for (let retry = 1; ; retry++) {
+      try {
+        return await this.runOnce(attemptInput);
+      } catch (error) {
+        if (retry > maxRetries || !isRetryableAgentError(error)) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const delayMs = baseDelayMs * 2 ** (retry - 1);
+        this.logger.warn(`[Agent Retry] Role=${input.role}, Retry=${retry}/${maxRetries}, Delay=${delayMs}ms: ${message}`);
+        if (input.role === input.request.agentRole) {
+          input.request.onDraft?.('');
+        }
+        await input.turn.sleep(delayMs);
+        attemptInput = { ...input, prompt: buildAgentRetryPrompt(message, input.prompt) };
+      }
+    }
+  }
+
+  /**
+   * One attempt: connects the agent, resumes or creates the session the conversation keeps for the role and project,
+   * adds the system prompt to a new session, the reminder and the language, applies the role's profile and returns
+   * the final response, after one repair when protocol tags were written outside it.
+   */
+  private async runOnce({
     agentPort,
     cwd: workspacePath,
     role,

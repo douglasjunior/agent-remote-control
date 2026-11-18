@@ -29,6 +29,30 @@ describe('ActiveTurn', () => {
     expect(() => turn.throwIfCancelled()).toThrow(PromptCancelledError);
   });
 
+  describe('sleep', () => {
+    it('should resolve once the time has passed', async () => {
+      const turn = new ActiveTurn(new StubAgentPort());
+
+      await expect(turn.sleep(0)).resolves.toBeUndefined();
+    });
+
+    it('should end early with a cancellation when the turn is cancelled during the wait', async () => {
+      const turn = new ActiveTurn(new StubAgentPort());
+
+      const sleeping = turn.sleep(60_000);
+      await turn.cancel();
+
+      await expect(sleeping).rejects.toBeInstanceOf(PromptCancelledError);
+    });
+
+    it('should not wait when the turn is already cancelled', async () => {
+      const turn = new ActiveTurn(new StubAgentPort());
+      await turn.cancel();
+
+      await expect(turn.sleep(60_000)).rejects.toBeInstanceOf(PromptCancelledError);
+    });
+  });
+
   it('should clear cancelled state when reset is called', async () => {
     const turn = new ActiveTurn(new StubAgentPort());
     await turn.cancel();

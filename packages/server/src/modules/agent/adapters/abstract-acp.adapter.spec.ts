@@ -4,6 +4,7 @@ import type { ChildProcess } from 'node:child_process';
 
 import {
   AgentAuthRequiredError,
+  AgentBinaryNotFoundError,
   PromptCancelledError,
   type AgentActivity,
   type AgentUpdate,
@@ -228,6 +229,7 @@ describe('AbstractAcpAdapter', () => {
 
       const failure = await new TestAcpAdapter().connect().then(() => undefined, (error: unknown) => error as Error);
 
+      expect(failure).toBeInstanceOf(AgentBinaryNotFoundError);
       expect(failure?.message).toBe('The test agent CLI was not found in PATH (spawn test-agent ENOENT).');
       expect(failure?.cause).toBe(enoent);
     });

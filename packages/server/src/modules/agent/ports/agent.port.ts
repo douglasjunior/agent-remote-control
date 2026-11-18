@@ -98,6 +98,14 @@ export class AgentAuthRequiredError extends Error {
   }
 }
 
+/** The agent CLI is not installed, which no new attempt fixes. */
+export class AgentBinaryNotFoundError extends Error {
+  constructor(agentId: string, detail: string, options?: ErrorOptions) {
+    super(`The ${agentId} agent CLI was not found in PATH (${detail}).`, options);
+    this.name = 'AgentBinaryNotFoundError';
+  }
+}
+
 export interface IAgentPort {
   readonly agentName: string;
   readonly lastAgentMessage: string;

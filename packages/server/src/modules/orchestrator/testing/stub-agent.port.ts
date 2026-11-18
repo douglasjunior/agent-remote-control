@@ -39,6 +39,8 @@ export class StubAgentPort implements IAgentPort {
 
   mockResponses: string[] = [];
   promptErrorToThrow: Error | null = null;
+  /** One error per prompt, in order, until the queue is empty; the prompts after it behave as usual. */
+  promptErrorsToThrow: Error[] = [];
 
   async connect(): Promise<void> {
     this.connectCalls++;
@@ -66,6 +68,10 @@ export class StubAgentPort implements IAgentPort {
 
   async* prompt(text: string): AsyncGenerator<AgentUpdate> {
     this.promptCalls.push(text);
+    const queuedError = this.promptErrorsToThrow.shift();
+    if (queuedError) {
+      throw queuedError;
+    }
     if (this.promptErrorToThrow) {
       throw this.promptErrorToThrow;
     }

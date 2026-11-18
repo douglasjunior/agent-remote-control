@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
-import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { AgentAuthRequiredError, AgentBinaryNotFoundError, type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
 import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';
 import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
@@ -113,6 +113,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let portFactory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
   let questionTimeoutMs = 0;
+  let retryPolicy = { maxRetries: 0, baseDelayMs: 0 };
   const logContext = new ConversationLogContextService();
   let questionQueue: UserQuestionQueueService;
   let openWork: OpenWorkService;
@@ -124,6 +125,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let agentSkills: StubAgentSkillsPort;
 
   beforeEach(() => {
+    retryPolicy = { maxRetries: 0, baseDelayMs: 0 };
     stubAgentPort = new StubAgentPort();
     delegateStubPort = new StubAgentPort();
     sessionStore = new InMemorySessionStoreFake();
@@ -156,7 +158,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const runAgentRequests = new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills, new AgentRequestParserService());
     const questionParser = new QuestionParserService();
     const audioTranscription = new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem);
-    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills);
+    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills, { getPolicy: () => retryPolicy });
     const agentQuestions = new AnswerAgentQuestionsUseCase(agentRegistry, questionParser, questionQueue, openWork, audioTranscription);
     useCase = new ExecuteAgentTurnUseCase(
       factory,
@@ -664,15 +666,124 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls[1]).toContain('Invalid project folder "x": bad path.');
     });
 
-    it('should fail the turn when the repaired response is still invalid', async () => {
-      stubAgentPort.mockResponses = ['Go.</delegate>', 'Still wrong.</delegate>'];
+    it('should keep repairing until the CEO fixes the response within the attempts', async () => {
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Again.</delegate>', 'Once more.</delegate>', 'Fixed.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Fixed.' });
+      expect(stubAgentPort.promptCalls).toHaveLength(4);
+      expect(stubAgentPort.promptCalls.slice(1).every(call => call.includes('[DELEGATION_ERROR]'))).toBe(true);
+    });
+
+    it('should fail the turn when the response is still invalid after every repair attempt', async () => {
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Wrong.</delegate>', 'Wrong.</delegate>', 'Still wrong.</delegate>'];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('failed');
       expect(result.response).toBe('Still wrong.</delegate>');
       expect(result.errorMessage).toBe('Invalid CEO response: Found </delegate> without its opening <delegate> tag.');
+      expect(stubAgentPort.promptCalls).toHaveLength(4);
+    });
+  });
+
+  describe('agent retry', () => {
+    beforeEach(() => {
+      retryPolicy = { maxRetries: 2, baseDelayMs: 0 };
+    });
+
+    it('should send the CEO prompt again, telling it the error, and discard the draft of the failed attempt', async () => {
+      stubAgentPort.promptErrorsToThrow = [new Error('connection lost')];
+      stubAgentPort.mockResponses = ['Recovered.'];
+      const onDraft = rs.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Recovered.' });
       expect(stubAgentPort.promptCalls).toHaveLength(2);
+      expect(stubAgentPort.promptCalls[0]).not.toContain('[RETRY]');
+      expect(stubAgentPort.promptCalls[1]).toContain('[RETRY]');
+      expect(stubAgentPort.promptCalls[1]).toContain('connection lost');
+      expect(stubAgentPort.promptCalls[1]).toContain('Hi');
+      expect(onDraft).toHaveBeenCalledWith('');
+    });
+
+    it('should stringify an error that is not an Error when it retries', async () => {
+      stubAgentPort.promptErrorsToThrow = ['raw failure' as unknown as Error];
+      stubAgentPort.mockResponses = ['Recovered.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain('raw failure');
+    });
+
+    it('should fail the turn with the last error once the retries are spent', async () => {
+      stubAgentPort.promptErrorsToThrow = [new Error('first'), new Error('second'), new Error('third')];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'failed', errorMessage: 'third' });
+      expect(stubAgentPort.promptCalls).toHaveLength(3);
+    });
+
+    it('should not retry when the retries are disabled', async () => {
+      retryPolicy = { maxRetries: 0, baseDelayMs: 0 };
+      stubAgentPort.promptErrorsToThrow = [new Error('first')];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'failed', errorMessage: 'first' });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+    });
+
+    it.each([
+      ['a missing login', (port: StubAgentPort) => { port.errorToThrowOnCreateSession = new AgentAuthRequiredError('stub', 'Login needed'); }],
+      ['a missing CLI', (port: StubAgentPort) => { port.errorToThrowOnConnect = new AgentBinaryNotFoundError('stub', 'ENOENT'); }],
+    ])('should not retry %s, which only a person fixes', async (_name, breakAgent) => {
+      breakAgent(stubAgentPort);
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('failed');
+      expect(stubAgentPort.connectCalls).toBe(1);
+    });
+
+    it('should end the turn as cancelled when it is cancelled while waiting to retry', async () => {
+      retryPolicy = { maxRetries: 2, baseDelayMs: 60_000 };
+      stubAgentPort.promptErrorsToThrow = [new Error('connection lost')];
+
+      const running = useCase.execute(turnRequest());
+      await rs.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(1));
+      await expect(runtime.cancel('conv-1')).resolves.toBe(true);
+
+      await expect(running).resolves.toMatchObject({ status: 'cancelled' });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+    });
+
+    it('should retry a delegated agent, so the CEO gets its result instead of a failure', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Done.'];
+      delegateStubPort.promptErrorsToThrow = [new Error('rate limited')];
+      delegateStubPort.mockResponses = ['Built.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+      expect(delegateStubPort.promptCalls).toHaveLength(2);
+      expect(delegateStubPort.promptCalls[1]).toContain('[RETRY]');
+      expect(delegateStubPort.promptCalls[1]).toContain('rate limited');
+      expect(stubAgentPort.promptCalls[1]).toContain('Built.');
+    });
+
+    it('should report a delegated agent that keeps failing to the CEO', async () => {
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" project="my-app">Build it.</delegate>', 'Told the user.'];
+      delegateStubPort.promptErrorsToThrow = [new Error('rate limited'), new Error('rate limited'), new Error('rate limited')];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Told the user.' });
+      expect(delegateStubPort.promptCalls).toHaveLength(3);
+      expect(stubAgentPort.promptCalls[1]).toContain('rate limited');
     });
   });
 
@@ -2878,8 +2989,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         delegatePorts = [developer, reviewer];
         stubAgentPort.mockResponses = [
           '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="CODE_REVIEWER" summary="Working on it" project="project-b">Review.</delegate>',
-          '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
-          '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+          ...Array.from({ length: 4 }, () => '<delegate role="NOBODY" summary="Working on it">Go.</delegate>'),
         ];
 
         const result = await useCase.execute(turnRequest({ onQuestion: rs.fn() }));
@@ -2904,14 +3014,14 @@ describe('ExecuteAgentTurnUseCase', () => {
         await useCase.execute(turnRequest({ prompt: 'What happened?' }));
         await useCase.execute(turnRequest({ prompt: 'And now?' }));
 
-        const next = stubAgentPort.promptCalls[3]!;
+        const next = stubAgentPort.promptCalls[5]!;
         expect(next).toContain('[PREVIOUS_TURN]');
         expect(next).toContain(`- Your previous turn failed: ${result.errorMessage}`);
         expect(next).toContain(`- ${stoppedReviewer}`);
         expect(next).not.toContain('DEVELOPER (Project');
         expect(next.indexOf('[PREVIOUS_TURN]')).toBeLessThan(next.indexOf('[TEAM_PROFILES]'));
         expect(next).toContain('What happened?');
-        expect(stubAgentPort.promptCalls[4]).not.toContain('[PREVIOUS_TURN]');
+        expect(stubAgentPort.promptCalls[6]).not.toContain('[PREVIOUS_TURN]');
       });
 
       it('should not report as stopped a delegation the CEO replaced', async () => {
@@ -3086,8 +3196,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           stubAgentPort.mockResponses = [
             '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Build.</delegate>\n<delegate role="TECH_LEAD" summary="Working on it" project="project-b">Plan.</delegate>',
             '<delegate role="DEVELOPER" summary="Working on it" project="project-a">Rebuild.</delegate>',
-            '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
-            '<delegate role="NOBODY" summary="Working on it">Go.</delegate>',
+            ...Array.from({ length: 4 }, () => '<delegate role="NOBODY" summary="Working on it">Go.</delegate>'),
             'Done.',
           ];
 
@@ -3096,7 +3205,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           const second = useCase.execute(turnRequest({ prompt: 'Second' }));
           await rs.waitFor(() => expect(replacementStarted).toBe(true));
           releaseLead();
-          await rs.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(4));
+          await rs.waitFor(() => expect(stubAgentPort.promptCalls).toHaveLength(6));
           await rs.waitFor(() => expect(lead.closeSessionCalls).toBe(1));
           const replacementCancels = replacement.cancelCalls;
           releaseOld(new Error('Resumed session disposed'));
@@ -4052,12 +4161,28 @@ describe('ExecuteAgentTurnUseCase', () => {
       ['the same artifact twice', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate><delegate role="TECH_LEAD" summary="y" artifact="T-1">Plan.</delegate>', 'T-1 appears in more than one delegation.'],
     ] as const)('should reject %s', async (_name, artifactsToSeed, delegation, reason) => {
       seed(...artifactsToSeed);
-      stubAgentPort.mockResponses = [delegation, delegation];
+      stubAgentPort.mockResponses = [delegation, delegation, delegation, delegation];
 
       const result = await useCase.execute(turnRequest());
 
       expect(result.status).toBe('failed');
       expect(result.errorMessage).toContain(reason);
+    });
+
+    it('should tell the CEO which roles record the branch when a review has none, which the CEO cannot record itself', async () => {
+      seed({ id: 'T-1' });
+      stubAgentPort.mockResponses = [
+        '<delegate role="CODE_REVIEWER" summary="Reviewing" artifact="T-1">Review it.</delegate>',
+        '<delegate role="DEVELOPER" summary="Recording the branch" artifact="T-1">Record the branch.</delegate>',
+        'Done.',
+      ];
+      delegateStubPort.mockResponses = ['Recorded.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result.status).toBe('completed');
+      expect(stubAgentPort.promptCalls[1]).toContain('You cannot record a branch yourself: delegate DEVELOPER with artifact="T-1" to record the branch of its implementation');
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
     });
   });
 });

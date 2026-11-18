@@ -24,6 +24,7 @@ import { AgentConfigurationService } from './services/agent-configuration.servic
 import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentRequestParserService } from './services/agent-request-parser.service.js';
+import { AgentRetryConfigService } from './services/agent-retry-config.service.js';
 import { AgentRoundService } from './services/agent-round.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
@@ -81,6 +82,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     AgentRequestParserService,
     QuestionParserService,
     QuestionTimeoutConfigService,
+    AgentRetryConfigService,
     ShellCommandConfigService,
     UserLanguageService,
     UserQuestionQueueService,

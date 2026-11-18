@@ -63,7 +63,7 @@ type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 export class ExecuteAgentTurnUseCase {
   private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
   private readonly MAX_DELEGATION_ROUNDS = 1000;
-  private readonly MAX_REPAIR_ATTEMPTS = 1;
+  private readonly MAX_REPAIR_ATTEMPTS = 3;
 
   constructor(
     @Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory,

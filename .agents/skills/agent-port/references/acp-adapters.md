@@ -13,7 +13,7 @@ Integrates the Antigravity CLI through its native ACP server:
 - Runs `agy acp --process-per-session --dangerously-skip-permissions` from the `PATH` through `IProcessRunnerPort.spawn`. Without `--process-per-session` the server keeps the `cwd` of the first session, which is the discovery session in `tmpdir()`, so every later session would work there.
 - The agent advertises `loadSession` and `sessionCapabilities` (`resume`, `close`, `load`, `list`), and publishes the options `model`, `thought_level` and `mode`. A turn ends with `usage` in the `session/prompt` response; a cancel answers `stopReason: cancelled` and the next prompt works on the same session.
 - `getQuota()` runs `agy --output-format json --print /usage` via `IProcessRunnerPort.run` and converts the output in a private method of the adapter.
-- Without a login, `session/new` fails with JSON-RPC `-32000` `Authentication required`, which `AbstractAcpAdapter.buildTransportError` raises as `AgentAuthRequiredError`.
+- Without a login, `session/new` fails with JSON-RPC `-32000` `Authentication required`, which `AbstractAcpAdapter.buildTransportError` raises as `AgentAuthRequiredError`. A CLI missing from the `PATH` is raised as `AgentBinaryNotFoundError`. The orchestrator never retries either of them, since only a person fixes them.
 
 ## `ClaudeCodeAdapter` (`agentName = 'claude'`)
 

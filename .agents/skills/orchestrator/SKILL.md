@@ -38,7 +38,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 | `RunAgentRequestsUseCase` | Board and skill requests: `execute` runs one response's requests, `resolve` repeats until a response has none |
 | `StopArtifactWorkUseCase` | Stops the agent holding an artifact the user moved to a work-ending status |
 | `CancelAgentTurnUseCase`, `RestoreOpenWorkUseCase`, `ConfigureAgentProfilesUseCase`, `RunShellCommandUseCase`, `TranscribeAudioAttachmentsUseCase`, `GetAgentQuotaUseCase` | Cancellation, open work after a restart, profiles, the shell command, audio transcription and quotas |
-| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session, system prompt and `[SKILLS]`, reminder, language, profile, protocol repair |
+| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session, system prompt and `[SKILLS]`, reminder, language, profile, protocol repair, and the retry of a failed attempt (`AgentRetryConfigService`: `AGENT_MAX_RETRIES`, `AGENT_RETRY_DELAY_MS`) |
 | `DelegationValidatorService` | Classifies a CEO response and checks each delegation against the team, the board, the workspace and the running agents |
 | `TeamProfilesService` | The `[TEAM_PROFILES]` block of the CEO prompt |
 | `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices |
