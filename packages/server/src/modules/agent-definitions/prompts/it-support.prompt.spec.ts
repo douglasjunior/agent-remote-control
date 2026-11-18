@@ -25,6 +25,6 @@ describe('it-support.prompt', () => {
     expect(IT_SUPPORT_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
     expect(IT_SUPPORT_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
     expect(IT_SUPPORT_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
-    expect(IT_SUPPORT_TURN_REMINDER).toContain('<final_response>');
+    expect(IT_SUPPORT_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 });

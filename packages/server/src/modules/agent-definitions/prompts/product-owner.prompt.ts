@@ -2,7 +2,7 @@ import { PRODUCT_OWNER_ARTIFACT_ACCESS } from '../constants/artifact-access.cons
 
 import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
-import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS, FINAL_RESPONSE_REMINDER } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
@@ -18,7 +18,7 @@ ${buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS)}
 ${PROJECT_ORIENTATION_REMINDER}
 ${CWD_BOUNDARY_REMINDER}
 ${USER_QUESTIONS_REMINDER}
-- Always put your final answer inside the <final_response> block.`;
+${FINAL_RESPONSE_REMINDER}`;
 
 export const PRODUCT_OWNER_SYSTEM_PROMPT = `You are the Product Owner Agent.
 

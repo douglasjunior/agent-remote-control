@@ -2,7 +2,7 @@ import { DEVELOPER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant
 
 import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
-import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS, FINAL_RESPONSE_REMINDER } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 
 
@@ -17,7 +17,7 @@ ${PROJECT_ORIENTATION_REMINDER}
 ${buildArtifactProtocolReminder(DEVELOPER_ARTIFACT_ACCESS)}
 ${CWD_BOUNDARY_REMINDER}
 - You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.
-- Always put your final answer inside the <final_response> block.`;
+${FINAL_RESPONSE_REMINDER}`;
 
 
 export const DEVELOPER_SYSTEM_PROMPT = `You are the Developer Agent.

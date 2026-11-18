@@ -54,6 +54,6 @@ describe('code-reviewer.prompt', () => {
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
     expect(CODE_REVIEWER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
     expect(CODE_REVIEWER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
-    expect(CODE_REVIEWER_TURN_REMINDER).toContain('<final_response>');
+    expect(CODE_REVIEWER_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 });

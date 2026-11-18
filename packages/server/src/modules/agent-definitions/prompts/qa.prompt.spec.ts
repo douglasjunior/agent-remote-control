@@ -49,6 +49,6 @@ describe('qa.prompt', () => {
     expect(QA_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
     expect(QA_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
     expect(QA_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
-    expect(QA_TURN_REMINDER).toContain('<final_response>');
+    expect(QA_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 });
