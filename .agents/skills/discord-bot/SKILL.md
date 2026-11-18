@@ -69,7 +69,7 @@ To keep channels clean and concurrent conversations strictly isolated:
    - In DMs: every message is accepted.
    - In threads: responds if the thread is managed by the bot (`channel.ownerId === clientUser.id`),
      if the bot is mentioned in the message body, if there are agent questions awaiting
-     an answer in the thread (`hasPendingQuestions`), if a language change waits for the next message in it
+     an answer in the thread (`hasPendingQuestions`), if a failed turn waits to be retried (`hasPendingRetry`), if a language change waits for the next message in it
      (`DiscordConversationService.hasPendingLanguageChange`, opened by `/language`), if there is a configuration
      selection open in it (`hasActiveConfigSelection`, awaited; opened by `/agent`, `/model` or `/profiles` in a thread
      not owned by the bot) or if the agent login dialog waits for a pick or a pasted code in it
@@ -94,7 +94,7 @@ To keep channels clean and concurrent conversations strictly isolated:
 Discord owns its conversation dialogs: the numbered menus, their state, the pending language request, the agent login
 dialog and the reading of typed numbers live in `modules/discord`, and the orchestrator knows none of them.
 `DiscordConversationService` is the handlers' entry point, built on the orchestrator ports (`IAgentConfigurationPort`,
-`IAgentTurnPort`, `IUserQuestionPort`) and `IAgentAuthPort` only; specs use their stubs from `orchestrator/testing/`.
+`IAgentTurnPort`, `IUserQuestionPort`, `ITurnRetryPort`) and `IAgentAuthPort` only; specs use their stubs from `orchestrator/testing/`.
 
 Before running the turn, the handler validates and downloads the attachments and calls `resolveInput` inside
 `DiscordTypingIndicator.during(channel, ...)`. A message is, in this order: the answer to the open question, the
@@ -118,6 +118,13 @@ or without attachments, and nothing reaches the CEO.
 - **Attachments as an answer**: the message's files are downloaded to the temporary attachments directory and go with
   the answer to the agent, which receives the path of each one.
 
+## A Failed Turn Waiting to Be Retried
+
+When a round of the CEO fails, the orchestrator waits and tries again (see the orchestrator skill). The turn's `onRetry` callback, on a `scheduled` event, posts `formatRetry(prompt)`: the failure and `-# ⏱️ Trying again automatically <t:...:R> (attempt n). Send any message to continue now, or /cancel to stop.`, in the same queue as the other announcements. An `ended` event posts nothing.
+
+- **Any message continues**: while a retry waits, `resolveInput` takes the next message (text and attachments) as the request to retry now (`ITurnRetryPort.retryNow`), after an open question, a pending language, a login or a selection have had theirs. The outcome is `retry_requested`: the handler sends `formatRetryRequested` and runs no turn; the CEO reads the message with the retry.
+- **`/cancel`** cancels the turn, the wait included.
+
 ## Turn Output
 
 While the turn runs, the handler posts what the `TurnRequest` callbacks report, formatted by `DiscordActivityFormatter`
@@ -129,6 +136,7 @@ While the turn runs, the handler posts what the `TurnRequest` callbacks report, 
 - `onInterimMessage`: the CEO's interim text, in the same queue as the delegation announcements, so it appears before
   the notice that the agent took over.
 - `onTranscription`: each warning as is and the transcripts, also for audio sent as the answer to a question.
+- `onQuestion` and `onRetry` post their messages the same way. The callbacks that send a message share `announce`, which keeps the typing going, clears the initial progress message and chains the send after the pending ones.
 - A failure to send one of these messages is logged and the flow proceeds.
 
 Every turn outcome is split with `splitMessage(text, 2000 - footer.length - 1)`, and the footer goes on a new line of

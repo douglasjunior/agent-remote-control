@@ -35,6 +35,7 @@ export type ConversationInputResolution =
   | { readonly kind: 'question'; readonly prompt: QuestionPrompt }
   | { readonly kind: 'invalid_answer'; readonly prompt: QuestionPrompt }
   | { readonly kind: 'answered'; readonly asker: QuestionAsker; readonly next?: QuestionPrompt }
+  | { readonly kind: 'retry_requested' }
   | { readonly kind: 'language_set'; readonly language: string }
   | { readonly kind: 'invalid_language' }
   | { readonly kind: 'agent_auth_selected'; readonly agent: AgentAuthChoice }

@@ -1,13 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { Countdown } from '../models/countdown.model.js';
 import type { OpenWorkQuestions } from '../models/open-work.model.js';
 import type { QuestionListener } from '../models/question-event.model.js';
 import type {
   AnsweredQuestion,
   QuestionAnswerInput,
   QuestionAsker,
-  QuestionDeadline,
   QuestionPrompt,
   QuestionSubmission,
   UserQuestion,
@@ -26,8 +26,7 @@ type QuestionRequest = {
   readonly restoredWorkId?: string;
   readonly resolve: (answers: readonly AnsweredQuestion[]) => void;
   readonly reject: (error: Error) => void;
-  deadline?: QuestionDeadline;
-  timer?: NodeJS.Timeout;
+  readonly countdown: Countdown;
 };
 
 /**
@@ -56,7 +55,7 @@ export class UserQuestionQueueService {
   ): Promise<readonly AnsweredQuestion[]> {
     return new Promise((resolve, reject) => {
       const queue = this.queues.get(conversationKey) ?? [];
-      queue.push({ asker, message, questions, answers: [], listener, resolve, reject });
+      queue.push({ asker, message, questions, answers: [], listener, resolve, reject, countdown: new Countdown() });
       this.queues.set(conversationKey, queue);
       this.logger.log(
         `[Questions Queued] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Position=${queue.length}`,
@@ -77,7 +76,7 @@ export class UserQuestionQueueService {
     answersChanged: (answers: readonly AnsweredQuestion[]) => void,
   ): void {
     const queue = this.queues.get(conversationKey) ?? [];
-    queue.push({ asker, message, questions, answers: [...answers], listener: { asked: () => undefined, timedOut: () => undefined, answersChanged }, restoredWorkId: workId, resolve: () => undefined, reject: () => undefined });
+    queue.push({ asker, message, questions, answers: [...answers], listener: { asked: () => undefined, timedOut: () => undefined, answersChanged }, restoredWorkId: workId, resolve: () => undefined, reject: () => undefined, countdown: new Countdown() });
     this.queues.set(conversationKey, queue);
     this.logger.log(`[Questions Restored] Conversation=${conversationKey}, Role=${asker.role}, Questions=${questions.length}, Answered=${answers.length}`);
   }
@@ -184,15 +183,11 @@ export class UserQuestionQueueService {
     if (!request || request.restoredWorkId || timeoutMs <= 0) {
       return;
     }
-    request.deadline = { expiresAt: Date.now() + timeoutMs, durationMs: timeoutMs };
-    request.timer = setTimeout(() => this.expire(conversationKey, request, timeoutMs), timeoutMs);
-    request.timer.unref();
+    request.countdown.start(timeoutMs, () => this.expire(conversationKey, request, timeoutMs));
   }
 
   private stopTimer(request: QuestionRequest): void {
-    clearTimeout(request.timer);
-    request.timer = undefined;
-    request.deadline = undefined;
+    request.countdown.stop();
   }
 
   /** The recommended option stands in for the user's answer; a question without one is answered with nothing. */
@@ -238,7 +233,7 @@ export class UserQuestionQueueService {
       total: request.questions.length,
       ...(answered === 0 && request.message ? { message: request.message } : {}),
       waitingAskers,
-      ...(request.deadline ? { timeout: request.deadline } : {}),
+      ...(request.countdown.deadline ? { timeout: request.countdown.deadline } : {}),
     };
   }
 

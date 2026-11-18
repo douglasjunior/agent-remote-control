@@ -770,6 +770,19 @@ describe('DiscordActivityFormatter', () => {
       expect(formatted).toContain('**No reply in 1 min** · Product Owner Agent — no answer assumed, the agent decides how to proceed');
     });
 
+    it('should show a failure with the time the retry happens at and how to continue or stop', () => {
+      const formatted = formatter.formatRetry({ roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 3, timeout: { expiresAt: 1_700_000_000_000, durationMs: 60_000 } });
+
+      expect(formatted).toBe([
+        '❌ **CEO failed** — Service unavailable',
+        '-# ⏱️ Trying again automatically <t:1700000000:R> (attempt 3). Send any message to continue now, or /cancel to stop.',
+      ].join('\n'));
+    });
+
+    it('should confirm the retry the user asked for', () => {
+      expect(formatter.formatRetryRequested()).toBe('🔁 Trying again now.');
+    });
+
     it('should repeat the question without the agent message on an invalid option', () => {
       const formatted = formatter.formatInvalidAnswer({ ...prompt, message: 'I understood X.' });
 

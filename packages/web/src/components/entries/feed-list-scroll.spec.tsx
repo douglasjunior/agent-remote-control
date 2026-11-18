@@ -44,7 +44,7 @@ const reply: ConversationEntry = { id: 'r1', at: AT, type: 'agent_response', sta
 const entries = [userEntry('u1'), question, userEntry('u2'), userEntry('u3'), userEntry('u4'), reply];
 
 function feed(list: ConversationEntry[], handle: Ref<FeedHandle> = createRef<FeedHandle>()) {
-  return <FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />;
+  return <FeedList ref={handle} team={[]} entries={list} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} onRetryNow={rs.fn()} onStopRetrying={rs.fn()} />;
 }
 
 function renderFeed(list: ConversationEntry[] = entries, handle: Ref<FeedHandle> = createRef<FeedHandle>()) {

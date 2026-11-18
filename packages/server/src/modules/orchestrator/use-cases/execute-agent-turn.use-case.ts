@@ -25,6 +25,7 @@ import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildPreviousTurnPrompt, describeDelegation } from '../prompts/previous-turn.prompt.js';
 import { buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
+import { buildTurnRetryPrompt } from '../prompts/turn-retry.prompt.js';
 import { buildUserAnswersPrompt } from '../prompts/user-answers.prompt.js';
 import { DEFAULT_USER_LANGUAGE } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
@@ -39,6 +40,7 @@ import { isPromptCancellation } from '../utils/prompt-cancellation.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
 
 import { AnswerAgentQuestionsUseCase } from './answer-agent-questions.use-case.js';
+import { RetryCeoRoundUseCase } from './retry-ceo-round.use-case.js';
 import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
 import { RunDelegationUseCase } from './run-delegation.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
@@ -55,15 +57,15 @@ type Resumption = {
 type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 
 /**
- * Runs a turn of the conversation on the CEO: its rounds, the repair of an invalid response, its questions to the
- * user, and the delegations it starts, until it answers the user. A message that arrives while the CEO works steers
+ * Runs a turn of the conversation on the CEO: its rounds, the repair of an invalid response, the retries of a round
+ * that fails, its questions to the user, and the delegations it starts, until it answers the user. A message that arrives while the CEO works steers
  * it, and work a restart interrupted is resumed from where it stopped.
  */
 @Injectable()
 export class ExecuteAgentTurnUseCase {
   private readonly logger = new Logger(ExecuteAgentTurnUseCase.name);
   private readonly MAX_DELEGATION_ROUNDS = 1000;
-  private readonly MAX_REPAIR_ATTEMPTS = 3;
+  private readonly MAX_REPAIR_ATTEMPTS = 1;
 
   constructor(
     @Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory,
@@ -82,6 +84,7 @@ export class ExecuteAgentTurnUseCase {
     private readonly agentQuestions: AnswerAgentQuestionsUseCase,
     private readonly runAgentRequests: RunAgentRequestsUseCase,
     private readonly runDelegation: RunDelegationUseCase,
+    private readonly retryCeoRound: RetryCeoRoundUseCase,
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
@@ -250,34 +253,41 @@ export class ExecuteAgentTurnUseCase {
       }
       for (let round = 1; ; round++) {
         let deliveredNotices = 0;
-        const { response, decision, requestResults } = await this.conversationRuntime.runOnCeo(
-          conversationKey,
-          agentId,
-          async (ceoPort, turn) => {
-            observers.onCeoPort(ceoPort);
-            if (!session) {
-              session = await this.agentRound.resolveSession(request);
-              observers.onSessionResolved(session);
-              this.logger.log(
-                `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
-              );
-            }
-            const block = await this.teamProfiles.build(conversationKey, request);
-            if (block.signature !== lastBlockSignature) {
-              prompt = `${block.text}\n${prompt}`;
-            }
-            lastBlockSignature = block.signature;
-            const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
-            if (notices.length > 0) {
-              prompt = `${buildPreviousTurnPrompt(notices)}\n${prompt}`;
+        let blockSignature = lastBlockSignature;
+        const roundPrompt = prompt;
+        const { response, decision, requestResults } = await this.retryCeoRound.execute(
+          request,
+          retry => this.conversationRuntime.runOnCeo(
+            conversationKey,
+            agentId,
+            async (ceoPort, turn) => {
+              observers.onCeoPort(ceoPort);
+              if (!session) {
+                session = await this.agentRound.resolveSession(request);
+                observers.onSessionResolved(session);
+                this.logger.log(
+                  `[Turn Started] User=${request.userId}, Conversation=${request.conversationId}, Role=${request.agentRole}`,
+                );
+              }
+              let text = retry ? buildTurnRetryPrompt(retry, roundPrompt) : roundPrompt;
+              const block = await this.teamProfiles.build(conversationKey, request);
+              if (retry || block.signature !== lastBlockSignature) {
+                text = `${block.text}\n${text}`;
+              }
+              blockSignature = block.signature;
+              const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
+              if (notices.length > 0) {
+                text = `${buildPreviousTurnPrompt(notices)}\n${text}`;
+              }
               deliveredNotices = notices.length;
-            }
-            const answerDelivery = ceoAnswerDelivery;
-            ceoAnswerDelivery = undefined;
-            return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1, ceoWorkId, answerDelivery);
-          },
-          round === 1 ? request.onQueued : undefined,
+              return this.runCeoTurn(ceoPort, text, request, turn, session, round === 1, ceoWorkId, ceoAnswerDelivery);
+            },
+            round === 1 && !retry ? request.onQueued : undefined,
+          ),
+          ({ decision: outcome }) => (outcome.kind === 'invalid' ? `Invalid CEO response: ${outcome.reason}` : undefined),
         );
+        lastBlockSignature = blockSignature;
+        ceoAnswerDelivery = undefined;
         this.conversationRuntime.acknowledgeCeoNotices(conversationKey, deliveredNotices);
 
         if (decision.kind === 'invalid') {

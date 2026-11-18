@@ -1,3 +1,4 @@
+import type { Deadline } from './countdown.model.js';
 import type { TurnAttachment } from './turn-attachment.model.js';
 
 
@@ -34,12 +35,6 @@ export type QuestionAnswerInput = (
   | { readonly kind: 'text'; readonly text: string }
 ) & { readonly attachments?: readonly TurnAttachment[] };
 
-export type QuestionDeadline = {
-  /** Epoch milliseconds. */
-  readonly expiresAt: number;
-  readonly durationMs: number;
-};
-
 export type QuestionPrompt = {
   readonly asker: QuestionAsker;
   readonly question: UserQuestion;
@@ -49,7 +44,7 @@ export type QuestionPrompt = {
   readonly message?: string;
   readonly waitingAskers: number;
   /** When the question times out; absent when the timeout is disabled. */
-  readonly timeout?: QuestionDeadline;
+  readonly timeout?: Deadline;
 };
 
 export type RestoredWorkAnswers = {

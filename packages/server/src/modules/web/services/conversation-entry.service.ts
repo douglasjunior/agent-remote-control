@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
+import type { RetryPrompt } from '../../orchestrator/models/turn-retry.model.js';
 import type { QuestionAsker, QuestionPrompt, QuestionSubmission } from '../../orchestrator/models/user-question.model.js';
 
 
@@ -133,6 +134,19 @@ export class ConversationEntryService {
       total: prompt.total,
       closed: false,
       ...(prompt.message ? { message: prompt.message } : {}),
+    };
+  }
+
+  retry({ roleName, errorMessage, attempt, timeout }: RetryPrompt): ConversationEntry {
+    return {
+      id: randomUUID(),
+      ...this.stamp(),
+      type: 'retry',
+      roleName,
+      errorMessage,
+      attempt,
+      timeout: { ...timeout },
+      closed: false,
     };
   }
 

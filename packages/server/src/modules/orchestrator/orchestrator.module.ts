@@ -18,13 +18,13 @@ import { IAgentTurnPort } from './ports/agent-turn.port.js';
 import { IOpenWorkStorePort } from './ports/open-work-store.port.js';
 import { IPreferencesStorePort } from './ports/preferences-store.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
+import { ITurnRetryPort } from './ports/turn-retry.port.js';
 import { IUserQuestionPort } from './ports/user-question.port.js';
 import { AgentCapabilitiesService } from './services/agent-capabilities.service.js';
 import { AgentConfigurationService } from './services/agent-configuration.service.js';
 import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentRequestParserService } from './services/agent-request-parser.service.js';
-import { AgentRetryConfigService } from './services/agent-retry-config.service.js';
 import { AgentRoundService } from './services/agent-round.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
@@ -36,6 +36,8 @@ import { QuestionParserService } from './services/question-parser.service.js';
 import { QuestionTimeoutConfigService } from './services/question-timeout-config.service.js';
 import { ShellCommandConfigService } from './services/shell-command-config.service.js';
 import { TeamProfilesService } from './services/team-profiles.service.js';
+import { TurnRetryConfigService } from './services/turn-retry-config.service.js';
+import { TurnRetryService } from './services/turn-retry.service.js';
 import { UserLanguageService } from './services/user-language.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
 import { UserQuestionService } from './services/user-question.service.js';
@@ -45,6 +47,7 @@ import { ConfigureAgentProfilesUseCase } from './use-cases/configure-agent-profi
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
 import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
+import { RetryCeoRoundUseCase } from './use-cases/retry-ceo-round.use-case.js';
 import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
 import { RunDelegationUseCase } from './use-cases/run-delegation.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
@@ -82,7 +85,8 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     AgentRequestParserService,
     QuestionParserService,
     QuestionTimeoutConfigService,
-    AgentRetryConfigService,
+    TurnRetryConfigService,
+    TurnRetryService,
     ShellCommandConfigService,
     UserLanguageService,
     UserQuestionQueueService,
@@ -91,6 +95,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     TeamProfilesService,
     AnswerAgentQuestionsUseCase,
     RunDelegationUseCase,
+    RetryCeoRoundUseCase,
     ExecuteAgentTurnUseCase,
     RunAgentRequestsUseCase,
     CancelAgentTurnUseCase,
@@ -102,11 +107,13 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     { provide: IAgentTurnPort, useClass: AgentTurnService },
     { provide: IAgentConfigurationPort, useClass: AgentConfigurationService },
     { provide: IUserQuestionPort, useClass: UserQuestionService },
+    { provide: ITurnRetryPort, useExisting: TurnRetryService },
   ],
   exports: [
     IAgentTurnPort,
     IAgentConfigurationPort,
     IUserQuestionPort,
+    ITurnRetryPort,
   ],
 })
 export class OrchestratorModule {}

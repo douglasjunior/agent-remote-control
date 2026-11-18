@@ -27,6 +27,7 @@ import { ListEarlierConversationEntriesUseCase } from '../use-cases/list-earlier
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
+import { RetryConversationTurnUseCase } from '../use-cases/retry-conversation-turn.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
@@ -69,6 +70,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly setProfiles: SetConversationProfilesUseCase,
     private readonly answerQuestion: AnswerConversationQuestionUseCase,
     private readonly resumeWork: ResumeConversationWorkUseCase,
+    private readonly retryTurn: RetryConversationTurnUseCase,
     private readonly promptHistory: ListPromptHistoryUseCase,
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
@@ -263,6 +265,10 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'work.resume':
         void this.resumeWork.execute(command.conversationId, command.workId);
         return;
+      case 'retry.now':
+        return this.reportUnless(connection, command.conversationId, 'There is no retry waiting', () => this.retryTurn.now(command.conversationId));
+      case 'retry.stop':
+        return this.reportUnless(connection, command.conversationId, 'There is no retry waiting', () => this.retryTurn.stop(command.conversationId));
       case 'profiles.get': {
         const { configured, profiles } = await this.getProfiles.execute(command.conversationId);
         connection.send({ type: 'profiles', conversationId: command.conversationId, configured, profiles: [...profiles] });

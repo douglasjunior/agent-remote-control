@@ -3,6 +3,7 @@ import type { DelegationEvent } from './delegation-event.model.js';
 import type { QuestionEvent } from './question-event.model.js';
 import type { TurnActivity } from './turn-activity.model.js';
 import type { TurnAttachment } from './turn-attachment.model.js';
+import type { RetryEvent } from './turn-retry.model.js';
 
 
 export type TurnRequest = {
@@ -26,6 +27,8 @@ export type TurnRequest = {
   onInterimMessage?: (message: string) => void;
   /** A question of this turn reached the front of the queue, or was answered on the user's behalf after the timeout. */
   onQuestion?: (event: QuestionEvent) => void;
+  /** A failed round of the CEO waits to be tried again, or that wait ended. */
+  onRetry?: (event: RetryEvent) => void;
   onQueued?: () => void;
   /** Called before the agents run, when audio attachments were transcribed or could not be. */
   onTranscription?: (transcription: TurnTranscription) => void;

@@ -20,7 +20,6 @@ import { Readable, Writable } from 'node:stream';
 import { AgentStreamDemux } from '../demux/agent-stream-demux.js';
 import {
   AgentAuthRequiredError,
-  AgentBinaryNotFoundError,
   PromptCancelledError,
   type AgentActivity,
   type AgentConfig,
@@ -252,7 +251,10 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
   private buildMissingBinaryError(spawnError: Error): Error {
     this.logger.error(`transport_error (connect): ${spawnError.message}`);
-    return new AgentBinaryNotFoundError(this.agentName, spawnError.message, { cause: spawnError });
+    return new Error(
+      `The ${this.agentName} agent CLI was not found in PATH (${spawnError.message}).`,
+      { cause: spawnError },
+    );
   }
 
   private readSteeringSupport(initializeResponse: unknown): boolean {

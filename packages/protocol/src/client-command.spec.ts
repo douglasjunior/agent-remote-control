@@ -52,6 +52,8 @@ describe('parseClientCommand', () => {
     { type: 'profiles.get', conversationId: 'c' },
     { type: 'profiles.set', conversationId: 'c', agentId: 'claude' },
     { type: 'profiles.set', conversationId: 'c', roles: ['CEO', 'DEVELOPER'], agentId: 'claude', modelId: 'opus', effortId: 'high' },
+    { type: 'retry.now', conversationId: 'c' },
+    { type: 'retry.stop', conversationId: 'c' },
     { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 2 } },
     { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: 'my answer' } },
   ])('should accept $type', (command) => {
@@ -103,6 +105,7 @@ describe('parseClientCommand', () => {
     ['fractional option index', { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 1.5 } }],
     ['blank text answer', { type: 'question.answer', conversationId: 'c', answer: { kind: 'text', text: '  ' } }],
     ['unknown answer kind', { type: 'question.answer', conversationId: 'c', answer: { kind: 'voice' } }],
+    ['retry.now without a conversation', { type: 'retry.now' }],
     ['null', null],
     ['string', 'auth'],
   ])('should reject %s', (_label, data) => {

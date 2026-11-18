@@ -18,7 +18,7 @@ type TurnState = Exclude<ConversationState, 'idle'>;
 
 export type TurnCallbacks = Pick<
   TurnRequest,
-  'onActivity' | 'onDraft' | 'onDelegation' | 'onInterimMessage' | 'onQuestion' | 'onTranscription' | 'onQueued'
+  'onActivity' | 'onDraft' | 'onDelegation' | 'onInterimMessage' | 'onQuestion' | 'onRetry' | 'onTranscription' | 'onQueued'
 >;
 
 /**
@@ -67,6 +67,13 @@ export class WebConversationTurnsService {
           publish(this.entries.question(event.prompt));
         } else {
           void this.publishQuestionTimedOut(conversationId, turnId, event);
+        }
+      },
+      onRetry: (event) => {
+        if (event.kind === 'scheduled') {
+          publish(this.entries.retry(event.prompt));
+        } else {
+          void this.events.closeOpenRetries(conversationId);
         }
       },
       onTranscription: ({ transcripts, warnings }) => {

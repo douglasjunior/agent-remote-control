@@ -39,8 +39,8 @@ export class StubAgentPort implements IAgentPort {
 
   mockResponses: string[] = [];
   promptErrorToThrow: Error | null = null;
-  /** One error per prompt, in order, until the queue is empty; the prompts after it behave as usual. */
-  promptErrorsToThrow: Error[] = [];
+  /** What each prompt does, in order, until the queue is empty: an error fails it and `null` lets it work. The prompts after it behave as usual. */
+  promptErrorsToThrow: (Error | null)[] = [];
 
   async connect(): Promise<void> {
     this.connectCalls++;

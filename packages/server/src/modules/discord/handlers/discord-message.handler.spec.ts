@@ -10,8 +10,10 @@ import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.m
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { ITurnRetryPort } from '../../orchestrator/ports/turn-retry.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
+import { StubTurnRetryPort } from '../../orchestrator/testing/stub-turn-retry.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -142,6 +144,7 @@ describe('DiscordMessageHandler', () => {
   let discordClientService: MockDiscordClientService;
   let agentTurn: ScriptedAgentTurnPort;
   let questions: StubUserQuestionPort;
+  let turnRetry: StubTurnRetryPort;
   let conversationService: MockDiscordConversationService;
   let attachmentService: MockDiscordAttachmentService;
   let workspacePort: MockWorkspacePort;
@@ -159,6 +162,7 @@ describe('DiscordMessageHandler', () => {
         },
         { provide: IAgentTurnPort, useClass: ScriptedAgentTurnPort },
         { provide: IUserQuestionPort, useClass: StubUserQuestionPort },
+        { provide: ITurnRetryPort, useClass: StubTurnRetryPort },
         {
           provide: DiscordConversationService,
           useClass: MockDiscordConversationService,
@@ -178,6 +182,7 @@ describe('DiscordMessageHandler', () => {
     discordClientService = module.get(DiscordClientService);
     agentTurn = module.get(IAgentTurnPort);
     questions = module.get(IUserQuestionPort);
+    turnRetry = module.get(ITurnRetryPort);
     conversationService = module.get(DiscordConversationService);
     attachmentService = module.get(DiscordAttachmentService);
     workspacePort = module.get(IWorkspacePort);
@@ -2300,6 +2305,74 @@ describe('DiscordMessageHandler', () => {
       await rs.runAllTimersAsync();
 
       expect(send).toHaveBeenLastCalledWith('Done.');
+    });
+
+    describe('a failed turn waiting to be retried', () => {
+      const retryPrompt = { roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 2, timeout: { expiresAt: 1_700_000_000_000, durationMs: 30_000 } };
+
+      it('should show the failure with the time of the retry, in order with the delegation notices', async () => {
+        const contents: string[] = [];
+        const send = rs.fn().mockImplementation(async (content: string) => {
+          contents.push(content);
+          return { content, edit: rs.fn().mockResolvedValue(undefined) };
+        });
+        agentTurn.executeTurn = async (request: TurnRequest) => {
+          request.onDelegation?.({ delegationId: 'dl-1', round: 1, role: 'PRODUCT_OWNER', roleName: 'Product Owner Agent', taskSpec: 'Do the work', summary: 'Doing the work', phase: 'started' });
+          request.onRetry?.({ kind: 'scheduled', prompt: retryPrompt });
+          return { response: 'Done.', status: 'completed' };
+        };
+
+        await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+        await rs.runAllTimersAsync();
+
+        const delegated = contents.findIndex(content => content.includes('Task delegated'));
+        const retry = contents.findIndex(content => content.includes('❌ **CEO failed** — Service unavailable'));
+        expect(retry).toBeGreaterThan(delegated);
+        expect(contents[retry]).toContain('<t:1700000000:R> (attempt 2). Send any message to continue now, or /cancel to stop.');
+      });
+
+      it('should say nothing when the wait ends', async () => {
+        const send = rs.fn().mockImplementation(async (content: string) => ({ content, edit: rs.fn().mockResolvedValue(undefined) }));
+        agentTurn.executeTurn = async (request: TurnRequest) => {
+          request.onRetry?.({ kind: 'ended', reason: 'elapsed' });
+          return { response: 'Done.', status: 'completed' };
+        };
+
+        await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+        await rs.runAllTimersAsync();
+
+        expect(send.mock.calls.some(([content]) => String(content).includes('failed'))).toBe(false);
+      });
+
+      it('should proceed gracefully when the failure cannot be sent', async () => {
+        const send = rs.fn().mockImplementation(async (content: string) => {
+          if (content.includes('❌')) {
+            throw new Error('rate limited');
+          }
+          return { content, edit: rs.fn().mockResolvedValue(undefined) };
+        });
+        agentTurn.executeTurn = async (request: TurnRequest) => {
+          request.onRetry?.({ kind: 'scheduled', prompt: retryPrompt });
+          return { response: 'Done.', status: 'completed' };
+        };
+
+        await handler.handleMessage(threadMessage(send, 'Plan refunds'));
+        await rs.runAllTimersAsync();
+
+        expect(send).toHaveBeenLastCalledWith('Done.');
+      });
+
+      it('should accept any message without mention in an unmanaged thread, and tell the user the retry is on', async () => {
+        const send = rs.fn().mockResolvedValue(undefined);
+        turnRetry.pending = true;
+        conversationService.resolution = { kind: 'retry_requested' };
+
+        await handler.handleMessage(threadMessage(send, 'I logged in again.', 'someone-else'));
+
+        expect(conversationService.resolvedInputs).toEqual([{ conversationId: 'channel-1:thread-1', prompt: 'I logged in again.' }]);
+        expect(send).toHaveBeenCalledWith('🔁 Trying again now.');
+        expect(agentTurn.lastRequest).toBeUndefined();
+      });
     });
   });
 

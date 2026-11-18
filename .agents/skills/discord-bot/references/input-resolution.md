@@ -13,7 +13,7 @@ It composes `ResolveConversationInputUseCase`, `StartAgentConfigSelectionUseCase
 `CancelAgentConfigSelectionUseCase`, `AgentProfileListService` (builds the profile step), `LanguageChangeRequestService`,
 `AgentAuthRequestService`, `DiscordAgentAuthNotifierService` and the in-memory `IAgentConfigSelectionStorePort` (a
 selection interrupted by a restart is discarded) on top of the orchestrator ports only (`IAgentConfigurationPort`,
-`IAgentTurnPort`, `IUserQuestionPort`) and `IAgentAuthPort`; specs use their stubs from `orchestrator/testing/`.
+`IAgentTurnPort`, `IUserQuestionPort`, `ITurnRetryPort`) and `IAgentAuthPort`; specs use their stubs from `orchestrator/testing/`.
 
 Menu models (`AgentConfigSelection`, `SelectionOption` with its 1-based `index`, and the resolution outcomes) are
 Discord models; `toSelectionOptions` numbers the orchestrator's `AgentOption`s.
@@ -33,7 +33,8 @@ The use case takes the text as typed and the attachments as downloaded, and deci
 3. the code a running agent login waits for (`AgentAuthRequestService.loginAwaitingCode`);
 4. the pick of an agent to log in (digits `1..N`, `0` to cancel) while one is pending;
 5. the answer to an open selection (digits `1..N`, comma-separated at the profile step, `0` to exit or go back);
-6. a prompt to run.
+6. the request to retry a failed turn now, while one waits (`ITurnRetryPort.retryNow` with the text and the attachments);
+7. a prompt to run.
 
 Without settings for the conversation it inherits the most recent ones (`IAgentConfigurationPort.ensureSettings`); with
 none ever saved it opens the `agent` selection with the message (`PendingMessage`: the text as typed and its
@@ -42,6 +43,7 @@ attachments) kept in the selection, and runs it with those attachments once the 
 
 ## Outcomes
 
+- `retry_requested`: sends `formatRetryRequested` and stops;
 - `question`: sends `formatQuestion` with the next question and stops;
 - `invalid_answer`: sends `formatInvalidAnswer` (valid range followed by the question) and stops;
 - `answered`: sends `formatAnswersSent` and, when another agent is waiting, `formatQuestion` with its question, and stops;

@@ -55,6 +55,10 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('upload.abort'), uploadId: z.string() }),
   z.object({ type: z.literal('turn.cancel'), conversationId: z.string() }),
   z.object({ type: z.literal('work.resume'), conversationId: z.string(), workId: z.string() }),
+  /** Retries the failed turn of the conversation now, without waiting for the countdown. */
+  z.object({ type: z.literal('retry.now'), conversationId: z.string() }),
+  /** Ends the retries of the failed turn, so its error stands. */
+  z.object({ type: z.literal('retry.stop'), conversationId: z.string() }),
   z.object({ type: z.literal('prompts.history'), requestId: z.string() }),
   z.object({ type: z.literal('files.search'), requestId: z.string(), query: z.string().max(MAX_MENTION_QUERY_LENGTH) }),
   z.object({ type: z.literal('files.close'), requestId: z.string() }),

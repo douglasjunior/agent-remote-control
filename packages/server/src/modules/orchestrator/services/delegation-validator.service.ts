@@ -100,7 +100,7 @@ export class DelegationValidatorService {
       return { reason: `${artifactId} is ${artifact.status}. Set its status back to an open one before delegating work on it.` };
     }
     if (contract.needsReviewableWork && artifact.pullRequests.length === 0 && !artifact.branch) {
-      return { reason: `${role} inspects the work of ${artifactId}, which has neither a pull request nor a branch yet. You cannot record a branch yourself: delegate ${this.branchRecorders()} with artifact="${artifactId}" to record the branch of its implementation (implementing it first when there is none), then delegate ${role}.` };
+      return { reason: `${role} inspects the work of ${artifactId}, which has neither a pull request nor a branch yet. Record the branch of its implementation first.` };
     }
     if (artifact.assignee && artifact.assignee.role !== role) {
       return { reason: `${artifactId} is with ${artifact.assignee.role} right now, and an artifact is with one agent at a time. Wait for its result, or redirect that agent.` };
@@ -109,14 +109,6 @@ export class DelegationValidatorService {
       return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
     return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
-  }
-
-  /** The roles a delegation can send to record the branch of a task, since the role that delegates has no access to that field. */
-  private branchRecorders(): string {
-    return this.agentRegistry
-      .listRoles()
-      .filter(role => this.agentRegistry.getDelegationContract(role).artifact && this.agentRegistry.getArtifactAccess(role).fields.includes('branch'))
-      .join(' or ');
   }
 
   private async resolveDelegationFolder(

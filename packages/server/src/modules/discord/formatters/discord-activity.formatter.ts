@@ -10,6 +10,7 @@ import type { QuestionTimedOut } from '../../orchestrator/models/question-event.
 import type { ShellCommandResult } from '../../orchestrator/models/shell-command-result.model.js';
 import type { SkillActivity, TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAgentInfo } from '../../orchestrator/models/turn-agent-info.model.js';
+import type { RetryPrompt } from '../../orchestrator/models/turn-retry.model.js';
 import type { QuestionAsker, QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { resolveProfile } from '../../orchestrator/utils/agent-profile.util.js';
 import type { AgentAuthMenuEntry } from '../models/agent-auth-choice.model.js';
@@ -165,6 +166,18 @@ export class DiscordActivityFormatter {
       ? `assumed the recommended answer **${answered.optionNumber}. ${answered.answer}**`
       : 'no answer assumed, the agent decides how to proceed';
     return `⏱️ **No reply in ${minutes} min** · ${asker.roleName}${this.formatAskerProject(asker)} — ${outcome}\n-# Question: ${answered.question.text}`;
+  }
+
+  formatRetry({ roleName, errorMessage, attempt, timeout }: RetryPrompt): string {
+    const unixSeconds = Math.round(timeout.expiresAt / 1000);
+    return [
+      `❌ **${roleName} failed** — ${errorMessage}`,
+      `-# ⏱️ Trying again automatically <t:${unixSeconds}:R> (attempt ${attempt}). Send any message to continue now, or /cancel to stop.`,
+    ].join('\n');
+  }
+
+  formatRetryRequested(): string {
+    return '🔁 Trying again now.';
   }
 
   formatInvalidAnswer(prompt: QuestionPrompt): string {

@@ -42,6 +42,7 @@ import { ListEarlierConversationEntriesUseCase } from './use-cases/list-earlier-
 import { ListPromptHistoryUseCase } from './use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from './use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from './use-cases/resume-conversation-work.use-case.js';
+import { RetryConversationTurnUseCase } from './use-cases/retry-conversation-turn.use-case.js';
 import { SendConversationMessageUseCase } from './use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from './use-cases/set-conversation-profiles.use-case.js';
 import { WebStaticModule } from './web-static.module.js';
@@ -81,6 +82,7 @@ import { WebStaticModule } from './web-static.module.js';
     GetConversationProfilesUseCase,
     SetConversationProfilesUseCase,
     AnswerConversationQuestionUseCase,
+    RetryConversationTurnUseCase,
     ListPromptHistoryUseCase,
     RenameConversationUseCase,
     ArchiveConversationUseCase,

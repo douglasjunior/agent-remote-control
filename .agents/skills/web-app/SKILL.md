@@ -41,7 +41,7 @@ packages/web/src/
 │   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
 │   ├── settings/            # agent, model and effort pickers of the settings sheet
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
-│   └── entries/             # feed rows: handoff rows, activity groups, messages, questions
+│   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query, useStoredFlag
 ```
 

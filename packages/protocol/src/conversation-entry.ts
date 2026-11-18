@@ -92,6 +92,19 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...entryBase,
+    type: z.literal('retry'),
+    /** The agent that failed. */
+    roleName: z.string(),
+    errorMessage: z.string(),
+    /** The number of the retry the wait leads to, from 1. */
+    attempt: z.number().int(),
+    /** `expiresAt` is epoch milliseconds: when the retry happens without anyone asking for it. */
+    timeout: z.object({ expiresAt: z.number(), durationMs: z.number() }),
+    /** Whether the wait is over; the server closes it in place. */
+    closed: z.boolean(),
+  }),
+  z.object({
+    ...entryBase,
     type: z.literal('notice'),
     level: z.enum(['info', 'warning', 'error']),
     text: z.string(),
