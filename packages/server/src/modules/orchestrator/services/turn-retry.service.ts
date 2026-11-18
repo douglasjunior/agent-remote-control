@@ -4,7 +4,6 @@ import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { Countdown } from '../models/countdown.model.js';
 import type { RetryDecision, RetryListener, RetryMessage, RetryPrompt, RetryReason } from '../models/turn-retry.model.js';
 import type { ITurnRetryPort } from '../ports/turn-retry.port.js';
-import { buildAttachmentsPrompt } from '../prompts/attachments.prompt.js';
 
 
 type PendingRetry = {
@@ -15,7 +14,7 @@ type PendingRetry = {
 };
 
 /**
- * The failed rounds of the CEO that wait to be tried again, per conversation. A wait ends when its countdown
+ * The failed prompts of the CEO that wait to be sent again, per conversation. A wait ends when its countdown
  * does, when the user asks for the retry now or to stop retrying, or when the turn is cancelled.
  */
 @Injectable()
@@ -46,7 +45,9 @@ export class TurnRetryService implements ITurnRetryPort {
   }
 
   retryNow(conversationId: string, message?: RetryMessage): boolean {
-    const userMessage = message && buildAttachmentsPrompt(message.text.trim(), message.attachments).trim();
+    const text = message?.text.trim() ?? '';
+    const attachments = message?.attachments ?? [];
+    const userMessage = text !== '' || attachments.length > 0 ? { text, attachments } : undefined;
     return this.endAll(conversationId, 'requested', retry => retry.resolve({ kind: 'retry', ...(userMessage ? { message: userMessage } : {}) }));
   }
 

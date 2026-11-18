@@ -1,23 +1,21 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
+import { RetryBudget } from '../models/retry-budget.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
-import type { RetryNote } from '../models/turn-retry.model.js';
+import type { RetryMessage, RetryNote } from '../models/turn-retry.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { TurnRetryConfigService } from '../services/turn-retry-config.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
 import { isPromptCancellation } from '../utils/prompt-cancellation.util.js';
-import { nextRetryDelay } from '../utils/retry-delay.util.js';
 
 
-type Attempt<T> =
-  | { readonly kind: 'done'; readonly outcome: T }
-  /** `give` hands back the failure the way it came: the outcome that was refused, or the error that was thrown. */
-  | { readonly kind: 'failed'; readonly message: string; readonly give: () => T };
+/** Turns what the user wrote to ask for a retry into the text the CEO reads, as any message of theirs becomes. */
+export type PrepareRetryMessage = (message: RetryMessage) => Promise<string | undefined>;
 
 /**
- * Runs a round of the CEO and, when it fails, shows the failure to the user and tries the round again after a
- * wait that doubles each time, like a question waits for an answer. The user can ask for the retry now or end
- * the retries; once they end, or their time is spent, the failure comes out as it came.
+ * Retries the prompt of the CEO that failed: shows the failure to the user and sends the same prompt again after a
+ * wait that doubles each time, like a question waits for an answer. The user can ask for the retry now or end the
+ * retries; once they end, or their time is spent, the failure comes out as it came.
  */
 @Injectable()
 export class RetryCeoRoundUseCase {
@@ -30,68 +28,63 @@ export class RetryCeoRoundUseCase {
   ) {}
 
   /**
-   * `run` is one attempt, with the note of the failure it follows on a retry. A thrown error fails the attempt, and
-   * so does an outcome `failureOf` describes; a cancellation is never retried.
+   * `run` sends the prompt, with the note of the failure it follows on a retry. A thrown error is retried; a
+   * cancellation never is.
    */
   async execute<T>(
     request: TurnRequest,
     run: (retry: RetryNote | undefined) => Promise<T>,
-    failureOf: (outcome: T) => string | undefined,
+    prepareMessage: PrepareRetryMessage,
   ): Promise<T> {
-    const policy = this.retryConfig.getPolicy();
-    const roleName = this.agentRegistry.getDisplayName(request.agentRole);
-    let firstFailureAt: number | undefined;
+    const budget = new RetryBudget();
     let retry: RetryNote | undefined;
-
-    for (let attempt = 1; ; attempt++) {
-      const result = await this.attempt(run, retry, failureOf);
-      if (result.kind === 'done') {
-        return result.outcome;
+    for (;;) {
+      try {
+        return await run(retry);
+      } catch (error) {
+        if (isPromptCancellation(error)) {
+          throw error;
+        }
+        retry = await this.pause(request, error instanceof Error ? error.message : String(error), budget, prepareMessage);
+        if (!retry) {
+          throw error;
+        }
       }
-      firstFailureAt ??= Date.now();
-      const delayMs = nextRetryDelay(policy, attempt, Date.now() - firstFailureAt);
-      if (delayMs === undefined) {
-        return result.give();
-      }
-
-      this.logger.warn(`[Retry Scheduled] Conversation=${request.conversationId}, Role=${request.agentRole}, Attempt=${attempt}: ${result.message}`);
-      request.onDraft?.('');
-      const decision = await this.turnRetry.wait(
-        request.conversationId,
-        { roleName, errorMessage: result.message, attempt },
-        delayMs,
-        {
-          scheduled: prompt => request.onRetry?.({ kind: 'scheduled', prompt }),
-          ended: reason => request.onRetry?.({ kind: 'ended', reason }),
-        },
-      );
-      if (decision.kind === 'stop') {
-        return result.give();
-      }
-      retry = { errorMessage: result.message, ...(decision.message ? { userMessage: decision.message } : {}) };
     }
   }
 
-  private async attempt<T>(
-    run: (retry: RetryNote | undefined) => Promise<T>,
-    retry: RetryNote | undefined,
-    failureOf: (outcome: T) => string | undefined,
-  ): Promise<Attempt<T>> {
-    try {
-      const outcome = await run(retry);
-      const message = failureOf(outcome);
-      return message === undefined ? { kind: 'done', outcome } : { kind: 'failed', message, give: () => outcome };
-    } catch (error) {
-      if (isPromptCancellation(error)) {
-        throw error;
-      }
-      return {
-        kind: 'failed',
-        message: error instanceof Error ? error.message : String(error),
-        give: () => {
-          throw error;
-        },
-      };
+  /**
+   * Waits to try again after a failure the caller found itself, such as a response that stays invalid. The `budget`
+   * is the caller's, so the waits of one stretch of failures double and end together. `undefined` when the retries
+   * are over, because the user ended them or their time is spent.
+   */
+  async pause(
+    request: TurnRequest,
+    errorMessage: string,
+    budget: RetryBudget,
+    prepareMessage: PrepareRetryMessage,
+  ): Promise<RetryNote | undefined> {
+    const next = budget.next(this.retryConfig.getPolicy());
+    if (!next) {
+      return undefined;
     }
+
+    const roleName = this.agentRegistry.getDisplayName(request.agentRole);
+    this.logger.warn(`[Retry Scheduled] Conversation=${request.conversationId}, Role=${request.agentRole}, Attempt=${next.attempt}: ${errorMessage}`);
+    request.onDraft?.('');
+    const decision = await this.turnRetry.wait(
+      request.conversationId,
+      { roleName, errorMessage, attempt: next.attempt },
+      next.delayMs,
+      {
+        scheduled: prompt => request.onRetry?.({ kind: 'scheduled', prompt }),
+        ended: reason => request.onRetry?.({ kind: 'ended', reason }),
+      },
+    );
+    if (decision.kind === 'stop') {
+      return undefined;
+    }
+    const userMessage = decision.message && await prepareMessage(decision.message);
+    return { errorMessage, ...(userMessage ? { userMessage } : {}) };
   }
 }

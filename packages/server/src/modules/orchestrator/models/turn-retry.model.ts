@@ -2,7 +2,7 @@ import type { Deadline } from './countdown.model.js';
 import type { TurnAttachment } from './turn-attachment.model.js';
 
 
-/** What a channel shows while a failed round of the CEO waits to be tried again. */
+/** What a channel shows while a failed prompt of the CEO waits to be sent again. */
 export type RetryPrompt = {
   readonly roleName: string;
   readonly errorMessage: string;
@@ -31,12 +31,12 @@ export type RetryMessage = {
   readonly attachments?: readonly TurnAttachment[];
 };
 
-/** How a wait ended: the round runs again, with what the user wrote to ask for it, or the failure stands. */
+/** How a wait ended: the prompt is sent again, with what the user wrote to ask for it, or the failure stands. */
 export type RetryDecision =
-  | { readonly kind: 'retry'; readonly message?: string }
+  | { readonly kind: 'retry'; readonly message?: RetryMessage }
   | { readonly kind: 'stop' };
 
-/** What a round runs again with: the error that stopped it and what the user wrote while it waited. */
+/** What a prompt is sent again with: the error that stopped it and what the user wrote while it waited, already prepared like any message. */
 export type RetryNote = {
   readonly errorMessage: string;
   readonly userMessage?: string;

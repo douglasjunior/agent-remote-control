@@ -11,5 +11,5 @@ When a round of the CEO fails, the orchestrator keeps the turn alive and waits t
 ## Commands
 
 - `retry.now { conversationId }` calls `ITurnRetryPort.retryNow`; `retry.stop { conversationId }` calls `stopRetrying`. Both go through `RetryConversationTurnUseCase`; without a retry waiting they close the cards still shown as open and answer an `error` event (`There is no retry waiting`).
-- `message.send` while a retry waits records the `user_message`, then calls `retryNow` with its text and the attachments resolved by `WebConversationUploadsService`, and starts no turn: the CEO reads the message with the retry.
+- `message.send` while a retry waits records the `user_message`, then calls `retryNow` with its text and the attachments resolved by `WebConversationUploadsService`, and starts no turn: the CEO reads the message with the retry, after the orchestrator transcribes its audio.
 - `turn.cancel` cancels the wait too (`CancelAgentTurnUseCase`), so the turn ends as cancelled.

@@ -120,7 +120,7 @@ or without attachments, and nothing reaches the CEO.
 
 ## A Failed Turn Waiting to Be Retried
 
-When a round of the CEO fails, the orchestrator waits and tries again (see the orchestrator skill). The turn's `onRetry` callback, on a `scheduled` event, posts `formatRetry(prompt)`: the failure and `-# ⏱️ Trying again automatically <t:...:R> (attempt n). Send any message to continue now, or /cancel to stop.`, in the same queue as the other announcements. An `ended` event posts nothing.
+When a prompt of the CEO fails, the orchestrator waits and tries again (see the orchestrator skill). The turn's `onRetry` callback, on a `scheduled` event, posts `formatRetry(prompt)`: the failure and `-# ⏱️ Trying again automatically <t:...:R> (attempt n). Send any message to continue now, or /cancel to stop.`, in the same queue as the other announcements. An `ended` event posts nothing.
 
 - **Any message continues**: while a retry waits, `resolveInput` takes the next message (text and attachments) as the request to retry now (`ITurnRetryPort.retryNow`), after an open question, a pending language, a login or a selection have had theirs. The outcome is `retry_requested`: the handler sends `formatRetryRequested` and runs no turn; the CEO reads the message with the retry.
 - **`/cancel`** cancels the turn, the wait included.

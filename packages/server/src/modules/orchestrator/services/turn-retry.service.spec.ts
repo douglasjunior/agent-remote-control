@@ -48,7 +48,7 @@ describe('TurnRetryService', () => {
 
     expect(service.retryNow('conv-1', { text: '  I logged in again.  ' })).toBe(true);
 
-    await expect(waiting).resolves.toEqual({ kind: 'retry', message: 'I logged in again.' });
+    await expect(waiting).resolves.toEqual({ kind: 'retry', message: { text: 'I logged in again.', attachments: [] } });
     expect(ended).toHaveBeenCalledWith('requested');
     expect(service.hasPendingRetry('conv-1')).toBe(false);
   });
@@ -63,15 +63,15 @@ describe('TurnRetryService', () => {
     await expect(second).resolves.toEqual({ kind: 'retry' });
   });
 
-  it('should list the files the user attached with the message', async () => {
-    const waiting = service.wait('conv-1', FAILURE, 60_000, retryListener());
+  it('should hand over the files the user attached, even without text', async () => {
+    const file = { name: 'voice.ogg', path: '/tmp/voice.ogg', contentType: 'audio/ogg', size: 12 };
+    const first = service.wait('conv-1', FAILURE, 60_000, retryListener());
+    service.retryNow('conv-1', { text: 'See this.', attachments: [file] });
+    const second = service.wait('conv-1', FAILURE, 60_000, retryListener());
+    service.retryNow('conv-1', { text: '  ', attachments: [file] });
 
-    service.retryNow('conv-1', { text: 'See this.', attachments: [{ name: 'log.txt', path: '/tmp/log.txt', contentType: 'text/plain', size: 12 }] });
-
-    const decision = await waiting;
-    expect(decision).toMatchObject({ kind: 'retry' });
-    expect(decision.kind === 'retry' && decision.message).toContain('Path: /tmp/log.txt');
-    expect(decision.kind === 'retry' && decision.message).toContain('See this.');
+    await expect(first).resolves.toEqual({ kind: 'retry', message: { text: 'See this.', attachments: [file] } });
+    await expect(second).resolves.toEqual({ kind: 'retry', message: { text: '', attachments: [file] } });
   });
 
   it('should not run the timer again once the user asked for the retry', async () => {

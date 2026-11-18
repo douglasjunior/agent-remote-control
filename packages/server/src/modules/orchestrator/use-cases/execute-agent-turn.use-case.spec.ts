@@ -689,11 +689,12 @@ describe('ExecuteAgentTurnUseCase', () => {
     let retryEvents: RetryEvent[];
     let answerRetry: (event: RetryEvent) => void;
 
-    const request = () => turnRequest({
+    const request = (overrides: Partial<TurnRequest> = {}) => turnRequest({
       onRetry: (event) => {
         retryEvents.push(event);
         answerRetry(event);
       },
+      ...overrides,
     });
 
     beforeEach(() => {
@@ -702,7 +703,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       answerRetry = event => event.kind === 'scheduled' && queueMicrotask(() => turnRetry.retryNow('conv-1'));
     });
 
-    it('should show the failure, then run the round again with the error and the original prompt', async () => {
+    it('should show the failure, then send the same prompt again with the error', async () => {
       stubAgentPort.promptErrorsToThrow = [new Error('connection lost')];
       stubAgentPort.mockResponses = ['Recovered.'];
 
@@ -746,6 +747,63 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(result).toMatchObject({ status: 'completed', response: 'Fixed.' });
       expect(retryEvents[0]).toMatchObject({ kind: 'scheduled', prompt: { errorMessage: 'Invalid CEO response: Found </delegate> without its opening <delegate> tag.' } });
       expect(stubAgentPort.promptCalls[2]).toContain('[RETRY]');
+    });
+
+    it('should retry the prompt that carries the answers of the user, without asking the question again', async () => {
+      stubAgentPort.mockResponses = ['<question>Which colour?</question>', 'Thanks.'];
+      stubAgentPort.promptErrorsToThrow = [null, new Error('connection lost')];
+      const onQuestion = rs.fn(() => queueMicrotask(() => questionQueue.submit('conv-1', { kind: 'text', text: 'Red' })));
+
+      const result = await useCase.execute(request({ onQuestion }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Thanks.' });
+      expect(onQuestion).toHaveBeenCalledTimes(1);
+      expect(stubAgentPort.promptCalls).toHaveLength(3);
+      expect(stubAgentPort.promptCalls[1]).toContain('kind="other">Red</answer>');
+      expect(stubAgentPort.promptCalls[2]).toContain('[RETRY]');
+      expect(stubAgentPort.promptCalls[2]).toContain('kind="other">Red</answer>');
+    });
+
+    it('should retry the repair of an invalid response with the same repair prompt', async () => {
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Fixed.'];
+      stubAgentPort.promptErrorsToThrow = [null, new Error('connection lost')];
+
+      const result = await useCase.execute(request());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Fixed.' });
+      expect(stubAgentPort.promptCalls).toHaveLength(3);
+      expect(stubAgentPort.promptCalls[2]).toContain('[RETRY]');
+      expect(stubAgentPort.promptCalls[2]).toContain(stubAgentPort.promptCalls[1]);
+    });
+
+    it('should read the audio the user sent to ask for the retry like any message', async () => {
+      const voice = { name: 'voice.ogg', path: '/tmp/attachments/voice.ogg', contentType: 'audio/ogg', size: 2048 };
+      speechToText.transcripts[voice.path] = 'I renewed the login';
+      answerRetry = event => event.kind === 'scheduled' && queueMicrotask(() => turnRetry.retryNow('conv-1', { text: '', attachments: [voice] }));
+      stubAgentPort.promptErrorsToThrow = [new Error('token expired')];
+      stubAgentPort.mockResponses = ['Recovered.'];
+      const onTranscription = rs.fn();
+
+      await useCase.execute(request({ onTranscription }));
+
+      expect(stubAgentPort.promptCalls[1]).toContain('The user wrote while the retry was waiting:');
+      expect(stubAgentPort.promptCalls[1]).toContain('I renewed the login');
+      expect(stubAgentPort.promptCalls[1]).not.toContain('[ATTACHMENTS]');
+      expect(onTranscription).toHaveBeenCalledWith({ transcripts: [{ name: 'voice.ogg', text: 'I renewed the login' }], warnings: [] });
+      expect(fileSystem.deletedFiles).toEqual([voice.path]);
+    });
+
+    it('should repair again, from a new budget, after the retry of a response that stays invalid', async () => {
+      answerRetry = event => event.kind === 'scheduled' && queueMicrotask(() => turnRetry.retryNow('conv-1', { text: 'Answer plainly.' }));
+      stubAgentPort.mockResponses = ['Go.</delegate>', 'Again.</delegate>', 'Still.</delegate>', 'Fixed.'];
+
+      const result = await useCase.execute(request());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Fixed.' });
+      expect(retryEvents.filter(event => event.kind === 'scheduled')).toHaveLength(1);
+      expect(stubAgentPort.promptCalls).toHaveLength(4);
+      expect(stubAgentPort.promptCalls[2]).toContain('The user wrote while the retry was waiting: Answer plainly.');
+      expect(stubAgentPort.promptCalls[3]).not.toContain('[RETRY]');
     });
 
     it('should fail the turn with the error as it came when the user ends the retries', async () => {
