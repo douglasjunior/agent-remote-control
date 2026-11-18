@@ -7,7 +7,9 @@ import type { QuestionEvent } from '../../orchestrator/models/question-event.mod
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
+import type { RetryEvent } from '../../orchestrator/models/turn-retry.model.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { ITurnRetryPort } from '../../orchestrator/ports/turn-retry.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
@@ -56,6 +58,8 @@ export class DiscordMessageHandler implements OnModuleInit {
     private readonly agentTurn: IAgentTurnPort,
     @Inject(IUserQuestionPort)
     private readonly userQuestions: IUserQuestionPort,
+    @Inject(ITurnRetryPort)
+    private readonly turnRetry: ITurnRetryPort,
     private readonly discordConversation: DiscordConversationService,
     private readonly activityFormatter: DiscordActivityFormatter,
     private readonly attachmentService: DiscordAttachmentService,
@@ -161,6 +165,10 @@ export class DiscordMessageHandler implements OnModuleInit {
         if (resolution.next) {
           await this.sendChunks(targetChannel, this.activityFormatter.formatQuestion(resolution.next));
         }
+        return;
+      }
+      if (resolution.kind === 'retry_requested') {
+        await targetChannel.send(this.activityFormatter.formatRetryRequested());
         return;
       }
       if (resolution.kind === 'language_set') {
@@ -317,80 +325,67 @@ export class DiscordMessageHandler implements OnModuleInit {
         }
       };
 
+      /** Sends what the turn reports once what was being written is out, keeping the typing going; a failure to send is logged and goes no further. */
+      const announce = (failure: string, send: () => Promise<unknown>): void => {
+        typing.keepAlive();
+        void cleanInitialProgress();
+
+        delegationChain = delegationChain.then(async () => {
+          await throttler.flush();
+          try {
+            await send();
+          } catch (error) {
+            this.logger.warn(`Failed to ${failure}: ${this.describeError(error)}`);
+          }
+        });
+      };
+
       const onDelegation = (event: DelegationEvent): void => {
         if (event.phase === 'cancelled') {
           return;
         }
-        typing.keepAlive();
-        void cleanInitialProgress();
-
-        delegationChain = delegationChain.then(async () => {
-          await throttler.flush();
-          try {
-            if (event.phase === 'finished' && event.response.trim()) {
-              await this.sendChunks(
-                targetChannel!,
-                this.activityFormatter.formatDelegateResult(event),
-                this.activityFormatter.formatDelegateFooter(event),
-              );
-            }
-            await targetChannel!.send(this.activityFormatter.formatDelegation(event));
-          } catch (error) {
-            this.logger.warn(`Failed to announce the delegation: ${this.describeError(error)}`);
+        announce('announce the delegation', async () => {
+          if (event.phase === 'finished' && event.response.trim()) {
+            await this.sendChunks(
+              targetChannel!,
+              this.activityFormatter.formatDelegateResult(event),
+              this.activityFormatter.formatDelegateFooter(event),
+            );
           }
+          await targetChannel!.send(this.activityFormatter.formatDelegation(event));
         });
       };
 
       const onInterimMessage = (text: string): void => {
-        typing.keepAlive();
-        void cleanInitialProgress();
-
-        delegationChain = delegationChain.then(async () => {
-          await throttler.flush();
-          try {
-            await this.sendChunks(targetChannel!, text);
-          } catch (error) {
-            this.logger.warn(`Failed to send the interim message: ${this.describeError(error)}`);
-          }
-        });
+        announce('send the interim message', () => this.sendChunks(targetChannel!, text));
       };
 
       const onTranscription = ({ transcripts, warnings }: TurnTranscription): void => {
-        typing.keepAlive();
-        void cleanInitialProgress();
-
-        delegationChain = delegationChain.then(async () => {
-          await throttler.flush();
-          try {
-            for (const warning of warnings) {
-              await targetChannel!.send(warning);
-            }
-            if (transcripts.length > 0) {
-              await this.sendChunks(targetChannel!, this.activityFormatter.formatTranscripts(transcripts));
-            }
-          } catch (error) {
-            this.logger.warn(`Failed to send the transcription: ${this.describeError(error)}`);
+        announce('send the transcription', async () => {
+          for (const warning of warnings) {
+            await targetChannel!.send(warning);
+          }
+          if (transcripts.length > 0) {
+            await this.sendChunks(targetChannel!, this.activityFormatter.formatTranscripts(transcripts));
           }
         });
       };
 
       const onQuestion = (event: QuestionEvent): void => {
-        typing.keepAlive();
-        void cleanInitialProgress();
-
         const messages = event.kind === 'asked'
           ? [this.activityFormatter.formatQuestion(event.prompt)]
           : [this.activityFormatter.formatQuestionTimedOut(event), ...(event.next ? [this.activityFormatter.formatQuestion(event.next)] : [])];
-        delegationChain = delegationChain.then(async () => {
-          await throttler.flush();
-          try {
-            for (const message of messages) {
-              await this.sendChunks(targetChannel!, message);
-            }
-          } catch (error) {
-            this.logger.warn(`Failed to send the question: ${this.describeError(error)}`);
+        announce('send the question', async () => {
+          for (const message of messages) {
+            await this.sendChunks(targetChannel!, message);
           }
         });
+      };
+
+      const onRetry = (event: RetryEvent): void => {
+        if (event.kind === 'scheduled') {
+          announce('send the retry', () => this.sendChunks(targetChannel!, this.activityFormatter.formatRetry(event.prompt)));
+        }
       };
 
       let result: TurnResult;
@@ -406,6 +401,7 @@ export class DiscordMessageHandler implements OnModuleInit {
           onDelegation,
           onInterimMessage,
           onQuestion,
+          onRetry,
           onTranscription,
           onQueued: () => {
             void progressMessage
@@ -509,6 +505,7 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
     const conversationId = buildConversationId(resolveConversationKey(message.channelId, message.channel));
     return this.userQuestions.hasPendingQuestions(conversationId)
+      || this.turnRetry.hasPendingRetry(conversationId)
       || this.discordConversation.hasPendingLanguageChange(conversationId)
       || this.discordConversation.hasPendingAgentAuth(conversationId)
       || await this.discordConversation.hasActiveConfigSelection(conversationId);

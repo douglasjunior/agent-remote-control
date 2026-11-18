@@ -41,6 +41,8 @@ interface FeedContext {
   readonly onHover: (role: string | null) => void;
   readonly onExpandedChange: (id: string, open: boolean) => void;
   readonly onAnswer: (answer: QuestionAnswer) => void;
+  readonly onRetryNow: () => void;
+  readonly onStopRetrying: () => void;
 }
 
 const COLUMN_CLASSES = 'mx-auto w-full max-w-[680px] px-5';
@@ -85,7 +87,7 @@ export interface FeedHandle {
 
 const FOCUSABLE = 'button, input';
 
-export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft, running, focus, onFocus, onHover, onAnswer }: {
+export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft, running, focus, onFocus, onHover, onAnswer, onRetryNow, onStopRetrying }: {
   readonly ref?: Ref<FeedHandle>;
   readonly entries: readonly ConversationEntry[];
   /** Absent for a feed whose history starts with its first entry. */
@@ -97,6 +99,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
   readonly onFocus: (role: string) => void;
   readonly onHover: (role: string | null) => void;
   readonly onAnswer: (answer: QuestionAnswer) => void;
+  readonly onRetryNow: () => void;
+  readonly onStopRetrying: () => void;
 }) {
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
   const { atEnd, follow, release, scrollToEnd } = useStickToEnd(viewport);
@@ -114,7 +118,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
   const openQuestionId = open?.id;
   const openIndex = items.findIndex(item => item.kind === 'entry' && item.entry.id === openQuestionId);
   const lastIsOpenQuestion = open !== undefined && last?.id === open.id;
-  const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && !lastIsOpenQuestion && last?.type !== 'agent_response';
+  const lastIsOpenRetry = last?.type === 'retry' && !last.closed;
+  const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && !lastIsOpenQuestion && !lastIsOpenRetry && last?.type !== 'agent_response';
   const questionOutOfView = open !== undefined && range !== null
     && (openIndex + firstItemIndex < range.startIndex || openIndex + firstItemIndex > range.endIndex);
 
@@ -164,8 +169,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
   }, []);
 
   const context = useMemo<FeedContext>(() => ({
-    items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer,
-  }), [items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer]);
+    items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer, onRetryNow, onStopRetrying,
+  }), [items, earlier, draft, running, working, team, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer, onRetryNow, onStopRetrying]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -194,6 +199,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
                   onHover={ctx.onHover}
                   onExpandedChange={ctx.onExpandedChange}
                   onAnswer={ctx.onAnswer}
+                  onRetryNow={ctx.onRetryNow}
+                  onStopRetrying={ctx.onStopRetrying}
                 />
               )}
             />

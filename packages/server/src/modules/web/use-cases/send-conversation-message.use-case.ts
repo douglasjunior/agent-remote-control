@@ -4,6 +4,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
 import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
+import { ITurnRetryPort } from '../../orchestrator/ports/turn-retry.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { IPromptHistoryPort } from '../ports/prompt-history.port.js';
@@ -25,6 +26,7 @@ export class SendConversationMessageUseCase {
   constructor(
     @Inject(IAgentTurnPort) private readonly agentTurn: IAgentTurnPort,
     @Inject(IAgentConfigurationPort) private readonly configuration: IAgentConfigurationPort,
+    @Inject(ITurnRetryPort) private readonly turnRetry: ITurnRetryPort,
     private readonly events: WebConversationEventsService,
     @Inject(IConversationStorePort) private readonly store: IConversationStorePort,
     @Inject(IWorkspacePort) private readonly workspace: IWorkspacePort,
@@ -35,7 +37,8 @@ export class SendConversationMessageUseCase {
   ) {}
 
   /**
-   * Never rejects: failures are reported as `notice` entries. Attachments must be files this
+   * A message sent while a failed turn waits to be retried retries it now, and the CEO reads the message with the
+   * retry instead of a new turn starting. Never rejects: failures are reported as `notice` entries. Attachments must be files this
    * conversation uploaded; the agent receives them as `@path` mentions after the text.
    */
   async execute(conversationId: string, text: string, attachments: readonly Attachment[] = []): Promise<void> {
@@ -51,6 +54,9 @@ export class SendConversationMessageUseCase {
         return;
       }
       await this.recordUserMessage(conversationId, text, attachments);
+      if (this.turnRetry.retryNow(conversationId, { text, attachments: files })) {
+        return;
+      }
       turnId = this.turns.begin(conversationId);
       await this.runTurn(conversationId, turnId, text, files);
     } catch (error) {

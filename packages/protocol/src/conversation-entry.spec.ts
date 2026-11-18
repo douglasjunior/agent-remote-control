@@ -7,6 +7,7 @@ const agentInfo = { roleName: 'CEO', agentName: 'Claude', modelName: 'm', effort
 describe('conversationEntrySchema', () => {
   it.each([
     { id: '1', at, type: 'user_message', text: 'hi' },
+    { id: 'r1', at, type: 'retry', roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 2, timeout: { expiresAt: 1_700_000_000_000, durationMs: 30_000 }, closed: false },
     { id: '1b', at, type: 'user_message', text: '', attachments: [{ path: '.arc-uploads/c/a.png', name: 'a.png' }] },
     { id: 'thought:1', at, type: 'thought', text: 'hmm', removed: true, role: 'CEO' },
     { id: 'tool:1', at, type: 'tool', title: 'Read', status: 'in_progress', result: 'r', details: 'd', role: 'DEVELOPER' },
@@ -79,6 +80,8 @@ describe('conversationEntrySchema', () => {
     ['invalid tool status', { id: '1', at, type: 'tool', title: 't', status: 'done' }],
     ['unknown skill action', { id: '1', at, type: 'skill', role: 'QA', action: 'delete', names: ['x'], status: 'completed' }],
     ['a delegation without its delegationId', { id: '1', at, type: 'delegation', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Dev', summary: 's' }],
+    ['a retry without closed', { id: 'r1', at, type: 'retry', roleName: 'CEO', errorMessage: 'boom', attempt: 1, timeout: { expiresAt: 1, durationMs: 1 } }],
+    ['a retry without a timeout', { id: 'r1', at, type: 'retry', roleName: 'CEO', errorMessage: 'boom', attempt: 1, closed: false }],
     ['a question without closed', { id: '1', at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'q', options: [], number: 1, total: 1 }],
     ['non-object', 42],
   ])('should reject %s', (_label, data) => {

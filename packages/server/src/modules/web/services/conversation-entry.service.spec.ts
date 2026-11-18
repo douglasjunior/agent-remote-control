@@ -158,6 +158,22 @@ describe('ConversationEntryService', () => {
     });
   });
 
+  describe('retry', () => {
+    it('should map the failure and the time of the retry, open', () => {
+      const entry = entries.retry({ roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 2, timeout: { expiresAt: 1_700_000_000_000, durationMs: 30_000 } });
+
+      expect(entry).toMatchObject({
+        type: 'retry',
+        roleName: 'CEO',
+        errorMessage: 'Service unavailable',
+        attempt: 2,
+        timeout: { expiresAt: 1_700_000_000_000, durationMs: 30_000 },
+        closed: false,
+      });
+      expect(valid(entry)).toBe(true);
+    });
+  });
+
   describe('question', () => {
     it('should map every field', () => {
       const entry = entries.question(prompt);

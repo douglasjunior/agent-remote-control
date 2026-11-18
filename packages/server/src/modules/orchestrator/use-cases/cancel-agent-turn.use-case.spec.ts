@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it } from '@rstest/core';
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
+import { TurnRetryService } from '../services/turn-retry.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 import { questionListener } from '../testing/question-listener.fixture.js';
+import { retryListener } from '../testing/retry-listener.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -19,6 +21,7 @@ describe('CancelAgentTurnUseCase', () => {
   let agentPort: StubAgentPort;
   let runtime: ConversationRuntimeService;
   let questionQueue: UserQuestionQueueService;
+  let turnRetry: TurnRetryService;
   let shellRunning: boolean;
 
   beforeEach(() => {
@@ -26,10 +29,11 @@ describe('CancelAgentTurnUseCase', () => {
     const factory = new StubAgentPortFactory(() => agentPort);
     runtime = new ConversationRuntimeService(factory, 60_000);
     questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
+    turnRetry = new TurnRetryService();
     shellRunning = false;
     const runShellCommand = { cancel: () => shellRunning } as unknown as RunShellCommandUseCase;
     openWork = new OpenWorkService(new InMemoryOpenWorkStoreFake());
-    useCase = new CancelAgentTurnUseCase(runtime, questionQueue, runShellCommand, openWork);
+    useCase = new CancelAgentTurnUseCase(runtime, questionQueue, runShellCommand, openWork, turnRetry);
   });
 
   const runBlockingTurn = (): { started: Promise<void>; finish: () => void; done: Promise<void> } => {
@@ -64,6 +68,15 @@ describe('CancelAgentTurnUseCase', () => {
 
     await expect(waiting).rejects.toBeInstanceOf(PromptCancelledError);
     expect(questionQueue.hasPending('conv-th-1')).toBe(false);
+  });
+
+  it('should cancel a retry waiting to happen and reject the turn waiting on it', async () => {
+    const waiting = turnRetry.wait('conv-th-1', { roleName: 'CEO', errorMessage: 'boom', attempt: 1 }, 60_000, retryListener());
+
+    await expect(useCase.execute('conv-th-1')).resolves.toBe(true);
+
+    await expect(waiting).rejects.toBeInstanceOf(PromptCancelledError);
+    expect(turnRetry.hasPendingRetry('conv-th-1')).toBe(false);
   });
 
   it('should report a shell command in progress as cancelled', async () => {

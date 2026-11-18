@@ -29,6 +29,7 @@ import { ListEarlierConversationEntriesUseCase } from '../use-cases/list-earlier
 import { ListPromptHistoryUseCase } from '../use-cases/list-prompt-history.use-case.js';
 import { RenameConversationUseCase } from '../use-cases/rename-conversation.use-case.js';
 import { ResumeConversationWorkUseCase } from '../use-cases/resume-conversation-work.use-case.js';
+import { RetryConversationTurnUseCase } from '../use-cases/retry-conversation-turn.use-case.js';
 import { SendConversationMessageUseCase } from '../use-cases/send-conversation-message.use-case.js';
 import { SetConversationProfilesUseCase } from '../use-cases/set-conversation-profiles.use-case.js';
 
@@ -53,10 +54,10 @@ describe('WebConnectionHandler', () => {
     transport = new FakeClientTransport();
     harness = createWebHarness();
     skills = new StubAgentSkillsPort();
-    const { store, events, agentTurn, configuration, questions, workspace, promptHistory, fileSearch, uploads } = harness;
+    const { store, events, agentTurn, configuration, questions, turnRetry, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
     const conversationUploads = new WebConversationUploadsService(workspace, uploads);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, turnRetry, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
     const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
     agentAuth = new StubAgentAuthPort();
     handler = new WebConnectionHandler(
@@ -76,6 +77,7 @@ describe('WebConnectionHandler', () => {
       new SetConversationProfilesUseCase(configuration, getProfiles, events),
       new AnswerConversationQuestionUseCase(questions, events, resumeWork, conversationUploads, new ConversationEntryService()),
       resumeWork,
+      new RetryConversationTurnUseCase(turnRetry, events),
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
       new WebUploadSessionsService(uploads),
@@ -638,6 +640,28 @@ describe('WebConnectionHandler', () => {
       connection.receive({ type: 'work.resume', conversationId: 'web-1', workId: 'w' });
 
       await rs.waitFor(() => expect(harness.agentTurn.resumedWorkIds).toEqual(['w']));
+    });
+
+    it('should retry the failed turn now, or end the retries, when one is waiting', async () => {
+      harness.store.seed('web-1');
+      harness.turnRetry.pending = true;
+
+      connection.receive({ type: 'retry.now', conversationId: 'web-1' });
+      connection.receive({ type: 'retry.stop', conversationId: 'web-1' });
+      await settle();
+
+      expect(harness.turnRetry.retries).toEqual([{ conversationId: 'web-1' }]);
+      expect(harness.turnRetry.stops).toEqual(['web-1']);
+      expect(sent()).toEqual([]);
+    });
+
+    it.each(['retry.now', 'retry.stop'] as const)('should reject %s when no retry is waiting', async (type) => {
+      harness.store.seed('web-1');
+
+      connection.receive({ type, conversationId: 'web-1' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'error', message: 'There is no retry waiting', conversationId: 'web-1' }]);
     });
 
     it('should reject an answer when no question is waiting', async () => {

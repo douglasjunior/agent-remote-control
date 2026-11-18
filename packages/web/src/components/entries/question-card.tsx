@@ -1,59 +1,21 @@
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { type CSSProperties, useEffect, useState } from 'react';
+import type { CSSProperties } from 'react';
 
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
 import { PromptInput } from '../prompt-input/prompt-input.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
-import { Progress } from '../ui/progress.js';
 
 import { useAnswerInput } from './answer-input.js';
+import { EntryCountdown } from './entry-countdown.js';
 import { Markdown } from './markdown.js';
 
 
 type QuestionEntry = Extract<ConversationEntry, { type: 'question' }>;
 
 export type QuestionAnswer = Extract<ClientCommand, { type: 'question.answer' }>['answer'];
-
-const URGENT_MS = 30_000;
-
-function useRemainingMs(expiresAt: number): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  return Math.max(0, expiresAt - now);
-}
-
-function QuestionCountdown({ timeout, recommended }: {
-  readonly timeout: NonNullable<QuestionEntry['timeout']>;
-  readonly recommended: boolean;
-}) {
-  const remainingMs = useRemainingMs(timeout.expiresAt);
-  const seconds = Math.ceil(remainingMs / 1000);
-  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-  const urgent = remainingMs <= URGENT_MS;
-
-  return (
-    <div role="timer" aria-label={`Time left to answer: ${clock}`} className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
-        <span>{recommended ? 'The recommended answer is assumed if you do not reply' : 'The agent carries on without an answer if you do not reply'}</span>
-        <span className={cn('font-mono text-[13px] tabular-nums', urgent && 'text-destructive')}>{clock}</span>
-      </div>
-      <Progress
-        value={Math.min(100, (remainingMs / timeout.durationMs) * 100)}
-        aria-label="Time left to answer"
-        className={cn(
-          '[&_[data-slot=progress-indicator]]:duration-1000 [&_[data-slot=progress-indicator]]:ease-linear',
-          urgent && '[&_[data-slot=progress-indicator]]:bg-destructive',
-        )}
-      />
-    </div>
-  );
-}
 
 function AnswerField() {
   const input = useAnswerInput();
@@ -113,7 +75,15 @@ export function QuestionCard({ entry, active, onAnswer }: {
           </div>
         )}
         {active && <AnswerField />}
-        {active && entry.timeout && <QuestionCountdown timeout={entry.timeout} recommended={entry.recommendedIndex !== undefined} />}
+        {active && entry.timeout && (
+          <EntryCountdown
+            timeout={entry.timeout}
+            label="Time left to answer"
+            description={entry.recommendedIndex !== undefined
+              ? 'The recommended answer is assumed if you do not reply'
+              : 'The agent carries on without an answer if you do not reply'}
+          />
+        )}
       </div>
     </div>
   );

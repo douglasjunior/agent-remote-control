@@ -9,6 +9,7 @@ import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/mod
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
 import { buildStubProfile, StubAgentSettingsStore } from '../../orchestrator/testing/stub-agent-settings-store.js';
+import { StubTurnRetryPort } from '../../orchestrator/testing/stub-turn-retry.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
 import { profileForAllRoles } from '../../orchestrator/utils/agent-profile.util.js';
 import { InMemoryAgentConfigSelectionStoreAdapter } from '../adapters/in-memory-agent-config-selection-store.adapter.js';
@@ -80,6 +81,7 @@ describe('agent configuration selection', () => {
   let settingsStore: StubAgentSettingsStore;
   let config: StubAgentConfigurationPort;
   let userQuestions: StubUserQuestionPort;
+  let turnRetry: StubTurnRetryPort;
   let start: StartAgentConfigSelectionUseCase;
   let submit: SubmitAgentConfigSelectionUseCase;
   let resolve: ResolveConversationInputUseCase;
@@ -110,6 +112,7 @@ describe('agent configuration selection', () => {
       ]),
     );
     userQuestions = new StubUserQuestionPort();
+    turnRetry = new StubTurnRetryPort();
     const profileList = new AgentProfileListService(config, selectionStore);
     start = new StartAgentConfigSelectionUseCase(config, selectionStore, profileList);
     submit = new SubmitAgentConfigSelectionUseCase(config, selectionStore, profileList);
@@ -122,6 +125,7 @@ describe('agent configuration selection', () => {
       start,
       submit,
       userQuestions,
+      turnRetry,
       languageChangeRequests,
       agentAuthRequests,
       agentAuth,
@@ -770,6 +774,43 @@ describe('agent configuration selection', () => {
 
         expect(languageChangeRequests.isPending('conv-1')).toBe(true);
         await expect(selectionStore.find('conv-1')).resolves.toMatchObject({ pendingMessage: { prompt: 'Build it', attachments: [] } });
+      });
+    });
+
+    describe('with a failed turn waiting to be retried', () => {
+      beforeEach(() => {
+        turnRetry.pending = true;
+      });
+
+      it('should retry now with the message instead of running a turn', async () => {
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'I renewed the login.' })).resolves.toEqual({ kind: 'retry_requested' });
+
+        expect(turnRetry.retries).toEqual([{ conversationId: 'conv-1', message: { text: 'I renewed the login.', attachments: [] } }]);
+      });
+
+      it('should send attached files with the retry', async () => {
+        const file = { name: 'log.txt', path: '/tmp/log.txt', contentType: 'text/plain', size: 10 };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({ kind: 'retry_requested' });
+
+        expect(turnRetry.retries[0]?.message).toEqual({ text: '', attachments: [file] });
+      });
+
+      it('should answer a waiting question before retrying', async () => {
+        userQuestions.prompt = promptFor(1);
+        userQuestions.submission = { kind: 'answered', asker };
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: '200' })).resolves.toEqual({ kind: 'answered', asker });
+
+        expect(turnRetry.retries).toEqual([]);
+      });
+
+      it('should leave a message to the language change it answers', async () => {
+        languageChangeRequests.request('conv-1');
+
+        await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'Spanish' })).resolves.toEqual({ kind: 'language_set', language: 'Spanish' });
+
+        expect(turnRetry.retries).toEqual([]);
       });
     });
 

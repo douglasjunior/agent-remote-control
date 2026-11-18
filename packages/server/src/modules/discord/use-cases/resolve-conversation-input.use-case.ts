@@ -5,6 +5,7 @@ import type { AgentSettings } from '../../orchestrator/models/agent-settings.mod
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { QuestionAnswerInput, QuestionSubmission, UserQuestion } from '../../orchestrator/models/user-question.model.js';
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
+import { ITurnRetryPort } from '../../orchestrator/ports/turn-retry.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import type { AgentAuthChoice } from '../models/agent-auth-choice.model.js';
 import type { ConversationInputResolution } from '../models/agent-config-outcome.model.js';
@@ -27,8 +28,8 @@ export type ResolveConversationInputInput = {
 };
 
 /**
- * Decides what a typed message means in a Discord conversation: an answer, a menu choice, a language or a
- * prompt for the agents. The text is taken as typed, and the attachments travel untouched to wherever the
+ * Decides what a typed message means in a Discord conversation: an answer, a menu choice, a language, the request
+ * to retry a failed turn now, or a prompt for the agents. The text is taken as typed, and the attachments travel untouched to wherever the
  * message ends up: what a turn does with them, audio included, is the orchestrator's business.
  */
 @Injectable()
@@ -42,6 +43,8 @@ export class ResolveConversationInputUseCase {
     private readonly submitSelection: SubmitAgentConfigSelectionUseCase,
     @Inject(IUserQuestionPort)
     private readonly userQuestions: IUserQuestionPort,
+    @Inject(ITurnRetryPort)
+    private readonly turnRetry: ITurnRetryPort,
     private readonly languageChangeRequests: LanguageChangeRequestService,
     private readonly agentAuthRequests: AgentAuthRequestService,
     @Inject(IAgentAuthPort)
@@ -81,6 +84,10 @@ export class ResolveConversationInputUseCase {
         return this.execution(outcome.pendingMessage.prompt, outcome.pendingMessage.attachments, outcome.settings);
       }
       return { kind: 'configured', settings: outcome.settings };
+    }
+
+    if (this.turnRetry.retryNow(conversationId, { text: prompt, attachments })) {
+      return { kind: 'retry_requested' };
     }
 
     if (await this.configuration.ensureSettings(conversationId) !== 'missing') {

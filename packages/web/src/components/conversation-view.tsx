@@ -114,6 +114,14 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
     connection.send({ type: 'question.answer', conversationId, answer });
   };
 
+  const handleRetryNow = () => {
+    connection.send({ type: 'retry.now', conversationId });
+  };
+
+  const handleStopRetrying = () => {
+    connection.send({ type: 'retry.stop', conversationId });
+  };
+
   const handleContinue = (workId: string) => {
     connection.send({ type: 'work.resume', conversationId, workId });
   };
@@ -221,6 +229,8 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
                 onFocus={toggleFocus}
                 onHover={setHovered}
                 onAnswer={handleAnswer}
+                onRetryNow={handleRetryNow}
+                onStopRetrying={handleStopRetrying}
               />
             </AnswerInputProvider>
           )}

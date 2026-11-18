@@ -101,6 +101,7 @@ Read [references/turns-and-entries.md](references/turns-and-entries.md) before c
 
 Each area has a reference with the exact commands, events, limits and edge cases. Read it before changing that area.
 
+- **Retries of a failed turn**: `retry` entries (one card per failure, `closed: true` once its wait ends), the `retry.now` and `retry.stop` commands, and a `message.send` while a retry waits, which retries now with the message instead of starting a turn. Read [references/retries.md](references/retries.md).
 - **Questions**: `question.answer` with an option or a text (with attachments), the server closing questions
   (`closed: true`), and restoring questions and interrupted work after a restart (`work.resume`,
   `conversation.interrupted`). Read [references/questions.md](references/questions.md).

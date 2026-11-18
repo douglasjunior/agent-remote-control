@@ -12,10 +12,12 @@ import type { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
 import type { OpenWork } from '../models/open-work.model.js';
 import { PendingRequestResults } from '../models/pending-request-results.model.js';
+import { RetryBudget } from '../models/retry-budget.model.js';
 import { RunningDelegations } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { TurnResult, TurnStatus } from '../models/turn-result.model.js';
+import type { RetryMessage } from '../models/turn-retry.model.js';
 import type { AnsweredQuestion, RestoredWorkAnswers } from '../models/user-question.model.js';
 import type { AnswerDelivery, ValidatedDecision, ValidatedDelegation } from '../models/validated-delegation.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
@@ -25,6 +27,7 @@ import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildPreviousTurnPrompt, describeDelegation } from '../prompts/previous-turn.prompt.js';
 import { buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
+import { buildTurnRetryPrompt } from '../prompts/turn-retry.prompt.js';
 import { buildUserAnswersPrompt } from '../prompts/user-answers.prompt.js';
 import { DEFAULT_USER_LANGUAGE } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
@@ -39,6 +42,7 @@ import { isPromptCancellation } from '../utils/prompt-cancellation.util.js';
 import { extractUserLanguage } from '../utils/user-language.util.js';
 
 import { AnswerAgentQuestionsUseCase } from './answer-agent-questions.use-case.js';
+import { type PrepareRetryMessage, RetryCeoRoundUseCase } from './retry-ceo-round.use-case.js';
 import { RunAgentRequestsUseCase } from './run-agent-requests.use-case.js';
 import { RunDelegationUseCase } from './run-delegation.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './transcribe-audio-attachments.use-case.js';
@@ -55,9 +59,9 @@ type Resumption = {
 type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 
 /**
- * Runs a turn of the conversation on the CEO: its rounds, the repair of an invalid response, its questions to the
- * user, and the delegations it starts, until it answers the user. A message that arrives while the CEO works steers
- * it, and work a restart interrupted is resumed from where it stopped.
+ * Runs a turn of the conversation on the CEO: its rounds, the repair of an invalid response, the retries of a prompt
+ * that fails, its questions to the user, and the delegations it starts, until it answers the user. A message that
+ * arrives while the CEO works steers it, and work a restart interrupted is resumed from where it stopped.
  */
 @Injectable()
 export class ExecuteAgentTurnUseCase {
@@ -82,6 +86,7 @@ export class ExecuteAgentTurnUseCase {
     private readonly agentQuestions: AnswerAgentQuestionsUseCase,
     private readonly runAgentRequests: RunAgentRequestsUseCase,
     private readonly runDelegation: RunDelegationUseCase,
+    private readonly retryCeoRound: RetryCeoRoundUseCase,
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
@@ -135,6 +140,12 @@ export class ExecuteAgentTurnUseCase {
       prompt: prompt.trim() === '' && attachments.length > 0 ? ATTACHMENTS_ONLY_PROMPT : prompt,
       attachments,
     };
+  }
+
+  /** What the user wrote to ask for a retry is read like any message: audio becomes text, the other files are listed. */
+  private async prepareRetryMessage(request: TurnRequest, { text, attachments }: RetryMessage): Promise<string | undefined> {
+    const message = await this.transcribeAudio({ ...request, prompt: text, attachments });
+    return buildAttachmentsPrompt(message.prompt, message.attachments).trim() || undefined;
   }
 
   private async runTurn(
@@ -384,17 +395,22 @@ export class ExecuteAgentTurnUseCase {
     workId: string | undefined,
     answerDelivery: AnswerDelivery | undefined,
   ): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> {
-    const runRound = async (text: string, isUserText = false, delivery?: AnswerDelivery) => this.takeUserLanguage(await this.agentRound.run({
-      agentPort: ceoPort,
-      cwd: request.workspacePath,
-      role: request.agentRole,
-      prompt: text,
+    const prepareRetryMessage: PrepareRetryMessage = message => this.prepareRetryMessage(request, message);
+    const runRound = (text: string, isUserText = false, delivery?: AnswerDelivery) => this.retryCeoRound.execute(
       request,
-      turn,
-      session,
-      isUserMessage: isUserText,
-      answerDelivery: delivery,
-    }));
+      async retry => this.takeUserLanguage(await this.agentRound.run({
+        agentPort: ceoPort,
+        cwd: request.workspacePath,
+        role: request.agentRole,
+        prompt: retry ? buildTurnRetryPrompt(retry, text) : text,
+        request,
+        turn,
+        session,
+        isUserMessage: isUserText,
+        answerDelivery: delivery,
+      })),
+      prepareRetryMessage,
+    );
     const requester: AgentRequester = {
       role: request.agentRole,
       roleName: this.agentRegistry.getDisplayName(request.agentRole),
@@ -412,17 +428,32 @@ export class ExecuteAgentTurnUseCase {
       activity => request.onActivity?.(activity, requester.role),
     ));
 
-    /** `userInitiated` is whether the CEO is answering the user, which a delegation that only the user may start requires. */
+    const repairPauses = new RetryBudget();
+
+    /**
+     * `userInitiated` is whether the CEO is answering the user, which a delegation that only the user may start requires.
+     * A response that stays invalid after its repairs waits for a retry, which asks for the repair again with a new budget.
+     */
     const decide = async (response: string, userInitiated: boolean, attempt = 1): Promise<{ response: string; decision: ValidatedDecision }> => {
       const decision = await this.delegationValidator.decide(response, request, userInitiated);
-      if (decision.kind !== 'invalid' || attempt > this.MAX_REPAIR_ATTEMPTS) {
+      if (decision.kind !== 'invalid') {
         return { response, decision };
+      }
+      let repair = buildDelegationRepairPrompt(decision.reason);
+      let nextAttempt = attempt + 1;
+      if (attempt > this.MAX_REPAIR_ATTEMPTS) {
+        const retry = await this.retryCeoRound.pause(request, `Invalid CEO response: ${decision.reason}`, repairPauses, prepareRetryMessage);
+        if (!retry) {
+          return { response, decision };
+        }
+        repair = buildTurnRetryPrompt(retry, repair);
+        nextAttempt = 1;
       }
       this.logger.warn(
         `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
       );
       request.onDraft?.('');
-      return decide(await runCeo(buildDelegationRepairPrompt(decision.reason)), userInitiated, attempt + 1);
+      return decide(await runCeo(repair), userInitiated, nextAttempt);
     };
 
     const settle = async (response: string, userInitiated: boolean): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> => {

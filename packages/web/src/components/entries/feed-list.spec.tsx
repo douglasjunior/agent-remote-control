@@ -52,7 +52,7 @@ const toolEntry = (id: string): ConversationEntry => ({ id, at: AT, type: 'tool'
 function renderFeed(entries: ConversationEntry[], draft = '', focus: string | null = null) {
   const tree = (list: ConversationEntry[], text: string) => (
     <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-      <FeedList team={[]} entries={list} draft={text} running={false} focus={focus} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
+      <FeedList team={[]} entries={list} draft={text} running={false} focus={focus} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} onRetryNow={rs.fn()} onStopRetrying={rs.fn()} />
     </VirtuosoMockContext.Provider>
   );
   const view = render(tree(entries, draft));
@@ -236,7 +236,7 @@ describe('FeedList', () => {
     function renderQuestionFeed(entries: ConversationEntry[], viewportHeight: number, onAnswer = rs.fn(), handle = createRef<FeedHandle>()) {
       render(
         <VirtuosoMockContext.Provider value={{ viewportHeight, itemHeight: 100 }}>
-          <FeedList ref={handle} team={[]} entries={entries} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={onAnswer} />
+          <FeedList ref={handle} team={[]} entries={entries} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={onAnswer} onRetryNow={rs.fn()} onStopRetrying={rs.fn()} />
         </VirtuosoMockContext.Provider>,
       );
       return { onAnswer, handle };
@@ -269,7 +269,7 @@ describe('FeedList', () => {
     it('should keep the agents shown as working unless the open question is the last entry', () => {
       const { unmount } = render(
         <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-          <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
+          <FeedList team={[]} entries={[question(false)]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} onRetryNow={rs.fn()} onStopRetrying={rs.fn()} />
         </VirtuosoMockContext.Provider>,
       );
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
@@ -277,7 +277,7 @@ describe('FeedList', () => {
 
       render(
         <VirtuosoMockContext.Provider value={{ viewportHeight: 100_000, itemHeight: 100 }}>
-          <FeedList team={[]} entries={[question(false), userEntry('u2')]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} />
+          <FeedList team={[]} entries={[question(false), userEntry('u2')]} draft="" running focus={null} onFocus={rs.fn()} onHover={rs.fn()} onAnswer={rs.fn()} onRetryNow={rs.fn()} onStopRetrying={rs.fn()} />
         </VirtuosoMockContext.Provider>,
       );
       expect(screen.getByRole('status')).toBeInTheDocument();

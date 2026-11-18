@@ -235,6 +235,76 @@ describe('WebConversationEventsService', () => {
     });
   });
 
+  describe('retries', () => {
+    const retry: ConversationEntry = { id: 'r', at: entry.at, type: 'retry', roleName: 'CEO', errorMessage: 'boom', attempt: 1, timeout: { expiresAt: 2, durationMs: 1 }, closed: false };
+
+    it('should close, in place, the retry that is waiting', async () => {
+      const { events, store, observer } = createWebHarness();
+      store.seed('web-1');
+      await events.publishEntry('web-1', retry);
+      await events.publishEntry('web-1', entry);
+
+      await events.closeOpenRetries('web-1');
+
+      expect(await store.history('web-1')).toEqual([{ ...retry, closed: true }, entry]);
+      expect(observer.sent.at(-1)).toEqual({ type: 'conversation.entry', conversationId: 'web-1', entry: { ...retry, closed: true }, position: 0 });
+    });
+
+    it('should do nothing once the retries are closed or when there were none', async () => {
+      const { events, store, observer } = createWebHarness();
+      store.seed('web-1');
+      await events.publishEntry('web-1', retry);
+      await events.closeOpenRetries('web-1');
+      observer.sent.length = 0;
+
+      await events.closeOpenRetries('web-1');
+      await events.closeOpenRetries('other');
+
+      expect(observer.sent).toEqual([]);
+    });
+
+    it('should close a retry an earlier process left open, without a notice', async () => {
+      const { events, store } = createWebHarness();
+      store.seed('web-1');
+      await store.upsertEntry('web-1', retry);
+
+      await events.settleOrphanedRetries('web-1');
+
+      expect(await store.history('web-1')).toEqual([{ ...retry, closed: true }]);
+    });
+
+    it('should keep open a retry this process is waiting on', async () => {
+      const { events, store } = createWebHarness();
+      store.seed('web-1');
+      await events.publishEntry('web-1', retry);
+
+      await events.settleOrphanedRetries('web-1');
+
+      expect(await store.history('web-1')).toEqual([retry]);
+    });
+
+    it('should keep open a retry published while the history is being read', async () => {
+      const { events, store } = createWebHarness();
+      store.seed('web-1');
+      const readHistory = store.history.bind(store);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      rs.spyOn(store, 'history').mockImplementationOnce(async (id) => {
+        await gate;
+        return readHistory(id);
+      });
+
+      const settling = events.settleOrphanedRetries('web-1');
+      await events.publishEntry('web-1', retry);
+      release();
+      await settling;
+
+      expect(await store.history('web-1')).toEqual([retry]);
+    });
+  });
+
   describe('settleOrphanedQuestions', () => {
     const question: ConversationEntry = { id: 'q', at: entry.at, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Dev', text: 'Which?', options: [], number: 1, total: 1, closed: false };
 

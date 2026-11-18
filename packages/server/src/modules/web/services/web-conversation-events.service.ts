@@ -11,6 +11,7 @@ import { WebConnectionRegistryService } from './web-connection-registry.service.
 
 
 type QuestionEntry = Extract<ConversationEntry, { type: 'question' }>;
+type RetryEntry = Extract<ConversationEntry, { type: 'retry' }>;
 
 @Injectable()
 export class WebConversationEventsService implements OnModuleDestroy {
@@ -18,6 +19,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
   private readonly states = new Map<string, ConversationState>();
   private readonly drafts = new Map<string, string>();
   private readonly openQuestions = new Map<string, Map<string, QuestionEntry>>();
+  private readonly openRetries = new Map<string, Map<string, RetryEntry>>();
   private readonly liveDelegations = new Map<string, Set<string>>();
   private readonly publishing = new Map<string, Promise<void>>();
   private frozen = false;
@@ -43,6 +45,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
       return Promise.resolve();
     }
     this.trackQuestion(conversationId, entry);
+    this.trackRetry(conversationId, entry);
     this.trackDelegation(conversationId, entry);
     const published = (this.publishing.get(conversationId) ?? Promise.resolve()).then(() => this.place(conversationId, entry));
     this.publishing.set(conversationId, published);
@@ -58,6 +61,22 @@ export class WebConversationEventsService implements OnModuleDestroy {
   async closeOpenQuestions(conversationId: string): Promise<void> {
     const open = [...this.openQuestions.get(conversationId)?.values() ?? []];
     await Promise.all(open.map(question => this.publishEntry(conversationId, { ...question, closed: true })));
+  }
+
+  /** Closes, in place, every retry of the conversation that is still shown as waiting. */
+  async closeOpenRetries(conversationId: string): Promise<void> {
+    const open = [...this.openRetries.get(conversationId)?.values() ?? []];
+    await Promise.all(open.map(retry => this.publishEntry(conversationId, { ...retry, closed: true })));
+  }
+
+  /** Closes the retries the history shows as waiting although this process has none: an earlier process left them open. */
+  async settleOrphanedRetries(conversationId: string): Promise<void> {
+    const history = await this.store.history(conversationId);
+    const tracked = this.openRetries.get(conversationId);
+    const orphaned = history.filter(
+      (entry): entry is RetryEntry => entry.type === 'retry' && !entry.closed && !tracked?.has(entry.id),
+    );
+    await Promise.all(orphaned.map(retry => this.publishEntry(conversationId, { ...retry, closed: true })));
   }
 
   /**
@@ -168,6 +187,19 @@ export class WebConversationEventsService implements OnModuleDestroy {
       live.delete(entry.delegationId);
     }
     this.liveDelegations.set(conversationId, live);
+  }
+
+  private trackRetry(conversationId: string, entry: ConversationEntry): void {
+    if (entry.type !== 'retry') {
+      return;
+    }
+    const open = this.openRetries.get(conversationId) ?? new Map<string, RetryEntry>();
+    if (entry.closed) {
+      open.delete(entry.id);
+    } else {
+      open.set(entry.id, entry);
+    }
+    this.openRetries.set(conversationId, open);
   }
 
   private trackQuestion(conversationId: string, entry: ConversationEntry): void {

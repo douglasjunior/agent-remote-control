@@ -62,3 +62,8 @@ Every turn outcome with `TurnResult.agentInfo` gets the footer `formatAgentFoote
   also split.
 - **Queued** (`onQueued`): the progress message shows
   `⏳ *Waiting for the previous task in this conversation to finish...*`.
+
+## Retry of a Failed Turn
+
+- `formatRetry(prompt)`: `❌ **<role> failed** — <error>` and `-# ⏱️ Trying again automatically <t:<unix seconds>:R> (attempt <n>). Send any message to continue now, or /cancel to stop.`
+- `formatRetryRequested()`: `🔁 Trying again now.`

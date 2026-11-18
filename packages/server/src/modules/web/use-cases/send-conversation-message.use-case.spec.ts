@@ -22,6 +22,7 @@ function setup() {
   const useCase = new SendConversationMessageUseCase(
     harness.agentTurn,
     harness.configuration,
+    harness.turnRetry,
     harness.events,
     harness.store,
     harness.workspace,
@@ -239,6 +240,36 @@ describe('SendConversationMessageUseCase', () => {
       await useCase.execute('web-1', 'go');
 
       expect(types()).toEqual(['user_message', 'thought', 'tool', 'delegation', 'interim', 'question', 'agent_response']);
+    });
+
+    describe('when a failed turn waits to be retried', () => {
+      const prompt = { roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 1, timeout: { expiresAt: 2_000_000, durationMs: 15_000 } };
+
+      it('should show the failure as a card with the time of the retry, then close it when the wait ends', async () => {
+        const context = setup();
+        context.agentTurn.turnBehavior = async (request) => {
+          request.onRetry?.({ kind: 'scheduled', prompt });
+          await rs.waitFor(() => expect(context.types()).toContain('retry'));
+          request.onRetry?.({ kind: 'ended', reason: 'elapsed' });
+          await rs.waitFor(() => expect(context.entries().find(entry => entry.type === 'retry')).toMatchObject({ closed: true }));
+        };
+
+        await context.useCase.execute('web-1', 'go');
+
+        expect(context.entries().find(entry => entry.type === 'retry')).toMatchObject({ errorMessage: 'Service unavailable', attempt: 1, closed: true });
+      });
+
+      it('should retry now with the message instead of starting a turn, and record the message', async () => {
+        const { useCase, agentTurn, turnRetry, types, entries } = setup();
+        turnRetry.pending = true;
+
+        await useCase.execute('web-1', 'I logged in again.');
+
+        expect(turnRetry.retries).toEqual([{ conversationId: 'web-1', message: { text: 'I logged in again.', attachments: [] } }]);
+        expect(agentTurn.turnRequests).toHaveLength(0);
+        expect(types()).toEqual(['user_message']);
+        expect(entries()[0]).toMatchObject({ text: 'I logged in again.' });
+      });
     });
 
     describe('when a question times out', () => {

@@ -8,6 +8,7 @@ import { AgentResponse } from './agent-response.js';
 import { SquadCard } from './handoff-card.js';
 import { Markdown } from './markdown.js';
 import { QuestionCard, type QuestionAnswer } from './question-card.js';
+import { RetryCard } from './retry-card.js';
 
 
 const NOTICE_STYLES = {
@@ -28,9 +29,11 @@ interface FeedItemProps {
   readonly onHover: (role: string | null) => void;
   readonly onExpandedChange: (id: string, open: boolean) => void;
   readonly onAnswer: (answer: QuestionAnswer) => void;
+  readonly onRetryNow: () => void;
+  readonly onStopRetrying: () => void;
 }
 
-function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer }: FeedItemProps) {
+function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer, onRetryNow, onStopRetrying }: FeedItemProps) {
   if (item.kind === 'activity') {
     return (
       <ActivityGroup
@@ -65,6 +68,8 @@ function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded
       return <AgentMessage role="CEO" onFocus={onFocus}><Markdown text={entry.text} className="text-muted-foreground" /></AgentMessage>;
     case 'question':
       return <QuestionCard entry={entry} active={entry.id === openQuestionId} onAnswer={onAnswer} />;
+    case 'retry':
+      return <RetryCard entry={entry} onFocus={onFocus} onRetryNow={onRetryNow} onStopRetrying={onStopRetrying} />;
     case 'notice':
       return <p className={cn('text-xs', NOTICE_STYLES[entry.level])}>{entry.text}</p>;
   }
@@ -77,7 +82,8 @@ function entryAgent(item: Exclude<EntryItem, { kind: 'squad' }>): string | undef
     case 'entry':
       switch (item.entry.type) {
         case 'agent_response':
-        case 'interim': return 'CEO';
+        case 'interim':
+        case 'retry': return 'CEO';
         case 'question': return item.entry.askerRole;
         default: return undefined;
       }

@@ -252,6 +252,25 @@ describe('ConversationView', () => {
     expect(activeInput).toHaveValue('');
   });
 
+  it('should retry now or stop retrying from the card of a failed turn, and not say the CEO is thinking while it waits', async () => {
+    const user = userEvent.setup();
+    const { connection } = openConversation({
+      entries: [
+        userEntry('u1', 'go'),
+        { id: 'r1', at: AT, type: 'retry', roleName: 'CEO', errorMessage: 'Service unavailable', attempt: 1, timeout: { expiresAt: Date.now() + 60_000, durationMs: 60_000 }, closed: false },
+      ],
+    });
+    act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+
+    expect(screen.getByText('Service unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('CEO is thinking…')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Retry now' }));
+    await user.click(screen.getByRole('button', { name: 'Stop retrying' }));
+
+    expect(connection.sent).toContainEqual({ type: 'retry.now', conversationId: 'c1' });
+    expect(connection.sent).toContainEqual({ type: 'retry.stop', conversationId: 'c1' });
+  });
+
   it('should render a question the server closed in its closed form', () => {
     openConversation({
       entries: [

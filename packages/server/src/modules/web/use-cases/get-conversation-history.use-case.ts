@@ -31,6 +31,7 @@ export class GetConversationHistoryUseCase {
     readonly interrupted: readonly InterruptedWork[];
   }> {
     await this.settleQuestions(conversationId);
+    await this.events.settleOrphanedRetries(conversationId);
     const history = await this.store.history(conversationId);
     const start = latestPageStart(history, { size: HISTORY_PAGE_SIZE, liveDelegations: this.events.liveDelegationsOf(conversationId) });
     return {
