@@ -2,7 +2,7 @@ import { GIT_OPS_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.j
 
 import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
-import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS, FINAL_RESPONSE_REMINDER } from './final-response.prompt.js';
 
 
 export const GIT_OPS_TURN_REMINDER = `---
@@ -14,7 +14,7 @@ REMINDER:
 ${buildArtifactProtocolReminder(GIT_OPS_ARTIFACT_ACCESS)}
 ${CWD_BOUNDARY_REMINDER} SSH key setup in $HOME/.ssh is the one standing exception.
 - You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.
-- Always provide your final response inside the <final_response> block.`;
+${FINAL_RESPONSE_REMINDER}`;
 
 export const GIT_OPS_SYSTEM_PROMPT = `You are the Git Ops Agent.
 

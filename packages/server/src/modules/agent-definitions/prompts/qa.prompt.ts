@@ -2,7 +2,7 @@ import { QA_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
 import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
-import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS, FINAL_RESPONSE_REMINDER } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
 
 
@@ -17,7 +17,7 @@ REMINDER:
 ${buildArtifactProtocolReminder(QA_ARTIFACT_ACCESS)}
 ${PROJECT_ORIENTATION_REMINDER}
 ${CWD_BOUNDARY_REMINDER}
-- Always put your final answer inside the <final_response> block.`;
+${FINAL_RESPONSE_REMINDER}`;
 
 export const QA_SYSTEM_PROMPT = `You are the QA Agent.
 

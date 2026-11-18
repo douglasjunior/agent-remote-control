@@ -74,6 +74,6 @@ describe('tech-lead.prompt', () => {
     expect(TECH_LEAD_TURN_REMINDER).toContain('Decide nothing silently');
     expect(TECH_LEAD_TURN_REMINDER).toContain('the pros and cons of each option and your recommendation');
     expect(TECH_LEAD_TURN_REMINDER).toContain('names the affected files, the ordered steps, the tests to add and concrete verification commands');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>');
+    expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 });

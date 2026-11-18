@@ -1,4 +1,4 @@
-import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
+import { FINAL_RESPONSE_INSTRUCTIONS, FINAL_RESPONSE_REMINDER } from './final-response.prompt.js';
 import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
 
 
@@ -8,7 +8,7 @@ REMINDER:
 - Ask the user to approve the plan with <question> tags, in plain language, with the reason for every step; an approval covers that plan only, so a step beyond it needs a new approval.
 - Stay inside the approved plan, back up a file before editing it, and never delete the user's data or expose a secret.
 ${USER_QUESTIONS_REMINDER}
-- Always put your final answer inside the <final_response> block.`;
+${FINAL_RESPONSE_REMINDER}`;
 
 export const IT_SUPPORT_SYSTEM_PROMPT = `You are the IT Support Agent.
 

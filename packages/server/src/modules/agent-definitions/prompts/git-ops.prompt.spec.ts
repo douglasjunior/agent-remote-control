@@ -66,7 +66,7 @@ describe('git-ops.prompt', () => {
 
   it('should remind the agent to report the project folder it used', () => {
     expect(GIT_OPS_TURN_REMINDER).toContain('Report the project folder name');
-    expect(GIT_OPS_TURN_REMINDER).toContain('<final_response>');
+    expect(GIT_OPS_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 
   it('should bring the decisions the user must make back to the caller instead of asking', () => {

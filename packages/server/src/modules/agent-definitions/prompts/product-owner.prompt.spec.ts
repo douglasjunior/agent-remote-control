@@ -66,6 +66,6 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
     expect(PRODUCT_OWNER_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain('<final_response>');
+    expect(PRODUCT_OWNER_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 });

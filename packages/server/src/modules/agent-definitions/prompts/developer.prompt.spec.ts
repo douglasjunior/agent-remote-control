@@ -71,7 +71,7 @@ describe('developer.prompt', () => {
 
   it('should define DEVELOPER_TURN_REMINDER with tests, and final response instructions', () => {
     expect(DEVELOPER_TURN_REMINDER).toContain('automated tests');
-    expect(DEVELOPER_TURN_REMINDER).toContain('<final_response>');
+    expect(DEVELOPER_TURN_REMINDER).toContain('<final_response>...</final_response>');
   });
 
   it('should bring the decisions the user must make back to the caller instead of asking', () => {
