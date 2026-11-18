@@ -58,7 +58,7 @@ agent-remote-control/
 │       ├── rstest.config.ts        # Rstest project "server" (unit tests)
 │       ├── rstest.config.e2e.ts    # Rstest configuration for e2e tests
 │       └── package.json            # Server dependencies and scripts
-├── .github/workflows/              # CI (type check, lint and tests) on pull requests; commit author check (no AI agent as author, committer or co-author; the owner's own pull requests have only the owner's identities as author and committer); publishes the multi-platform Docker image to Docker Hub and deploys the p2p-server and coturn on CapRover on every GitHub release
+├── .github/workflows/              # CI (type check, lint and tests) on pull requests; commit author check, shared from douglasjunior/workflows (no AI agent as author, committer or co-author; the owner's own pull requests have only the owner's identities as author and committer); publishes the multi-platform Docker image to Docker Hub and deploys the p2p-server and coturn on CapRover on every GitHub release
 ├── captain-definition-*            # CapRover definitions of the p2p-server and of the coturn TURN relay
 ├── deploy/coturn/                  # Image and configuration of the coturn TURN relay
 ├── docs/                           # Roadmap, delivery plans and the remote access guide
