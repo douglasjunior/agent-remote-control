@@ -31,9 +31,9 @@ function SkillStep({ step }: { readonly step: Extract<ActivityEntry, { type: 'sk
     verb = step.created ? 'Created' : 'Updated';
   }
   return (
-    <div className="flex items-center gap-2" title={step.error}>
-      {failed ? <X aria-label="failed" className="size-3.5 shrink-0 text-destructive" /> : <Icon aria-hidden className="size-3.5 shrink-0" />}
-      <span className="min-w-0 truncate">
+    <div className="flex items-start gap-2" title={step.error}>
+      {failed ? <X aria-label="failed" className="mt-[3px] size-3.5 shrink-0 text-destructive" /> : <Icon aria-hidden className="mt-[3px] size-3.5 shrink-0" />}
+      <span className="min-w-0 break-words">
         {failed ? `Could not ${step.action} the skill ` : `${verb} the skill `}
         {step.names.map((name, index) => (
           <Fragment key={name}>
