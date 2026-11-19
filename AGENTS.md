@@ -62,6 +62,7 @@ agent-remote-control/
 ├── captain-definition-*            # CapRover definitions of the p2p-server and of the coturn TURN relay
 ├── deploy/coturn/                  # Image and configuration of the coturn TURN relay
 ├── docs/                           # Roadmap, delivery plans and the remote access guide
+├── CONTRIBUTING.md                 # Checks a pull request must pass to be accepted (CI and commit authors)
 ├── Dockerfile                      # Production image (Debian-based) with the app and Codex
 ├── Dockerfile.p2p                  # Image of the p2p-server with the hosted web app
 ├── docker-entrypoint.sh            # Provides the CLIs listed in ARC_AGENTS at container startup
@@ -134,5 +135,5 @@ All commands run from the repository root and apply to every package in `package
 5. **No obvious comments**: Do not repeat what the code, typing or signature already says.
 6. **Stubs and fakes for internal dependencies**: Isolate internal `packages/server/src/` dependencies by injecting stubs in the constructor or overriding providers in the testing module (`createTestingModule` from `test/testing-module.ts`); `rs.mock` is reserved for external I/O boundaries.
 7. **Pruning pass before finishing**: Check comments and text introduced in the diff and remove any noise before submitting.
-8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `pnpm ts`, `pnpm lint` and `pnpm test` (plus `pnpm test:e2e` when touching entry points). Code formatting is the sole responsibility of ESLint (`pnpm format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
+8. **Mandatory type checking, lint and tests on every change**: Any code change in the project requires running `pnpm ts`, `pnpm lint` and `pnpm test` (plus `pnpm test:e2e` when touching entry points). `CONTRIBUTING.md` lists every check a pull request must pass. Code formatting is the sole responsibility of ESLint (`pnpm format`). No delivery can be completed with TypeScript errors, lint errors or test failures.
 9. **Skills in sync with the code**: Every change to a port contract, public signature, lifecycle or rule described in a skill updates the skill in the same commit. Before finishing, compare the skills of the touched module against the `git diff`.
