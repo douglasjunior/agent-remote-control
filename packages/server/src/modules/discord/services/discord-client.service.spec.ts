@@ -292,13 +292,13 @@ describe('DiscordClientService', () => {
       expect(client(1).login).not.toHaveBeenCalled();
     });
 
-    it('should register the commands again when the shell or the agent login is switched on or off', async () => {
+    it('should register the commands again when the agent login is switched off', async () => {
       await service.onApplicationBootstrap();
-      agentTurn.shellEnabled = true;
+      agentAuth.enabled = false;
 
-      settingsChanges.notify(['SHELL_COMMAND_ENABLED']);
+      settingsChanges.notify(['AGENT_AUTH_ENABLED']);
 
-      await rs.waitFor(() => expect(globalCommands()).toHaveBeenLastCalledWith([...COMMANDS, SHELL_COMMAND]));
+      await rs.waitFor(() => expect(globalCommands()).toHaveBeenLastCalledWith(COMMANDS.filter(command => command.name !== 'agent-auth')));
       expect(client().login).toHaveBeenCalledTimes(1);
     });
 

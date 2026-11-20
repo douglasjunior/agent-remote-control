@@ -48,7 +48,7 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
   calls `start()`, which logs in with the `DISCORD_BOT_TOKEN` setting when `DISCORD_ENABLED` (default `true`) is on and
   then registers the slash commands; it never rejects, so a bot that cannot log in leaves the server running. A change of
   `DISCORD_ENABLED`, `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` (`ISettingsChangeNotifierPort`) restarts the client, and a
-  change of `SHELL_COMMAND_ENABLED` or `AGENT_AUTH_ENABLED` registers the commands again while it is connected.
+  change of `AGENT_AUTH_ENABLED` registers the commands again while it is connected.
 - **One client per login**: a client that has logged in, or tried to, is never logged in again, because discord.js keeps
   a destroyed gateway from reconnecting and keeps the caches of the previous bot. A restart destroys it and builds a new
   one. Handlers register their listeners once with `DiscordClientService.on(event, listener)`, which attaches them to

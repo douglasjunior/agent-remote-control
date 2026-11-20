@@ -23,8 +23,6 @@ import { ISettingsChangeNotifierPort } from '../../settings/ports/settings-chang
 
 /** The settings the connection is made with: a change restarts the client. */
 const CONNECTION_SETTINGS: ReadonlySet<string> = new Set(['DISCORD_ENABLED', 'DISCORD_BOT_TOKEN', 'DISCORD_GUILD_ID']);
-/** The settings that decide which slash commands exist: a change registers them again. */
-const COMMAND_SETTINGS: ReadonlySet<string> = new Set(['SHELL_COMMAND_ENABLED', 'AGENT_AUTH_ENABLED']);
 
 function createDiscordClient(): Client {
   return new Client({
@@ -88,7 +86,7 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
       if (keys.some(key => CONNECTION_SETTINGS.has(key))) {
         return this.restart();
       }
-      if (keys.some(key => COMMAND_SETTINGS.has(key))) {
+      if (keys.includes('AGENT_AUTH_ENABLED')) {
         return this.enqueue(() => (this.connected ? this.registerSlashCommands() : Promise.resolve()));
       }
     });

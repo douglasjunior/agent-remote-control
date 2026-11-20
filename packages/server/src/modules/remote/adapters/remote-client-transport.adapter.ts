@@ -28,7 +28,6 @@ const REJECTION_BACKOFF_MS = 1_000;
 const MAX_REJECTION_BACKOFF_MS = 30_000;
 /** Sources whose rejections this host remembers; past it, the one rejected longest ago is forgotten. */
 const MAX_REJECTED_SOURCES = 1_024;
-const REMOTE_SETTINGS: ReadonlySet<string> = new Set(['REMOTE_ENABLED', 'REMOTE_URL']);
 
 type Rejections = { readonly count: number; readonly blockedUntil: number };
 
@@ -77,7 +76,7 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
 
   async onApplicationBootstrap(): Promise<void> {
     this.unsubscribe = this.settingsChanges.onChange((keys) => {
-      if (keys.some(key => REMOTE_SETTINGS.has(key))) {
+      if (keys.includes('REMOTE_ENABLED')) {
         return this.restart();
       }
     });

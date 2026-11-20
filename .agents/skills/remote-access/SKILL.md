@@ -91,8 +91,8 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 ## Host (`packages/server/src/modules/remote`)
 
-- `RemoteIdentityService`: `isEnabled()` (the `REMOTE_ENABLED` setting), `baseUrl()` (the `REMOTE_URL` setting
-  through `trustedSignalingBaseUrl` of the protocol's `remote-link`, with no default since choosing it is trusting its
+- `RemoteIdentityService`: `isEnabled()` (the `REMOTE_ENABLED` setting), `baseUrl()` (the `REMOTE_URL` setting, which only its
+  environment variable sets, through `trustedSignalingBaseUrl` of the protocol's `remote-link`, with no default since choosing it is trusting its
   operator; null unless HTTPS, or HTTP to `localhost`, `127.0.0.1` or `[::1]`), both read from `IRuntimeSettingsPort`
   on every call,
   `signalingUrl(baseUrl)`, `identity()`, created once in `<DATA_DIR>/remote`
@@ -110,7 +110,7 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 - `RemoteClientTransportAdapter` implements `IClientTransportPort`. On bootstrap it stays off when remote access is off,
   the access token holds fewer than 32 characters or `REMOTE_URL` is missing or untrusted (both logged as errors), and
   otherwise logs `Remote access link: …` from the console-only context `RemoteAccessLink`. A change of `REMOTE_ENABLED`
-  or `REMOTE_URL` (`ISettingsChangeNotifierPort`) restarts it live: it stops the signaling client, ends every remote
+  (`ISettingsChangeNotifierPort`) restarts it live: it stops the signaling client, ends every remote
   session and its peer, so turning remote access off drops the browsers it let in, and starts again with the settings
   of now. Restarts run one after the other, so two quick changes never leave two signaling sockets open. On `session.request` it
   checks the proof with `timingSafeEqual` before spending anything: a valid one is `host.accept`, a wrong one

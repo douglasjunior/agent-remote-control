@@ -128,15 +128,6 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   describe('when its settings change', () => {
-    it('should reach the signaling server of the new REMOTE_URL', async () => {
-      settings.set('REMOTE_URL', 'https://arc.example.com');
-
-      settingsChanges.notify(['REMOTE_URL']);
-
-      await rs.waitFor(() => expect(signaling.starts).toBe(2));
-      expect(signaling.options!.url).toBe('wss://arc.example.com/signal/host');
-    });
-
     it('should end the remote connections and stay off once turned off', async () => {
       const peer = negotiate();
       settings.set('REMOTE_ENABLED', false);
@@ -169,7 +160,7 @@ describe('RemoteClientTransportAdapter', () => {
 
     it('should stop listening once destroyed', async () => {
       transport.onModuleDestroy();
-      settingsChanges.notify(['REMOTE_URL']);
+      settingsChanges.notify(['REMOTE_ENABLED']);
       await Promise.resolve();
 
       expect(signaling.starts).toBe(1);
