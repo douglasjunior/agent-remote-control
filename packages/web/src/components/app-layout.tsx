@@ -1,6 +1,6 @@
 import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
-import { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router';
+import { useEffect, useRef, useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
 import { useConnection } from '../connection/connection-context.js';
@@ -11,10 +11,12 @@ import { cn } from '../lib/utils.js';
 import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { AmbientGlow } from './ambient-glow.js';
+import type { AppOutletContext } from './app-outlet-context.js';
 import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { HeaderMenu } from './header-menu.js';
+import { HOME_PATH, homeFocusState } from './home/home-paths.js';
 import { IconButton } from './icon-button.js';
 import { SETTINGS_PATH, settingsState } from './server-settings/settings-paths.js';
 import { skillsPath, skillsState } from './skills/skill-paths.js';
@@ -51,17 +53,39 @@ const CONVERSATION_LIST_ID = 'conversation-list';
 function AppShell() {
   const { status, transport } = useConnection();
   const location = useLocation();
+  const navigate = useNavigate();
   const { createConversation } = useConversations();
   const docked = useMediaQuery(DOCKED_QUERY);
   const [dockOpen, setDockOpen] = useStoredFlag('arc.conversationListOpen', false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const listOpen = docked ? dockOpen : drawerOpen;
   const toggleList = () => (docked ? setDockOpen(!dockOpen) : setDrawerOpen(true));
+  const dock = useRef<HTMLElement>(null);
+  const [listFocusRequests, setListFocusRequests] = useState(0);
+  const showConversations = () => {
+    if (docked) {
+      setDockOpen(true);
+      setListFocusRequests(count => count + 1);
+    } else {
+      setDrawerOpen(true);
+    }
+  };
+  const outletContext: AppOutletContext = { showConversations };
+  const newConversation = () => (location.pathname === HOME_PATH
+    ? void navigate(HOME_PATH, { replace: true, state: homeFocusState() })
+    : createConversation());
+
+  // The panel is `hidden` until the render that opens it, so the focus can only move after that render.
+  useEffect(() => {
+    if (listFocusRequests > 0) {
+      dock.current?.focus();
+    }
+  }, [listFocusRequests]);
 
   return (
     <div className="relative z-10 flex h-dvh">
       {docked && (
-        <aside id={CONVERSATION_LIST_ID} hidden={!dockOpen} className="w-72 shrink-0 border-r">
+        <aside ref={dock} id={CONVERSATION_LIST_ID} tabIndex={-1} hidden={!dockOpen} className="w-72 shrink-0 border-r outline-none">
           <ConversationList />
         </aside>
       )}
@@ -77,7 +101,7 @@ function AppShell() {
             >
               {listOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
             </IconButton>
-            <Button size="sm" aria-label="New conversation" className="shrink-0" onClick={createConversation}>
+            <Button size="sm" aria-label="New conversation" className="shrink-0" onClick={newConversation}>
               <Plus />
               <span className="hidden sm:inline">New conversation</span>
             </Button>
@@ -104,7 +128,7 @@ function AppShell() {
           </div>
         </header>
         <main className="min-h-0 flex-1">
-          <Outlet />
+          <Outlet context={outletContext} />
         </main>
       </div>
       {!docked && (

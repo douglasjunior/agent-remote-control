@@ -18,7 +18,8 @@ export type PromptInputState = ReturnType<typeof usePromptInput>;
  * recording or an upload must survive that.
  */
 export function usePromptInput({ conversationId, initialText = '', disabled = false, onSubmit }: {
-  readonly conversationId: string;
+  /** The conversation attachments upload to; `null` writes a message before its conversation exists, without attachments. */
+  readonly conversationId: string | null;
   readonly initialText?: string;
   readonly disabled?: boolean;
   readonly onSubmit: (text: string, attachments: readonly Attachment[]) => void;
@@ -79,6 +80,8 @@ export function usePromptInput({ conversationId, initialText = '', disabled = fa
     clear();
   };
 
+  const focus = useCallback(() => fieldRef.current?.focus(), []);
+
   const attachRecording = async () => {
     const file = await recorder.finish();
     if (file) {
@@ -119,5 +122,6 @@ export function usePromptInput({ conversationId, initialText = '', disabled = fa
     microphones,
     mentions,
     registerField,
+    focus,
   };
 }

@@ -27,12 +27,11 @@ describe('AppLayout', () => {
     expect(connection.sent).toContainEqual({ type: 'conversation.list' });
   });
 
-  it('should show the empty state at / and create a conversation from it', async () => {
+  it('should create a conversation from the header outside the home screen', async () => {
     const user = userEvent.setup();
-    const { connection, router } = renderApp();
-    const [, emptyAction] = screen.getAllByRole('button', { name: 'New conversation' });
+    const { connection, router } = renderApp('/skills');
 
-    await user.click(emptyAction);
+    await user.click(screen.getByRole('button', { name: 'New conversation' }));
     const create = connection.sent.find(command => command.type === 'conversation.create');
     expect(create).toBeDefined();
 
@@ -44,6 +43,18 @@ describe('AppLayout', () => {
     expect(router.state.location.pathname).toBe('/c/new');
     expect(connection.sent).toContainEqual({ type: 'conversation.history', conversationId: 'new' });
     expect(connection.sent).toContainEqual({ type: 'profiles.get', conversationId: 'new' });
+  });
+
+  it('should focus the home composer from the header instead of creating a conversation at /', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = renderApp();
+    expect(screen.getByLabelText('Message')).not.toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'New conversation' }));
+
+    expect(screen.getByLabelText('Message')).toHaveFocus();
+    expect(connection.sent.some(command => command.type === 'conversation.create')).toBe(false);
+    expect(router.state.location.pathname).toBe('/');
   });
 
   it('should not navigate for conversations created by another request', () => {
@@ -158,6 +169,21 @@ describe('AppLayout', () => {
       expect(dock()).not.toBeVisible();
     });
 
+    it('should open the docked list and move the focus into it from See all', async () => {
+      const user = userEvent.setup();
+      const { connection } = renderApp();
+      act(() => connection.emitEvent({
+        type: 'conversation.list',
+        conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+      }));
+      expect(dock()).not.toBeVisible();
+
+      await user.click(screen.getByRole('button', { name: 'See all' }));
+
+      expect(dock()).toBeVisible();
+      expect(dock()).toHaveFocus();
+    });
+
     it('should stay open after picking a conversation', async () => {
       const user = userEvent.setup();
       const { connection, router } = renderApp();
@@ -202,9 +228,22 @@ describe('AppLayout', () => {
     });
   });
 
-  it('should put New conversation in the header, before the title, and not in the drawer', async () => {
+  it('should open the drawer from See all on the home screen', async () => {
     const user = userEvent.setup();
     const { connection } = renderApp();
+    act(() => connection.emitEvent({
+      type: 'conversation.list',
+      conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+    }));
+
+    await user.click(screen.getByRole('button', { name: 'See all' }));
+
+    expect(within(screen.getByRole('dialog')).getByRole('navigation', { name: 'Conversations' })).toBeInTheDocument();
+  });
+
+  it('should put New conversation in the header, before the title, and not in the drawer', async () => {
+    const user = userEvent.setup();
+    const { connection } = renderApp('/skills');
     const header = screen.getByRole('banner');
     const create = within(header).getByRole('button', { name: 'New conversation' });
     const title = within(header).getByRole('heading', { name: 'Agent Remote Control' });

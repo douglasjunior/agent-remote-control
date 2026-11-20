@@ -3,7 +3,7 @@ name: web-app
 description: >
   React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
   WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
-  board, the squad panel, usage and agent login indicators, the skills page, the squads page, the settings page, the import convention,
+  board, the squad panel, usage and agent login indicators, the home screen, the skills page, the squads page, the settings page, the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
   access token form.
@@ -39,7 +39,8 @@ packages/web/src/
 │   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
 │   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
 │   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
-│   ├── squads/              # SquadList, SquadEditor, the squad paths and the roles a squad can set
+│   ├── home/                # the home screen parts: RecentConversations, SquadPicker, the squad choice, the focus request paths
+│   ├── squads/              # SquadList, SquadEditor, useSquads, the squad paths and the roles a squad can set
 │   ├── settings/            # RoleEditor (agent, model and effort), RoleForm and the option lists, shared by the settings sheet and the squad editor
 │   ├── server-settings/     # the settings page: SettingField, drafts and their checks, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
@@ -51,7 +52,8 @@ packages/web/src/
 
 - `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills and Settings links (icon links with a tooltip, to `/skills` and `/settings`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
-- "New conversation" lives only in the header and the empty state of `ConversationPage`. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only, tightens its gaps and hides the Skills and Settings links and the theme toggle behind one "More" `IconButton` (`HeaderMenu`, a dropdown menu with the two links and the theme choices), keeping the agent logins, usage and connection indicators in view, so every control fits from 320 px. The switch is CSS only (`sm:hidden`, `hidden sm:inline-flex`).
+- "New conversation" lives only in the header. On `/` it focuses the composer of the home screen (it navigates to `/` with `homeFocusState()` in the router state) instead of creating a conversation.
+- `AppLayout` gives its page an outlet context (`useAppOutlet`, `AppOutletContext`) with `showConversations`: it opens the docked list and focuses it (`tabIndex={-1}`), or opens the drawer. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only, tightens its gaps and hides the Skills and Settings links and the theme toggle behind one "More" `IconButton` (`HeaderMenu`, a dropdown menu with the two links and the theme choices), keeping the agent logins, usage and connection indicators in view, so every control fits from 320 px. The switch is CSS only (`sm:hidden`, `hidden sm:inline-flex`).
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
 
 ## Connection
@@ -139,7 +141,7 @@ packages/web/src/
 - State that only one feature reads (the board, usage, agent logins) lives in its own provider or hook, outside
   the conversations reducer.
 - `ConversationsProvider` lives inside the router (`AppLayout`). It sends `conversation.list` on every `open`
-  status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated.
+  status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated. `startConversation(prompt)` seeds the composer of the new conversation; `sendInNewConversation({ text, squadId? })` sends the message for real (see [references/home.md](references/home.md)).
   `ConversationView` sends `conversation.history` and `profiles.get` whenever the status is `open` or the
   conversation changes, `agents.list` while no agents are known, and `profiles.get` again on every `squads`, since a
   squad saved or deleted changes whether the conversation still matches the squad it applied. `useEarlierEntries` sends
@@ -160,6 +162,7 @@ packages/web/src/
 
 Each area below has a reference with its components, states and exact texts. Read the reference before changing that area.
 
+- **Home**: `/` without a conversation: the greeting, the composer that creates a conversation and sends its first message, the squad picker and the recent conversations. Read [references/home.md](references/home.md) when touching `HomePage`, `components/home/` or `sendInNewConversation`.
 - **Conversation list**: rows ordered by recency, Rename and Archive through `conversation.rename`/`conversation.archive`, an "Archived (n)" group, in-place `TitleInput`. Read [references/conversation-list.md](references/conversation-list.md) when touching the list or renaming.
 - **Feed**: how each entry type renders, questions and the open question, the virtualized `FeedList` with stick-to-end and "Go to question", the streaming draft and the "Working…" indicator. Read [references/conversation-feed.md](references/conversation-feed.md) when touching `components/entries/`, question cards or feed scrolling.
 - **Composer**: disabled until `open` and `configured`, Stop sends `turn.cancel`, prompt history, `@` file mentions, chunked attachments, voice recording, and the answer input of the question card. Read [references/composer.md](references/composer.md) when touching `components/prompt-input/` or the composer.
