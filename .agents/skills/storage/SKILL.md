@@ -1,8 +1,8 @@
 ---
 name: storage
 description: >
-  File locking and locked JSON persistence in DATA_DIR: the storage module, IFileLockPort (lockfile with owner pid,
-  orphan and stale detection, in-process FIFO queue, typed timeout), ILockedFilesPort (cached reads, read-change-write
+  File locking and locked JSON persistence in DATA_DIR: the storage module, IFileLockPort (lockfile with owner host
+  and pid, orphan and stale takeover, in-process FIFO queue, typed timeout), ILockedFilesPort (cached reads, read-change-write
   under the lock, atomic temporary-file writes), lost updates between concurrent writers, and how every store and its
   port apply changes atomically. Use when a file is read, changed and written back, when adding or changing a store, or
   when a write races another.
@@ -43,16 +43,27 @@ persists data imports it. Nest keeps one instance of each, so every store of the
 ## `IFileLockPort`
 
 `withLock<T>(lockPath, work, options?: { timeoutMs?, staleMs? }): Promise<T>` runs `work` holding the lock and
-releases it in `finally`. Defaults: `timeoutMs` 15 s, `staleMs` 30 s. The timeout covers the wait in the queue and the
-wait for the lockfile, and rejects with `FileLockTimeoutError { lockPath, timeoutMs }` without running `work`.
+releases it in `finally`. Defaults: `timeoutMs` 15 s, `staleMs` 10 s. The timeout covers the wait in the queue and the
+wait for the lockfile, and rejects with `FileLockTimeoutError { lockPath, timeoutMs }` without running `work`. Keep the
+default timeout longer than the default stale age: a caller then outlasts any lockfile left behind, and only a lock
+held by a live owner times it out.
 
 - **In this process**: callers of one path queue in memory in call order (FIFO). A caller enters the queue
   synchronously when it calls, and only the head contends for the lockfile, so the disk is not polled while the lock
   is held here. A caller that times out in the queue leaves it; the head leaving hands the turn to the next.
 - **Across processes**: the head creates the lockfile with `O_EXCL` (`flag: 'wx'`, mode `0o600`) holding
-  `{ pid, token }`, and retries every 50 ms while another process holds it. A lockfile whose `pid` no longer exists
-  (`ESRCH`) is dropped at once; one older than `staleMs` is dropped too (unreadable payload, reused pid, hung owner).
-  Release removes the lockfile only while it still holds this holder's token.
+  `{ host, pid, token }`, and retries every 50 ms while another process holds it. Release removes the lockfile only
+  while it still holds this holder's token.
+- **Abandoned lockfiles**: an orphan is taken over at once, a stale one once it is older than `staleMs`. An orphan
+  carries this `host` (`os.hostname()`) and either a `pid` that does not exist (`ESRCH`) or the pid of this process
+  with a token outside `heldTokens`, the module-level set of the tokens this process holds: the lockfile of an earlier
+  process of the same pid, as a container whose server is always pid 1 leaves when it is killed, or of a release that
+  failed. A pid of another host is never probed, since it names a different process here; that lockfile, an unreadable
+  payload, a reused pid and a hung owner are left to the age.
+- **Takeover**: never remove a lockfile by path after judging it, since another contender may have taken it over and
+  created its own in between. `takeOver` renames it to `<lockPath>.<uuid>.tmp`, which one contender alone does to one
+  file, judges the moved file again, removes it when abandoned and otherwise puts it back with `link`, which fails
+  when a lockfile was created at the path meanwhile (`[Lock Check Failed]`).
 
 ## `ILockedFilesPort`
 

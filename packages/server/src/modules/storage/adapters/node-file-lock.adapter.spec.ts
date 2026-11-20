@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 
 import { FileLockTimeoutError } from '../ports/file-lock.port.js';
 
@@ -8,8 +9,10 @@ import { NodeFileLockAdapter } from './node-file-lock.adapter.js';
 
 
 rs.mock('node:fs/promises', () => ({
+  link: rs.fn(),
   mkdir: rs.fn(),
   readFile: rs.fn(),
+  rename: rs.fn(),
   rm: rs.fn(),
   stat: rs.fn(),
   writeFile: rs.fn(),
@@ -22,39 +25,79 @@ function errno(code: string): NodeJS.ErrnoException {
   return Object.assign(new Error(`${code}: simulated`), { code });
 }
 
-/** One lockfile on a fake disk; `exclusiveCreates` counts the attempts to create it. */
+function ownedBy(owner: { host?: string; pid?: number; token?: string }): string {
+  return JSON.stringify({ host: hostname(), pid: OTHER_PID, token: 'other', ...owner });
+}
+
+/** A fake disk of files by path; `disk` is the lockfile at `LOCK_PATH`, and `exclusiveCreates` counts the attempts to create one. */
 function installFakeDisk() {
-  const disk = { present: false, data: '', mtimeMs: 0, exclusiveCreates: 0 };
+  const files = new Map<string, { data: string; mtimeMs: number }>();
+  let exclusiveCreates = 0;
+  const fileAt = (path: unknown) => {
+    const file = files.get(String(path));
+    if (!file) {
+      throw errno('ENOENT');
+    }
+    return file;
+  };
   rs.mocked(mkdir).mockResolvedValue(undefined);
-  rs.mocked(writeFile).mockImplementation(async (_path, data, options) => {
+  rs.mocked(writeFile).mockImplementation(async (path, data, options) => {
     const flag = typeof options === 'object' && options !== null ? options.flag : undefined;
     if (flag === 'wx') {
-      disk.exclusiveCreates += 1;
-      if (disk.present) {
+      exclusiveCreates += 1;
+      if (files.has(String(path))) {
         throw errno('EEXIST');
       }
     }
-    Object.assign(disk, { present: true, data: String(data), mtimeMs: Date.now() });
+    files.set(String(path), { data: String(data), mtimeMs: Date.now() });
   });
-  rs.mocked(readFile).mockImplementation(async () => {
-    if (!disk.present) {
-      throw errno('ENOENT');
+  rs.mocked(readFile).mockImplementation(async path => fileAt(path).data);
+  rs.mocked(stat).mockImplementation(async path => ({ mtimeMs: fileAt(path).mtimeMs }) as Awaited<ReturnType<typeof stat>>);
+  rs.mocked(rm).mockImplementation(async (path) => {
+    files.delete(String(path));
+  });
+  rs.mocked(rename).mockImplementation(async (from, to) => {
+    files.set(String(to), fileAt(from));
+    files.delete(String(from));
+  });
+  rs.mocked(link).mockImplementation(async (from, to) => {
+    if (files.has(String(to))) {
+      throw errno('EEXIST');
     }
-    return disk.data;
+    files.set(String(to), fileAt(from));
   });
-  rs.mocked(stat).mockImplementation(async () => {
-    if (!disk.present) {
-      throw errno('ENOENT');
-    }
-    return { mtimeMs: disk.mtimeMs } as Awaited<ReturnType<typeof stat>>;
-  });
-  rs.mocked(rm).mockImplementation(async () => {
-    disk.present = false;
-  });
+  const hold = (payload = ownedBy({}), mtimeMs = Date.now()) => {
+    files.set(LOCK_PATH, { data: payload, mtimeMs });
+  };
   return {
-    disk,
-    holdByAnotherProcess: (payload = JSON.stringify({ pid: OTHER_PID, token: 'other' }), mtimeMs = Date.now()) => {
-      Object.assign(disk, { present: true, data: payload, mtimeMs });
+    files,
+    disk: {
+      get present() {
+        return files.has(LOCK_PATH);
+      },
+      set present(present: boolean) {
+        if (!present) {
+          files.delete(LOCK_PATH);
+        }
+      },
+      get data() {
+        return fileAt(LOCK_PATH).data;
+      },
+      set data(data: string) {
+        fileAt(LOCK_PATH).data = data;
+      },
+      get exclusiveCreates() {
+        return exclusiveCreates;
+      },
+    },
+    holdByAnotherProcess: hold,
+    /** Runs `change` on the disk right before the next rename, as another contender acting between the check and the takeover. */
+    beforeNextRename: (change: () => void) => {
+      const move = rs.mocked(rename).getMockImplementation()!;
+      rs.mocked(rename).mockImplementationOnce(async (from, to) => {
+        change();
+        await move(from, to);
+      });
     },
   };
 }
@@ -73,22 +116,23 @@ describe('NodeFileLockAdapter', () => {
   afterEach(() => {
     rs.useRealTimers();
     rs.restoreAllMocks();
-    for (const fn of [mkdir, readFile, rm, stat, writeFile]) {
+    for (const fn of [link, mkdir, readFile, rename, rm, stat, writeFile]) {
       rs.mocked(fn).mockReset();
     }
   });
 
-  it('should hold the lockfile, with the owner pid, only while the work runs', async () => {
+  it('should hold the lockfile, with the owner host and pid, only while the work runs', async () => {
     const { disk } = installFakeDisk();
     const seen: unknown[] = [];
 
     const result = await adapter.withLock(LOCK_PATH, async () => {
-      seen.push(disk.present, JSON.parse(disk.data).pid);
+      const { host, pid } = JSON.parse(disk.data);
+      seen.push(disk.present, host, pid);
       return 'value';
     });
 
     expect(result).toBe('value');
-    expect(seen).toEqual([true, process.pid]);
+    expect(seen).toEqual([true, hostname(), process.pid]);
     expect(disk.present).toBe(false);
     expect(mkdir).toHaveBeenCalledWith('/data', { recursive: true });
     expect(writeFile).toHaveBeenCalledWith(LOCK_PATH, expect.any(String), { flag: 'wx', mode: 0o600 });
@@ -177,8 +221,8 @@ describe('NodeFileLockAdapter', () => {
     expect(disk.present).toBe(false);
   });
 
-  it('should drop at once a lockfile whose owner process no longer exists', async () => {
-    const { holdByAnotherProcess } = installFakeDisk();
+  it('should take over at once a lockfile whose owner process is gone', async () => {
+    const { files, holdByAnotherProcess } = installFakeDisk();
     holdByAnotherProcess();
     const kill = rs.spyOn(process, 'kill').mockImplementation(() => {
       throw errno('ESRCH');
@@ -188,15 +232,136 @@ describe('NodeFileLockAdapter', () => {
 
     expect(kill).toHaveBeenCalledWith(OTHER_PID, 0);
     expect(warn).toHaveBeenCalledWith(`[Lock Orphan Dropped] ${LOCK_PATH}`);
+    expect([...files.keys()]).toEqual([]);
   });
 
-  it('should drop a lockfile older than staleMs', async () => {
+  it('should take over at once a lockfile an earlier process of the same pid left', async () => {
     const { holdByAnotherProcess } = installFakeDisk();
+    holdByAnotherProcess(ownedBy({ pid: process.pid, token: 'earlier' }));
+    const kill = rs.spyOn(process, 'kill');
+
+    await expect(adapter.withLock(LOCK_PATH, async () => 'ok', { timeoutMs: 10 })).resolves.toBe('ok');
+
+    expect(kill).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(`[Lock Orphan Dropped] ${LOCK_PATH}`);
+  });
+
+  it('should take over at once the lockfile its own failed release left', async () => {
+    const { disk } = installFakeDisk();
+    rs.mocked(rm).mockRejectedValueOnce(new Error('rm denied'));
+    await adapter.withLock(LOCK_PATH, async () => 'first');
+    expect(disk.present).toBe(true);
+
+    await expect(adapter.withLock(LOCK_PATH, async () => 'second', { timeoutMs: 10 })).resolves.toBe('second');
+
+    expect(warn).toHaveBeenCalledWith(`[Lock Orphan Dropped] ${LOCK_PATH}`);
+    expect(disk.present).toBe(false);
+  });
+
+  it('should wait for a lockfile another adapter of this process holds', async () => {
+    const { disk } = installFakeDisk();
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const first = adapter.withLock(LOCK_PATH, () => firstHeld);
+    await rs.advanceTimersByTimeAsync(0);
+    const holder = JSON.parse(disk.data).token;
+
+    const second = new NodeFileLockAdapter().withLock(LOCK_PATH, async () => 'never', { timeoutMs: 200 });
+    const assertion = expect(second).rejects.toEqual(new FileLockTimeoutError(LOCK_PATH, 200));
+    await rs.advanceTimersByTimeAsync(300);
+    await assertion;
+
+    expect(JSON.parse(disk.data).token).toBe(holder);
+    releaseFirst();
+    await first;
+  });
+
+  it('should take over a lockfile older than staleMs', async () => {
+    const { files, holdByAnotherProcess } = installFakeDisk();
     holdByAnotherProcess('{}', 0);
 
     await expect(adapter.withLock(LOCK_PATH, async () => 'ok', { staleMs: 30_000 })).resolves.toBe('ok');
 
     expect(warn).toHaveBeenCalledWith(`[Lock Stale Dropped] ${LOCK_PATH}, Age=1000000ms`);
+    expect([...files.keys()]).toEqual([]);
+  });
+
+  it('should outlast, with the default timeout, a lockfile that only its age gives away', async () => {
+    const { holdByAnotherProcess } = installFakeDisk();
+    holdByAnotherProcess(ownedBy({ host: 'another-host' }));
+
+    const run = adapter.withLock(LOCK_PATH, async () => 'ok');
+    await rs.advanceTimersByTimeAsync(10_100);
+
+    await expect(run).resolves.toBe('ok');
+  });
+
+  it('should put back a live lockfile that took the place of the abandoned one before the takeover', async () => {
+    const { files, disk, holdByAnotherProcess, beforeNextRename } = installFakeDisk();
+    holdByAnotherProcess();
+    rs.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid === OTHER_PID) {
+        throw errno('ESRCH');
+      }
+      return true;
+    });
+    beforeNextRename(() => holdByAnotherProcess(ownedBy({ pid: OTHER_PID + 1, token: 'successor' })));
+    let ran = false;
+
+    const run = adapter.withLock(LOCK_PATH, async () => {
+      ran = true;
+    }, { timeoutMs: 200 });
+    const assertion = expect(run).rejects.toEqual(new FileLockTimeoutError(LOCK_PATH, 200));
+    await rs.advanceTimersByTimeAsync(300);
+    await assertion;
+
+    expect(ran).toBe(false);
+    expect(JSON.parse(disk.data).token).toBe('successor');
+    expect([...files.keys()]).toEqual([LOCK_PATH]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('should log a live lockfile it could not put back, and leave the path to the one created meanwhile', async () => {
+    const { files, disk, holdByAnotherProcess, beforeNextRename } = installFakeDisk();
+    holdByAnotherProcess();
+    rs.spyOn(process, 'kill').mockImplementation((pid) => {
+      if (pid === OTHER_PID) {
+        throw errno('ESRCH');
+      }
+      return true;
+    });
+    beforeNextRename(() => holdByAnotherProcess(ownedBy({ pid: OTHER_PID + 1, token: 'successor' })));
+    const putBack = rs.mocked(link).getMockImplementation()!;
+    rs.mocked(link).mockImplementationOnce(async (from, to) => {
+      holdByAnotherProcess(ownedBy({ pid: OTHER_PID + 2, token: 'third' }));
+      await putBack(from, to);
+    });
+
+    const run = adapter.withLock(LOCK_PATH, async () => 'never', { timeoutMs: 200 });
+    const assertion = expect(run).rejects.toBeInstanceOf(FileLockTimeoutError);
+    await rs.advanceTimersByTimeAsync(300);
+    await assertion;
+
+    expect(warn).toHaveBeenCalledWith(`[Lock Check Failed] ${LOCK_PATH}: EEXIST: simulated`);
+    expect(JSON.parse(disk.data).token).toBe('third');
+    expect([...files.keys()]).toEqual([LOCK_PATH]);
+  });
+
+  it('should retry quietly when another contender takes the abandoned lockfile over first', async () => {
+    const { disk, holdByAnotherProcess, beforeNextRename } = installFakeDisk();
+    holdByAnotherProcess();
+    rs.spyOn(process, 'kill').mockImplementation(() => {
+      throw errno('ESRCH');
+    });
+    beforeNextRename(() => {
+      disk.present = false;
+    });
+
+    await expect(adapter.withLock(LOCK_PATH, async () => 'ok', { timeoutMs: 10 })).resolves.toBe('ok');
+
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -227,8 +392,9 @@ describe('NodeFileLockAdapter', () => {
   it.each([
     ['an unreadable payload', 'held'],
     ['a payload that is not an object', '42'],
-    ['a payload without a pid', JSON.stringify({ token: 'other' })],
-    ['the pid of this process', JSON.stringify({ pid: process.pid, token: 'other' })],
+    ['a payload without a pid', JSON.stringify({ host: hostname(), token: 'other' })],
+    ['a payload without a host', JSON.stringify({ pid: OTHER_PID, token: 'other' })],
+    ['the pid of another host', ownedBy({ host: 'another-host' })],
   ])('should leave %s to the age criterion without probing the process', async (_label, payload) => {
     const { holdByAnotherProcess } = installFakeDisk();
     holdByAnotherProcess(payload);
@@ -324,7 +490,7 @@ describe('NodeFileLockAdapter', () => {
     const { disk } = installFakeDisk();
 
     await adapter.withLock(LOCK_PATH, async () => {
-      disk.data = JSON.stringify({ pid: OTHER_PID, token: 'successor' });
+      disk.data = ownedBy({ token: 'successor' });
     });
 
     expect(disk.present).toBe(true);

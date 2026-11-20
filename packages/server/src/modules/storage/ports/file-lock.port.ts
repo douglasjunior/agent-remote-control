@@ -1,7 +1,7 @@
 export type FileLockOptions = {
   /** How long a caller waits for the lock, queued in this process or contending with another one. */
   readonly timeoutMs?: number;
-  /** Age after which a lockfile left by another process is taken as abandoned and removed. */
+  /** Age after which a lockfile is taken as abandoned and taken over, whatever its owner. */
   readonly staleMs?: number;
 };
 
