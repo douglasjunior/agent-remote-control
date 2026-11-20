@@ -389,6 +389,85 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(stubAgentPort.promptCalls).toEqual([toCeo(`CEO prompt\n\n[RE-ENTRY] CEO\n\n${idleTeam}${emptyBoard}Continue`)]);
     });
+
+    describe('skill catalog', () => {
+      const testing = { name: 'testing', description: 'How to test.', content: 'Test it.' };
+      const catalogOf = (...skills: { name: string; description: string }[]) => buildSkillCatalogPrompt(skills.map(({ name, description }) => ({ name, description })));
+      const seedDeveloper = () => sessionStore.seed(buildSessionContext({
+        agentSessions: [{ role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
+      }));
+
+      it('should put the current catalog of the role after the note and before the prompt of a resumed session, and not in its later prompts', async () => {
+        agentSkills.skills = { DEVELOPER: [testing] };
+        seedDeveloper();
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['<artifact_list/>', 'Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER\n\n${catalogOf(testing)}\n\nFix it.`));
+        expect(delegateStubPort.promptCalls[1]).not.toContain('[SKILLS]');
+      });
+
+      it('should send the catalog of a new session once, with its system prompt', async () => {
+        agentSkills.skills = { DEVELOPER: [testing] };
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['<artifact_list/>', 'Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`DEVELOPER prompt\n\n${catalogOf(testing)}\n\nFix it.`));
+        expect(delegateStubPort.promptCalls[1]).not.toContain('[SKILLS]');
+      });
+
+      it('should leave the catalog out for a resumed role without skills that does not write them', async () => {
+        seedDeveloper();
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls).toEqual([toAgent('[RE-ENTRY] DEVELOPER\n\nFix it.')]);
+      });
+
+      it('should tell a resumed role that writes skills how it manages them, even before it has any', async () => {
+        agentSkills.writers = ['DEVELOPER'];
+        seedDeveloper();
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER\n\n${buildSkillCatalogPrompt([], true)}\n\nFix it.`));
+      });
+
+      it('should list a skill created between two delegations of the same task in the second prompt only', async () => {
+        const review = { name: 'review', description: 'How to review.', content: 'Review it.' };
+        agentSkills.skills = { DEVELOPER: [testing] };
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="First" project="my-app">First job.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['First done.'];
+        await useCase.execute(turnRequest());
+
+        agentSkills.skills = { DEVELOPER: [testing, review] };
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Second" project="my-app">Second job.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Second done.'];
+        await useCase.execute(turnRequest({ prompt: 'Again' }));
+
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`DEVELOPER prompt\n\n${catalogOf(testing)}\n\nFirst job.`));
+        expect(delegateStubPort.promptCalls[1]).toBe(toAgent(`[RE-ENTRY] DEVELOPER\n\n${catalogOf(testing, review)}\n\nSecond job.`));
+      });
+
+      it('should send the catalog of a resumed CEO once, with its system prompt', async () => {
+        agentSkills.skills = { CEO: [testing] };
+        sessionStore.seed(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
+        agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
+        stubAgentPort.mockResponses = ['Hi.'];
+
+        await useCase.execute(turnRequest({ prompt: 'Continue' }));
+
+        expect(stubAgentPort.promptCalls).toEqual([toCeo(`CEO prompt\n\n${catalogOf(testing)}\n\n[RE-ENTRY] CEO\n\n${idleTeam}${emptyBoard}Continue`)]);
+      });
+    });
   });
 
   it('should run the delegate in the request workspace when no project is given', async () => {

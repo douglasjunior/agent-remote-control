@@ -146,7 +146,8 @@ Every agent writes its deliverable to the board of the conversation, never to a 
 ## Skills on demand
 
 Know-how an agent needs only for some tasks lives in skills, outside its system prompt. The orchestrator sends the
-catalog (`[SKILLS]`, the name and description of each skill the role may read) with the system prompt, and the agent
+catalog (`[SKILLS]`, the name and description of each skill the role may read) with the system prompt and again after the
+re-entry note of a resumed session, so a skill created since its start is listed, and the agent
 reads a skill's full content with `<skill_read name="a,b"/>` in its final response when the task calls for it. The
 description is all the agent sees before reading, so it says what the skill covers and when to read it.
 

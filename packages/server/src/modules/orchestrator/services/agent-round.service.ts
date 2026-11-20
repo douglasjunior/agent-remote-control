@@ -85,8 +85,8 @@ export class AgentRoundService {
 
   /**
    * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
-   * for the role, project and task, puts the system prompt in front of a new session's prompt and the re-entry note in
-   * front of a resumed one's, adds the language, applies the role's profile and returns the final response. Requests
+   * for the role, project and task, puts the system prompt in front of a new session's prompt and the re-entry note and
+   * the current skill catalog of the role in front of a resumed one's, adds the language, applies the role's profile and returns the final response. Requests
    * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
    * other protocol tag written there gets one repair prompt.
    */
@@ -127,6 +127,7 @@ export class AgentRoundService {
       const fullPrompt = [
         systemPromptPending ? await this.buildSystemPrompt(role) : '',
         sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role) : '',
+        sessionState === 'resumed' && !systemPromptPending ? await this.buildSkillCatalog(role) : '',
         sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
         typeof prompt === 'string' ? prompt : await prompt(opened),
         await this.buildLanguagePrompt(role, request.agentRole),
@@ -345,10 +346,14 @@ export class AgentRoundService {
 
   /** The system prompt of the role, followed by the catalog of its skills when it has any or writes them. */
   private async buildSystemPrompt(role: string): Promise<string> {
+    return [this.agentRegistry.getSystemPrompt(role), await this.buildSkillCatalog(role)].filter(Boolean).join('\n\n');
+  }
+
+  /** The skills the role may read now, or nothing for a role without skills that does not write them. */
+  private async buildSkillCatalog(role: string): Promise<string> {
     const skills = await this.agentSkills.list(role);
     const writesSkills = this.agentSkills.writesSkills(role);
-    const systemPrompt = this.agentRegistry.getSystemPrompt(role);
-    return skills.length > 0 || writesSkills ? `${systemPrompt}\n\n${buildSkillCatalogPrompt(skills, writesSkills)}` : systemPrompt;
+    return skills.length > 0 || writesSkills ? buildSkillCatalogPrompt(skills, writesSkills) : '';
   }
 
   /** The CEO talks to the user on behalf of the team, so only its prompts carry the language detection. */

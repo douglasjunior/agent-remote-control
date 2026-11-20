@@ -199,7 +199,7 @@ roles: QA, DEVELOPER
 ...
 ```
 
-No restart is needed: an edited skill is read fresh the next time an agent asks for it, and a new one joins the catalog of the agent's next session.
+No restart is needed: an edited skill is read fresh the next time an agent asks for it, and a new one joins the catalog of the agent's next session, or of its next prompt when that session is resumed.
 
 ## 🧠 How It Works
 

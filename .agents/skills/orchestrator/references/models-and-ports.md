@@ -166,7 +166,7 @@ unknown roles.
 The skills each role reads on demand (`models/agent-skill.model.ts`: `AgentSkillSummary` `{ name, description }`,
 `AgentSkill` adding `content`):
 
-- `list(role): Promise<readonly AgentSkillSummary[]>`: the catalog sent with the system prompt
+- `list(role): Promise<readonly AgentSkillSummary[]>`: the catalog sent with the system prompt of a new session and with the prompt that reaches a resumed one
 - `read(role, name): Promise<AgentSkill | undefined>`: the full skill, name matched case-insensitively
 - `listAll(): Promise<readonly AgentSkillListing[]>`: every skill with its roles and whether it is built-in, for a role that writes skills (checked with `writesSkills`) and for a channel acting for the user
 - `readAny(name)`: any skill with its listing, built for the first role that reads it, for a channel

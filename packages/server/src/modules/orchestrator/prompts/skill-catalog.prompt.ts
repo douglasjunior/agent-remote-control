@@ -2,7 +2,7 @@ import type { AgentSkillSummary } from '../models/agent-skill.model.js';
 
 
 /**
- * The skills of a role, sent with its system prompt: their content is read on demand. A role that writes skills also
+ * The skills of a role, sent with its system prompt and again with the prompt that reaches a resumed session: their content is read on demand. A role that writes skills also
  * learns that it lists, reads and writes the skills of every role.
  */
 export function buildSkillCatalogPrompt(skills: readonly AgentSkillSummary[], writesSkills = false): string {
