@@ -236,6 +236,19 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(stubAgentPort.configCalls).toEqual([{ modelId: 'mock-model-v1' }]);
   });
 
+  it('should log the whole response next to its preview', async () => {
+    const response = `${'First paragraph. '.repeat(10)}\n\nSecond paragraph.`;
+    stubAgentPort.mockResponses = [response];
+    const log = rs.spyOn(Logger.prototype, 'log');
+
+    await useCase.execute(turnRequest());
+    const messages = log.mock.calls.map(([message]) => String(message));
+    log.mockRestore();
+
+    expect(messages.some(message => message.startsWith(`[Agent Response] Role=CEO, Length=${response.length}: "`))).toBe(true);
+    expect(messages).toContain(`[Agent Response Text] Role=CEO, Length=${response.length}:\n${response}`);
+  });
+
   it('should return the summary before the done marker', async () => {
     stubAgentPort.mockResponses = ['All set.'];
 

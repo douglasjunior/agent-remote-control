@@ -5,6 +5,8 @@ import type {
 
 import type { AgentActivity, AgentToolStatus } from '../ports/agent.port.js';
 
+import { type ChunkShape, StreamTrace } from './stream-trace.js';
+
 
 type ToolActivity = AgentActivity & { kind: 'tool' };
 
@@ -42,6 +44,7 @@ export class AgentStreamDemux {
   private fallbackId: string | null = null;
   private syntheticSeq = 0;
   private lastText = '';
+  private readonly trace = new StreamTrace();
 
   constructor(
     private readonly emit: (activity: AgentActivity) => void,
@@ -52,11 +55,22 @@ export class AgentStreamDemux {
     return this.lastText;
   }
 
+  /** The events of the round on one line, for the log. */
+  describeTrace(): string {
+    return this.trace.describeEvents();
+  }
+
+  /** The first chunk of each message id of the round, for the log. */
+  describeChunkShapes(): string {
+    return this.trace.describeShapes();
+  }
+
   handle(update: SessionNotification): void {
     const chunk = this.extractAgentTextChunk(update);
 
     if (chunk) {
       const id = this.resolveMessageId(chunk);
+      this.trace.recordChunk(id, chunk.text, Boolean(chunk.isThought), this.chunkShape(update));
       this.closeIdleBlocks(id);
       this.handleNarration(chunk, id);
       return;
@@ -71,6 +85,7 @@ export class AgentStreamDemux {
     if (update.update.sessionUpdate === 'tool_call') {
       this.fallbackId = null;
       this.closeIdleBlocks();
+      this.trace.recordToolCall(toolFields.toolCallId, toolFields.title);
     }
 
     this.dispatchTool(toolFields);
@@ -98,6 +113,7 @@ export class AgentStreamDemux {
     this.resetTurn();
     this.lastText = '';
     this.toolState.clear();
+    this.trace.reset();
   }
 
   private resetTurn(): void {
@@ -243,6 +259,19 @@ export class AgentStreamDemux {
       text: payload.content.text,
       messageId: payload.messageId ?? undefined,
       isThought: payload.sessionUpdate === 'agent_thought_chunk',
+    };
+  }
+
+  private chunkShape(update: SessionNotification): ChunkShape {
+    const payload = update.update as Extract<
+      SessionNotification['update'],
+      { sessionUpdate: 'agent_message_chunk' | 'agent_thought_chunk' }
+    >;
+
+    return {
+      update: payload.sessionUpdate,
+      hasMessageId: payload.messageId !== undefined && payload.messageId !== null,
+      contentType: payload.content.type,
     };
   }
 

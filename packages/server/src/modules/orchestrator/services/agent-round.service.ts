@@ -198,6 +198,7 @@ export class AgentRoundService {
       const finalResponse = this.agentProtocol.finalResponse(written.last);
       const response = strayRequests ? `${strayRequests}\n\n${finalResponse}` : finalResponse;
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${previewForLog(response)}"`);
+      this.logger.log(`[Agent Response Text] Role=${role}, Length=${response.length}:\n${response}`);
       return response;
     } finally {
       unsubscribeActivity?.();

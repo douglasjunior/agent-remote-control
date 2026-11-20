@@ -142,6 +142,8 @@ knows nothing of the response protocol: the text it hands over, in activities, `
 `lastAgentMessage`, is as the agent wrote it, `<final_response>` and other tags included, and reading the protocol is
 the consumer's job.
 
+The demux also keeps a trace of each prompt round (`StreamTrace`: message runs with their id, chunk count, characters and a short SHA-1 of the text, tool calls, and the first chunk shape of each message id), reset with the round by `reset()`. `AbstractAcpAdapter` logs it as `[Stream Trace]` and `[Stream Chunk Shapes]` when the round stops, from `describeTrace()` and `describeChunkShapes()`; the format is in the `logging` skill.
+
 ## ACP Adapters
 
 The `AbstractAcpAdapter` base class implements the ACP protocol, sessions and the integration

@@ -3,6 +3,7 @@ import type {
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
+import { createHash } from 'node:crypto';
 
 import type { AgentActivity } from '../ports/agent.port.js';
 
@@ -689,5 +690,122 @@ describe('AgentStreamDemux tool result and details', () => {
     demux.handle(toolNotifWithContent([textContent('   ')]));
 
     expect(lastTool(emitted)?.details).toBeUndefined();
+  });
+});
+
+describe('AgentStreamDemux trace', () => {
+  const sha = (text: string): string => createHash('sha1').update(text).digest('hex').slice(0, 8);
+  let demux: AgentStreamDemux;
+
+  beforeEach(() => {
+    demux = new AgentStreamDemux(() => undefined);
+  });
+
+  it('should describe a message by its id, chunks, characters and hash', () => {
+    demux.handle(textNotif('Hello ', 'abc'));
+    demux.handle(textNotif('world', 'abc'));
+
+    expect(demux.describeTrace()).toBe(`msg(id=abc,chunks=2,chars=11,sha=${sha('Hello world')})`);
+  });
+
+  it('should name the messages without an id synthetic, a new one after each tool call', () => {
+    demux.handle(textNotif('One'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'artifact_update' }));
+    demux.handle(textNotif('Two'));
+
+    expect(demux.describeTrace()).toBe(
+      `msg(id=synthetic:0,chunks=1,chars=3,sha=${sha('One')}) tool(id=t1,title="artifact_update") msg(id=synthetic:1,chunks=1,chars=3,sha=${sha('Two')})`,
+    );
+  });
+
+  it('should give identical copies the same hash', () => {
+    const paragraph = 'Same paragraph.';
+    demux.handle(textNotif(paragraph, 'a'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif(`\n${paragraph}\n`, 'b'));
+
+    const hashes = [...demux.describeTrace().matchAll(/sha=(\w+)/g)].map(match => match[1]);
+    expect(hashes).toEqual([sha(paragraph), sha(paragraph)]);
+  });
+
+  it('should mark a message id that receives chunks again after a tool call', () => {
+    demux.handle(textNotif('Part one. ', 'abc'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif('Part two.', 'abc'));
+
+    expect(demux.describeTrace()).toBe(
+      `msg(id=abc,chunks=1,chars=9,sha=${sha('Part one.')}) tool(id=t1,title="tool") msg(id=abc,chunks=1,chars=9,sha=${sha('Part two.')},again)`,
+    );
+  });
+
+  it('should tell reasoning apart and not take it for a repeat of the message with the same id', () => {
+    demux.handle(thoughtNotif('Thinking', 'abc'));
+    demux.handle(textNotif('Answer', 'abc'));
+
+    expect(demux.describeTrace()).toBe(
+      `thought(id=abc:thought,chunks=1,chars=8,sha=${sha('Thinking')}) msg(id=abc,chunks=1,chars=6,sha=${sha('Answer')})`,
+    );
+  });
+
+  it('should leave tool call updates out and flatten the title of a tool call', () => {
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'run\n  the   tool' }));
+    demux.handle(toolUpdateNotif({ toolCallId: 't1', status: 'completed' }));
+    demux.handle(toolCallNotif({ toolCallId: 't2' }));
+    demux.handle(toolCallNotif({ toolCallId: 't3', title: 'x'.repeat(100) }));
+
+    expect(demux.describeTrace()).toBe(
+      `tool(id=t1,title="run the tool") tool(id=t2,title="") tool(id=t3,title="${'x'.repeat(60)}...")`,
+    );
+  });
+
+  it('should keep the first 200 events and count the rest', () => {
+    for (let index = 0; index < 205; index++) {
+      demux.handle(toolCallNotif({ toolCallId: `t${index}`, title: 'tool' }));
+    }
+
+    const trace = demux.describeTrace();
+    expect(trace.match(/tool\(/g)).toHaveLength(200);
+    expect(trace.endsWith('... +5 more')).toBe(true);
+  });
+
+  it('should say none when nothing happened', () => {
+    expect(demux.describeTrace()).toBe('none');
+    expect(demux.describeChunkShapes()).toBe('none');
+  });
+
+  it('should survive takeFinalText and start over on reset', () => {
+    demux.handle(textNotif('Hi', 'abc'));
+    demux.takeFinalText();
+
+    expect(demux.describeTrace()).toContain('msg(id=abc');
+
+    demux.reset();
+
+    expect(demux.describeTrace()).toBe('none');
+    expect(demux.describeChunkShapes()).toBe('none');
+  });
+
+  it('should sample the shape of the first chunk of each message id only', () => {
+    demux.handle(textNotif('a', 'abc'));
+    demux.handle(textNotif('b', 'abc'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif('c'));
+    demux.handle(thoughtNotif('d', 'abc'));
+    demux.handle(textNotif('e', 'abc'));
+
+    expect(demux.describeChunkShapes()).toBe([
+      'shape(id=abc,update=agent_message_chunk,messageId=present,content=text)',
+      'shape(id=synthetic:0,update=agent_message_chunk,messageId=absent,content=text)',
+      'shape(id=abc:thought,update=agent_thought_chunk,messageId=present,content=text)',
+    ].join(' '));
+  });
+
+  it('should treat a null message id as absent', () => {
+    demux.handle({
+      sessionId: 's',
+      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'a' }, messageId: null },
+    } as unknown as SessionNotification);
+
+    expect(demux.describeChunkShapes()).toBe('shape(id=synthetic:0,update=agent_message_chunk,messageId=absent,content=text)');
   });
 });

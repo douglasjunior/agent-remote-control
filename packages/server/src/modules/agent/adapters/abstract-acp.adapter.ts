@@ -486,6 +486,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
           this.logger.debug(
             `prompt_round_stop: ${this.currentSessionId} (reason=${message.stopReason})`,
           );
+          this.logger.log(`[Stream Trace] Agent=${this.agentName}, Session=${this.currentSessionId}, Events=${this.demux.describeTrace()}`);
+          this.logger.log(`[Stream Chunk Shapes] Agent=${this.agentName}, Session=${this.currentSessionId}, Shapes=${this.demux.describeChunkShapes()}`);
           if (message.stopReason === 'cancelled' || this.cancelPending) {
             thrownError = new PromptCancelledError();
           } else {

@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import type { ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import {
   AgentAuthRequiredError,
@@ -1177,6 +1178,43 @@ describe('AbstractAcpAdapter', () => {
       expect(received).toHaveLength(1);
       expect(received[0]).toEqual({ kind: 'text', text: 'Hello world!' });
       expect(adapter.lastAgentMessage).toBe('Hello world!');
+    });
+
+    it('should log the stream trace and the chunk shapes when the round stops', async () => {
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo');
+
+      let resolvePrompt: () => void = () => undefined;
+      acpHarness.connectionInstance?.prompt.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            resolvePrompt = resolve;
+          }),
+      );
+
+      const consumer = (async () => {
+        for await (const _ of adapter.prompt('hello')) {
+          // exhaust
+        }
+      })();
+
+      await acpHarness.lastClient?.sessionUpdate(messageChunk('Hi', 'abc'));
+      await acpHarness.lastClient?.sessionUpdate(messageChunk(' there'));
+      resolvePrompt();
+      await consumer;
+      const messages = log.mock.calls.map(([message]) => String(message));
+      log.mockRestore();
+
+      const sha = createHash('sha1').update('Hi').digest('hex').slice(0, 8);
+      const shaThere = createHash('sha1').update('there').digest('hex').slice(0, 8);
+      expect(messages).toContain(
+        `[Stream Trace] Agent=test, Session=session-1, Events=msg(id=abc,chunks=1,chars=2,sha=${sha}) msg(id=synthetic:0,chunks=1,chars=5,sha=${shaThere})`,
+      );
+      expect(messages).toContain(
+        '[Stream Chunk Shapes] Agent=test, Session=session-1, Shapes=shape(id=abc,update=agent_message_chunk,messageId=present,content=text) shape(id=synthetic:0,update=agent_message_chunk,messageId=absent,content=text)',
+      );
     });
 
     it('should yield nothing when prompt completes with empty text', async () => {
