@@ -14,7 +14,7 @@ Everything in the repository is written in **English**: source code, identifiers
 agent-remote-control/
 ├── .agents/                        # AI agent governance
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
-├── data/                           # Runtime data persisted in DATA_DIR (outside Git): sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and global preferences (user language)
+├── data/                           # Runtime data persisted in DATA_DIR (outside Git): the SQLite database (arc.sqlite: web conversations and prompt history), sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/), global preferences (user language) and the JSON files the database imported (legacy-json-backup/)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
 │   ├── web/                        # @agent-remote-control/web: React + Rsbuild web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access
@@ -26,21 +26,24 @@ agent-remote-control/
 │       │   │   ├── agent/                  # ACP integration: IAgentPort port, factory, adapters, demux and the CLI login (IAgentAuthPort)
 │       │   │   ├── agent-definitions/      # Agent catalog (CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA), their access to the board, prompts, skills and registry
 │       │   │   ├── artifacts/              # Board of each conversation: features and tasks, statuses, dependencies, holders and history (IArtifactsPort)
+│       │   │   ├── database/               # SQLite database in DATA_DIR (TypeORM, better-sqlite3): connection, migrations and the one-time import of legacy JSON files
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
 │       │   │   ├── mcp/                    # MCP endpoint (/mcp) that serves the agent tools (board and skill requests) to agent CLIs
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation, cancellation and the agent tools behind the MCP endpoint
 │       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
 │       │   │   ├── remote/                 # Remote access: the host's identity, its signaling socket and the WebRTC transport of the web channel
-│       │   │   ├── storage/                # File locks (IFileLockPort) and locked JSON/text files (ILockedFilesPort) through which every store in DATA_DIR reads and changes its files
+│       │   │   ├── storage/                # File locks (IFileLockPort) and locked JSON/text files (ILockedFilesPort) through which every file store in DATA_DIR reads and changes its files
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │
 │       │   │   Internal folders of a module (each module uses only the ones it needs):
 │       │   │       ├── adapters/           # Secondary/technology adapters (*.adapter.ts)
 │       │   │       ├── constants/          # Domain constants
 │       │   │       ├── demux/              # Decomposition of streams into typed events
+│       │   │       ├── entities/           # TypeORM entities of the data the module owns (*.entity.ts)
 │       │   │       ├── formatters/         # Output formatting for the channel
 │       │   │       ├── handlers/           # Primary/driving adapters (Discord events/commands)
+│       │   │       ├── migrations/         # Versioned schema migrations (*.migration.ts), in the database module only
 │       │   │       ├── models/             # Domain types and models (*.model.ts, *.type.ts)
 │       │   │       ├── ports/              # Interfaces and injection Symbols (*.port.ts)
 │       │   │       ├── prompts/            # Agent system prompts (*.prompt.ts)
@@ -52,7 +55,8 @@ agent-remote-control/
 │       │   ├── app.controller.ts           # Root diagnostics/healthcheck controller
 │       │   ├── app.module.ts               # Application root module
 │       │   ├── app.service.ts              # Application root service
-│       │   └── main.ts                     # NestJS application bootstrap
+│       │   ├── main.ts                     # NestJS application bootstrap
+│       │   └── migrate-legacy.ts           # Imports the legacy JSON files of DATA_DIR without starting the server
 │       ├── test/                   # e2e tests and global test utilities
 │       ├── nest-cli.json           # NestJS CLI configuration
 │       ├── tsconfig.json           # Server TypeScript configuration (extends tsconfig.base.json)
@@ -113,6 +117,7 @@ All commands run from the repository root and apply to every package in `package
 - Development mode with watch, server and web together: `pnpm dev` (`pnpm dev:server` or `pnpm dev:web` for one of them)
 - Remote access locally: `pnpm dev:p2p-server` and `pnpm dev:web:p2p` (the web app in `p2p` mode)
 - Preview the built web app: `pnpm preview:web`
+- Import the legacy JSON files of `DATA_DIR` into the database without starting the server (the server also does it on boot): `pnpm migrate:legacy`
 - Every package script runs from its own folder (`packages/server`, `packages/web`); the root scripts delegate to them. The server resolves `.env`, `data/` and `workspaces/` from the repository root through `repository-root.util.ts`, whatever the working directory.
 - Build: `pnpm build`
 - TypeScript static type checking: `pnpm ts`

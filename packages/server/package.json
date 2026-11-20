@@ -11,6 +11,7 @@
     "start": "nest start",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
+    "migrate:legacy": "nest start --entryFile migrate-legacy",
     "ts": "node ../../node_modules/typescript-native/bin/tsc --noEmit",
     "test:e2e": "rstest run --config rstest.config.e2e.ts"
   },

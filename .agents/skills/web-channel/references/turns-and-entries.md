@@ -20,7 +20,7 @@
 `WebConversationTurnsService.run` turns the callbacks of any turn into entries:
 
 - `onActivity` → `thought`, `tool` or `skill` (a skill read or written: `action`, `names`, `status`, `created`, `error`); every one carries the `role` of the agent that produced it, the CEO included.
-- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
+- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it, so the entry stays in the history; `phase` is `started`, `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
 - `onInterimMessage` → `interim`.
 - `onQuestion` → `question`, with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply. When a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`.
 - The `TurnResult` becomes `agent_response`.

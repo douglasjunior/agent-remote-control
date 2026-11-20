@@ -79,13 +79,12 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   published only when it changes. `WebConversationEventsService` places each entry in the history, then broadcasts it
   with its position, and keeps the CEO's response being written as an in-memory draft (`conversation.draft`), never
   stored.
-- `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
-  `<DATA_DIR>/web/history/<id>.json` through `ILockedFilesPort` (`storage` module), debounced by 1 s per file,
-  and flushes at the end of every turn and on module destroy. Changes wait in memory, each as a value to set (a
-  summary field, an entry by id), and every read applies them over the file; a write applies them to the file as it is
-  on disk under its lock and drops only those it wrote, so a failed write is logged and its changes go with the next
-  flush. An id reaches a file path only after it is found among the known conversations. Files that do not match the
-  protocol schemas are ignored.
+- `SqliteConversationStoreAdapter` keeps the summaries in the `conversation` table and the entries in
+  `conversation_entry` of the server database, each entry stored whole as JSON beside its id, type, time and position.
+  Every call writes its change before it resolves, so `flush`, called at the end of every turn, has nothing left to
+  write. `upsertEntry` is one statement: a new entry takes the next position of its conversation, a stored one keeps
+  its own, and an unknown conversation is rejected. An entry that no longer matches the protocol schema is left out of
+  the history and logged.
 
 - The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in
   place or appends, and returns the position). `conversation.history` (`GetConversationHistoryUseCase`) answers the

@@ -91,11 +91,12 @@ held by a live owner times it out.
 | `JsonOpenWorkStoreAdapter` | `open-work.json` | `update(work => work)`, one conversation per change | logged; the next change rewrites the conversation |
 | `JsonPreferencesStoreAdapter` | `preferences.json` | `update(current => changes)` | rejects |
 | `JsonArtifactStoreAdapter` | `artifacts/<id>.json` | `transaction(conversationId, work)` | rejects to the agent request |
-| `JsonConversationStoreAdapter` | `web/conversations.json`, `web/history/<id>.json` | debounced writes of waiting changes | logged; the changes wait for the next flush |
-| `JsonPromptHistoryAdapter` | `web/prompt-history.json` | `append` | logged; the prompt is left out |
 | `FileUserSkillStoreAdapter` | `skills/<name>/SKILL.md` | `write`, `delete` under `skills/.lock` | rejects |
 | `AccessTokenService` | `web/access-token` | created once in `onModuleInit` | startup fails |
 | `RemoteIdentityService` | `remote/key.pem`, `remote/certificate.pem` | created once under the key's lock | `identity()` rejects |
+
+The web conversations and the prompt history live in the SQLite database. The legacy importers of the database
+module read their JSON files once, each under the lock its store wrote it with, through these ports.
 
 Files written once under a unique name (downloaded attachments, uploads), the append-only log files and the executable
 shims written through the agent module's `IFileSystemPort` are never read back and changed, so they stay outside.

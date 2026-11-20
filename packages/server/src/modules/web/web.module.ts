@@ -4,17 +4,16 @@ import { AccessTokenModule } from '../access-token/access-token.module.js';
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
+import { DatabaseModule } from '../database/database.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
-import { PathsModule } from '../paths/paths.module.js';
 import { RemoteClientTransportAdapter } from '../remote/adapters/remote-client-transport.adapter.js';
 import { RemoteModule } from '../remote/remote.module.js';
-import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { CombinedClientTransportAdapter } from './adapters/combined-client-transport.adapter.js';
-import { JsonConversationStoreAdapter } from './adapters/json-conversation-store.adapter.js';
-import { JsonPromptHistoryAdapter } from './adapters/json-prompt-history.adapter.js';
+import { SqliteConversationStoreAdapter } from './adapters/sqlite-conversation-store.adapter.js';
+import { SqlitePromptHistoryAdapter } from './adapters/sqlite-prompt-history.adapter.js';
 import { WsClientTransportAdapter } from './adapters/ws-client-transport.adapter.js';
 import { WebConnectionHandler } from './handlers/web-connection.handler.js';
 import { IClientTransportPort } from './ports/client-transport.port.js';
@@ -50,7 +49,7 @@ import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, StorageModule, WebStaticModule, WorkspaceModule],
+  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, DatabaseModule, LoggingModule, OrchestratorModule, RemoteModule, WebStaticModule, WorkspaceModule],
   providers: [
     WsClientTransportAdapter,
     {
@@ -59,8 +58,8 @@ import { WebStaticModule } from './web-static.module.js';
         new CombinedClientTransportAdapter([local, remote]),
       inject: [WsClientTransportAdapter, RemoteClientTransportAdapter],
     },
-    { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
-    { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
+    { provide: IConversationStorePort, useClass: SqliteConversationStoreAdapter },
+    { provide: IPromptHistoryPort, useClass: SqlitePromptHistoryAdapter },
     WebAgentQuotaService,
     WebAgentAuthService,
     WebArtifactsService,
