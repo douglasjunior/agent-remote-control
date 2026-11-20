@@ -169,7 +169,7 @@ describe('AppLayout', () => {
       expect(dock()).not.toBeVisible();
     });
 
-    it('should open the docked list and move the focus into it from See all', async () => {
+    it('should open the docked list from See all', async () => {
       const user = userEvent.setup();
       const { connection } = renderApp();
       act(() => connection.emitEvent({
@@ -181,7 +181,22 @@ describe('AppLayout', () => {
       await user.click(screen.getByRole('button', { name: 'See all' }));
 
       expect(dock()).toBeVisible();
-      expect(dock()).toHaveFocus();
+    });
+
+    it('should not offer See all while the docked list is open', async () => {
+      const user = userEvent.setup();
+      const { connection } = renderApp();
+      act(() => connection.emitEvent({
+        type: 'conversation.list',
+        conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+      }));
+      expect(screen.getByRole('button', { name: 'See all' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Show conversations' }));
+      expect(screen.queryByRole('button', { name: 'See all' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Hide conversations' }));
+      expect(screen.getByRole('button', { name: 'See all' })).toBeInTheDocument();
     });
 
     it('should stay open after picking a conversation', async () => {

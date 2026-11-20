@@ -9,8 +9,11 @@ import { Button } from '../ui/button.js';
 
 const RECENT_LIMIT = 6;
 
-/** The most recently updated conversations that are not archived, as cards; nothing without any. */
-export function RecentConversations({ onSeeAll }: { readonly onSeeAll: () => void }) {
+/**
+ * The most recently updated conversations that are not archived, as cards; nothing without any. "See all" is offered
+ * only with `onSeeAll`.
+ */
+export function RecentConversations({ onSeeAll }: { readonly onSeeAll?: () => void }) {
   const { state } = useConversations();
   const now = useNow(true);
   const recent = state.list.filter(conversation => conversation.archivedAt === undefined).slice(0, RECENT_LIMIT);
@@ -23,7 +26,7 @@ export function RecentConversations({ onSeeAll }: { readonly onSeeAll: () => voi
     <section aria-labelledby="recent-conversations" className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-2">
         <h3 id="recent-conversations" className="text-sm font-medium text-muted-foreground">Recent conversations</h3>
-        <Button variant="link" size="sm" className="h-auto p-0" onClick={onSeeAll}>See all</Button>
+        {onSeeAll && <Button variant="link" size="sm" className="h-auto p-0" onClick={onSeeAll}>See all</Button>}
       </div>
       <ul className="grid grid-cols-1 gap-2 @xl:grid-cols-2">
         {recent.map(conversation => (

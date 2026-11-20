@@ -21,7 +21,7 @@ import { useConversations } from '../conversations/conversations-context.js';
 export function HomePage() {
   const { status } = useConnection();
   const { sendInNewConversation } = useConversations();
-  const { showConversations } = useAppOutlet();
+  const { conversationListVisible, showConversations } = useAppOutlet();
   const location = useLocation();
   const squads = useSquads();
   const [choice, setChoice] = useState<string | null>(null);
@@ -76,7 +76,7 @@ export function HomePage() {
             <p className="text-xs text-muted-foreground @md:ml-auto">Attachments and audio are available once the conversation starts.</p>
           </div>
         </div>
-        <RecentConversations onSeeAll={showConversations} />
+        <RecentConversations onSeeAll={conversationListVisible ? undefined : showConversations} />
       </div>
     </div>
   );

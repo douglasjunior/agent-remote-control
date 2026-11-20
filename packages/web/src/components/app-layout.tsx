@@ -1,5 +1,5 @@
 import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
@@ -60,32 +60,16 @@ function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const listOpen = docked ? dockOpen : drawerOpen;
   const toggleList = () => (docked ? setDockOpen(!dockOpen) : setDrawerOpen(true));
-  const dock = useRef<HTMLElement>(null);
-  const [listFocusRequests, setListFocusRequests] = useState(0);
-  const showConversations = () => {
-    if (docked) {
-      setDockOpen(true);
-      setListFocusRequests(count => count + 1);
-    } else {
-      setDrawerOpen(true);
-    }
-  };
-  const outletContext: AppOutletContext = { showConversations };
+  const showConversations = () => (docked ? setDockOpen(true) : setDrawerOpen(true));
+  const outletContext: AppOutletContext = { conversationListVisible: docked && dockOpen, showConversations };
   const newConversation = () => (location.pathname === HOME_PATH
     ? void navigate(HOME_PATH, { replace: true, state: homeFocusState() })
     : createConversation());
 
-  // The panel is `hidden` until the render that opens it, so the focus can only move after that render.
-  useEffect(() => {
-    if (listFocusRequests > 0) {
-      dock.current?.focus();
-    }
-  }, [listFocusRequests]);
-
   return (
     <div className="relative z-10 flex h-dvh">
       {docked && (
-        <aside ref={dock} id={CONVERSATION_LIST_ID} tabIndex={-1} hidden={!dockOpen} className="w-72 shrink-0 border-r outline-none">
+        <aside id={CONVERSATION_LIST_ID} hidden={!dockOpen} className="w-72 shrink-0 border-r">
           <ConversationList />
         </aside>
       )}
