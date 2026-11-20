@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import type { HttpAdapterHost } from '@nestjs/core';
 import { afterEach, describe, expect, it, rs } from '@rstest/core';
-import { createServer, type Server } from 'node:http';
+import { createServer, request, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { StubAgentToolsPort } from '../../orchestrator/testing/stub-agent-tools.port.js';
@@ -134,6 +134,27 @@ describe('McpHttpHandler', () => {
 
     expect(response.status).toBe(204);
     expect(nestRequests).toEqual(['GET /health?x=1', 'POST /mcp/other']);
+  });
+
+  it('should answer the endpoint whatever its query string', async () => {
+    const { url, nestRequests } = await track();
+
+    const response = await fetch(`${url}/mcp?session=1`, { method: 'DELETE', headers: AUTHORIZATION });
+
+    expect(response.status).toBe(200);
+    expect(nestRequests).toEqual([]);
+  });
+
+  it.each(['//', '//[', '/%'])('should leave the target %j, which is no URL, to Nest', async (target) => {
+    const { server, nestRequests } = await track();
+    const { port } = server.address() as AddressInfo;
+
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      request({ host: '127.0.0.1', port, path: target }, response => resolve(response.statusCode)).on('error', reject).end();
+    });
+
+    expect(status).toBe(204);
+    expect(nestRequests).toEqual([`GET ${target}`]);
   });
 
   it('should answer 500 when a request cannot be handled', async () => {

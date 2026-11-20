@@ -24,7 +24,7 @@ export class McpHttpHandler implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(McpHttpHandler.name);
   private nestListeners: RequestListener[] = [];
   private readonly onRequest: RequestListener = (request, response) => {
-    if (new URL(request.url ?? '/', 'http://localhost').pathname !== MCP_PATH) {
+    if (!this.isMcpRequest(request)) {
       for (const listener of this.nestListeners) {
         listener.call(this.server(), request, response);
       }
@@ -58,6 +58,12 @@ export class McpHttpHandler implements OnModuleInit, OnModuleDestroy {
     for (const listener of this.nestListeners) {
       server.on('request', listener);
     }
+  }
+
+  /** The target is compared as text: one that is no URL (`//`) has no path to read, and belongs to Nest like any other. */
+  private isMcpRequest({ url = '' }: IncomingMessage): boolean {
+    const queryStart = url.indexOf('?');
+    return (queryStart === -1 ? url : url.slice(0, queryStart)) === MCP_PATH;
   }
 
   private server(): Server {

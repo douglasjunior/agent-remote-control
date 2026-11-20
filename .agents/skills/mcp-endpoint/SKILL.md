@@ -23,7 +23,9 @@ when a credential opens and closes belong to the orchestrator.
 
 - **Its own entry on the HTTP server.** `McpHttpHandler` takes the `request` listeners of the Nest HTTP server in
   `onModuleInit`, answers `MCP_PATH` (`/mcp`, exact path) itself and hands every other request to them, giving them
-  back in `onModuleDestroy`. The endpoint must not become a Nest route or middleware: Nest's JSON body parser runs
+  back in `onModuleDestroy`. The listener sees every request of the server and an exception in it ends the process, so
+  it compares the request target as text, up to its query string, and never parses it: a target such as `//` is no URL
+  and goes to Nest. The endpoint must not become a Nest route or middleware: Nest's JSON body parser runs
   before both and would read the body of a caller without a credential, and the static web app would answer `GET`.
 - **Credential first.** A request without `Authorization: Bearer <credential>`, or with a credential
   `IAgentToolsPort.isOpen` refuses, gets `401` with `WWW-Authenticate: Bearer` before its body is read. The web
