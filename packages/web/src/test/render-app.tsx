@@ -62,6 +62,7 @@ export function openConversation(options: { configured?: boolean; entries?: Conv
       conversationId: 'c1',
       configured: options.configured ?? true,
       profiles: roleProfiles,
+      customized: false,
     });
   });
   return app;

@@ -3,7 +3,7 @@ name: web-app
 description: >
   React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
   WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
-  board, the squad panel, usage and agent login indicators, the skills page, the settings page, the import convention,
+  board, the squad panel, usage and agent login indicators, the skills page, the squads page, the settings page, the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
   access token form.
@@ -39,7 +39,8 @@ packages/web/src/
 │   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
 │   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
 │   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
-│   ├── settings/            # agent, model and effort pickers of the settings sheet
+│   ├── squads/              # SquadList, SquadEditor, the squad paths and the roles a squad can set
+│   ├── settings/            # RoleEditor (agent, model and effort), RoleForm and the option lists, shared by the settings sheet and the squad editor
 │   ├── server-settings/     # the settings page: SettingField, drafts and their checks, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
@@ -127,7 +128,7 @@ packages/web/src/
 
 - `conversationsReducer` is a pure reducer from `ServerEvent` to `ConversationsState` (`list` ordered by
   `updatedAt` desc, `agents`, and `byId` with `entryIds`, `entries`, `positions`, `start`, `state`, `loaded`,
-  `configured`, `profilesLoaded`, `profiles`). The view holds a window of the history, ordered by position, from
+  `configured`, `profilesLoaded`, `profiles`, `appliedSquad`, `customized`). The view holds a window of the history, ordered by position, from
   `start`. `conversation.history` replaces the window with the latest page, keeping only the entries already held
   past its end (published after the server read the page); `conversation.entries` puts an earlier page before the
   window when it ends where the window starts, and is ignored otherwise; `conversation.entry` replaces a held entry
@@ -140,7 +141,8 @@ packages/web/src/
 - `ConversationsProvider` lives inside the router (`AppLayout`). It sends `conversation.list` on every `open`
   status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated.
   `ConversationView` sends `conversation.history` and `profiles.get` whenever the status is `open` or the
-  conversation changes, and `agents.list` while no agents are known. `useEarlierEntries` sends
+  conversation changes, `agents.list` while no agents are known, and `profiles.get` again on every `squads`, since a
+  squad saved or deleted changes whether the conversation still matches the squad it applied. `useEarlierEntries` sends
   `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection.
 
 ## Theme and motion
@@ -164,4 +166,5 @@ Each area below has a reference with its components, states and exact texts. Rea
 - **Agent usage**: the header meters, the usage popover and the `quota.get` refresh cadence. Read [references/agent-usage.md](references/agent-usage.md) when touching `components/usage/`.
 - **Agent logins**: the logins popover, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
 - **Settings page**: `/settings`, the sections and fields by kind, source badges, write-only secrets, drafts checked with the protocol schemas, "Save changes", "Reset to default", the restart notice and the Discord "Test connection". Read [references/settings-page.md](references/settings-page.md) when touching `components/server-settings/` or `SettingsPage`.
+- **Squads page**: `/squads` routes, the list and the editor of a squad, the default squad, deleting, "Save as squad" and "Apply squad" in the conversation settings sheet. Read [references/squads-page.md](references/squads-page.md) when touching `components/squads/`, `SquadsPage`, `components/settings/` or the squad controls of `SettingsSheet`.
 - **Skills page**: `/skills` routes, the list and detail, "Ask the CEO", deleting a custom skill and `startConversation(prompt)`. Read [references/skills-page.md](references/skills-page.md) when touching `components/skills/` or `SkillsPage`.

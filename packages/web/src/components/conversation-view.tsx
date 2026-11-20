@@ -110,6 +110,13 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
     }
   }, [connection, status, noAgents]);
 
+  /** A squad saved or deleted may change whether this conversation's profiles still match the squad it applied. */
+  useEffect(() => connection.onEvent((event) => {
+    if (event.type === 'squads') {
+      connection.send({ type: 'profiles.get', conversationId });
+    }
+  }), [connection, conversationId]);
+
   const handleAnswer = (answer: QuestionAnswer) => {
     connection.send({ type: 'question.answer', conversationId, answer });
   };

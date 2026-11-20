@@ -1,7 +1,7 @@
 import type { SettingView } from '@agent-remote-control/protocol/settings';
-import { RotateCw, X } from 'lucide-react';
+import { ChevronRight, RotateCw, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { IconButton } from '../components/icon-button.js';
@@ -10,6 +10,7 @@ import { checkDraft, isChanged, type SettingDraft } from '../components/server-s
 import { SettingField } from '../components/server-settings/setting-field.js';
 import { GROUP_TITLES, settingText } from '../components/server-settings/setting-texts.js';
 import type { SettingsState } from '../components/server-settings/settings-paths.js';
+import { squadsPath, squadsState } from '../components/squads/squad-paths.js';
 import { Button } from '../components/ui/button.js';
 import { useConnection } from '../connection/connection-context.js';
 
@@ -132,6 +133,19 @@ export function SettingsPage() {
               <X />
             </IconButton>
           </header>
+
+          <Link
+            to={squadsPath()}
+            state={squadsState(location)}
+            className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10 transition-colors outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Users aria-hidden className="size-4" /></span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-sm font-medium">Squads</span>
+              <span className="text-xs text-muted-foreground">The agent, model and effort of every role, saved once and applied to any conversation.</span>
+            </span>
+            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          </Link>
 
           {restartKeys.length > 0 && (
             <p role="status" className="flex items-start gap-2 rounded-xl border border-attention bg-[color-mix(in_oklab,var(--attention)_9%,var(--card))] px-3 py-2.5 text-sm">

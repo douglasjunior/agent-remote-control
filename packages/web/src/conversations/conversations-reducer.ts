@@ -3,6 +3,7 @@ import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { ConversationState, ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import type { InterruptedWork, ServerEvent } from '@agent-remote-control/protocol/server-event';
+import type { AppliedSquad } from '@agent-remote-control/protocol/squad';
 
 
 export type ConversationView = {
@@ -20,6 +21,10 @@ export type ConversationView = {
   readonly configured: boolean;
   readonly profilesLoaded: boolean;
   readonly profiles: readonly RoleProfile[];
+  /** The squad the profiles were last copied from. */
+  readonly appliedSquad?: AppliedSquad;
+  /** Whether a role differs from the applied squad as it is saved now, or the squad was deleted. */
+  readonly customized: boolean;
 };
 
 export type ConversationsState = {
@@ -46,6 +51,7 @@ export const emptyConversationView: ConversationView = {
   configured: false,
   profilesLoaded: false,
   profiles: [],
+  customized: false,
 };
 
 function sortByUpdatedAt(list: readonly ConversationSummary[]): readonly ConversationSummary[] {
@@ -151,6 +157,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         ...view,
         configured: event.configured,
         profiles: event.profiles,
+        appliedSquad: event.appliedSquad,
+        customized: event.customized,
         profilesLoaded: true,
       }));
     case 'auth.ok':
@@ -176,6 +184,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'skill.deleted':
     case 'settings':
     case 'settings.discord.test.result':
+    case 'squads':
     case 'artifacts.list':
     case 'artifact.detail':
     case 'artifact.updated':

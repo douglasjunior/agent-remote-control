@@ -141,10 +141,14 @@ describe('conversationsReducer', () => {
     expect(state.agents).toEqual([{ id: 'codex', name: 'Codex' }]);
   });
 
-  it('should store profiles and the configured flag', () => {
+  it('should store profiles, the configured flag and the applied squad', () => {
     const profiles = [{ role: 'CEO', roleName: 'CEO' }];
-    const state = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles }]);
-    expect(state.byId.c).toMatchObject({ configured: true, profiles, profilesLoaded: true });
+    const appliedSquad = { id: 's', name: 'Backend team' };
+    const state = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles, appliedSquad, customized: true }]);
+    expect(state.byId.c).toMatchObject({ configured: true, profiles, profilesLoaded: true, appliedSquad, customized: true });
+
+    const custom = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles, customized: false }]);
+    expect(custom.byId.c.appliedSquad).toBeUndefined();
   });
 
   it.each<ServerEvent>([
@@ -153,6 +157,7 @@ describe('conversationsReducer', () => {
     { type: 'pong' },
     { type: 'models.list', agentId: 'a', models: [] },
     { type: 'efforts.list', agentId: 'a', modelId: 'm', efforts: [] },
+    { type: 'squads', squads: [] },
     { type: 'error', message: 'boom' },
   ])('should ignore $type', (event) => {
     expect(conversationsReducer(initialConversationsState, event)).toBe(initialConversationsState);

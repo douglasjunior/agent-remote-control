@@ -2,12 +2,13 @@
 
 `/settings` renders `SettingsPage` (`pages/settings-page.tsx`), which sends `settings.get` on every `open` and shows
 the `settings` it receives. Its pieces live in `components/server-settings/`; `components/settings/` holds the agent
-pickers of the conversation settings sheet, which is another thing.
+pickers of the conversation settings sheet and the squad editor, which are another thing.
 
 ## Layout and navigation
 
 - The header link (a `Settings` gear icon link with a tooltip, beside the Skills link) carries `returnTo` in the router
   state (`settingsState`), and the X ("Close settings") returns there, or to `/` for a page opened from its address.
+- Under the header, a "Squads" card links to `/squads` with `returnTo` (see [squads-page.md](squads-page.md)).
 - One centered column (`max-w-3xl`), one `section` per group in the order its first setting arrives, titled from
   `GROUP_TITLES`; a group or a key the page does not know shows by its name, so a newer server still renders.
 - Each `SettingField` is a `group` named by its label (`SETTING_TEXTS`): the label, a source badge (`Saved`,
