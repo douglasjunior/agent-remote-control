@@ -86,7 +86,7 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   `conversation_entry` of the server database, each entry stored whole as JSON beside its id, type, time and position.
   Every call writes its change before it resolves, so `flush`, called at the end of every turn, has nothing left to
   write. `upsertEntry` is one statement: a new entry takes the next position of its conversation, a stored one keeps
-  its own, and an unknown conversation is rejected. An entry that no longer matches the protocol schema is left out of
+  its own, and an unknown conversation is rejected. An entry whose payload does not match the protocol schema is left out of
   the history and logged.
 
 - The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in

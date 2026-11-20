@@ -69,7 +69,8 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
 
 ## Transactions (`SqliteTransactionService`)
 
-`DatabaseModule` exports `SqliteTransactionService`. `run(work)` runs `work(statements)` in one better-sqlite3
+`DatabaseModule` exports `SqliteTransactionService`, which the stores of the other modules inject as a concrete
+infrastructure class (it has no port). `run(work)` runs `work(statements)` in one better-sqlite3
 transaction on the connection TypeORM holds, commits and returns its result, or rolls back and rethrows when it throws.
 
 - `work` is synchronous, like the `change` callbacks of the store ports (`update(change)`, `transaction(id, work)`):
@@ -77,7 +78,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
   `work` returns, and a TypeORM query issued meanwhile runs after the commit. A `work` that returns a promise is refused
   and rolled back.
 - The transaction begins `IMMEDIATE`: it takes SQLite's write lock before its first read, so another process on the
-  same file waits for it (busy timeout 5 s) instead of writing between that read and the write.
+  same file waits for it (busy timeout 5 s), so none writes between that read and the write.
 - `statements` offers `get<T>(sql, ...params)` (first row or `undefined`), `all<T>(sql, ...params)` and
   `run(sql, ...params)` (rows changed), with `?` placeholders and the raw column names; statements are prepared once and
   reused.
@@ -107,7 +108,10 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
   first, so it finishes before the hooks of every module that imports `DatabaseModule` and before the server listens.
 - An importer implements `ILegacyJsonImporterPort` (`name`, `read()`), lives in `adapters/json-<name>-importer.adapter.ts`
   of the module that owns the data, and is listed in `LEGACY_JSON_IMPORTERS` in `database.module.ts`, which binds the
-  list, in its order, to the `ILegacyJsonImporterPort` symbol.
+  list, in its order, to the `ILegacyJsonImporterPort` symbol. The importers are listed centrally here, not in their
+  owner modules, because the import must finish before the `onModuleInit` of the feature modules (restoring open work,
+  releasing stale assignments), which read the tables the importers fill, and so that `migrate:legacy` boots only
+  `ConfigModule` and `DatabaseModule`.
 - `read()` reads through `LegacyJsonFilesService` and changes nothing. `read(path, schema)` takes the lock the JSON
   store wrote the file under (`<file>.lock`), so a process of an earlier version finishes its write first, and returns
   `undefined` for a missing file or one that does not match the schema (logged as `legacy_file_skipped`). `list(directory)`

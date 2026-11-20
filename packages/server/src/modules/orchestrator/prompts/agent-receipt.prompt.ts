@@ -1,4 +1,4 @@
-/** What became of a delegation to an agent already at work, told to the CEO with its next prompt. */
+/** The outcome of a delegation to an agent already at work, told to the CEO with its next prompt. */
 export type AgentReceiptKind = 'steered' | 'kept' | 'interrupted' | 'follow_up' | 'waiting' | 'replaced';
 
 const RECEIPTS: Readonly<Record<AgentReceiptKind, string>> = {

@@ -10,7 +10,7 @@ import type { TurnRequest } from './turn-request.model.js';
  */
 export type UserMessageDelivery = 'queued' | 'steered' | 'delivered' | 'cancelled';
 
-/** What became of a message that arrived while a turn ran: it joined that turn, was cancelled, or drives the turn after it. */
+/** The outcome of a message that arrived while a turn ran: it joined that turn, was cancelled, or drives the turn after it. */
 export type JoinOutcome =
   | { readonly kind: 'joined' }
   | { readonly kind: 'cancelled' }

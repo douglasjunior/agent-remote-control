@@ -589,7 +589,7 @@ export class RunDelegationUseCase {
   /**
    * The prompts of one run until its final response, its questions answered on the way. Every prompt carries the
    * instructions kept for it; a prompt cancelled to deliver them is followed by one that does, and a run whose last
-   * prompt left some kept sends one more instead of ending without them.
+   * prompt left some kept sends one more before it ends.
    */
   private async runPrompts(live: LiveDelegation, run: DelegationRun, costs: AgentPromptCost[], conversationKey: string): Promise<string> {
     const { role, roleName, conversationId, delegationId, agentPort, turn } = live;

@@ -28,7 +28,7 @@ type BetterSqlite3Database = {
  * Runs a read-change-write on the database as one transaction. `work` is synchronous: better-sqlite3 runs every
  * statement on the spot, so nothing else of this process reaches the shared connection until `work` returns, and the
  * transaction begins `IMMEDIATE`, taking SQLite's write lock before the first read, so another process waits for it
- * instead of writing between that read and the write.
+ * and cannot write between that read and the write.
  */
 @Injectable()
 export class SqliteTransactionService {

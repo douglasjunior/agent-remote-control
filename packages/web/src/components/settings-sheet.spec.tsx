@@ -273,7 +273,7 @@ describe('SettingsSheet', () => {
       expect(router.state.location.state).toEqual({ returnTo: '/c/c1', draft: { profiles: { CEO: { agentId: 'codex', modelId: undefined, effortId: undefined } } } });
     });
 
-    it('should ask for the profiles again when the squads change, since the conversation may no longer match its squad', () => {
+    it('should ask for the profiles again when the squads change, since the conversation may not match its squad', () => {
       const app = openConversation();
       const before = sentOf(app, 'profiles.get').length;
 

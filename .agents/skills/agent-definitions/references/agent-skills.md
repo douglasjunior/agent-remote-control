@@ -38,7 +38,7 @@ The guide to asking the user in full (`skills/asking-the-user.skill.ts`); the es
 `USER_QUESTIONS_BRIEF`. It covers when to ask, the grammar, options without "Other", the recommended option first and
 marked `recommended` (assumed when the user does not reply in time) and worded so accepting it is an informed
 decision, the text outside the tags as the context so each question stands on its own among several agents, a
-`rationale` always filled, facts looked up before each round instead of asked, the decisions mapped as a tree whose
+`rationale` always filled, facts looked up before each round, never asked, the decisions mapped as a tree whose
 frontier (every decision whose prerequisites are settled) each round asks at once and which is updated after the
 answers, the end of an interview (an empty frontier, nothing assumed, and a last round confirming the summary when the
 role's instructions call for it), and the `<user_answers>` format, with `<attachment path="…"/>` for files the user

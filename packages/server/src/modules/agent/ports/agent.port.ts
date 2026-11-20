@@ -92,7 +92,7 @@ export type AgentSessionOptions = {
 };
 
 /**
- * What became of a text sent into the running prompt: `injected` reached it, `not_running` found no prompt running
+ * The outcome of a text sent into the running prompt: `injected` reached it, `not_running` found no prompt running
  * (the text was not delivered), `unsupported` comes from an agent without steering, and `failed` from an error.
  */
 export type SteeringOutcome = 'injected' | 'not_running' | 'unsupported' | 'failed';

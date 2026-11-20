@@ -94,7 +94,7 @@ describe('RuntimeSettingsService', () => {
     expect(warn).toHaveBeenCalledWith('setting_invalid: DISCORD_BOT_TOKEN is not valid; using the default');
   });
 
-  it('should ignore a saved value its schema no longer accepts, logging it once', () => {
+  it('should ignore a saved value its schema rejects, logging it once', () => {
     rs.stubEnv('QUESTION_TIMEOUT_MS', '1500');
     settings.replaceSaved({ QUESTION_TIMEOUT_MS: 'soon' });
 

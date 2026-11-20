@@ -56,7 +56,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 
 ## A Turn in Short
 
-1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text. A conversation runs one turn at a time: a message that finds one running joins it (see "Messages During a Turn") instead of starting another.
+1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text. A conversation runs one turn at a time: a message that finds one running joins it (see "Messages During a Turn"); no second turn starts.
 2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round, and a round carrying a user message), pending notices, attachments, the messages of the inbox and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
 4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again. A delegation to a role already at work goes to that agent (see "Agents Already at Work").
@@ -91,7 +91,7 @@ own record. `on_busy` (`wait` or `interrupt`, `DelegationResult.onBusy`) says wh
   (`prompts/instruction-update.prompt.ts`: the new text, what changed on its task since it was last sent, and the
   reminder that a tool call moved to the background must end before the answer). When it is not `injected`, it is kept
   (`DelegationControl.keep`) and the run's next prompt carries it; a run whose last prompt left one kept sends one more
-  prompt instead of ending.
+  prompt before it ends.
 - **`interrupt` on the same work**: the instruction is kept and, in the same tick, the running prompt is cancelled
   (`IAgentPort.cancel`), or the agent's questions are discarded when it waits for the user; the cancellation is caught
   and the next prompt, in the same session, carries the instruction.

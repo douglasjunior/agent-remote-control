@@ -52,7 +52,7 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
 - **One client per login**: a client that has logged in, or tried to, is never logged in again, because discord.js keeps
   a destroyed gateway from reconnecting and keeps the caches of the previous bot. A restart destroys it and builds a new
   one. Handlers register their listeners once with `DiscordClientService.on(event, listener)`, which attaches them to
-  every client, and read `getClient()` at each use instead of keeping the client.
+  every client, and read `getClient()` at each use, never keeping the client.
 - **Slash command registration**: once logged in, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles`, `/squad` and `/language`, plus `/agent-auth` (`dmPermission: false`) only when `IAgentAuthPort.isEnabled()` is true, and `/shell` (string option `command`, `dmPermission: false`) only when `IAgentTurnPort.isShellCommandEnabled()` is true. With the `DISCORD_GUILD_ID` setting and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without it, or when the guild is not found, it registers only globally.
 - **Tolerance to a missing token**: while the `DISCORD_BOT_TOKEN` setting is empty (an environment variable set empty
   counts), the service emits a warning via `Logger.warn` and does not throw. The application must start normally in CI
@@ -104,7 +104,7 @@ To keep channels clean and concurrent conversations strictly isolated:
    - `agentRole`: invariably `'CEO'` for triage and initial orchestration.
 5. **Messages during a turn**: a message sent while the conversation has a turn in progress joins that turn in the
    orchestrator; the handler follows `onDelivery`, shows the waiting notice while it is `queued`, and a result with
-   `status: 'steered'` (or a message cancelled before the CEO read it) gets a notice instead of a response.
+   `status: 'steered'` (or a message cancelled before the CEO read it) gets a notice in place of a response.
 
 ## Input Resolution and Selection
 

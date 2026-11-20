@@ -113,7 +113,7 @@ describe('SqliteConversationStoreAdapter', () => {
     expect(await other.history(id)).toEqual([message('a')]);
   });
 
-  it('should leave out and log an entry that no longer matches the protocol', async () => {
+  it('should leave out and log an entry that does not match the protocol', async () => {
     const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { id } = await store.create();
     await store.upsertEntry(id, message('a'));

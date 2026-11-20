@@ -34,7 +34,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   private readonly runtimes = new Map<string, ConversationRuntime>();
   /** Outlive the runtime, which expires while the conversation is idle and the notices wait for its next message. */
   private readonly ceoNotices = new Map<string, string[]>();
-  /** `<agent_result>` receipts that wait for the CEO's next prompt instead of starting a round of their own. */
+  /** `<agent_result>` receipts that wait for the CEO's next prompt, since they start no round of their own. */
   private readonly agentReceipts = new Map<string, string[]>();
 
   constructor(

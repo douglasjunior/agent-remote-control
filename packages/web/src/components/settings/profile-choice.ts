@@ -10,7 +10,7 @@ export type ProfileChoice = {
   readonly effortId?: string;
 };
 
-/** What the editor holds while the user picks; any id may be missing or no longer offered. */
+/** What the editor holds while the user picks; any id may be missing or not offered. */
 export type ProfileDraft = Partial<ProfileChoice>;
 
 /** The lists a draft is picked from and the ids of the draft still found in them. */

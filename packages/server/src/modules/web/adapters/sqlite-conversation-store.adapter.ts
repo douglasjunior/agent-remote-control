@@ -96,7 +96,7 @@ export class SqliteConversationStoreAdapter implements IConversationStorePort {
     return { id, title, createdAt, updatedAt, ...(archivedAt ? { archivedAt } : {}) };
   }
 
-  /** A row that no longer matches the protocol is left out of the history and logged. */
+  /** A row whose payload does not match the protocol schema is left out of the history and logged. */
   private toEntry(conversationId: string, row: Pick<ConversationEntryEntity, 'entryId' | 'payload'>): ConversationEntry[] {
     const parsed = conversationEntrySchema.safeParse(this.parseJson(row.payload));
     if (!parsed.success) {

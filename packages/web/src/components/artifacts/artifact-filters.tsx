@@ -19,7 +19,7 @@ type FilterProps = {
   readonly filter: ArtifactFilter;
   readonly projects: readonly string[];
   readonly kanban: boolean;
-  /** Whether the kanban shows features instead of tasks. */
+  /** Whether the kanban shows features; otherwise it shows tasks. */
   readonly featureBoard: boolean;
   readonly onChange: (changes: Partial<ArtifactFilter>) => void;
   readonly onFeatureBoardChange: (featureBoard: boolean) => void;

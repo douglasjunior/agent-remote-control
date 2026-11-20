@@ -117,7 +117,7 @@ describe('ConversationRuntimeService', () => {
       expect(runtime.admit('a').kind).toBe('drive');
     });
 
-    it('should ignore the end of a turn that is no longer the running one', () => {
+    it('should ignore the end of a turn that is not the running one', () => {
       const { turn } = runtime.admit('a');
       runtime.endTurn('a', turn);
       const { turn: next } = runtime.admit('a');
