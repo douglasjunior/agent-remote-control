@@ -188,7 +188,7 @@ describe('FeedList', () => {
     expect(screen.getByRole('button', { name: /Show details/ })).toHaveTextContent('(4 steps)');
     await user.click(screen.getByRole('button', { name: /Show details/ }));
 
-    expect(screen.getByRole('link', { name: 'web-ui-testing' })).toHaveAttribute('href', '/skills/web-ui-testing');
+    expect(screen.getByRole('link', { name: 'web-ui-testing' })).toHaveAttribute('href', '/settings/skills/web-ui-testing');
     expect(screen.getByText(/^Read the skill/)).toHaveTextContent('Read the skill api-testing, web-ui-testing');
     expect(screen.getByText(/^Created the skill/)).toBeInTheDocument();
     expect(screen.getByText(/^Updated the skill/)).toBeInTheDocument();

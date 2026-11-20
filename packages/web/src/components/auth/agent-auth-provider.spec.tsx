@@ -1,36 +1,19 @@
-import type { AgentLoginEvent } from '@agent-remote-control/protocol/agent-auth';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
+import { emitLogin, emitStatus, sentOfType } from '../../test/auth-fixtures.js';
 import type { FakeServerConnection } from '../../test/fake-server-connection.js';
 import { renderApp } from '../../test/render-app.js';
 
 
-const AT = '2026-01-01T00:00:00.000Z';
-type Status = 'authenticated' | 'unauthenticated' | 'unknown';
-
-function emitStatus(connection: FakeServerConnection, ...entries: [string, Status, string?][]) {
-  act(() => connection.emitEvent({
-    type: 'auth.status',
-    fetchedAt: AT,
-    agents: entries.map(([agentId, status, detail]) => ({
-      agentId,
-      displayName: agentId === 'claude' ? 'Claude Code' : 'OpenAI Codex',
-      status,
-      ...(detail ? { detail } : {}),
-    })),
-  }));
+/** Opens the code input of the Agents section from the toast; the settings it lists arrive empty. */
+async function enterCode(connection: FakeServerConnection, user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+  act(() => connection.emitEvent({ type: 'settings', settings: [] }));
 }
 
-function emitLogin(connection: FakeServerConnection, agentId: string, event: AgentLoginEvent) {
-  act(() => connection.emitEvent({ type: 'auth.login', agentId, event }));
-}
-
-const sentOfType = (connection: FakeServerConnection, type: string) =>
-  connection.sent.filter(command => command.type === type);
-
-describe('AgentAuthController', () => {
+describe('AgentAuthProvider', () => {
   afterEach(() => {
     rs.useRealTimers();
     toast.dismiss();
@@ -85,7 +68,7 @@ describe('AgentAuthController', () => {
     emitLogin(connection, 'claude', { kind: 'url', url: 'javascript:alert(1)' });
 
     await screen.findByText('Log in to Claude Code');
-    expect(screen.queryAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/skills', '/settings']);
+    expect(screen.queryAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['/settings']);
   });
 
   it('should cancel a login from the toast', async () => {
@@ -99,14 +82,15 @@ describe('AgentAuthController', () => {
     expect(sentOfType(connection, 'auth.cancel')).toEqual([{ type: 'auth.cancel', agentId: 'claude' }]);
   });
 
-  it('should open the popover from the toast to type a code the browser shows, and send it', async () => {
-    const { connection } = renderApp();
+  it('should open the Agents section from the toast to type a code the browser shows, and send it', async () => {
+    const { connection, router } = renderApp();
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth' });
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
 
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await enterCode(connection, user);
+    expect(router.state.location.pathname).toBe('/settings/agents');
     const input = await screen.findByLabelText('Paste the code the browser shows');
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
     await user.type(input, '  abc#def  ');
@@ -140,7 +124,7 @@ describe('AgentAuthController', () => {
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth' });
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await enterCode(connection, user);
     await user.type(await screen.findByLabelText('Paste the code the browser shows'), 'abc#def');
 
     await user.click(screen.getByRole('button', { name: 'Send' }));
@@ -156,7 +140,7 @@ describe('AgentAuthController', () => {
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await enterCode(connection, user);
     await user.type(await screen.findByLabelText('Paste the code the browser shows'), 'wrong');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByRole('status');
@@ -174,7 +158,7 @@ describe('AgentAuthController', () => {
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth' });
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await enterCode(connection, user);
     await user.type(await screen.findByLabelText('Paste the code the browser shows'), 'abc');
     await user.click(screen.getByRole('button', { name: 'Send' }));
     await screen.findByRole('status');
@@ -201,7 +185,7 @@ describe('AgentAuthController', () => {
     const user = userEvent.setup();
     emitStatus(connection, ['claude', 'unauthenticated']);
     emitLogin(connection, 'claude', { kind: 'prompt', hint: 'Paste code here >' });
-    await user.click(await screen.findByRole('button', { name: 'Enter code' }));
+    await enterCode(connection, user);
     const input = await screen.findByLabelText('Paste the code the browser shows');
 
     await user.type(input, '   {Enter}');
@@ -265,93 +249,5 @@ describe('AgentAuthController', () => {
     act(() => connection.emitEvent({ type: 'auth.status.failed' }));
 
     expect(screen.getByText('Claude Code is not logged in')).toBeInTheDocument();
-  });
-});
-
-describe('AgentAuthPopover', () => {
-  const open = async () => {
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /^Agent logins/ }));
-    return user;
-  };
-
-  it('should say it is checking until the first answer, and list nothing for an empty one', async () => {
-    const { connection } = renderApp();
-    await open();
-    expect(screen.getByText('Checking the agents…')).toBeInTheDocument();
-
-    emitStatus(connection);
-
-    expect(await screen.findByText('No agent supports login here.')).toBeInTheDocument();
-  });
-
-  it('should list every agent with its state, account and button', async () => {
-    const { connection } = renderApp();
-    emitStatus(connection, ['claude', 'authenticated', 'me@example.com'], ['codex', 'unauthenticated'], ['cursor', 'unknown']);
-    await open();
-
-    const claude = screen.getByText('Claude Code').closest('li')!;
-    expect(within(claude).getByText('Logged in')).toBeInTheDocument();
-    expect(within(claude).getByText('me@example.com')).toBeInTheDocument();
-    expect(within(claude).getByRole('button', { name: 'Re-authenticate Claude Code' })).toBeInTheDocument();
-    const codex = screen.getAllByText('OpenAI Codex')[0]!.closest('li')!;
-    expect(within(codex).getByText('Not logged in')).toBeInTheDocument();
-    expect(within(codex).getByRole('button', { name: 'Authenticate OpenAI Codex' })).toBeInTheDocument();
-    expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
-  });
-
-  it('should flag the header button when an agent needs a login', () => {
-    const { connection } = renderApp();
-    expect(screen.getByRole('button', { name: 'Agent logins' })).toBeInTheDocument();
-
-    emitStatus(connection, ['claude', 'unauthenticated']);
-
-    expect(screen.getByRole('button', { name: 'Agent logins, login needed' })).toBeInTheDocument();
-  });
-
-  it('should start a login from its button and show the card with link, code and waiting state', async () => {
-    const { connection } = renderApp();
-    emitStatus(connection, ['claude', 'authenticated']);
-    const user = await open();
-
-    await user.click(screen.getByRole('button', { name: 'Re-authenticate Claude Code' }));
-    expect(sentOfType(connection, 'auth.login')).toEqual([{ type: 'auth.login', agentId: 'claude' }]);
-    expect(screen.getByRole('button', { name: 'Re-authenticate Claude Code' })).toBeDisabled();
-    expect(screen.getAllByText('Starting the login…').length).toBeGreaterThan(0);
-
-    emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'AB12-CD34' });
-    const card = await screen.findByLabelText('Claude Code login');
-    expect(within(card).getByRole('link', { name: /Open login page/ })).toHaveAttribute('href', 'https://claude.com/oauth');
-    expect(within(card).getByText('AB12-CD34')).toBeInTheDocument();
-    expect(within(card).getByText('Waiting for you to finish in the browser…')).toBeInTheDocument();
-
-    await user.click(within(card).getByRole('button', { name: 'Cancel' }));
-    expect(sentOfType(connection, 'auth.cancel')).toEqual([{ type: 'auth.cancel', agentId: 'claude' }]);
-  });
-
-  it('should copy the one-time code', async () => {
-    const { connection } = renderApp();
-    emitStatus(connection, ['claude', 'authenticated']);
-    const user = await open();
-    const writeText = rs.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
-    await user.click(screen.getByRole('button', { name: 'Re-authenticate Claude Code' }));
-    emitLogin(connection, 'claude', { kind: 'url', url: 'https://claude.com/oauth', code: 'AB12-CD34' });
-
-    const card = await screen.findByLabelText('Claude Code login');
-    await user.click(within(card).getByRole('button', { name: 'Copy code' }));
-
-    expect(writeText).toHaveBeenCalledWith('AB12-CD34');
-  });
-
-  it('should show the reason a login failed and let the user start again', async () => {
-    const { connection } = renderApp();
-    emitStatus(connection, ['claude', 'unauthenticated']);
-    const user = await open();
-    emitLogin(connection, 'claude', { kind: 'failed', reason: 'Invalid code.' });
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid code.');
-    await user.click(screen.getByRole('button', { name: 'Authenticate Claude Code' }));
-
-    expect(sentOfType(connection, 'auth.login')).toEqual([{ type: 'auth.login', agentId: 'claude' }]);
   });
 });

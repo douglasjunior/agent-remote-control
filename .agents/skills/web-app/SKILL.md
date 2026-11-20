@@ -3,7 +3,7 @@ name: web-app
 description: >
   React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
   WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
-  board, the squad panel, usage and agent login indicators, the home screen, the skills page, the squads page, the settings page, the import convention,
+  board, the squad panel, usage and agent login indicators, the home screen, the settings hub (general, agents, squads, skills, Discord and advanced sections), the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
   access token form.
@@ -36,13 +36,14 @@ packages/web/src/
 │   ├── agent/               # AgentMark: the round lens with an animated glyph per role
 │   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
 │   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
-│   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
+│   ├── auth/                # AgentAuthProvider (state and toasts), AgentLogins (Agents section), AgentLoginCard, useAgentAuthStatus
 │   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
-│   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
+│   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill prompts
 │   ├── home/                # the home screen parts: RecentConversations, SquadPicker, the squad choice, the focus request paths
-│   ├── squads/              # SquadList, SquadEditor, useSquads, the squad paths and the roles a squad can set
+│   ├── squads/              # SquadList, SquadEditor, useSquads and the roles a squad can set
 │   ├── settings/            # RoleEditor (agent, model and effort), RoleForm and the option lists, shared by the settings sheet and the squad editor
-│   ├── server-settings/     # the settings page: SettingField, drafts and their checks, tabs, duration units, texts, the Discord connection test
+│   ├── settings-hub/        # the hub: layout, section nav, server settings provider and sections, squads and skills sections, the path helpers, the old-address redirect
+│   ├── server-settings/     # the fields of the server settings: SettingField, drafts and their checks, duration units, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query, useStoredFlag
@@ -50,10 +51,10 @@ packages/web/src/
 
 ## App shell
 
-- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills and Settings links (icon links with a tooltip, to `/skills` and `/settings`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
+- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then on the right the settings gear (an icon link with a tooltip to `/settings`, with a red dot while an agent needs a login), the usage indicator, the connection badge and the theme toggle) above the page. The skills, squads and agent logins have no header control: they are sections of the settings hub. `AppLayout` also wraps the app in `AgentAuthProvider` and mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
 - "New conversation" lives only in the header. On `/` it focuses the composer of the home screen (it navigates to `/` with `homeFocusState()` in the router state) instead of creating a conversation.
-- `AppLayout` gives its page an outlet context (`useAppOutlet`, `AppOutletContext`) with `conversationListVisible` (the list is docked and open) and `showConversations`, which opens the docked list or the drawer. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only, tightens its gaps and hides the Skills and Settings links and the theme toggle behind one "More" `IconButton` (`HeaderMenu`, a dropdown menu with the two links and the theme choices), keeping the agent logins, usage and connection indicators in view, so every control fits from 320 px. The switch is CSS only (`sm:hidden`, `hidden sm:inline-flex`).
+- `AppLayout` gives its page an outlet context (`useAppOutlet`, `AppOutletContext`) with `conversationListVisible` (the list is docked and open) and `showConversations`, which opens the docked list or the drawer. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so the gear, usage, connection and theme controls fit from 320 px (`app-layout.spec.tsx` checks that none of them is hidden and that no Skills link, logins button or "More" menu is left).
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
 
 ## Connection
@@ -169,7 +170,5 @@ Each area below has a reference with its components, states and exact texts. Rea
 - **Mission board**: the conversation routes and `ConversationNav`, `ArtifactsProvider` and `useBoard`, the list and kanban views, the filters sheet, the create dialog, the artifact detail and frozen tasks. Read [references/mission-board.md](references/mission-board.md) when touching `artifacts/` or `components/artifacts/`.
 - **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout, the squad route and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
 - **Agent usage**: the header meters, the usage popover and the `quota.get` refresh cadence. Read [references/agent-usage.md](references/agent-usage.md) when touching `components/usage/`.
-- **Agent logins**: the logins popover, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
-- **Settings page**: `/settings`, its tabs (in the `tab` query parameter) and the sections and fields by kind, source badges, read-only fields with a tooltip for the settings only their environment variable sets, write-only secrets, drafts checked with the protocol schemas, "Save changes", "Reset to default", the restart notice and the Discord "Test connection". Read [references/settings-page.md](references/settings-page.md) when touching `components/server-settings/` or `SettingsPage`.
-- **Squads page**: `/squads` routes, the list and the editor of a squad, the default squad, deleting, "Save as squad" and "Apply squad" in the conversation settings sheet. Read [references/squads-page.md](references/squads-page.md) when touching `components/squads/`, `SquadsPage`, `components/settings/` or the squad controls of `SettingsSheet`.
-- **Skills page**: `/skills` routes, the list and detail, "Ask the CEO", deleting a custom skill and `startConversation(prompt)`. Read [references/skills-page.md](references/skills-page.md) when touching `components/skills/` or `SkillsPage`.
+- **Agent logins**: `AgentAuthProvider`, the logins block of the Agents section, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
+- **Settings hub**: `/settings` and its sections, the layout and navigation on a wide screen and on a phone, the old-address redirects, the server settings fields by kind, drafts, "Save changes", the restart notice, the Discord "Test connection", the Squads section (list, editor, "Save as squad", "Apply squad") and the Skills section (list, detail, "Ask the CEO", `startConversation(prompt)`). Read [references/settings-hub.md](references/settings-hub.md) when touching `components/settings-hub/`, `components/server-settings/`, `components/squads/`, `components/skills/`, `components/settings/` or the squad controls of `SettingsSheet`.

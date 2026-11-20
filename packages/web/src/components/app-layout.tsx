@@ -1,4 +1,4 @@
-import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 
@@ -12,14 +12,12 @@ import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { AmbientGlow } from './ambient-glow.js';
 import type { AppOutletContext } from './app-outlet-context.js';
-import { AgentAuthController } from './auth/agent-auth-controller.js';
+import { AgentAuthProvider, useAgentAuth } from './auth/agent-auth-provider.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
-import { HeaderMenu } from './header-menu.js';
 import { HOME_PATH, homeFocusState } from './home/home-paths.js';
 import { IconButton } from './icon-button.js';
-import { SETTINGS_PATH, settingsState } from './server-settings/settings-paths.js';
-import { skillsPath, skillsState } from './skills/skill-paths.js';
+import { SETTINGS_PATH, settingsState } from './settings-hub/settings-paths.js';
 import { ThemeToggle } from './theme-toggle.js';
 import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
@@ -38,9 +36,11 @@ export function AppLayout() {
   return (
     <ConversationsProvider>
       <ArtifactsProvider>
-        <AmbientGlow />
-        <AppShell />
-        <Toaster position="bottom-right" />
+        <AgentAuthProvider>
+          <AmbientGlow />
+          <AppShell />
+          <Toaster position="bottom-right" />
+        </AgentAuthProvider>
       </ArtifactsProvider>
     </ConversationsProvider>
   );
@@ -52,6 +52,7 @@ const CONVERSATION_LIST_ID = 'conversation-list';
 
 function AppShell() {
   const { status, transport } = useConnection();
+  const { needsLogin } = useAgentAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const { createConversation } = useConversations();
@@ -92,23 +93,16 @@ function AppShell() {
             <h1 className="hidden min-w-0 truncate text-sm font-semibold sm:block">Agent Remote Control</h1>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-            <HeaderMenu className="sm:hidden" />
             <Tooltip>
-              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex')} />}>
-                <BookOpenText />
-              </TooltipTrigger>
-              <TooltipContent>Skills</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex')} />}>
+              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label={needsLogin ? 'Settings, agent login needed' : 'Settings'} className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative')} />}>
                 <Settings />
+                {needsLogin && <span aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive" />}
               </TooltipTrigger>
               <TooltipContent>Settings</TooltipContent>
             </Tooltip>
-            <AgentAuthController />
             <UsageIndicator />
             <ConnectionBadge status={status} transport={transport} />
-            <ThemeToggle className="hidden sm:inline-flex" />
+            <ThemeToggle />
           </div>
         </header>
         <main className="min-h-0 flex-1">

@@ -269,7 +269,7 @@ describe('SettingsSheet', () => {
 
       await user.click(within(squadSection()).getByRole('button', { name: 'Save as squad' }));
 
-      expect(router.state.location.pathname).toBe('/squads/new');
+      expect(router.state.location.pathname).toBe('/settings/squads/new');
       expect(router.state.location.state).toEqual({ returnTo: '/c/c1', draft: { profiles: { CEO: { agentId: 'codex', modelId: undefined, effortId: undefined } } } });
     });
 
@@ -287,7 +287,7 @@ describe('SettingsSheet', () => {
 
       await user.click(within(squadSection()).getByRole('link', { name: 'Manage squads' }));
 
-      expect(router.state.location.pathname).toBe('/squads');
+      expect(router.state.location.pathname).toBe('/settings/squads');
       expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
     });
   });

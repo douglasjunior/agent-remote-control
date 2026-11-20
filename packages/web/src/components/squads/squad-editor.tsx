@@ -14,6 +14,7 @@ import { IconButton } from '../icon-button.js';
 import { completeChoice, draftOf, type ProfileChoice, type ProfileDraft } from '../settings/profile-choice.js';
 import { RoleEditor } from '../settings/role-editor.js';
 import type { AgentOptions } from '../settings/use-agent-options.js';
+import { settingsState, squadsPath } from '../settings-hub/settings-paths.js';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../ui/alert-dialog.js';
@@ -23,7 +24,6 @@ import { Input } from '../ui/input.js';
 import { Switch } from '../ui/switch.js';
 import { Textarea } from '../ui/textarea.js';
 
-import { squadsPath, squadsState } from './squad-paths.js';
 import type { SquadRole } from './squad-roles.js';
 
 
@@ -107,13 +107,13 @@ export function SquadEditor({ squad, initialProfiles, roles, agents, options, sa
 
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-6">
-      <Link to={squadsPath()} state={squadsState(location)} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground md:hidden">
+      <Link to={squadsPath()} state={settingsState(location)} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground @3xl/hub:hidden">
         <ArrowLeft aria-hidden className="size-4" />
-        All squads
+        Back
       </Link>
       <header className="flex items-start gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <h2 className="font-heading text-lg font-semibold break-all">{squad?.name ?? 'New squad'}</h2>
+          <h4 className="font-heading text-lg font-semibold break-all">{squad?.name ?? 'New squad'}</h4>
           {squad?.isDefault && <Badge variant="secondary">Default</Badge>}
         </div>
         {squad && onDelete && <DeleteSquadButton name={squad.name} onDelete={onDelete} />}
@@ -153,7 +153,7 @@ export function SquadEditor({ squad, initialProfiles, roles, agents, options, sa
       </div>
 
       <section aria-labelledby={`${id}-roles`} className="flex flex-col gap-2">
-        <h3 id={`${id}-roles`} className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Roles</h3>
+        <h5 id={`${id}-roles`} className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Roles</h5>
         <ul aria-label="Roles" className="flex flex-col gap-2">
           {roles.map(({ role, roleName }) => {
             const identity = agentIdentity(role, roleName);

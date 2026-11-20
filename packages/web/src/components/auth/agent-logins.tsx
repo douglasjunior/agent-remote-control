@@ -1,13 +1,9 @@
-import { KeyRound } from 'lucide-react';
-import { useMemo } from 'react';
-
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.js';
 
+import { useAgentAuth } from './agent-auth-provider.js';
 import { AgentLoginCard } from './agent-login-card.js';
 import { IDLE } from './agent-login-state.js';
-import type { AgentAuthView } from './use-agent-auth-status.js';
 
 
 const STATUS_LABEL = {
@@ -16,36 +12,23 @@ const STATUS_LABEL = {
   unknown: 'Unknown',
 } as const;
 
-type AgentAuthPopoverProps = {
-  readonly auth: AgentAuthView;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-};
-
-/** Login state of every agent CLI in the header, with the button that logs it in. */
-export function AgentAuthPopover({ auth, open, onOpenChange }: AgentAuthPopoverProps) {
-  const { agents, loginStates, login, submitCode, cancel } = auth;
-  const needsLogin = useMemo(() => agents?.some(agent => agent.status === 'unauthenticated') ?? false, [agents]);
+/** Login state of every agent CLI, with the button that logs it in and the card of a login in progress. */
+export function AgentLogins() {
+  const { agents, loginStates, login, submitCode, cancel } = useAgentAuth();
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger
-        render={<Button variant="outline" size="sm" aria-label={needsLogin ? 'Agent logins, login needed' : 'Agent logins'} className="gap-2" />}
-      >
-        <KeyRound aria-hidden />
-        {needsLogin && <span aria-hidden className="size-2 rounded-full bg-destructive" />}
-      </PopoverTrigger>
-      <PopoverContent align="end" className="flex max-h-[min(80dvh,640px)] w-[min(380px,calc(100vw-2rem))] flex-col gap-3 overflow-y-auto p-3">
-        <h2 className="text-sm font-semibold">Agent logins</h2>
-        {agents === null && <p className="text-sm text-muted-foreground">Checking the agents…</p>}
-        {agents?.length === 0 && <p className="text-sm text-muted-foreground">No agent supports login here.</p>}
-        <ul className="flex flex-col gap-3">
+    <section aria-labelledby="agent-logins" className="flex flex-col gap-2">
+      <h4 id="agent-logins" className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Logins</h4>
+      <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+        {agents === null && <p className="px-4 py-3 text-sm text-muted-foreground">Checking the agents…</p>}
+        {agents?.length === 0 && <p className="px-4 py-3 text-sm text-muted-foreground">No agent supports login here.</p>}
+        <ul className="divide-y">
           {agents?.map((agent) => {
             const state = loginStates[agent.agentId] ?? IDLE;
             const busy = state.kind !== 'idle' && state.kind !== 'failed';
             return (
-              <li key={agent.agentId} className="flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2">
+              <li key={agent.agentId} className="flex flex-col gap-2 px-4 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-sm font-medium">{agent.displayName}</span>
                     {agent.detail && <span className="truncate text-xs text-muted-foreground">{agent.detail}</span>}
@@ -76,7 +59,7 @@ export function AgentAuthPopover({ auth, open, onOpenChange }: AgentAuthPopoverP
             );
           })}
         </ul>
-      </PopoverContent>
-    </Popover>
+      </div>
+    </section>
   );
 }

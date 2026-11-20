@@ -1,7 +1,7 @@
-import type { SettingsTabId } from './settings-tabs.js';
+import type { SettingsSectionId } from '../settings-hub/settings-sections.js';
 
 
-/** How a setting reads on the settings page; `unit` adds a hint beside its number. */
+/** How a setting reads in the settings hub; `unit` adds a hint beside its number. */
 export type SettingText = {
   readonly label: string;
   readonly description: string;
@@ -19,9 +19,9 @@ export const GROUP_TITLES: Readonly<Record<string, string>> = {
   speech: 'Speech-to-text',
 };
 
-/** The `general` group of the server holds the language and the session and log options, which sit in two tabs. */
-export function groupTitle(tab: SettingsTabId, group: string): string {
-  return tab === 'advanced' && group === 'general' ? 'Sessions and logs' : GROUP_TITLES[group] ?? group;
+/** The `general` group of the server holds the language and the session and log options, which sit in two sections. */
+export function groupTitle(section: SettingsSectionId, group: string): string {
+  return section === 'advanced' && group === 'general' ? 'Sessions and logs' : GROUP_TITLES[group] ?? group;
 }
 
 export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {

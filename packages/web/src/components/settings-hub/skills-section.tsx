@@ -1,26 +1,33 @@
 import type { SkillDetail as Skill, SkillSummary } from '@agent-remote-control/protocol/skill';
-import { BookOpenText } from 'lucide-react';
+import { BookOpenText, MessageSquarePlus } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
-import { SkillDetail } from '../components/skills/skill-detail.js';
-import { SkillList } from '../components/skills/skill-list.js';
-import { skillsPath, type SkillsState } from '../components/skills/skill-paths.js';
-import { useConnection } from '../connection/connection-context.js';
-import { cn } from '../lib/utils.js';
+import { useConnection } from '../../connection/connection-context.js';
+import { useConversations } from '../../conversations/conversations-context.js';
+import { cn } from '../../lib/utils.js';
+import { SkillDetail } from '../skills/skill-detail.js';
+import { SkillList } from '../skills/skill-list.js';
+import { CREATE_SKILL_PROMPT } from '../skills/skill-prompts.js';
+import { Button } from '../ui/button.js';
+
+import { settingsState, skillsPath } from './settings-paths.js';
+import { SettingsSectionHeader } from './settings-section-header.js';
+import { sectionById } from './settings-sections.js';
 
 
 /** The skills the agents read on demand: the list beside the skill picked from it, asked for again on every reconnection. */
-export function SkillsPage() {
+export function SkillsSection() {
   const { connection, status } = useConnection();
+  const { startConversation } = useConversations();
   const { skillName } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
-  const close = () => void navigate((location.state as SkillsState | null)?.returnTo ?? '/');
   const pendingDeletes = useRef(new Map<string, string>());
   const [skills, setSkills] = useState<readonly SkillSummary[] | null>(null);
   const [details, setDetails] = useState<Readonly<Record<string, Skill | null>>>({});
+  const { label, description } = sectionById('skills');
 
   useEffect(() => connection.onEvent((event) => {
     if (event.type === 'skills.list') {
@@ -39,12 +46,12 @@ export function SkillsPage() {
       pendingDeletes.current.delete(event.requestId);
       if (event.ok) {
         toast.success(`${name} deleted`);
-        void navigate(skillsPath(), { state: location.state });
+        void navigate(skillsPath(), { state: settingsState(location) });
       } else {
         toast.error(event.error);
       }
     }
-  }), [connection, skillName, navigate, location.state]);
+  }), [connection, skillName, navigate, location]);
 
   const deleteSkill = (name: string) => {
     const requestId = crypto.randomUUID();
@@ -86,15 +93,29 @@ export function SkillsPage() {
   };
 
   return (
-    <div className="grid h-full md:grid-cols-[minmax(17rem,22rem)_1fr]">
-      <aside aria-label="Skills" className={cn('min-h-0 border-r', skillName && 'hidden md:block')}>
-        {skills === null
-          ? <p role="status" className="p-6 text-sm text-muted-foreground">Loading skills…</p>
-          : <SkillList skills={skills} onClose={close} />}
-      </aside>
-      <section aria-label="Skill" className={cn('@container min-h-0 overflow-y-auto', !skillName && 'hidden md:block')}>
-        {renderDetail()}
-      </section>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="px-4 py-5 sm:px-6">
+        <SettingsSectionHeader
+          title={label}
+          description={description}
+          action={(
+            <Button variant="outline" size="sm" title="Ask the CEO for a new skill" onClick={() => startConversation(CREATE_SKILL_PROMPT)}>
+              <MessageSquarePlus />
+              New skill
+            </Button>
+          )}
+        />
+      </div>
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] border-t @3xl/hub:grid-cols-[minmax(17rem,22rem)_1fr]">
+        <aside aria-label="Skills" className={cn('min-h-0 border-r', skillName && 'hidden @3xl/hub:block')}>
+          {skills === null
+            ? <p role="status" className="p-6 text-sm text-muted-foreground">Loading skills…</p>
+            : <SkillList skills={skills} />}
+        </aside>
+        <section aria-label="Skill" className={cn('@container min-h-0 overflow-y-auto', !skillName && 'hidden @3xl/hub:block')}>
+          {renderDetail()}
+        </section>
+      </div>
     </div>
   );
 }

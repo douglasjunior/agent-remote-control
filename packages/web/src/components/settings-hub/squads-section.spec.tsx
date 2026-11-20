@@ -2,8 +2,8 @@ import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-import { type AppHarness, openConversation, renderApp } from '../test/render-app.js';
-import { squad } from '../test/squad-fixtures.js';
+import { type AppHarness, openConversation, renderApp } from '../../test/render-app.js';
+import { squad } from '../../test/squad-fixtures.js';
 
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -23,7 +23,7 @@ async function pick(user: User, scope: HTMLElement, combobox: string, option: st
   await user.click(await screen.findByRole('option', { name: option }));
 }
 
-function openSquads(path = '/squads') {
+function openSquads(path = '/settings/squads') {
   const app = renderApp(path);
   emit(app, { type: 'agents.list', agents: AGENTS });
   return { user: userEvent.setup(), ...app };
@@ -33,9 +33,9 @@ afterEach(() => {
   act(() => toast.dismiss());
 });
 
-describe('SquadsPage', () => {
+describe('SquadsSection', () => {
   it('should ask for the squads and the agents once connected, and again after a reconnection', () => {
-    const app = renderApp('/squads');
+    const app = renderApp('/settings/squads');
 
     expect(app.connection.sent).toContainEqual({ type: 'agents.list' });
     expect(screen.getByRole('status')).toHaveTextContent('Loading squads…');
@@ -57,11 +57,11 @@ describe('SquadsPage', () => {
 
     const list = screen.getByRole('complementary', { name: 'Squads' });
     const backend = within(list).getByRole('link', { name: /Backend team/ });
-    expect(backend).toHaveAttribute('href', '/squads/s1');
+    expect(backend).toHaveAttribute('href', '/settings/squads/s1');
     expect(backend).toHaveTextContent('Default');
     expect(backend).toHaveTextContent('APIs and data');
     expect(within(backend).getByRole('list', { name: 'Sets' })).toHaveTextContent('CEO');
-    expect(within(list).getByRole('link', { name: /Frontend team/ })).toHaveAttribute('href', '/squads/s2');
+    expect(within(list).getByRole('link', { name: /Frontend team/ })).toHaveAttribute('href', '/settings/squads/s2');
     expect(within(pane()).getByText('Pick a squad')).toBeInTheDocument();
   });
 
@@ -78,7 +78,7 @@ describe('SquadsPage', () => {
     emit(app, { type: 'squads', squads: [] });
 
     await user.click(screen.getByRole('link', { name: 'New squad' }));
-    expect(router.state.location.pathname).toBe('/squads/new');
+    expect(router.state.location.pathname).toBe('/settings/squads/new');
     expect(within(pane()).getByRole('heading', { name: 'New squad' })).toBeInTheDocument();
     expect(within(pane()).getByText('Product Owner')).toBeInTheDocument();
     const create = () => within(pane()).getByRole('button', { name: 'Create squad' });
@@ -106,11 +106,11 @@ describe('SquadsPage', () => {
 
     emit(app, { type: 'squads', squads: [squad({ id: 'other', name: 'Someone else' })] });
     expect(await screen.findByText('Backend team saved')).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/squads/new');
+    expect(router.state.location.pathname).toBe('/settings/squads/new');
   });
 
   it('should save the agent, model and effort picked for a role, once each list arrives', async () => {
-    const app = openSquads('/squads/new');
+    const app = openSquads('/settings/squads/new');
     const { user, connection } = app;
     emit(app, { type: 'squads', squads: [] });
 
@@ -149,14 +149,14 @@ describe('SquadsPage', () => {
 
     emit(app, { type: 'squads', squads: [squad({ id: 'mine', name: 'Mine' })] });
 
-    expect(router.state.location.pathname).toBe('/squads/mine');
+    expect(router.state.location.pathname).toBe('/settings/squads/mine');
     expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
-    await user.click(screen.getByRole('button', { name: 'Close squads' }));
+    await user.click(screen.getByRole('button', { name: 'Close settings' }));
     expect(router.state.location.pathname).toBe('/c/c1');
   });
 
   it('should change a squad, showing why the server refused a change in its editor only', async () => {
-    const app = openSquads('/squads/s1');
+    const app = openSquads('/settings/squads/s1');
     const { user, connection, router } = app;
     expect(within(pane()).getByRole('status')).toHaveTextContent('Loading…');
     emit(app, { type: 'squads', squads: [squad({ description: 'APIs', isDefault: true }), squad({ id: 's2', name: 'Frontend team' })] });
@@ -192,12 +192,12 @@ describe('SquadsPage', () => {
     emit(app, { type: 'squads', squads: [squad({ name: 'Backend crew' })] });
 
     expect(await screen.findByText('Backend crew saved')).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/squads/s1');
+    expect(router.state.location.pathname).toBe('/settings/squads/s1');
     expect(within(pane()).queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('should leave a role out of a squad, which then needs another role to be saved', async () => {
-    const app = openSquads('/squads/s1');
+    const app = openSquads('/settings/squads/s1');
     const { user } = app;
     emit(app, { type: 'squads', squads: [squad()] });
     emit(app, { type: 'models.list', agentId: 'codex', models: [] });
@@ -211,7 +211,7 @@ describe('SquadsPage', () => {
 
   it('should offer the roles of a conversation the server described, and any other role the squad sets', async () => {
     const app = openConversation();
-    await act(() => app.router.navigate('/squads/s1'));
+    await act(() => app.router.navigate('/settings/squads/s1'));
     emit(app, { type: 'squads', squads: [squad({ profiles: [{ role: 'DESIGNER', roleName: 'Designer', agent: { id: 'codex', name: 'Codex', available: true } }] })] });
 
     const roles = within(within(pane()).getByRole('list', { name: 'Roles' })).getAllByRole('listitem');
@@ -219,7 +219,7 @@ describe('SquadsPage', () => {
   });
 
   it('should delete a squad after a confirmation and return to the list', async () => {
-    const app = openSquads('/squads/s1');
+    const app = openSquads('/settings/squads/s1');
     const { user, connection, router } = app;
     emit(app, { type: 'squads', squads: [squad()] });
 
@@ -235,11 +235,11 @@ describe('SquadsPage', () => {
     emit(app, { type: 'squads', squads: [] });
 
     expect(await screen.findByText('Backend team deleted')).toBeInTheDocument();
-    expect(router.state.location.pathname).toBe('/squads');
+    expect(router.state.location.pathname).toBe('/settings/squads');
   });
 
   it('should tell why a squad was not deleted', async () => {
-    const app = openSquads('/squads/s1');
+    const app = openSquads('/settings/squads/s1');
     const { user } = app;
     emit(app, { type: 'squads', squads: [squad()] });
 
@@ -248,36 +248,40 @@ describe('SquadsPage', () => {
     emit(app, { type: 'error', message: 'Unknown squad' });
 
     expect(await screen.findByText('Unknown squad')).toBeInTheDocument();
-    expect(app.router.state.location.pathname).toBe('/squads/s1');
+    expect(app.router.state.location.pathname).toBe('/settings/squads/s1');
   });
 
   it('should tell when the squad of the address does not exist', () => {
-    const app = openSquads('/squads/gone');
+    const app = openSquads('/settings/squads/gone');
     emit(app, { type: 'squads', squads: [squad()] });
 
     expect(within(pane()).getByText('This squad does not exist anymore.')).toBeInTheDocument();
   });
 
-  it('should be reached from the settings page and close back to it', async () => {
-    const app = openSquads('/settings?tab=squads');
-    const { user, router } = app;
+  it('should be reached from the hub and close back to the page it was opened from', async () => {
+    const app = openConversation();
+    const { router } = app;
+    const user = userEvent.setup();
 
-    await user.click(screen.getByRole('link', { name: /Squads/ }));
-    expect(router.state.location.pathname).toBe('/squads');
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    await user.click(screen.getByRole('link', { name: /^Squads/ }));
+    expect(router.state.location.pathname).toBe('/settings/squads');
     emit(app, { type: 'squads', squads: [squad()] });
     await user.click(screen.getByRole('link', { name: /Backend team/ }));
-    await user.click(within(pane()).getByRole('link', { name: 'All squads' }));
-    await user.click(screen.getByRole('button', { name: 'Close squads' }));
+    await user.click(within(pane()).getByRole('link', { name: 'Back' }));
+    expect(router.state.location.pathname).toBe('/settings/squads');
+    await user.click(screen.getByRole('button', { name: 'Close settings' }));
 
-    expect(router.state.location.pathname + router.state.location.search).toBe('/settings?tab=squads');
+    expect(router.state.location.pathname).toBe('/c/c1');
   });
 
   it('should close to the start when it was opened from its address', async () => {
-    const app = openSquads('/squads/s1');
+    const app = openSquads('/settings/squads/s1');
     emit(app, { type: 'squads', squads: [squad()] });
 
-    await app.user.click(within(pane()).getByRole('link', { name: 'All squads' }));
-    await app.user.click(screen.getByRole('button', { name: 'Close squads' }));
+    await app.user.click(within(pane()).getByRole('link', { name: 'Back' }));
+    await app.user.click(screen.getByRole('link', { name: 'Back' }));
+    await app.user.click(screen.getByRole('button', { name: 'Close settings' }));
 
     expect(app.router.state.location.pathname).toBe('/');
   });

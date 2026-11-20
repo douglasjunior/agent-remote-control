@@ -37,7 +37,7 @@ Every module that reads a setting imports `SettingsModule`.
   `WORKSPACE_DIR`, `WEB_ENABLED`, `WEB_STATIC_DIR`, `WEB_ACCESS_TOKEN`, and the CLIs' own variables (`CURSOR_*`,
   `CODEX_*`, `PATH`).
 - A new setting is an entry in `SETTING_SCHEMAS` and in `SETTINGS_CATALOG`, a reader through `IRuntimeSettingsPort`,
-  its label and description on the web settings page (it opens in the Advanced tab unless `settings-tabs.ts` places it
+  its label and description on the web settings page (it opens in the Advanced section unless `settings-sections.ts` places it
   elsewhere; an integer whose key ends in `_MS` is edited in minutes, or in seconds when its default is under a minute), and
   a row in the README and `.env.example`.
 

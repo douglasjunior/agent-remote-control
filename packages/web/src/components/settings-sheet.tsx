@@ -17,7 +17,7 @@ import { ChoiceSelect } from './artifacts/choice-select.js';
 import { draftOf, type ProfileChoice, type ProfileDraft } from './settings/profile-choice.js';
 import { RoleForm } from './settings/role-form.js';
 import { useAgentOptions } from './settings/use-agent-options.js';
-import { NEW_SQUAD_PATH, squadsPath, squadsState } from './squads/squad-paths.js';
+import { NEW_SQUAD_PATH, settingsState, squadsPath } from './settings-hub/settings-paths.js';
 import { Badge } from './ui/badge.js';
 import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
@@ -129,7 +129,7 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
                 <span className="text-muted-foreground">Now: </span>
                 <span className="font-medium">{squadState(view.appliedSquad, view.customized)}</span>
               </p>
-              <Link to={squadsPath()} state={squadsState(location)} className={buttonVariants({ variant: 'link', size: 'sm', className: 'h-auto px-0' })}>
+              <Link to={squadsPath()} state={settingsState(location)} className={buttonVariants({ variant: 'link', size: 'sm', className: 'h-auto px-0' })}>
                 Manage squads
               </Link>
             </div>

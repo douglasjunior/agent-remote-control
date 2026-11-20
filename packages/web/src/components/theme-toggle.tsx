@@ -10,13 +10,13 @@ import {
 
 const ICONS = { light: Sun, dark: Moon, system: Monitor } as const;
 
-export function ThemeToggle({ className }: { readonly className?: string }) {
+export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const Icon = ICONS[theme];
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton variant="outline" label="Theme" className={className} />}>
+      <DropdownMenuTrigger render={<IconButton variant="outline" label="Theme" />}>
         <Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

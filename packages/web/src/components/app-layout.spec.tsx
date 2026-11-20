@@ -29,7 +29,7 @@ describe('AppLayout', () => {
 
   it('should create a conversation from the header outside the home screen', async () => {
     const user = userEvent.setup();
-    const { connection, router } = renderApp('/skills');
+    const { connection, router } = renderApp('/settings/general');
 
     await user.click(screen.getByRole('button', { name: 'New conversation' }));
     const create = connection.sent.find(command => command.type === 'conversation.create');
@@ -258,8 +258,8 @@ describe('AppLayout', () => {
 
   it('should put New conversation in the header, before the title, and not in the drawer', async () => {
     const user = userEvent.setup();
-    const { connection } = renderApp('/skills');
-    const header = screen.getByRole('banner');
+    const { connection } = renderApp('/c/c1');
+    const header = screen.getAllByRole('banner')[0]!;
     const create = within(header).getByRole('button', { name: 'New conversation' });
     const title = within(header).getByRole('heading', { name: 'Agent Remote Control' });
 
@@ -274,39 +274,49 @@ describe('AppLayout', () => {
     expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /New conversation/ })).not.toBeInTheDocument();
   });
   describe('below sm', () => {
-    it('should keep the indicators in the header and the secondary links and the theme in the More menu', () => {
+    it('should keep the settings gear, the indicators and the theme in the header, with no Skills link, logins button or More menu', () => {
       renderApp();
       const header = screen.getByRole('banner');
 
-      expect(within(header).getByRole('button', { name: 'More' })).toHaveClass('sm:hidden');
-      for (const link of ['Skills', 'Settings']) {
-        expect(within(header).getByRole('link', { name: link })).toHaveClass('hidden', 'sm:inline-flex');
-      }
-      expect(within(header).getByRole('button', { name: 'Theme' })).toHaveClass('hidden', 'sm:inline-flex');
-      expect(within(header).getByRole('button', { name: /Agent logins/ })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('link', { name: 'Settings' })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: 'Theme' })).not.toHaveClass('hidden');
       expect(within(header).getByRole('button', { name: /usage/i })).not.toHaveClass('hidden');
       expect(within(header).getByRole('button', { name: /over/ })).not.toHaveClass('hidden');
+      expect(within(header).queryByRole('link', { name: 'Skills' })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('button', { name: /Agent logins/ })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
     });
 
-    it.each([
-      ['Skills', '/skills'],
-      ['Settings', '/settings'],
-    ])('should open %s from the More menu, remembering the page it left', async (name, path) => {
+    it('should open the settings hub from the gear, remembering the page it left', async () => {
       const user = userEvent.setup();
       const { router } = renderApp('/c/c1');
 
-      await user.click(screen.getByRole('button', { name: 'More' }));
-      await user.click(await screen.findByRole('menuitem', { name }));
+      await user.click(screen.getByRole('link', { name: 'Settings' }));
 
-      expect(router.state.location.pathname).toBe(path);
+      expect(router.state.location.pathname).toBe('/settings');
       expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
     });
 
-    it('should change the theme from the More menu', async () => {
+    it('should mark the gear while an agent needs a login, and not otherwise', () => {
+      const { connection } = renderApp();
+      const status = (state: 'authenticated' | 'unauthenticated') => act(() => connection.emitEvent({
+        type: 'auth.status',
+        fetchedAt: AT,
+        agents: [{ agentId: 'claude', displayName: 'Claude Code', status: state }],
+      }));
+
+      status('authenticated');
+      expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+
+      status('unauthenticated');
+      expect(screen.getByRole('link', { name: 'Settings, agent login needed' })).toBeInTheDocument();
+    });
+
+    it('should change the theme from the header', async () => {
       const user = userEvent.setup();
       renderApp();
 
-      await user.click(screen.getByRole('button', { name: 'More' }));
+      await user.click(screen.getByRole('button', { name: 'Theme' }));
       await user.click(await screen.findByRole('menuitemradio', { name: 'Dark' }));
 
       expect(document.documentElement).toHaveClass('dark');
