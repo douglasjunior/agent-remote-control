@@ -191,9 +191,12 @@ The CEO, PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT ask the user directly when they
 - `USER_QUESTIONS_BRIEF` (`prompts/user-questions.prompt.ts`): the essentials under `### Asking the User`, in the
   system prompt of PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT: the tag with its `rationale`, context in the text outside
   the tags, one option per plausible answer and no "Other", the recommended option first and assumed on a timeout,
-  independent questions per response;
+  facts looked up instead of asked, and the decisions mapped before the first round so that each response asks the
+  whole frontier (every decision whose prerequisites are settled) while dependent ones wait;
 - the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER, TECH_LEAD and
-  IT_SUPPORT) covers the rest: several questions, attachments in the answers and timed-out answers. The brief names it.
+  IT_SUPPORT) covers the rest: keeping the decision map across rounds, ending an interview with an empty frontier and
+  a confirmed summary, attachments in the answers and timed-out answers. The brief names it. The role prompts say,
+  in their own terms, what a fact is and what the reason of a recommendation is, and when the summary is confirmed.
   The CEO's core carries its own short version of the tag.
 
 DEVELOPER and GIT_OPS never ask: a decision only the user can make ends their turn with the decision and its options
