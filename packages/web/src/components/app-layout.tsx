@@ -13,6 +13,7 @@ import { AmbientGlow } from './ambient-glow.js';
 import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
+import { HeaderMenu } from './header-menu.js';
 import { IconButton } from './icon-button.js';
 import { SETTINGS_PATH, settingsState } from './server-settings/settings-paths.js';
 import { skillsPath, skillsState } from './skills/skill-paths.js';
@@ -82,14 +83,15 @@ function AppShell() {
             <h1 className="hidden min-w-0 truncate text-sm font-semibold sm:block">Agent Remote Control</h1>
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <HeaderMenu className="sm:hidden" />
             <Tooltip>
-              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
+              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'hidden sm:inline-flex' })} />}>
                 <BookOpenText />
               </TooltipTrigger>
               <TooltipContent>Skills</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
+              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'hidden sm:inline-flex' })} />}>
                 <Settings />
               </TooltipTrigger>
               <TooltipContent>Settings</TooltipContent>
@@ -97,7 +99,7 @@ function AppShell() {
             <AgentAuthController />
             <UsageIndicator />
             <ConnectionBadge status={status} transport={transport} />
-            <ThemeToggle />
+            <ThemeToggle className="hidden sm:inline-flex" />
           </div>
         </header>
         <main className="min-h-0 flex-1">

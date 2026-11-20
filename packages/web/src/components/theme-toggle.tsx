@@ -1,6 +1,6 @@
 import { Monitor, Moon, Sun } from 'lucide-react';
 
-import { THEMES, useTheme, type Theme } from '../theme/theme-context.js';
+import { THEME_LABELS, THEMES, useTheme, type Theme } from '../theme/theme-context.js';
 
 import { IconButton } from './icon-button.js';
 import {
@@ -8,22 +8,21 @@ import {
 } from './ui/dropdown-menu.js';
 
 
-const LABELS: Record<Theme, string> = { light: 'Light', dark: 'Dark', system: 'System' };
 const ICONS = { light: Sun, dark: Moon, system: Monitor } as const;
 
-export function ThemeToggle() {
+export function ThemeToggle({ className }: { readonly className?: string }) {
   const { theme, setTheme } = useTheme();
   const Icon = ICONS[theme];
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger render={<IconButton variant="outline" label="Theme" />}>
+      <DropdownMenuTrigger render={<IconButton variant="outline" label="Theme" className={className} />}>
         <Icon />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuRadioGroup value={theme} onValueChange={value => setTheme(value as Theme)}>
           {THEMES.map(item => (
-            <DropdownMenuRadioItem key={item} value={item}>{LABELS[item]}</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem key={item} value={item}>{THEME_LABELS[item]}</DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>

@@ -219,4 +219,44 @@ describe('AppLayout', () => {
     await user.click(screen.getByRole('button', { name: 'Show conversations' }));
     expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /New conversation/ })).not.toBeInTheDocument();
   });
+  describe('below sm', () => {
+    it('should keep the indicators in the header and the secondary links and the theme in the More menu', () => {
+      renderApp();
+      const header = screen.getByRole('banner');
+
+      expect(within(header).getByRole('button', { name: 'More' })).toHaveClass('sm:hidden');
+      for (const link of ['Skills', 'Settings']) {
+        expect(within(header).getByRole('link', { name: link })).toHaveClass('hidden', 'sm:inline-flex');
+      }
+      expect(within(header).getByRole('button', { name: 'Theme' })).toHaveClass('hidden', 'sm:inline-flex');
+      expect(within(header).getByRole('button', { name: /Agent logins/ })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: /usage/i })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: /over/ })).not.toHaveClass('hidden');
+    });
+
+    it.each([
+      ['Skills', '/skills'],
+      ['Settings', '/settings'],
+    ])('should open %s from the More menu, remembering the page it left', async (name, path) => {
+      const user = userEvent.setup();
+      const { router } = renderApp('/c/c1');
+
+      await user.click(screen.getByRole('button', { name: 'More' }));
+      await user.click(await screen.findByRole('menuitem', { name }));
+
+      expect(router.state.location.pathname).toBe(path);
+      expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
+    });
+
+    it('should change the theme from the More menu', async () => {
+      const user = userEvent.setup();
+      renderApp();
+
+      await user.click(screen.getByRole('button', { name: 'More' }));
+      await user.click(await screen.findByRole('menuitemradio', { name: 'Dark' }));
+
+      expect(document.documentElement).toHaveClass('dark');
+      expect(localStorage.getItem('arc.theme')).toBe('dark');
+    });
+  });
 });
