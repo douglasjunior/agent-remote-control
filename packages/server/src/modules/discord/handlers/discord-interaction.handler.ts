@@ -46,13 +46,11 @@ export class DiscordInteractionHandler implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.discordClientService
-      .getClient()
-      .on(Events.InteractionCreate, (interaction) => {
-        this.handleInteraction(interaction).catch((error: unknown) => {
-          this.logger.error(`interaction_handler_failed: ${this.describeError(error)}`);
-        });
+    this.discordClientService.on(Events.InteractionCreate, (interaction) => {
+      this.handleInteraction(interaction).catch((error: unknown) => {
+        this.logger.error(`interaction_handler_failed: ${this.describeError(error)}`);
       });
+    });
   }
 
   async handleInteraction(interaction: Interaction): Promise<void> {

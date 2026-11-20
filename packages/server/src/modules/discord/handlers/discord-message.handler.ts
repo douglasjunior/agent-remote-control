@@ -68,11 +68,9 @@ export class DiscordMessageHandler implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.discordClientService
-      .getClient()
-      .on(Events.MessageCreate, (message) => {
-        void this.handleMessage(message);
-      });
+    this.discordClientService.on(Events.MessageCreate, (message) => {
+      void this.handleMessage(message);
+    });
   }
 
   async handleMessage(message: Message): Promise<void> {

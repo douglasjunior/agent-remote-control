@@ -4,8 +4,9 @@ description: >
   Discord bot as the primary input adapter for AI agents. Covers the slash commands (/agent,
   /model, /profiles, /usage, /language, /agent-auth, /cancel, /shell), numbered selections and
   the agent login dialog, agent questions to the user, per-conversation threads, activity
-  streaming, throttling and message splitting. Use when working with Discord messages,
-  interactions, formatting or events.
+  streaming, throttling, message splitting, and the client that restarts when the Discord
+  settings change and tests a bot token. Use when working with Discord messages,
+  interactions, formatting, events, the bot token or the client connection.
 ---
 
 # Discord Bot Integration
@@ -42,11 +43,26 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
   - `GatewayIntentBits.DirectMessages`: receiving direct and private messages (DM).
 - **Required partials**: `Partials.Channel` and `Partials.Message` ensure events are received in DM channels not previously cached.
 - **Bot permissions (Permissions Integer)**: the default set of text and channel permissions totals the integer `380104727616` in the Discord permissions calculator.
-- **Slash command registration**: in the `onApplicationBootstrap` hook, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles` and `/language`, plus `/agent-auth` (`dmPermission: false`) only when `IAgentAuthPort.isEnabled()` is true, and `/shell` (string option `command`, `dmPermission: false`) only when `IAgentTurnPort.isShellCommandEnabled()` is true. With `DISCORD_GUILD_ID` set and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without the variable, or when the guild is not found, it registers only globally.
-- **Tolerance to a missing token**: if the `DISCORD_BOT_TOKEN` variable is not defined
-  in the environment, the service must emit a warning via `Logger.warn` and not throw exceptions.
-  The application must start normally in CI environments and unit tests.
-- **Clean shutdown**: in the `onApplicationShutdown` hook, call `client.destroy()` to
+- **Connection lifecycle**: `start()`, `stop()` and `restart()` run one after the other. `onApplicationBootstrap`
+  calls `start()`, which logs in with the `DISCORD_BOT_TOKEN` setting when `DISCORD_ENABLED` (default `true`) is on and
+  then registers the slash commands; it never rejects, so a bot that cannot log in leaves the server running. A change of
+  `DISCORD_ENABLED`, `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` (`ISettingsChangeNotifierPort`) restarts the client, and a
+  change of `SHELL_COMMAND_ENABLED` or `AGENT_AUTH_ENABLED` registers the commands again while it is connected.
+- **One client per login**: a client that has logged in, or tried to, is never logged in again, because discord.js keeps
+  a destroyed gateway from reconnecting and keeps the caches of the previous bot. A restart destroys it and builds a new
+  one. Handlers register their listeners once with `DiscordClientService.on(event, listener)`, which attaches them to
+  every client, and read `getClient()` at each use instead of keeping the client.
+- **Slash command registration**: once logged in, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles` and `/language`, plus `/agent-auth` (`dmPermission: false`) only when `IAgentAuthPort.isEnabled()` is true, and `/shell` (string option `command`, `dmPermission: false`) only when `IAgentTurnPort.isShellCommandEnabled()` is true. With the `DISCORD_GUILD_ID` setting and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without it, or when the guild is not found, it registers only globally.
+- **Tolerance to a missing token**: while the `DISCORD_BOT_TOKEN` setting is empty (an environment variable set empty
+  counts), the service emits a warning via `Logger.warn` and does not throw. The application must start normally in CI
+  environments and unit tests.
+- **Connection test**: `TestDiscordConnectionUseCase` (exported for the web settings page) tests the token typed in the
+  form before it is saved, or the saved one when none is typed, and the form's server id (the saved one when absent, none
+  when empty) through `IDiscordConnectionTesterPort`. `RestDiscordConnectionTesterAdapter` asks discord.js `REST` for
+  `GET /users/@me` and, with a server id, `GET /guilds/{id}`, and answers `{ ok: true, botName, guildName? }` or
+  `{ ok: false, error }` in words for the user (a refused token, a bot that is not in the server, or Discord unreachable).
+  The token never reaches a log.
+- **Clean shutdown**: in the `onApplicationShutdown` hook, stop following the settings and call `client.destroy()` to
   close active WebSocket connections to the Discord API. The hook only runs with
   `app.enableShutdownHooks()` in `main.ts`.
 
