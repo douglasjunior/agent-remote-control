@@ -79,14 +79,26 @@ describe('FeedList', () => {
   }
 
   it.each([
-    ['queued', 'Queued'],
-    ['steered', 'Steered'],
-    ['delivered', 'Delivered'],
-    ['cancelled', 'Cancelled'],
-  ] as const)('should show on a message that it was %s', (delivery, label) => {
+    ['queued', 'The CEO reads this message with its next prompt.', 'Queued'],
+    ['steered', 'Sent into the CEO\'s prompt while it was working.', 'Steered'],
+    ['delivered', 'The CEO read this message with the running turn.', 'Delivered'],
+    ['cancelled', 'Stopped before the CEO read it.', 'Cancelled'],
+  ] as const)('should show on a message, as an icon, that it was %s', (delivery, name, word) => {
     renderFeed([{ id: 'a', at: AT, type: 'user_message', text: 'hello', delivery }]);
 
-    expect(screen.getByText(label)).toHaveAttribute('data-delivery', delivery);
+    const status = screen.getByRole('img', { name });
+    expect(status).toHaveAttribute('data-delivery', delivery);
+    expect(status).toHaveTextContent('');
+    expect(screen.queryByText(word)).toBeNull();
+  });
+
+  it('should explain the delivery in a tooltip when the icon is hovered', async () => {
+    const user = userEvent.setup();
+    renderFeed([{ id: 'a', at: AT, type: 'user_message', text: 'hello', delivery: 'queued' }]);
+
+    await user.hover(screen.getByRole('img', { name: 'The CEO reads this message with its next prompt.' }));
+
+    expect(await screen.findByText('The CEO reads this message with its next prompt.', { selector: '[data-slot="tooltip-content"]' })).toBeInTheDocument();
   });
 
   it('should show no delivery on a message that started its turn', () => {

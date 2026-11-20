@@ -1,6 +1,9 @@
+import { Ban, CheckCheck, Clock3 } from 'lucide-react';
+
 import type { EntryItem } from '../../conversations/group-entries.js';
 import { cn } from '../../lib/utils.js';
 import { AttachmentChip } from '../prompt-input/attachment-chip.js';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.js';
 
 import { ActivityGroup } from './activity-group.js';
 import { AgentMessage } from './agent-message.js';
@@ -11,12 +14,12 @@ import { QuestionCard, type QuestionAnswer } from './question-card.js';
 import { RetryCard } from './retry-card.js';
 
 
-/** How a message sent while a turn ran reached the CEO, with what each state means. */
-const DELIVERY_CHIPS = {
-  queued: { label: 'Queued', title: 'The CEO reads this message with its next prompt.' },
-  steered: { label: 'Steered', title: 'Sent into the CEO\'s prompt while it was working.' },
-  delivered: { label: 'Delivered', title: 'The CEO read this message with the running turn.' },
-  cancelled: { label: 'Cancelled', title: 'Stopped before the CEO read it.' },
+/** How a message sent while a turn ran reached the CEO: a status icon, what it means and its color. */
+const DELIVERY_STATUS = {
+  queued: { Icon: Clock3, description: 'The CEO reads this message with its next prompt.', color: 'text-muted-foreground' },
+  steered: { Icon: CheckCheck, description: 'Sent into the CEO\'s prompt while it was working.', color: 'text-primary' },
+  delivered: { Icon: CheckCheck, description: 'The CEO read this message with the running turn.', color: 'text-muted-foreground' },
+  cancelled: { Icon: Ban, description: 'Stopped before the CEO read it.', color: 'text-muted-foreground' },
 } as const;
 
 const NOTICE_STYLES = {
@@ -39,6 +42,20 @@ interface FeedItemProps {
   readonly onAnswer: (answer: QuestionAnswer) => void;
   readonly onRetryNow: () => void;
   readonly onStopRetrying: () => void;
+}
+
+function DeliveryStatus({ delivery }: { readonly delivery: keyof typeof DELIVERY_STATUS }) {
+  const { Icon, description, color } = DELIVERY_STATUS[delivery];
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span role="img" aria-label={description} data-delivery={delivery} tabIndex={0} className={cn('rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50', color)} />}
+      >
+        <Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>{description}</TooltipContent>
+    </Tooltip>
+  );
 }
 
 function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer, onRetryNow, onStopRetrying }: FeedItemProps) {
@@ -70,15 +87,7 @@ function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded
               </ul>
             )}
           </div>
-          {entry.delivery && (
-            <span
-              data-delivery={entry.delivery}
-              title={DELIVERY_CHIPS[entry.delivery].title}
-              className={cn('rounded-full border px-2 py-px text-[11px] text-muted-foreground', entry.delivery === 'cancelled' && 'line-through')}
-            >
-              {DELIVERY_CHIPS[entry.delivery].label}
-            </span>
-          )}
+          {entry.delivery && <DeliveryStatus delivery={entry.delivery} />}
         </div>
       );
     case 'agent_response':
