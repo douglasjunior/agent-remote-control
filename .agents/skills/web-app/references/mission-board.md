@@ -19,13 +19,14 @@ Each conversation has its own board of features and tasks (the `artifact.ts` con
 
 ## Board views
 
-- `ArtifactBoard` has two views, the choice kept by `useStoredFlag` under `arc.artifactsBoard`:
+- `ArtifactBoard` has two views, picked in its `List | Kanban` shadcn `ToggleGroup` (labels shown from `@sm` of the board, screen-reader only below), the choice kept by `useStoredFlag` under `arc.artifactsBoard` (default List):
   - the list (`ArtifactTreeView`) groups by project, each with its features (collapsible, with a done/total progress bar) and their tasks, then a "Standalone tasks" group;
-  - the kanban (`ArtifactKanban`) shows the tasks or, through the "Tasks | Features" switch it adds to the toolbar (kept under `arc.artifactsBoardFeatures`, default Tasks), the features, one column per status in workflow order (Done and Cancelled only while "Hide done and cancelled" is off).
+  - the kanban (`ArtifactKanban`) shows the tasks or, through the "Cards" select among the filters ("Task cards" or "Feature cards", kept under `arc.artifactsBoardFeatures`, default tasks), the features, one column per status in workflow order (Done and Cancelled only while "Hide done and cancelled" is off).
+- The board lays out by container queries (`@container` on its root), because its width depends on the side panels. Below `@2xl` the kanban columns snap one at a time, each at most the board width minus 3rem so the next one peeks in, and a "Columns" group of chips (`<Status>, <count>`) scrolls a column into view (`scrollIntoView`, smooth only under `motion-safe`).
 - A card moves by HTML5 drag and drop onto a column, or by its "Move" menu, the keyboard path; both send `artifact.update { status }`, except that moving a held card to a status that ends the work (`stopsWork`: `WORK_ENDING_STATUSES` of the protocol) first asks in `ArtifactStopWorkDialog` ("Keep working" or "Move and stop"), since the server then stops the agent holding it; the status select of `ArtifactDetail` asks the same way.
 - A feature card shows the progress of its tasks as one bar split by status (done over total, cancelled tasks left out, the breakdown in its accessible name and tooltip) and is moved like a task card, frozen rules included.
 - A held card's border takes the holder's agent color. Rows and cards show the id, the feature, the project, a "Waiting on" chip for dependencies not done, the pull request count and the holder's `AgentMark` in the working state.
-- Filters: text (id or title), project, type (list only; the kanban switch plays that part) and hide done/cancelled, which apply to whichever type the kanban shows.
+- Filters: text (id or title), project, type (list only; the kanban ignores it, since Cards plays that part) and hide done/cancelled, which apply to whichever type the kanban shows. From `@2xl` they sit inline after the search, with "New" at the end of the row. Below it the row holds the search, a "Filters" button with the number of active filters (project, the list's type, hide done; read as "Filters, N active") and an icon-only "New"; the button opens `ArtifactFiltersSheet`, a bottom `Sheet` with the same controls labelled, "Clear filters" and "Done".
 - Statuses follow the protocol order, In testing (the QA agent's turn, toned `--agent-qa`) and Tested (passed and waiting for the merge, toned `--good`) between Approved and Done; the sections too, Test report after Review findings.
 
 ## Creating

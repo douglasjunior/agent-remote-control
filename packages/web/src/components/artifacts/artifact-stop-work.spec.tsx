@@ -25,7 +25,7 @@ describe('Stopping the agent working on a task', () => {
   it('should ask before a held card dropped on a status that ends the work stops its agent', async () => {
     const user = userEvent.setup();
     const app = openBoard([held]);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
 
     dragTo(screen.getByRole('listitem', { name: 'T-8 Checkout' }), screen.getByRole('region', { name: 'Cancelled' }));
     const dialog = await screen.findByRole('alertdialog', { name: 'Move T-8 to Cancelled?' });
@@ -41,7 +41,7 @@ describe('Stopping the agent working on a task', () => {
   it('should move a held card on without asking while the work goes on', async () => {
     const user = userEvent.setup();
     const app = openBoard([held]);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
 
     dragTo(screen.getByRole('listitem', { name: 'T-8 Checkout' }), screen.getByRole('region', { name: 'In review' }));
 

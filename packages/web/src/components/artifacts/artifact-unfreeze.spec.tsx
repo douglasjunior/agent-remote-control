@@ -46,7 +46,7 @@ describe('Unfreezing a task', () => {
   it('should show the Frozen column only while a task is frozen and unfreeze from the card menu', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
     expect(screen.getByRole('region', { name: 'Frozen' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Move T-6' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Unfreeze…' }));
@@ -65,7 +65,7 @@ describe('Unfreezing a task', () => {
   it('should ask before a frozen card dropped on another column leaves Frozen, and freeze a card dropped on Frozen', async () => {
     const user = userEvent.setup();
     const app = openBoard([frozen, ready]);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
 
     dragTo(screen.getByRole('listitem', { name: 'T-6 Login API' }), screen.getByRole('region', { name: 'In review' }));
     const dialog = await screen.findByRole('dialog', { name: 'Unfreeze T-6' });
