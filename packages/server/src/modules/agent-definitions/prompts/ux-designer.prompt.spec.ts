@@ -48,10 +48,29 @@ describe('ux-designer.prompt', () => {
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('a purple-to-blue gradient hero');
   });
 
+  it('should send the designer to each design skill when the work touches it', () => {
+    for (const name of [
+      SKILL_NAMES.visualFoundations,
+      SKILL_NAMES.layoutComposition,
+      SKILL_NAMES.designSystems,
+      SKILL_NAMES.interactionStates,
+      SKILL_NAMES.responsiveMobile,
+      SKILL_NAMES.accessibility,
+      SKILL_NAMES.uxWriting,
+      SKILL_NAMES.motion,
+      SKILL_NAMES.dataVisualization,
+      SKILL_NAMES.prototyping,
+      SKILL_NAMES.visualPolish,
+    ]) {
+      expect(UX_DESIGNER_SYSTEM_PROMPT).toContain(`\`${name}\``);
+    }
+    expect(UX_DESIGNER_SYSTEM_PROMPT).toContain(`the \`${SKILL_NAMES.visualPolish}\` skill has the full checklist`);
+  });
+
   it('should keep the prototype on a design branch that is never merged and leave the folder as found', () => {
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('`design/<artifact id>-<slug>` (for example `design/t-3-checkout`)');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('In an existing project, build it in the project\'s own stack');
-    expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('build a self-contained HTML prototype in a `prototype/` folder');
+    expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('build it in a `prototype/` folder at the project root, on the same kind of branch: a self-contained HTML prototype that opens straight from disk in the fast regime, a small React app with Vite and shadcn/ui in the robust one');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('The branch is never merged and stays local unless the user asks for it to be pushed');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('switch back to the branch that was checked out');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('Without a project folder you build no prototype');

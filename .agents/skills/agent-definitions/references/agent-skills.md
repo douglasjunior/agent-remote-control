@@ -23,7 +23,8 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 | CODE_REVIEWER | `review-publishing` |
 | DEVELOPER, CODE_REVIEWER, QA | `running-checks` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
-| UX_DESIGNER | `running-the-app` |
+| UX_DESIGNER | `running-the-app`, `layout-composition`, `motion`, `data-visualization`, `design-systems`, `prototyping`, `ux-writing`, `visual-polish` |
+| UX_DESIGNER, DEVELOPER | `visual-foundations`, `responsive-mobile`, `interaction-states`, `accessibility` |
 
 ### `role-guide`
 
@@ -74,6 +75,34 @@ points the application and its clients at them, rebuilding what reads a setting 
 needs in local data or, when data cannot reach it, in code, and undoes it all at shutdown (tracked files reverted,
 `git status` as found, kept local data listed); `mobile-testing` adds how a device reaches the host, with `adb reverse`
 for an Android emulator. Nothing either skill changes is ever committed.
+
+### The design skills
+
+The craft of interface design, dense with numbers, rules and checklists, each description opening with when to read it.
+The UX/UI designer's prompt names which one to read for which moment; DEVELOPER reads the four it needs to build an
+interface from a design.
+
+- `visual-foundations`: type scale and line length, the 4/8 spacing scale, color tokens by role in OKLCH ramps with
+  WCAG AA numbers, dark mode designed rather than inverted, radii, elevation, icons and tabular numbers.
+- `layout-composition`: one job per screen, summary before detail, grids and optical alignment, density, `gap` over
+  margins, the patterns of landing, dashboard, form, list-detail, settings, onboarding and empty slate, and when a card
+  earns its border.
+- `responsive-mobile`: mobile first, breakpoints versus container queries, touch targets and thumb zones, navigation
+  patterns, safe areas, no horizontal page scroll and collapsing toolbars and filters into sheets.
+- `interaction-states`: empty, loading, error, success, partial and permission states, forms and validation timing,
+  disabled versus read-only, destructive actions confirmed in the page, and undo.
+- `accessibility`: semantic HTML and landmarks, keyboard and focus, ARIA only when needed, labels, contrast, reduced
+  motion, meaning beyond color, live regions and testing with a keyboard and a screen reader.
+- `motion`: purpose, durations and easing, enter and exit asymmetry, no layout shift, reduced motion, and a page
+  complete at rest.
+- `data-visualization`: the chart from the question, one scale for marks and ticks, palettes, legends and direct
+  labels, stat tiles only when the number is the point, and theme-aware chart text.
+- `design-systems`: detecting and reusing Tailwind, shadcn, MUI, Chakra or CSS variables, a minimal token set and
+  component inventory when none exists, naming, and recording the decisions in `ux_design`.
+- `prototyping`: fidelity and stack, realistic data, every state reachable, serving, screenshots for the self-review,
+  and the branch and handoff format.
+- `ux-writing`: users' names for things, controls that say what happens, errors with cause and fix, plain copy.
+- `visual-polish`: the details of professional work, the anti-generic checklist and the final review pass.
 
 ### `skill-authoring`
 

@@ -37,6 +37,38 @@ describe('built-in-skills.constant', () => {
     }
   });
 
+  const DESIGN_SKILLS = [
+    SKILL_NAMES.visualFoundations,
+    SKILL_NAMES.layoutComposition,
+    SKILL_NAMES.responsiveMobile,
+    SKILL_NAMES.interactionStates,
+    SKILL_NAMES.accessibility,
+    SKILL_NAMES.motion,
+    SKILL_NAMES.dataVisualization,
+    SKILL_NAMES.designSystems,
+    SKILL_NAMES.prototyping,
+    SKILL_NAMES.uxWriting,
+    SKILL_NAMES.visualPolish,
+  ];
+
+  it('should give the designer the design skills and the developer the ones it needs to build an interface', () => {
+    const forDeveloper: readonly string[] = [SKILL_NAMES.visualFoundations, SKILL_NAMES.responsiveMobile, SKILL_NAMES.interactionStates, SKILL_NAMES.accessibility];
+
+    for (const name of DESIGN_SKILLS) {
+      const skill = BUILT_IN_SKILLS.find(candidate => candidate.name === name)!;
+      expect(skill.roles).toEqual(forDeveloper.includes(name) ? ['UX_DESIGNER', 'DEVELOPER'] : ['UX_DESIGNER']);
+      expect(skill.description.startsWith('Read ')).toBe(true);
+    }
+  });
+
+  it('should keep the anti-generic checklist and the final review pass in the visual polish skill', () => {
+    const content = BUILT_IN_SKILLS.find(skill => skill.name === SKILL_NAMES.visualPolish)!.buildContent(skillContext());
+
+    expect(content).toContain('## The Anti-Generic Checklist');
+    expect(content).toContain('The purple-to-blue (or pink-to-orange) gradient hero');
+    expect(content).toContain('## The Final Review Pass');
+  });
+
   it('should let the designer run the app to look at it, as QA runs it to test it', () => {
     expect(BUILT_IN_SKILLS.find(skill => skill.name === SKILL_NAMES.runningTheApp)?.roles).toEqual(['QA', 'UX_DESIGNER']);
   });
