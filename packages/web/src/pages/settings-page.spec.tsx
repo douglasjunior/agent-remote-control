@@ -12,6 +12,7 @@ const SETTINGS: SettingView[] = [
   { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', envOnly: false, source: 'default', kind: 'secret', value: { set: false } },
   { key: 'DISCORD_GUILD_ID', group: 'discord', apply: 'live', envOnly: false, source: 'env', kind: 'text', value: '12345678901234567', defaultValue: '' },
   { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', envOnly: false, source: 'saved', kind: 'integer', value: 300_000, defaultValue: 300_000 },
+  { key: 'AGENT_AUTH_STATUS_TIMEOUT_MS', group: 'agents', apply: 'live', envOnly: false, source: 'default', kind: 'integer', value: 10_000, defaultValue: 10_000 },
   { key: 'LOG_RETENTION_DAYS', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'integer', value: 14, defaultValue: 14 },
   { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', envOnly: false, source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
 ];
@@ -54,7 +55,8 @@ describe('SettingsPage', () => {
     await openTab(user, 'Advanced');
     expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Sessions and logs', 'Speech-to-text']);
     expect(within(field('Question timeout')).getByText('Saved')).toBeInTheDocument();
-    expect(within(field('Question timeout')).getByText('milliseconds · 5m')).toBeInTheDocument();
+    expect(within(field('Question timeout')).getByRole('textbox')).toHaveValue('5');
+    expect(within(field('Question timeout')).getByText('minutes')).toBeInTheDocument();
     expect(within(field('Log retention')).getByText('days')).toBeInTheDocument();
     expect(within(field('Provider')).getByText('Applies when the server restarts.')).toBeInTheDocument();
   });
@@ -142,7 +144,14 @@ describe('SettingsPage', () => {
       { key: 'SHELL_COMMAND_ENABLED', env: 'SHELL_COMMAND_ENABLED', envOnly: true, group: 'shell', apply: 'live', source: 'env', kind: 'boolean', value: true, defaultValue: false },
       { key: 'REMOTE_URL', env: 'REMOTE_URL', envOnly: true, group: 'remote', apply: 'live', source: 'default', kind: 'text', value: '', defaultValue: '' },
       { key: 'STT_FFMPEG_BIN', envOnly: true, group: 'speech', apply: 'live', source: 'default', kind: 'text', value: 'ffmpeg', defaultValue: 'ffmpeg' },
+      { key: 'SHELL_COMMAND_TIMEOUT_MS', envOnly: true, group: 'shell', apply: 'live', source: 'env', kind: 'integer', value: 60_000, defaultValue: 60_000 },
+      { key: 'TURN_RETRY_MAX_DELAY_MS', envOnly: true, group: 'turns', apply: 'live', source: 'env', kind: 'integer', value: 5_400_000, defaultValue: 7_200_000 },
+      { key: 'TURN_RETRY_MAX_TOTAL_MS', envOnly: true, group: 'turns', apply: 'live', source: 'env', kind: 'integer', value: 90_000, defaultValue: 18_000_000 },
+      { key: 'TURN_RETRY_BASE_DELAY_MS', envOnly: true, group: 'turns', apply: 'live', source: 'env', kind: 'integer', value: 15_000, defaultValue: 15_000 },
+      { key: 'QUESTION_TIMEOUT_MS', envOnly: true, group: 'general', apply: 'live', source: 'env', kind: 'integer', value: 0, defaultValue: 300_000 },
       { key: 'FUTURE_LIMIT', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'integer', value: 7, defaultValue: 1 },
+      { key: 'FUTURE_SWITCH', envOnly: true, group: 'future', apply: 'live', source: 'default', kind: 'boolean', value: false, defaultValue: false },
+      { key: 'FUTURE_SECRET', envOnly: true, group: 'future', apply: 'live', source: 'default', kind: 'secret', value: { set: false } },
       { key: 'FUTURE_TOKEN', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'secret', value: { set: true } },
     ], 'advanced');
 
@@ -154,8 +163,15 @@ describe('SettingsPage', () => {
     expect(within(field('Signaling server')).getByText('Not set')).toBeInTheDocument();
     expect(within(field('Signaling server')).queryByRole('textbox')).not.toBeInTheDocument();
     expect(within(field('ffmpeg executable')).getByText('ffmpeg')).toBeInTheDocument();
+    expect(within(field('Command timeout')).getByText('1 minute')).toBeInTheDocument();
+    expect(within(field('Longest wait')).getByText('90 minutes')).toBeInTheDocument();
+    expect(within(field('Retry for')).getByText('1.5 minutes')).toBeInTheDocument();
+    expect(within(field('First retry after')).getByText('15 seconds')).toBeInTheDocument();
+    expect(within(field('Question timeout')).getByText('0 minutes · off')).toBeInTheDocument();
     expect(within(field('FUTURE_LIMIT')).getByText('7')).toBeInTheDocument();
     expect(within(field('FUTURE_TOKEN')).getByText('Set')).toBeInTheDocument();
+    expect(within(field('FUTURE_SWITCH')).getByText('Disabled')).toBeInTheDocument();
+    expect(within(field('FUTURE_SECRET')).getByText('Not set')).toBeInTheDocument();
 
     const hint = within(shell).getByRole('button', { name: 'Where this value is set' });
     while (document.activeElement !== hint) {
@@ -176,13 +192,13 @@ describe('SettingsPage', () => {
 
     await user.clear(timeout);
     await user.type(timeout, 'soon');
-    expect(within(field('Question timeout')).getByRole('alert')).toHaveTextContent('Use a whole number');
-    expect(within(field('Question timeout')).getByText('milliseconds')).toBeInTheDocument();
+    expect(within(field('Question timeout')).getByRole('alert')).toHaveTextContent('Use a number of minutes, such as 1.5');
+    expect(within(field('Question timeout')).getByText('minutes')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
 
     await user.clear(timeout);
     await user.type(timeout, '0');
-    expect(within(field('Question timeout')).getByText('milliseconds · off')).toBeInTheDocument();
+    expect(within(field('Question timeout')).getByText('off')).toBeInTheDocument();
     await openTab(user, 'Discord');
     await user.click(within(field('Discord bot')).getByRole('switch'));
     expect(screen.getByText('2 unsaved changes')).toBeInTheDocument();
@@ -197,6 +213,81 @@ describe('SettingsPage', () => {
     await openTab(user, 'Advanced');
     expect(within(field('Question timeout')).getByRole('textbox')).toHaveValue('0');
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+  });
+
+  it('should edit a time in minutes, with decimals, and save it in milliseconds', async () => {
+    const user = userEvent.setup();
+    const { connection } = openSettings(SETTINGS, 'advanced');
+    const timeout = () => within(field('Question timeout')).getByRole('textbox');
+
+    expect(within(field('Question timeout')).queryByText('5m')).not.toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '1.5');
+    expect(within(field('Question timeout')).getByText('1m 30s')).toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '120');
+    expect(within(field('Question timeout')).getByText('2h')).toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '1.5');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { QUESTION_TIMEOUT_MS: 90_000 } });
+    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('QUESTION_TIMEOUT_MS', { value: 90_000 }) }));
+    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    expect(timeout()).toHaveValue('1.5');
+  });
+
+  it('should edit a time in seconds where its default is under a minute', async () => {
+    const user = userEvent.setup();
+    const { connection } = openSettings(SETTINGS, 'agents');
+    const timeout = () => within(field('Login check timeout')).getByRole('textbox');
+
+    expect(timeout()).toHaveValue('10');
+    expect(within(field('Login check timeout')).getByText('seconds')).toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '90');
+    expect(within(field('Login check timeout')).getByText('1m 30s')).toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '2.5');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { AGENT_AUTH_STATUS_TIMEOUT_MS: 2_500 } });
+  });
+
+  it('should not count a time written another way as a change, and keep 0 only where it means off', async () => {
+    const user = userEvent.setup();
+    openSettings(SETTINGS, 'advanced');
+    const timeout = () => within(field('Question timeout')).getByRole('textbox');
+
+    await user.type(timeout(), '.0');
+    expect(within(field('Question timeout')).queryByText('Unsaved')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    await user.clear(timeout());
+    await user.type(timeout(), '0');
+    expect(within(field('Question timeout')).queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
+
+    await user.click(screen.getByRole('tab', { name: 'Agents' }));
+    await user.clear(within(field('Login check timeout')).getByRole('textbox'));
+    await user.type(within(field('Login check timeout')).getByRole('textbox'), '0');
+    expect(within(field('Login check timeout')).getByRole('alert')).toHaveTextContent('Use a number above 0');
+    expect(within(field('Login check timeout')).queryByText('off')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  });
+
+  it('should word the messages about a time in its unit', async () => {
+    const user = userEvent.setup();
+    openSettings(SETTINGS, 'agents');
+    const timeout = () => within(field('Login check timeout')).getByRole('textbox');
+
+    await user.clear(timeout());
+    await user.type(timeout(), '1,5');
+    expect(within(field('Login check timeout')).getByRole('alert')).toHaveTextContent('Use a number of seconds, such as 1.5');
+    await user.clear(timeout());
+    await user.type(timeout(), '99999999999999999999');
+    expect(within(field('Login check timeout')).getByRole('alert')).toHaveTextContent('That is more seconds than can be saved');
+    await user.clear(timeout());
+    expect(within(field('Login check timeout')).getByRole('alert')).toHaveTextContent('Use a number of seconds, such as 1.5');
   });
 
   it('should show the message of a change the server refuses and keep it to try again', async () => {

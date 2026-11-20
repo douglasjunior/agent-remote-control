@@ -42,7 +42,7 @@ packages/web/src/
 │   ├── home/                # the home screen parts: RecentConversations, SquadPicker, the squad choice, the focus request paths
 │   ├── squads/              # SquadList, SquadEditor, useSquads, the squad paths and the roles a squad can set
 │   ├── settings/            # RoleEditor (agent, model and effort), RoleForm and the option lists, shared by the settings sheet and the squad editor
-│   ├── server-settings/     # the settings page: SettingField, drafts and their checks, texts, the Discord connection test
+│   ├── server-settings/     # the settings page: SettingField, drafts and their checks, tabs, duration units, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query, useStoredFlag

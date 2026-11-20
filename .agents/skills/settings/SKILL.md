@@ -38,7 +38,8 @@ Every module that reads a setting imports `SettingsModule`.
   `CODEX_*`, `PATH`).
 - A new setting is an entry in `SETTING_SCHEMAS` and in `SETTINGS_CATALOG`, a reader through `IRuntimeSettingsPort`,
   its label and description on the web settings page (it opens in the Advanced tab unless `settings-tabs.ts` places it
-  elsewhere), and a row in the README and `.env.example`.
+  elsewhere; an integer whose key ends in `_MS` is edited in minutes, or in seconds when its default is under a minute), and
+  a row in the README and `.env.example`.
 
 ## Resolution
 

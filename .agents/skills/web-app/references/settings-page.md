@@ -36,8 +36,18 @@ pickers of the conversation settings sheet and the squad editor, which are anoth
   with its source badge, no input and no reset. A `CircleHelp` button ("Where this value is set", reachable by keyboard)
   beside the label opens the tooltip "This value can only be set with the environment variable <NAME>." (`view.env`,
   the key when absent).
-- Controls by kind: `Switch` (boolean), `Input` with `inputMode="numeric"` and a unit hint (milliseconds with the
-  duration, `off` for 0, days, characters) for an integer, `Input` for text, `ChoiceSelect` for a choice.
+- Controls by kind: `Switch` (boolean), `Input` with `inputMode="numeric"` and a unit hint (days, characters) for an
+  integer, `Input` for text, `ChoiceSelect` for a choice.
+- A duration (an integer whose key ends in `_MS`) is edited in `minutes`, or in `seconds` when its default is under a
+  minute (`timeUnitOf` in `setting-units.ts`, the only place that chooses: `AGENT_AUTH_STATUS_TIMEOUT_MS` and
+  `TURN_RETRY_BASE_DELAY_MS` are seconds, every other `*_MS` is minutes). The `Input` has `inputMode="decimal"`, the unit
+  beside it and takes decimals (`1.5`); a draft is that text, converted to whole milliseconds by `checkDraft`, and a
+  field shows `toUnitText` of the value in use (up to six decimals, so a millisecond round-trips). A hint under the
+  field says `off` for 0 and the minutes and seconds (`1m 30s`, `2h`) when the unit alone does not. A draft that stands
+  for the same milliseconds is not a change (`5.0` for `5`). Messages speak in the unit ("Use a number of minutes, such
+  as 1.5", "That is more minutes than can be saved"); the schema's "Use a number above 0" and "Use 0 or more" stay
+  as they are. A read-only duration reads `1 minute`, `1.5 minutes`, `15 seconds`, `0 minutes · off`. Storage, the
+  protocol and the environment variables stay in milliseconds.
 - A secret is write-only: `Set` or `Not set`, then "Set"/"Replace" opens a password field ("Cancel" closes it) and
   "Clear" saves it empty ("Cleared when you save", "Undo"). The saved value never reaches the browser.
 - "Reset to default" shows only on a saved value and sends `settings.reset` at once; the value of the environment
@@ -48,7 +58,7 @@ pickers of the conversation settings sheet and the squad editor, which are anoth
 - Changes are drafts by key until "Save changes", in a bar below the page while any draft differs ("N unsaved
   changes", "Discard"). `checkDraft` checks each one as it is typed with `SETTING_SCHEMAS` (`userLanguageSchema` for the
   language), the schemas the server checks with, and shows the message under the field; an invalid draft disables
-  saving. An integer must be digits.
+  saving. An integer must be digits, a duration a plain number (no sign, comma or exponent).
 - Saving sends one `settings.set` with every changed value and waits ("Saving…", fields disabled): the next `settings`
   drops the saved drafts, toasts "Settings saved" and, when a saved key applies on restart, shows the notice "Restart
   the server to apply <labels>." until the page closes; an `error` without `conversationId` shows its message in the

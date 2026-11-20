@@ -5,7 +5,7 @@ import type { SettingsTabId } from './settings-tabs.js';
 export type SettingText = {
   readonly label: string;
   readonly description: string;
-  readonly unit?: 'ms' | 'days' | 'characters';
+  readonly unit?: 'days' | 'characters';
 };
 
 export const GROUP_TITLES: Readonly<Record<string, string>> = {
@@ -56,12 +56,10 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   SESSION_IDLE_TIMEOUT_MS: {
     label: 'Idle session timeout',
     description: 'How long a quiet conversation keeps its agents running.',
-    unit: 'ms',
   },
   QUESTION_TIMEOUT_MS: {
     label: 'Question timeout',
     description: 'How long a question waits for you before its recommended answer is taken. 0 waits for good.',
-    unit: 'ms',
   },
   LOG_RETENTION_DAYS: { label: 'Log retention', description: 'How long the log files are kept.', unit: 'days' },
   AGENT_AUTH_ENABLED: {
@@ -71,18 +69,16 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   AGENT_AUTH_LOGIN_TIMEOUT_MS: {
     label: 'Login timeout',
     description: 'How long a login waits to be finished in the browser.',
-    unit: 'ms',
   },
   AGENT_AUTH_STATUS_TIMEOUT_MS: {
     label: 'Login check timeout',
     description: 'How long a check of the login state may take.',
-    unit: 'ms',
   },
   SHELL_COMMAND_ENABLED: {
     label: 'Shell commands',
     description: 'Run commands on the host with /shell on Discord. Anyone who reaches the bot can then run any command.',
   },
-  SHELL_COMMAND_TIMEOUT_MS: { label: 'Command timeout', description: 'When a shell command is stopped.', unit: 'ms' },
+  SHELL_COMMAND_TIMEOUT_MS: { label: 'Command timeout', description: 'When a shell command is stopped.' },
   SHELL_COMMAND_MAX_OUTPUT_CHARS: {
     label: 'Output limit',
     description: 'How much of a command\'s output is kept, from its end.',
@@ -91,13 +87,11 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   TURN_RETRY_BASE_DELAY_MS: {
     label: 'First retry after',
     description: 'The wait before a failed turn is tried again; each retry waits twice as long. 0 turns the retries off.',
-    unit: 'ms',
   },
-  TURN_RETRY_MAX_DELAY_MS: { label: 'Longest wait', description: 'The longest a single wait before a retry gets.', unit: 'ms' },
+  TURN_RETRY_MAX_DELAY_MS: { label: 'Longest wait', description: 'The longest a single wait before a retry gets.' },
   TURN_RETRY_MAX_TOTAL_MS: {
     label: 'Retry for',
     description: 'How long after the first failure the retries go on.',
-    unit: 'ms',
   },
   ARTIFACT_MAX_DELEGATIONS: {
     label: 'Delegations before freezing',
@@ -121,7 +115,7 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   STT_MODEL_PATH: { label: 'Model file', description: 'A model file of your own; it takes the place of the model name.' },
   STT_LANGUAGE: { label: 'Speech language', description: 'auto detects it, or a two-letter code such as en.' },
   STT_THREADS: { label: 'CPU threads', description: '0 uses every CPU.' },
-  STT_TIMEOUT_MS: { label: 'Step timeout', description: 'The longest each transcription step may take.', unit: 'ms' },
+  STT_TIMEOUT_MS: { label: 'Step timeout', description: 'The longest each transcription step may take.' },
   STT_WHISPER_BIN: { label: 'whisper-cli executable', description: 'Its name on the PATH, or its path.' },
   STT_FFMPEG_BIN: { label: 'ffmpeg executable', description: 'Its name on the PATH, or its path.' },
 };

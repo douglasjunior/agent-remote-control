@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.js';
 
 import { initialDraft, isChanged, type SettingDraft } from './setting-drafts.js';
 import { settingText, type SettingText } from './setting-texts.js';
+import { formatInUnit, parseUnitText, type TimeUnit, timeUnitOf } from './setting-units.js';
 
 
 const SOURCES: Readonly<Record<SettingSource, { readonly label: string; readonly variant: 'default' | 'secondary' | 'outline' }>> = {
@@ -19,7 +20,6 @@ const SOURCES: Readonly<Record<SettingSource, { readonly label: string; readonly
   env: { label: 'Environment', variant: 'secondary' },
   default: { label: 'Default', variant: 'outline' },
 };
-const DIGITS = /^\d+$/;
 
 type FieldProps = {
   readonly view: SettingView;
@@ -99,8 +99,10 @@ function readOnlyText(view: SettingView): string {
       return view.value ? 'Enabled' : 'Disabled';
     case 'secret':
       return view.value.set ? 'Set' : 'Not set';
-    case 'integer':
-      return String(view.value);
+    case 'integer': {
+      const unit = timeUnitOf(view);
+      return unit ? `${formatInUnit(view.value, unit)}${view.value === 0 ? ' · off' : ''}` : String(view.value);
+    }
     default:
       return view.value === '' ? 'Not set' : view.value;
   }
@@ -126,6 +128,7 @@ function FieldControl({ id, labelId, describedBy, view, text, draft, invalid, di
   readonly onDraft: (draft: SettingDraft | undefined) => void;
 }) {
   const shown = draft ?? initialDraft(view);
+  const timeUnit = timeUnitOf(view);
   switch (view.kind) {
     case 'boolean':
       return (
@@ -146,29 +149,33 @@ function FieldControl({ id, labelId, describedBy, view, text, draft, invalid, di
     default:
       return (
         <div className="flex flex-col gap-1">
-          <Input
-            id={id}
-            aria-describedby={describedBy}
-            aria-invalid={invalid || undefined}
-            inputMode={view.kind === 'integer' ? 'numeric' : undefined}
-            spellCheck={false}
-            value={shown as string}
-            disabled={disabled}
-            onChange={event => onDraft(event.target.value)}
-          />
-          {text.unit && <UnitHint unit={text.unit} text={shown as string} />}
+          <div className="flex items-center gap-2">
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              aria-invalid={invalid || undefined}
+              inputMode={timeUnit ? 'decimal' : view.kind === 'integer' ? 'numeric' : undefined}
+              spellCheck={false}
+              value={shown as string}
+              disabled={disabled}
+              onChange={event => onDraft(event.target.value)}
+            />
+            {timeUnit && <span className="w-16 shrink-0 text-sm text-muted-foreground">{timeUnit.name}</span>}
+          </div>
+          {timeUnit ? <DurationHint unit={timeUnit} text={shown as string} invalid={invalid} /> : text.unit && <span className="text-right text-xs text-muted-foreground">{text.unit}</span>}
         </div>
       );
   }
 }
 
-function UnitHint({ unit, text }: { readonly unit: NonNullable<SettingText['unit']>; readonly text: string }) {
-  const value = text.trim();
-  if (unit !== 'ms' || !DIGITS.test(value)) {
-    return <span className="text-right text-xs text-muted-foreground">{unit === 'ms' ? 'milliseconds' : unit}</span>;
+/** What a typed duration comes to where the unit alone does not say it: `off` for 0, or the minutes and seconds. */
+function DurationHint({ unit, text, invalid }: { readonly unit: TimeUnit; readonly text: string; readonly invalid: boolean }) {
+  const ms = parseUnitText(text, unit);
+  if (invalid || ms === null) {
+    return null;
   }
-  const duration = Number(value) === 0 ? 'off' : formatDuration(Number(value));
-  return <span className="text-right text-xs text-muted-foreground">{`milliseconds · ${duration}`}</span>;
+  const duration = ms === 0 ? 'off' : formatDuration(ms);
+  return duration === `${text.trim()}${unit.short}` ? null : <span className="text-right text-xs text-muted-foreground">{duration}</span>;
 }
 
 /** Write-only: it says whether a value is saved, and takes a new one or clears it, never showing the one saved. */
