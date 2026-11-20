@@ -3,7 +3,7 @@ name: web-app
 description: >
   React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
   WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
-  board, the squad panel, usage and agent login indicators, the skills page, the import convention,
+  board, the squad panel, usage and agent login indicators, the skills page, the settings page, the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
   access token form.
@@ -40,6 +40,7 @@ packages/web/src/
 │   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
 │   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
 │   ├── settings/            # agent, model and effort pickers of the settings sheet
+│   ├── server-settings/     # the settings page: SettingField, drafts and their checks, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query, useStoredFlag
@@ -47,7 +48,7 @@ packages/web/src/
 
 ## App shell
 
-- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills link (an icon link with a tooltip, to `/skills`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
+- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills and Settings links (icon links with a tooltip, to `/skills` and `/settings`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
 - "New conversation" lives only in the header and the empty state of `ConversationPage`. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so every control fits from 320 px.
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
@@ -162,4 +163,5 @@ Each area below has a reference with its components, states and exact texts. Rea
 - **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
 - **Agent usage**: the header meters, the usage popover and the `quota.get` refresh cadence. Read [references/agent-usage.md](references/agent-usage.md) when touching `components/usage/`.
 - **Agent logins**: the logins popover, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
+- **Settings page**: `/settings`, the sections and fields by kind, source badges, write-only secrets, drafts checked with the protocol schemas, "Save changes", "Reset to default", the restart notice and the Discord "Test connection". Read [references/settings-page.md](references/settings-page.md) when touching `components/server-settings/` or `SettingsPage`.
 - **Skills page**: `/skills` routes, the list and detail, "Ask the CEO", deleting a custom skill and `startConversation(prompt)`. Read [references/skills-page.md](references/skills-page.md) when touching `components/skills/` or `SkillsPage`.

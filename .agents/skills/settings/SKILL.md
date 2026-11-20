@@ -69,6 +69,8 @@ Every module that reads a setting imports `SettingsModule`.
   `RemoteClientTransportAdapter` restarts remote access on `REMOTE_ENABLED` and `REMOTE_URL`.
 - `GetSettingsUseCase` lists every setting with its value, source, default, kind, group and `apply`; a secret shows
   only `{ set: boolean }`, so no channel can leak it.
+- The web channel serves both through its `settings.*` commands and adds the user language, which lives with the
+  preferences and has no environment variable.
 
 ## Environment loading
 

@@ -8,6 +8,7 @@ import { artifactDetailSchema, artifactSummarySchema } from './artifact.js';
 import { attachmentSchema } from './attachment.js';
 import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
+import { settingViewSchema } from './settings.js';
 import { skillDetailSchema, skillSummarySchema } from './skill.js';
 
 
@@ -121,6 +122,13 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   z.discriminatedUnion('ok', [
     z.object({ type: z.literal('artifact.result'), conversationId: z.string(), requestId: z.string(), ok: z.literal(true), id: z.string() }),
     z.object({ type: z.literal('artifact.result'), conversationId: z.string(), requestId: z.string(), ok: z.literal(false), error: z.string() }),
+  ]),
+  /** Every setting, answering `settings.get` and broadcast to every connection after a change. */
+  z.object({ type: z.literal('settings'), settings: z.array(settingViewSchema) }),
+  /** Answers the requester of `settings.discord.test`. */
+  z.discriminatedUnion('ok', [
+    z.object({ type: z.literal('settings.discord.test.result'), ok: z.literal(true), botName: z.string(), guildName: z.string().optional() }),
+    z.object({ type: z.literal('settings.discord.test.result'), ok: z.literal(false), error: z.string() }),
   ]),
   z.object({
     type: z.literal('quota.report'),

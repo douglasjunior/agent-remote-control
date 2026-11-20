@@ -174,6 +174,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'skill.detail':
     case 'skill.result':
     case 'skill.deleted':
+    case 'settings':
+    case 'settings.discord.test.result':
     case 'artifacts.list':
     case 'artifact.detail':
     case 'artifact.updated':

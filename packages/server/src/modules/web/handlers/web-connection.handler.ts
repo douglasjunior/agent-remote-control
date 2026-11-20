@@ -13,6 +13,7 @@ import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebSettingsService } from '../services/web-settings.service.js';
 import { WebSkillsService } from '../services/web-skills.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
@@ -46,6 +47,9 @@ const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set([
   'artifact.update',
   'artifact.comment',
   'artifact.delete',
+  'settings.set',
+  'settings.reset',
+  'settings.discord.test',
 ]);
 
 @Injectable()
@@ -82,6 +86,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly renameConversation: RenameConversationUseCase,
     private readonly archiveConversation: ArchiveConversationUseCase,
     private readonly skills: WebSkillsService,
+    private readonly settings: WebSettingsService,
   ) {}
 
   onModuleInit(): void {
@@ -186,6 +191,18 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'skill.delete':
         connection.send({ type: 'skill.result', requestId: command.requestId, ...await this.skills.delete(command.name) });
+        return;
+      case 'settings.get':
+        connection.send(await this.settings.settings());
+        return;
+      case 'settings.set':
+        this.reportFailure(connection, await this.settings.set(command.changes));
+        return;
+      case 'settings.reset':
+        this.reportFailure(connection, await this.settings.reset(command.keys));
+        return;
+      case 'settings.discord.test':
+        connection.send(await this.settings.testDiscord({ token: command.token, guildId: command.guildId }));
         return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);
@@ -309,6 +326,13 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
   }
 
   /** A background refresh that fails answers `quota.failed`: an `error` event would interrupt the settings sheet, which treats it as its own. */
+  /** A refused change answers its requester only; a saved one reaches everybody through the `settings` broadcast. */
+  private reportFailure(connection: IClientConnection, outcome: { ok: true } | { ok: false; error: string }): void {
+    if (!outcome.ok) {
+      connection.send({ type: 'error', message: outcome.error });
+    }
+  }
+
   private async answerQuota(connection: IClientConnection, refresh: boolean | undefined): Promise<void> {
     try {
       const { reports, fetchedAt } = await this.quota.read(refresh);

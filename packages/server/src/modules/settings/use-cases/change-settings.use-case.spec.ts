@@ -32,7 +32,7 @@ describe('ChangeSettingsUseCase', () => {
   it('should save the parsed values, apply them at once and tell which changed, never logging a value', async () => {
     await expect(useCase.execute({ values: { DISCORD_BOT_TOKEN: '  secret-token ', QUESTION_TIMEOUT_MS: 0 } })).resolves.toEqual({ ok: true });
 
-    expect(store.saved).toEqual({ DISCORD_BOT_TOKEN: 'secret-token', QUESTION_TIMEOUT_MS: 0 });
+    await expect(store.load()).resolves.toEqual({ DISCORD_BOT_TOKEN: 'secret-token', QUESTION_TIMEOUT_MS: 0 });
     expect(runtime.get('DISCORD_BOT_TOKEN')).toBe('secret-token');
     await rs.waitFor(() => expect(notified).toEqual([['DISCORD_BOT_TOKEN', 'QUESTION_TIMEOUT_MS']]));
     expect(log).toHaveBeenCalledWith('[Settings Changed] DISCORD_BOT_TOKEN, QUESTION_TIMEOUT_MS');

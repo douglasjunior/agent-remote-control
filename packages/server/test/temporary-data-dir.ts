@@ -6,9 +6,8 @@ import { join } from 'node:path';
 /**
  * Points `DATA_DIR` at a new temporary directory for each test of the calling `describe` and removes it afterwards.
  * A spec that compiles a module importing the database module needs it, since compiling opens `DATA_DIR/arc.sqlite`.
- * Returns the directory of the running test.
  */
-export function useTemporaryDataDir(): () => string {
+export function useTemporaryDataDir(): void {
   let dataDir = '';
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'arc-data-'));
@@ -18,5 +17,4 @@ export function useTemporaryDataDir(): () => string {
     rs.unstubAllEnvs();
     rmSync(dataDir, { recursive: true, force: true });
   });
-  return () => dataDir;
 }
