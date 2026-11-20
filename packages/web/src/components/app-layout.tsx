@@ -7,6 +7,7 @@ import { useConnection } from '../connection/connection-context.js';
 import { ConversationsProvider, useConversations } from '../conversations/conversations-context.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
 import { useStoredFlag } from '../lib/use-stored-flag.js';
+import { cn } from '../lib/utils.js';
 import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { AmbientGlow } from './ambient-glow.js';
@@ -85,13 +86,13 @@ function AppShell() {
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <HeaderMenu className="sm:hidden" />
             <Tooltip>
-              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'hidden sm:inline-flex' })} />}>
+              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex')} />}>
                 <BookOpenText />
               </TooltipTrigger>
               <TooltipContent>Skills</TooltipContent>
             </Tooltip>
             <Tooltip>
-              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={buttonVariants({ variant: 'ghost', size: 'icon', className: 'hidden sm:inline-flex' })} />}>
+              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'hidden sm:inline-flex')} />}>
                 <Settings />
               </TooltipTrigger>
               <TooltipContent>Settings</TooltipContent>
