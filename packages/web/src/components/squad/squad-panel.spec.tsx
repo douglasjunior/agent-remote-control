@@ -197,6 +197,7 @@ describe('SquadPanel', () => {
     rs.useFakeTimers();
     rs.setSystemTime(new Date(AT).getTime());
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
+    act(() => rs.advanceTimersByTime(0));
     expect(station(/Developer/)).toHaveTextContent('0 s');
 
     act(() => rs.advanceTimersByTime(5000));
