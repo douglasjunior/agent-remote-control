@@ -89,6 +89,19 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   its own, and an unknown conversation is rejected. An entry whose payload does not match the protocol schema is left out of
   the history and logged.
 
+- `LegacyConversationEntryUpgraderService` (injected with `IAgentRegistryPort`, used by the `web-histories` legacy
+  importer of the database skill) turns each raw entry of a history file written by an earlier version into a
+  `ConversationEntry`, so one invalid entry never costs a conversation its history. An entry that is valid passes
+  through. Otherwise: an `id` missing takes the fallback the importer gives (`legacy-<place in the file>`) and a time
+  missing or unreadable the time of the entry before (the creation of the conversation for the first); an
+  `agent_response` with status `steered` becomes an `info` notice "The CEO took a message into the work in progress."
+  with its `id` and `at`, or a `completed` response when it has text; `thought` and `tool` without `role` get `CEO`;
+  `delegation` without `delegationId` gets `legacy-<entry id>` and without `summary` an empty one; `question` without
+  `closed` is closed, and without `askerRole` takes the role whose display name (or identifier) is `askerRoleName`
+  in `IAgentRegistryPort`, else `CEO`. An entry still invalid (unknown type, broken data) becomes a `warning` notice
+  that names the original type and quotes up to 200 characters of its `text`, `response`, `title` or `message`.
+  Nothing is dropped. A change to the entry schema that adds a required field adds its rule here.
+
 - The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in
   place or appends, and returns the position). `conversation.history` (`GetConversationHistoryUseCase`) answers the
   latest page with `start`, the position of its first entry; `conversation.entries { conversationId, before }`
