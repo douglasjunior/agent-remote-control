@@ -1,4 +1,4 @@
-import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router';
 
@@ -14,6 +14,7 @@ import { AgentAuthController } from './auth/agent-auth-controller.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
 import { IconButton } from './icon-button.js';
+import { SETTINGS_PATH, settingsState } from './server-settings/settings-paths.js';
 import { skillsPath, skillsState } from './skills/skill-paths.js';
 import { ThemeToggle } from './theme-toggle.js';
 import { Button, buttonVariants } from './ui/button.js';
@@ -86,6 +87,12 @@ function AppShell() {
                 <BookOpenText />
               </TooltipTrigger>
               <TooltipContent>Skills</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label="Settings" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
+                <Settings />
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
             </Tooltip>
             <AgentAuthController />
             <UsageIndicator />

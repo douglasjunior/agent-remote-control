@@ -4,8 +4,8 @@ description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
   stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
-  (auth.* commands and events), uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
-  access token or web conversations.
+  (auth.* commands and events), the settings.* commands, uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
+  access token, web conversations or the settings commands.
 ---
 
 # Web channel
@@ -118,6 +118,9 @@ Each area has a reference with the exact commands, events, limits and edge cases
   `profiles.set`), the cached `quota.get` and `auth.status` queries that answer `quota.failed`/`auth.status.failed`
   (never `error`), and the CLI login (`auth.login`, `auth.input`, `auth.cancel`) broadcast to every connection.
   Read [references/agents.md](references/agents.md).
+- **Settings**: `settings.get`, `settings.set`, `settings.reset` over the runtime settings and the user language,
+  the `settings` broadcast after a change, refusals as `error`, and `settings.discord.test`. Secrets travel only as
+  `{ set }`. Read [references/settings.md](references/settings.md).
 - **Composer**: `prompts.history`, the per-connection `files.search` session for `@` mentions and the framed
   `upload.*` protocol into `.arc-uploads/<conversationId>/`. Read [references/composer-commands.md](references/composer-commands.md).
 
@@ -141,5 +144,5 @@ a proxy in front of both makes the upgrade same-origin.
 ## Environment
 
 `WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`, remote access included), `WEB_ACCESS_TOKEN`,
-`WEB_ALLOWED_ORIGINS`, `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`WEB_ALLOWED_ORIGINS` (a setting the settings page changes live), `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
 `AGENT_AUTH_STATUS_TIMEOUT_MS`.

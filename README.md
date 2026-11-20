@@ -73,7 +73,7 @@ A browser interface to chat with the agents without Discord. It is a separate ap
 2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
 3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
 
-Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open. The book icon in the header opens the **skills** the agents read, with the roles that read each one and its full content; a custom skill has an "Ask the CEO" button that opens a conversation asking for a change to it, and a Delete button. Each skill an agent reads or writes shows in its activity, in the web feed and in the Discord thread, and the squad panel shows the agent, model and effort of each role.
+Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open. The book icon in the header opens the **skills** the agents read, with the roles that read each one and its full content; a custom skill has an "Ask the CEO" button that opens a conversation asking for a change to it, and a Delete button. Each skill an agent reads or writes shows in its activity, in the web feed and in the Discord thread, and the squad panel shows the agent, model and effort of each role. The gear icon opens the **settings**: the Discord bot token (with a button that tests it before saving), the remote access, the timeouts and limits, the speech-to-text and the language agents write to you in, each showing whether its value was saved there, comes from an environment variable or is the default (see [Environment Variables](#️-environment-variables)).
 
 | Mode | Command | URL |
 |---|---|---|
@@ -122,7 +122,7 @@ server {
 
 ## 🛰️ Remote access
 
-Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and `REMOTE_URL`, and the server prints a link at startup:
+Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and `REMOTE_URL`, or turn it on from the settings page of the web interface, and the server prints a link:
 
 ```text
 Remote access link: <REMOTE_URL>/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
@@ -298,37 +298,40 @@ Copy the example file to `.env` at the project root and configure your credentia
 cp .env.example .env
 ```
 
-| Variable | Description | Where to Get It in Discord | Default |
-|---|---|---|---|
-| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
-| `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
-| `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`arc.sqlite`, the SQLite database with the web conversations and the prompt history, `sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `preferences.json` with global preferences such as the user language, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills). JSON files of earlier versions that moved to the database are imported on the first boot and kept in `legacy-json-backup/` | Local machine configuration | `./data` |
-| `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
-| `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
-| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
-| `TURN_RETRY_BASE_DELAY_MS` | Wait (ms) before the first retry of a turn whose CEO failed; each retry after it waits twice as long. While it waits, the failure shows a countdown, with the choice to retry now or stop retrying (on Discord, any message retries now). `0` in this or the next two disables the retries | Local machine configuration | `15000` |
-| `TURN_RETRY_MAX_DELAY_MS` | The longest a single wait before a retry gets (ms) | Local machine configuration | `7200000` (2 h) |
-| `TURN_RETRY_MAX_TOTAL_MS` | How long after the first failure the retries last (ms); after it the failure stands and you take over | Local machine configuration | `18000000` (5 h) |
-| `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` |
-| `DELEGATION_SPEC_MAX_CHARS` | Longest specification (characters) the CEO may write for a delegation that names a task of the board, except to redirect the agent already working on it; the details belong in the task. `0` disables the limit | Local machine configuration | `600` |
-| `AGENT_RESULT_MAX_CHARS` | Longest result (characters) whose verdict moved its task on that reaches the CEO whole; a longer one is cut. `0` disables the cut | Local machine configuration | `2000` |
-| `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` |
-| `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` |
-| `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` |
-| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` |
-| `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` |
-| `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` |
-| `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` |
-| `STT_MODEL` | whisper.cpp model name; the file `ggml-<name>.bin` is read from `DATA_DIR/models` (the Docker image downloads it on startup) | [whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp) | `small` |
-| `STT_MODEL_PATH` | Explicit path to a whisper.cpp model file; overrides `STT_MODEL` | Local machine configuration | *(Optional)* |
-| `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` |
-| `STT_THREADS` | CPU threads used by the transcription | Local machine configuration | Number of CPUs |
-| `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) |
-| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
-| `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
-| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
-| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* |
+The variables marked **Web** in the last column are also changed from the **settings page** of the web interface (the gear icon in the header), live, without editing `.env`: a value saved there takes precedence over the variable, which takes precedence over the default, and "Reset to default" brings the variable or the default back. A variable set to an empty value counts as set: `DISCORD_BOT_TOKEN=` in the environment keeps the bot off whatever `.env` says. `STT_PROVIDER` applies when the server restarts; every other one applies at once.
+
+| Variable | Description | Where to Get It in Discord | Default | Web |
+|---|---|---|---|---|
+| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* | Yes |
+| `DISCORD_ENABLED` | Set to `false` to keep the bot off while keeping its token | — | `true` | Yes |
+| `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* | Yes |
+| `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` | No |
+| `DATA_DIR` | Directory for persisted data (`arc.sqlite`, the SQLite database with the web conversations, the prompt history, global preferences such as the user language and the settings saved from the web interface, `sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills). JSON files of earlier versions that moved to the database are imported on the first boot and kept in `legacy-json-backup/` | Local machine configuration | `./data` | No |
+| `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | Local machine configuration | `14` | Yes |
+| `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) | Yes |
+| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) | Yes |
+| `TURN_RETRY_BASE_DELAY_MS` | Wait (ms) before the first retry of a turn whose CEO failed; each retry after it waits twice as long. While it waits, the failure shows a countdown, with the choice to retry now or stop retrying (on Discord, any message retries now). `0` in this or the next two disables the retries | Local machine configuration | `15000` | Yes |
+| `TURN_RETRY_MAX_DELAY_MS` | The longest a single wait before a retry gets (ms) | Local machine configuration | `7200000` (2 h) | Yes |
+| `TURN_RETRY_MAX_TOTAL_MS` | How long after the first failure the retries last (ms); after it the failure stands and you take over | Local machine configuration | `18000000` (5 h) | Yes |
+| `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` | Yes |
+| `DELEGATION_SPEC_MAX_CHARS` | Longest specification (characters) the CEO may write for a delegation that names a task of the board, except to redirect the agent already working on it; the details belong in the task. `0` disables the limit | Local machine configuration | `600` | Yes |
+| `AGENT_RESULT_MAX_CHARS` | Longest result (characters) whose verdict moved its task on that reaches the CEO whole; a longer one is cut. `0` disables the cut | Local machine configuration | `2000` | Yes |
+| `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` | Yes |
+| `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` | Yes |
+| `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` | Yes |
+| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` | Yes |
+| `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` | Yes |
+| `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` | Yes |
+| `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` | Yes (on restart) |
+| `STT_MODEL` | whisper.cpp model name; the file `ggml-<name>.bin` is read from `DATA_DIR/models` (the Docker image downloads it on startup) | [whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp) | `small` | Yes |
+| `STT_MODEL_PATH` | Explicit path to a whisper.cpp model file; overrides `STT_MODEL` | Local machine configuration | *(Optional)* | Yes |
+| `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` | Yes |
+| `STT_THREADS` | CPU threads used by the transcription; `0` uses every CPU | Local machine configuration | `0` | Yes |
+| `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) | Yes |
+| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` | Yes |
+| `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` | No |
+| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* | `WEB_ALLOWED_ORIGINS` only |
+| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* | Yes |
 
 ## 🐳 Docker
 

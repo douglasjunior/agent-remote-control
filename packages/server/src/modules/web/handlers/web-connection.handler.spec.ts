@@ -18,6 +18,7 @@ import { WebUploadSessionsService } from '../services/web-upload-sessions.servic
 import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
 import { createWebHarness } from '../testing/web-harness.js';
+import { createWebSettings } from '../testing/web-settings.fixture.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
 import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
@@ -48,6 +49,7 @@ describe('WebConnectionHandler', () => {
   const logContext = new ConversationLogContextService();
   let connection: FakeClientConnection;
   let agentAuth: StubAgentAuthPort;
+  let settings: ReturnType<typeof createWebSettings>;
 
   beforeEach(() => {
     rs.useFakeTimers();
@@ -61,6 +63,7 @@ describe('WebConnectionHandler', () => {
     const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, turnRetry, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
     const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
     agentAuth = new StubAgentAuthPort();
+    settings = createWebSettings(configuration, harness.registry);
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -90,6 +93,7 @@ describe('WebConnectionHandler', () => {
       new RenameConversationUseCase(store, events),
       new ArchiveConversationUseCase(store, events),
       new WebSkillsService(skills, harness.registry),
+      settings.service,
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -354,6 +358,37 @@ describe('WebConnectionHandler', () => {
         { type: 'skill.result', requestId: 'r1', ok: true },
         { type: 'skill.result', requestId: 'r2', ok: false, error: 'No custom skill is named "api-testing".' },
       ]);
+    });
+
+    it('should answer the settings, save and reset them for every connection, and answer a refused change with an error', async () => {
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      connection.receive({ type: 'settings.get' });
+      await settle();
+      const [initial] = sent() as [{ type: string; settings: { key: string }[] }];
+      connection.receive({ type: 'settings.set', changes: { DISCORD_BOT_TOKEN: 'secret-token' } });
+      await settle();
+      connection.receive({ type: 'settings.reset', keys: ['DISCORD_BOT_TOKEN'] });
+      await settle();
+      connection.receive({ type: 'settings.set', changes: { PORT: 1 } });
+      await settle();
+      connection.receive({ type: 'settings.reset', keys: ['PORT'] });
+      await settle();
+
+      expect(initial).toMatchObject({ type: 'settings', settings: expect.arrayContaining([expect.objectContaining({ key: 'USER_LANGUAGE' })]) });
+      expect(sent().slice(1).map(event => event.type)).toEqual(['settings', 'settings', 'error', 'error']);
+      expect(sent()[3]).toEqual({ type: 'error', message: 'Unknown setting: PORT' });
+      expect(settings.store.saved).toEqual({});
+      expect(log).toHaveBeenCalledWith('[Command] settings.set');
+      expect(JSON.stringify([...log.mock.calls, ...sent()])).not.toContain('secret-token');
+    });
+
+    it('should test a Discord bot token and answer the requester', async () => {
+      connection.receive({ type: 'settings.discord.test', token: 'typed', guildId: '' });
+      await settle();
+
+      expect(sent()).toEqual([{ type: 'settings.discord.test.result', ok: true, botName: 'arc-bot' }]);
+      expect(settings.tester.tests).toEqual([{ token: 'typed', guildId: undefined }]);
     });
 
     it('should create, list, read, update, comment on and delete the artifacts of a conversation', async () => {

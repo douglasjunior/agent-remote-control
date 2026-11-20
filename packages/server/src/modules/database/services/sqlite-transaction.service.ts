@@ -4,7 +4,6 @@ import { DataSource } from 'typeorm';
 
 /** The statements a transaction runs, each executed at once on the database connection. */
 export type SqliteStatements = {
-  /** The first row the query returns, or `undefined`. */
   get<T>(sql: string, ...params: unknown[]): T | undefined;
   all<T>(sql: string, ...params: unknown[]): T[];
   /** Runs a statement that returns no rows and gives how many rows it changed. */

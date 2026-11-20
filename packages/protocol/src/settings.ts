@@ -99,10 +99,3 @@ export const settingViewSchema = z.discriminatedUnion('kind', [
   z.object({ ...settingBase, kind: z.literal('secret'), value: z.object({ set: z.boolean() }) }),
 ]);
 export type SettingView = z.infer<typeof settingViewSchema>;
-
-/** What testing a Discord bot token found: the bot's name, and the server's when one was given. */
-export const discordConnectionTestSchema = z.discriminatedUnion('ok', [
-  z.object({ ok: z.literal(true), botName: z.string(), guildName: z.string().optional() }),
-  z.object({ ok: z.literal(false), error: z.string() }),
-]);
-export type DiscordConnectionTest = z.infer<typeof discordConnectionTestSchema>;

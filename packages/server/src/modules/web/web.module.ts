@@ -5,6 +5,7 @@ import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { DatabaseModule } from '../database/database.module.js';
+import { DiscordModule } from '../discord/discord.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
 import { RemoteClientTransportAdapter } from '../remote/adapters/remote-client-transport.adapter.js';
@@ -29,6 +30,7 @@ import { WebConversationEventsService } from './services/web-conversation-events
 import { WebConversationTurnsService } from './services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
+import { WebSettingsService } from './services/web-settings.service.js';
 import { WebSkillsService } from './services/web-skills.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
@@ -56,6 +58,7 @@ import { WebStaticModule } from './web-static.module.js';
     AgentModule,
     ArtifactsModule,
     DatabaseModule,
+    DiscordModule,
     LoggingModule,
     OrchestratorModule,
     RemoteModule,
@@ -77,6 +80,7 @@ import { WebStaticModule } from './web-static.module.js';
     WebAgentAuthService,
     WebArtifactsService,
     WebSkillsService,
+    WebSettingsService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,
