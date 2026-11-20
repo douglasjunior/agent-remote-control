@@ -47,7 +47,7 @@ describe('JsonAgentSettingsImporterAdapter', () => {
     await dataSource.transaction(manager => legacy.write(manager));
     return { importer, legacy };
   };
-  const store = () => new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+  const store = () => new SqliteAgentSettingsStoreAdapter(new SqliteTransactionService(dataSource));
 
   beforeEach(async () => {
     dataDir = mkdtempSync(join(tmpdir(), 'agent-settings-importer-'));

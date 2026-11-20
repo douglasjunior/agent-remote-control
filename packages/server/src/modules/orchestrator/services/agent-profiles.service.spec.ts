@@ -293,7 +293,7 @@ describe('AgentProfilesService', () => {
   it('should keep four concurrent profile changes to different roles of one conversation in the database', async () => {
     const dataSource = await createInMemoryDataSource();
     try {
-      const sqliteStore = new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+      const sqliteStore = new SqliteAgentSettingsStoreAdapter(new SqliteTransactionService(dataSource));
       const stored = new AgentProfilesService(new AgentCapabilitiesService(factory), sqliteStore, registry, squads);
       const roles = ['CEO', 'DEVELOPER', 'QA', 'TECH_LEAD'];
 

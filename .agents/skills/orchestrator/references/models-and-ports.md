@@ -154,7 +154,8 @@ has its own configuration: a channel that changes the configuration changes only
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
 Implemented by `SqliteAgentSettingsStoreAdapter`: one `agent_settings` row per conversation (`applied_squad_id`,
 `applied_squad_name`, `updated_at`) and one
-`agent_profile` row per role of it; `update` reads both settings, calls `change` and replaces the conversation's rows in
+`agent_profile` row per role of it; `load` and `loadMostRecent` read the settings row and its profiles in one
+`SqliteTransactionService.run`, and `update` reads both settings, calls `change` and replaces the conversation's rows in
 one `SqliteTransactionService.run`. The `agent-settings` legacy importer moves `DATA_DIR/agent-settings.json` into them,
 reading a flat entry of the earliest format (`agentId`, `modelId`... at the top level) as the same profile for every role
 listed by `IAgentRegistryPort.listRoles()`.

@@ -25,7 +25,7 @@ const SETTINGS: AgentSettings = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const storeOver = (dataSource: DataSource) => new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+const storeOver = (dataSource: DataSource) => new SqliteAgentSettingsStoreAdapter(new SqliteTransactionService(dataSource));
 
 const withRole = (role: string, updatedAt: string) => (own: AgentSettings | null): AgentSettings => ({
   profiles: { ...own?.profiles, [role]: { ...CLAUDE, agentId: `agent-${role}` } },

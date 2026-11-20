@@ -79,7 +79,7 @@ describe('ConfigureAgentProfilesUseCase', () => {
   it('should keep every role of profile changes sent together, while each waits on its agent', async () => {
     const dataSource = await createInMemoryDataSource();
     try {
-      const sqliteStore = new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+      const sqliteStore = new SqliteAgentSettingsStoreAdapter(new SqliteTransactionService(dataSource));
       const capabilities = new AgentCapabilitiesService(factory);
       const stored = new ConfigureAgentProfilesUseCase(
         capabilities,
