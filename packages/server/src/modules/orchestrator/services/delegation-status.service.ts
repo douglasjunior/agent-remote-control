@@ -14,7 +14,7 @@ export type DelegationVerdict = {
 const SYSTEM_ACTOR = { kind: 'system' } as const;
 const LEADING_DECORATION = /^[\s#*_`>]+/;
 const VERDICT_LABEL = /^verdict\s*:/i;
-const WORD_END = /^(?![A-Za-z0-9]|_[A-Za-z0-9])/;
+const CLOSING_DECORATION = /[\s*_`.:]+$/;
 
 /** Moves the status of the task a delegation works on: the start of the delegation and the verdict that opens the agent's final answer. */
 @Injectable()
@@ -111,15 +111,18 @@ export class DelegationStatusService {
     });
   }
 
-  /** The key of `flow.verdicts` the first non-empty line starts with, as a whole word, once its Markdown decoration and `Verdict:` label are off. */
+  /**
+   * The key of `flow.verdicts` that is the whole first non-empty line, in the case the key is written in, once the
+   * line's Markdown decoration, `Verdict:` label and closing punctuation are off. A line that goes on after the word,
+   * or writes it in another case, is prose that happens to start with it ("Passed 4 of 6 tests").
+   */
   private findVerdict(flow: DelegationStatusFlow, response: string): string | undefined {
     const firstLine = response.split('\n').find(line => line.trim() !== '') ?? '';
-    const line = firstLine
+    const word = firstLine
       .replace(LEADING_DECORATION, '')
       .replace(VERDICT_LABEL, '')
-      .replace(LEADING_DECORATION, '');
-    return Object.keys(flow.verdicts).find((verdict) => {
-      return line.slice(0, verdict.length).toLowerCase() === verdict.toLowerCase() && WORD_END.test(line.slice(verdict.length));
-    });
+      .replace(LEADING_DECORATION, '')
+      .replace(CLOSING_DECORATION, '');
+    return Object.keys(flow.verdicts).find(verdict => verdict === word);
   }
 }

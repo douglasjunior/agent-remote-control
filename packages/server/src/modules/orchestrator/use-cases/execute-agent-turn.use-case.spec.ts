@@ -5191,7 +5191,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       it('should send the task back with the verdict of a review', async () => {
         seed({ id: 'T-1', status: 'in_review', branch: 'feat/t-1' });
         stubAgentPort.mockResponses = [review, 'Done.'];
-        delegateStubPort.mockResponses = ['CHANGES_REQUESTED: the login has no test.'];
+        delegateStubPort.mockResponses = ['CHANGES_REQUESTED\nThe login has no test.'];
 
         await useCase.execute(turnRequest());
 

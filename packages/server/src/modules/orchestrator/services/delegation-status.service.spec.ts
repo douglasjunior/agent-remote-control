@@ -207,19 +207,17 @@ describe('DelegationStatusService', () => {
 
     it.each([
       ['DONE', 'DONE'],
-      ['done', 'DONE'],
       ['**DONE**', 'DONE'],
       ['# DONE', 'DONE'],
       ['> `DONE`', 'DONE'],
       ['_DONE_', 'DONE'],
       ['Verdict: DONE', 'DONE'],
       ['**Verdict:** DONE', 'DONE'],
-      ['  verdict : done  ', 'DONE'],
-      ['DONE: pushed', 'DONE'],
+      ['  verdict : DONE  ', 'DONE'],
       ['DONE.', 'DONE'],
-      ['DONE - pushed', 'DONE'],
+      ['DONE:', 'DONE'],
       ['\n\n  DONE\nmore', 'DONE'],
-      ['incomplete: tests missing', 'INCOMPLETE'],
+      ['INCOMPLETE\ntests missing', 'INCOMPLETE'],
     ])('should read the verdict of %j', async (response, expected) => {
       const { status } = setup('in_progress');
 
@@ -229,6 +227,12 @@ describe('DelegationStatusService', () => {
     it.each([
       'DONE_WITH_CAVEATS',
       'DONEISH',
+      'done',
+      'Done with the code, but the push was rejected',
+      'DONE: pushed',
+      'DONE - pushed',
+      'DONE with the push rejected',
+      'verdict: done',
       'Not DONE',
       'The work is DONE',
       'CONCLUÍDO',
@@ -241,6 +245,18 @@ describe('DelegationStatusService', () => {
       await expect(status.finish('c1', 'T-1', 'DEVELOPER', response, 'in_progress')).resolves.toBeUndefined();
 
       expect((await task()).history).toHaveLength(0);
+    });
+
+    it.each([
+      'Passed 4 of 6 test cases, 2 failed',
+      'PASSED: 4, FAILED: 2',
+      'Failed to start the application',
+    ])('should not take the prose %j for a verdict of the tester', async (response) => {
+      const { status, task } = setup('in_testing');
+
+      await expect(status.finish('c1', 'T-1', 'QA', response, 'in_testing')).resolves.toBeUndefined();
+
+      expect((await task()).status).toBe('in_testing');
     });
 
     it('should match a verdict with an underscore in it', async () => {

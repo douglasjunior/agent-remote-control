@@ -84,7 +84,7 @@ export type AgentRole =
 
 ### Status flow and verdicts
 
-`statusFlow` has `from` (the statuses a task may be in when delegated to the role), `start` (the status the task takes when the agent starts, one of `from`) and `verdicts` (the status each verdict word leaves it in). The verdict is the first word of the agent's final answer, written in English exactly as the prompt shows it whatever the user's language, since the server matches the English keys of `verdicts`; the CEO prompt's routing is generated from these declarations.
+`statusFlow` has `from` (the statuses a task may be in when delegated to the role), `start` (the status the task takes when the agent starts, one of `from`) and `verdicts` (the status each verdict word leaves it in). The verdict is the first non-empty line of the agent's final answer: the word alone, written in English exactly as the prompt shows it, case included, whatever the user's language, since the server matches the keys of `verdicts` literally (`DelegationStatusService.findVerdict` only takes off Markdown decoration, a `Verdict:` label and closing punctuation). A line that goes on after the word (`DONE: pushed`, `Passed 4 of 6 tests`) is no verdict, which leaves the status for the CEO to decide; the CEO prompt's routing is generated from these declarations.
 
 | Role | `from` | `start` | Verdicts |
 |---|---|---|---|
