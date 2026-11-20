@@ -6,6 +6,7 @@ import { WorkspaceModule } from '../workspace/workspace.module.js';
 import { JsonArtifactStoreAdapter } from './adapters/json-artifact-store.adapter.js';
 import { IArtifactStorePort } from './ports/artifact-store.port.js';
 import { IArtifactsPort } from './ports/artifacts.port.js';
+import { ArtifactDerivationService } from './services/artifact-derivation.service.js';
 import { ArtifactEventsService } from './services/artifact-events.service.js';
 import { ArtifactHistoryService } from './services/artifact-history.service.js';
 import { ArtifactLimitsConfigService } from './services/artifact-limits-config.service.js';
@@ -24,6 +25,7 @@ import { UpdateArtifactUseCase } from './use-cases/update-artifact.use-case.js';
   imports: [PathsModule, WorkspaceModule],
   providers: [
     { provide: IArtifactStorePort, useClass: JsonArtifactStoreAdapter },
+    ArtifactDerivationService,
     ArtifactEventsService,
     ArtifactHistoryService,
     ArtifactLimitsConfigService,

@@ -1,5 +1,6 @@
 import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import type { Artifact, ArtifactChangeEvent } from '../models/artifact.model.js';
+import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
 import { ArtifactEventsService } from '../services/artifact-events.service.js';
 import { ArtifactHistoryService } from '../services/artifact-history.service.js';
 import { ArtifactRulesService } from '../services/artifact-rules.service.js';
@@ -14,5 +15,7 @@ export function createArtifactHarness(initial: readonly Artifact[] = []) {
   const published: ArtifactChangeEvent[] = [];
   events.subscribe(event => published.push(event));
   const workspace = new StubWorkspacePort(['shop', 'web']);
-  return { store, events, published, workspace, rules: new ArtifactRulesService(), history: new ArtifactHistoryService() };
+  const rules = new ArtifactRulesService();
+  const history = new ArtifactHistoryService();
+  return { store, events, published, workspace, rules, history, derivation: new ArtifactDerivationService(rules, history) };
 }

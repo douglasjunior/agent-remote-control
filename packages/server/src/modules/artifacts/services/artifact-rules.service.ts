@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
-import { ARTIFACT_PARENT_TYPES } from '../constants/artifact-catalog.constant.js';
-import type { ArtifactType } from '../models/artifact.model.js';
+import { ACTIVE_TASK_STATUSES, ARTIFACT_PARENT_TYPES, CLOSED_ARTIFACT_STATUSES } from '../constants/artifact-catalog.constant.js';
+import type { Artifact, ArtifactRefinement, ArtifactStatus, ArtifactType } from '../models/artifact.model.js';
 import type { ArtifactTransaction } from '../ports/artifact-store.port.js';
 
 
@@ -101,6 +101,32 @@ export class ArtifactRulesService {
 
   checkPullRequestUrl(url: string): string | undefined {
     return PULL_REQUEST_URL.test(url) ? undefined : `"${url}" is not a pull request URL: use its full http(s) address.`;
+  }
+
+  owesRefinement(refinement: ArtifactRefinement): boolean {
+    return refinement.business === 'pending' || refinement.technical === 'pending';
+  }
+
+  /** A task in the `backlog` that owes no refinement is `ready`. */
+  derivedTaskStatus(task: Artifact): ArtifactStatus | undefined {
+    return task.type === 'task' && task.status === 'backlog' && !this.owesRefinement(task.refinement) ? 'ready' : undefined;
+  }
+
+  /**
+   * A feature follows its tasks: `in_progress` while one is under way or done and another is still open, `done` once
+   * every task is closed and one of them is done. `blocked`, `frozen` and `cancelled` are decisions of whoever set them,
+   * and a feature without tasks has nothing to follow.
+   */
+  derivedFeatureStatus(feature: Artifact, tasks: readonly Artifact[]): ArtifactStatus | undefined {
+    if (feature.type !== 'feature' || tasks.length === 0) {
+      return undefined;
+    }
+    const allClosed = tasks.every(task => CLOSED_ARTIFACT_STATUSES.includes(task.status));
+    if (allClosed) {
+      return tasks.some(task => task.status === 'done') && ['backlog', 'ready', 'in_progress'].includes(feature.status) ? 'done' : undefined;
+    }
+    const underway = tasks.some(task => task.status === 'done' || ACTIVE_TASK_STATUSES.includes(task.status));
+    return underway && ['backlog', 'ready', 'done'].includes(feature.status) ? 'in_progress' : undefined;
   }
 
   private siblingRule({ type, parentId }: ArtifactPlace): string {

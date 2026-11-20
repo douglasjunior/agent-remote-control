@@ -46,6 +46,16 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   fixes the task finds them there.
 - **Creation**: a task that owes no refinement starts `ready` (a simple task straight to development); anything
   else starts in the `backlog`. A refinement left out is `pending`.
+- **Derived statuses** (`ArtifactRulesService.derivedTaskStatus` and `derivedFeatureStatus`, applied by
+  `ArtifactDerivationService` inside the transaction of the change, as `system` history events that say why, and
+  published like any saved artifact):
+  - A task left in `backlog` with no refinement `pending` becomes `ready`.
+  - A feature becomes `in_progress` when one of its tasks is active (`in_progress`, `in_review`, `changes_requested`,
+    `approved`, `in_testing`, `ACTIVE_TASK_STATUSES`) or `done`, another is still open and the feature is `backlog`,
+    `ready` or `done`; it becomes `done` when every task is `done` or `cancelled`, at least one is `done` and the
+    feature is `backlog`, `ready` or `in_progress`.
+  - `blocked`, `frozen` and `cancelled` features, features without tasks and the status a user gives a feature are left
+    alone: the feature is settled when one of its tasks is created, changed, moved (the feature it leaves too) or deleted.
 - **History**: every change appends an `ArtifactHistoryEvent` (`created`, `updated` with `changes`
   `{ field, from?, to? }` where sections read `section:<name>` and `to` is `replaced|appended|cleared`,
   `commented` with `text`, `assigned`, `released`) by an `ArtifactActor` (`agent` with role, `user` with channel,
@@ -58,7 +68,7 @@ responses, and every channel (web today, Discord later) reads and changes it thr
 `create`, `update`, `comment`, `remove`, `assign`, `release` and `onChange(listener)` (`saved` or `deleted`, with the
 `conversationId`). Mutations return `{ ok: true, artifact } | { ok: false, error }` with an English reason, never throw.
 Each mutation is one use case (`create-`, `update-`, `comment-on-`, `delete-`, `assign-`, `release-artifact`); the
-rules shared by create and update live in `ArtifactRulesService`.
+rules shared by create and update live in `ArtifactRulesService`; create, update and delete apply the derived statuses.
 
 - `update` applies all changes or none, records only real changes and publishes nothing when nothing changed.
 - `remove` refuses an artifact with children or a holder, and removes it from the dependencies of the others,
