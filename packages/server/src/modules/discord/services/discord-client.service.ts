@@ -116,8 +116,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
   }
 
   private enqueue(step: () => Promise<void>): Promise<void> {
-    this.lifecycle = this.lifecycle.then(step);
-    return this.lifecycle;
+    const run = this.lifecycle.catch(() => undefined).then(step);
+    this.lifecycle = run;
+    run.catch(failure => this.logger.error(`A step of the Discord client failed: ${this.describe(failure)}`));
+    return run;
   }
 
   /** Never rejects: a bot that cannot log in is logged, and the server goes on without it. */

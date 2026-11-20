@@ -43,7 +43,8 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
   - `GatewayIntentBits.DirectMessages`: receiving direct and private messages (DM).
 - **Required partials**: `Partials.Channel` and `Partials.Message` ensure events are received in DM channels not previously cached.
 - **Bot permissions (Permissions Integer)**: the default set of text and channel permissions totals the integer `380104727616` in the Discord permissions calculator.
-- **Connection lifecycle**: `start()`, `stop()` and `restart()` run one after the other. `onApplicationBootstrap`
+- **Connection lifecycle**: `start()`, `stop()` and `restart()` run one after the other, and a step that failed is logged
+  and does not skip the steps behind it. `onApplicationBootstrap`
   calls `start()`, which logs in with the `DISCORD_BOT_TOKEN` setting when `DISCORD_ENABLED` (default `true`) is on and
   then registers the slash commands; it never rejects, so a bot that cannot log in leaves the server running. A change of
   `DISCORD_ENABLED`, `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` (`ISettingsChangeNotifierPort`) restarts the client, and a

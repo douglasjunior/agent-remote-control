@@ -53,6 +53,7 @@ describe('DiscordClientService', () => {
   let settings: StubRuntimeSettings;
   let settingsChanges: SettingsChangeNotifierService;
   let clients: FakeClient[];
+  let clientCreationFailure: Error | undefined;
   let service: DiscordClientService;
   let log: ReturnType<typeof rs.spyOn>;
   let warn: ReturnType<typeof rs.spyOn>;
@@ -74,7 +75,11 @@ describe('DiscordClientService', () => {
     settings = new StubRuntimeSettings({ DISCORD_BOT_TOKEN: 'test-bot-token' });
     settingsChanges = new SettingsChangeNotifierService();
     clients = [];
+    clientCreationFailure = undefined;
     service = new DiscordClientService(agentTurn, agentAuth, settings, settingsChanges, () => {
+      if (clientCreationFailure) {
+        throw clientCreationFailure;
+      }
       const created = fakeClient();
       clients.push(created);
       return created as unknown as Client;
@@ -262,6 +267,18 @@ describe('DiscordClientService', () => {
       settings.set('DISCORD_ENABLED', true);
       await service.restart();
       expect(client(1).login).toHaveBeenCalledWith('test-bot-token');
+    });
+
+    it('should log a step that failed and still run the restart that follows', async () => {
+      await service.onApplicationBootstrap();
+      clientCreationFailure = new Error('no client');
+
+      await expect(service.restart()).rejects.toThrow('no client');
+
+      expect(error).toHaveBeenCalledWith('A step of the Discord client failed: no client');
+      clientCreationFailure = undefined;
+      await service.restart();
+      expect(client(0).login).toHaveBeenCalledTimes(2);
     });
 
     it('should stop without logging in again', async () => {
