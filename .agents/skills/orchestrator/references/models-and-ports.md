@@ -79,8 +79,9 @@ A delegation that passed every check, with the `cwd` its agent runs in, plus, fo
 The one turn a conversation runs at a time. Its inbox holds the `PendingMessage`s (the text with its `[ATTACHMENTS]`
 inventory, the request, and how its `executeTurn` settles: `joined`, `cancelled` or `drive` the next turn) that arrived
 while it ran, in order. `enqueue` wakes `arrival()` (the CEO waiting for its delegates), `take` empties the inbox for the
-prompt that carries it, `putBack` returns a steering that did not land to the front, and `markQueued` tells each waiting
-message once. `prompting`, `waiting` and `steering` say where the CEO is; `markRead`/`read` keep the messages the CEO read,
+prompt that carries it, `putBack` returns a steering that did not land to the front, `trackSteering` follows the steering under way and
+`steeringSettled()` resolves once it returned (the turn's `drive` awaits it before `endTurn`, so messages a late steering
+hands back start the next turn), and `markQueued` tells each waiting message once. `prompting`, `waiting` and `steering` say where the CEO is; `markRead`/`read` keep the messages the CEO read,
 and `takeSteered` hands the ones steered into the prompt that just ended to its retry. `keepWork(id, earlier)` binds the
 root's open work, whose `updates` (`openWork`) are the ones it resumed with, then every message that joined (`joined`).
 `cancel()` marks it cancelled, drains the inbox and wakes the wait.

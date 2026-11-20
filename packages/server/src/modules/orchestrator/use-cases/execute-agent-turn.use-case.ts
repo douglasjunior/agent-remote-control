@@ -139,6 +139,7 @@ export class ExecuteAgentTurnUseCase {
     try {
       return await this.runTurn(turn, request, resumed);
     } finally {
+      await turn.steeringSettled();
       this.conversationRuntime.endTurn(request.conversationId, turn);
     }
   }
@@ -179,7 +180,9 @@ export class ExecuteAgentTurnUseCase {
     while (turn.hasInbox && !turn.steering && this.conversationRuntime.acceptsSteering(request.conversationId, turn, agentId)) {
       turn.steering = true;
       try {
-        if (!await this.steer(turn, request, agentId)) {
+        const steering = this.steer(turn, request, agentId);
+        turn.trackSteering(steering);
+        if (!await steering) {
           break;
         }
       } finally {

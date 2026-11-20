@@ -89,6 +89,25 @@ describe('ConversationTurn', () => {
     expect(turn.take()).toEqual([one.pending, two.pending]);
   });
 
+  it('should settle the steering once it returned, whether it resolved or rejected', async () => {
+    const turn = new ConversationTurn();
+    let finish!: () => void;
+    turn.trackSteering(new Promise<void>((resolve) => {
+      finish = resolve;
+    }));
+    const settled = rs.fn();
+    const waiting = turn.steeringSettled().then(settled);
+
+    await Promise.resolve();
+    expect(settled).not.toHaveBeenCalled();
+    finish();
+    await waiting;
+    expect(settled).toHaveBeenCalledTimes(1);
+
+    turn.trackSteering(Promise.reject(new Error('steering failed')));
+    await expect(turn.steeringSettled()).resolves.toBeUndefined();
+  });
+
   it('should start with the messages handed over from the turn before', () => {
     const one = message('one');
 

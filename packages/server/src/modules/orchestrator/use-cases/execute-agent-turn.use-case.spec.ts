@@ -12,6 +12,7 @@ import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-setting
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
+import type { ConversationTurn } from '../models/conversation-turn.model.js';
 import { DelegationControl } from '../models/delegation-control.model.js';
 import type { DelegationEvent } from '../models/delegation-event.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -2623,6 +2624,34 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}${emptyBoard}two`)}` });
     });
 
+    it('should start the next turn with a message whose steering came back after the final prompt ended', async () => {
+      stubAgentPort.supportsSteering = true;
+      const gate = await holdFirstPrompt();
+      let answerSteering: () => void = () => undefined;
+      stubAgentPort.sendSteeringPrompt = async function (this: StubAgentPort, text: string) {
+        this.steeringPrompts.push(text);
+        await new Promise<void>((resolve) => {
+          answerSteering = resolve;
+        });
+        return 'not_running';
+      };
+      const onDelivery = rs.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(stubAgentPort.steeringPrompts).toHaveLength(1));
+
+      const { turn } = runtime.admit('conv-1') as { turn: ConversationTurn };
+      gate.release();
+      await rs.waitFor(() => expect(turn.prompting).toBe(false));
+      answerSteering();
+
+      await expect(first).resolves.toMatchObject({ status: 'completed' });
+      await expect(second).resolves.toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}${emptyBoard}two`)}` });
+      expect(onDelivery.mock.calls).toEqual([['queued'], ['delivered']]);
+    });
+
     it('should queue the message when the agent does not support steering', async () => {
       const gate = await holdFirstPrompt();
       const onDelivery = rs.fn();
@@ -2863,8 +2892,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       const second = useCase.execute(turnRequest({ prompt: 'two' }));
       await held;
       await ceo.respond('One done.', 1);
-      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'One done.' });
+      const { turn } = runtime.admit('conv-1') as { turn: ConversationTurn };
+      await rs.waitFor(() => expect(turn.prompting).toBe(false));
       release();
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'One done.' });
       await ceo.respond('Two done.', 2);
 
       await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Two done.' });

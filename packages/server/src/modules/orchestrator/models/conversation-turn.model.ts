@@ -71,6 +71,7 @@ export class ConversationTurn {
   private readonly joinedTexts: string[];
   private readonly readTexts: string[] = [];
   private wake: (() => void) | undefined;
+  private steeringDone: Promise<void> = Promise.resolve();
 
   constructor(inbox: readonly PendingMessage[] = []) {
     this.inbox.push(...inbox);
@@ -113,6 +114,16 @@ export class ConversationTurn {
   /** Empties the inbox for the prompt that carries its messages. */
   take(): readonly PendingMessage[] {
     return this.inbox.splice(0);
+  }
+
+  /** Follows a steering of the inbox, so the turn does not end before it returns the messages the agent did not take. */
+  trackSteering(steering: Promise<unknown>): void {
+    this.steeringDone = steering.then(() => undefined, () => undefined);
+  }
+
+  /** Resolves once the steering under way has returned, with its undelivered messages back in the inbox. */
+  steeringSettled(): Promise<void> {
+    return this.steeringDone;
   }
 
   /** Puts messages a steering did not deliver back at the front of the inbox, in their order. */

@@ -120,8 +120,8 @@ starts the next turn:
 
 - **CEO in the middle of a prompt**: with the CEO's agent taking steering (`acceptsSteering`), the inbox is steered into
   the running prompt in one `sendSteeringPrompt` (`[TEAM_PROFILES]`, `[BOARD]`, receipts, a `[USER_MESSAGE]` block per
-  message from `prompts/user-message.prompt.ts`, the language block), one steering at a time. Otherwise, or when it does
-  not land, the message waits (`onDelivery('queued')`) and every next CEO prompt of the turn (a round, request results,
+  message from `prompts/user-message.prompt.ts`, the language block), one steering at a time; the turn does not end while a steering is under way, so a
+  message it hands back is not lost. Otherwise, or when it does not land, the message waits (`onDelivery('queued')`) and every next CEO prompt of the turn (a round, request results,
   answers, a repair) carries the inbox as `[USER_MESSAGE]` blocks (`delivered`).
 - **CEO idle, waiting for its delegates**: the message wakes it (`RunningDelegations.nextResults(turn.arrival())`) and
   is read at once in a round of the same turn, with the results finished so far; a reply then is an interim message.
