@@ -18,7 +18,7 @@ export class UserLanguageService {
   async set(input: string): Promise<string | undefined> {
     const language = normalizeUserLanguage(input);
     if (language) {
-      await this.preferencesStore.update({ language });
+      await this.preferencesStore.update(() => ({ language }));
     }
     return language;
   }

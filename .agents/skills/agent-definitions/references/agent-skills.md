@@ -71,8 +71,9 @@ edits apply without a restart.
 
 - The frontmatter needs a `description` and `roles` (comma-separated, `[A, B]` or a `- A` list; folded `>` and `|`
   values are read); `name` defaults to the folder name. A skill without a description or roles is skipped with a warning.
-- `write` creates or replaces one, atomically; `delete(name)` removes the folder of the skill of that name, whatever the
-  folder is called.
+- `write` creates or replaces one, atomically, and tells whether it was created; `delete(name)` removes the folder of
+  the skill of that name, whatever the folder is called. Both hold the lock `DATA_DIR/skills/.lock` (`storage` module),
+  the delete from finding the skill to removing it, so concurrent writes report one creation.
 
 ## `AgentSkillsService` (`IAgentSkillsPort`)
 

@@ -31,6 +31,7 @@ agent-remote-control/
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
 │       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
 │       │   │   ├── remote/                 # Remote access: the host's identity, its signaling socket and the WebRTC transport of the web channel
+│       │   │   ├── storage/                # File locks (IFileLockPort) and locked JSON/text files (ILockedFilesPort) through which every store in DATA_DIR reads and changes its files
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │
 │       │   │   Internal folders of a module (each module uses only the ones it needs):

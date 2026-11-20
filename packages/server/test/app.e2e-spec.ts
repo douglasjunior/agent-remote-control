@@ -90,7 +90,8 @@ describe('AppController (e2e)', () => {
           send({ type: 'conversation.history', conversationId: event.conversation.id });
           send({ type: 'agents.list' });
           send({ type: 'profiles.get', conversationId: event.conversation.id });
-        } else if (event.type === 'profiles') {
+        }
+        if (['conversation.history', 'profiles'].every(type => received.some(candidate => candidate.type === type))) {
           client.close();
         }
       });

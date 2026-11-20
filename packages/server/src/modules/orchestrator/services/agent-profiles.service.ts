@@ -33,12 +33,19 @@ export class AgentProfilesService {
     if (await this.settingsStore.load(conversationId)) {
       return 'configured';
     }
-    const mostRecent = await this.settingsStore.loadMostRecent();
-    if (!mostRecent) {
-      return 'missing';
-    }
-    await this.settingsStore.save(conversationId, { ...mostRecent, updatedAt: new Date().toISOString() });
-    return 'inherited';
+    let status: ConversationSettingsStatus = 'missing';
+    await this.settingsStore.update(conversationId, (own, mostRecent) => {
+      if (own) {
+        status = 'configured';
+        return null;
+      }
+      if (mostRecent) {
+        status = 'inherited';
+        return { ...mostRecent, updatedAt: new Date().toISOString() };
+      }
+      return null;
+    });
+    return status;
   }
 
   async list(conversationId: string): Promise<readonly AgentRoleProfile[]> {
@@ -63,10 +70,9 @@ export class AgentProfilesService {
     roles: readonly string[] | undefined,
     profile: AgentProfileSettings,
   ): Promise<AgentSettings> {
-    const current = (await this.current(conversationId)) ?? EMPTY_SETTINGS;
-    const settings = this.withProfiles(current, roles ?? this.agentRegistry.listRoles(), profile);
-    await this.settingsStore.save(conversationId, settings);
-    return settings;
+    const settings = await this.settingsStore.update(conversationId, (own, mostRecent) =>
+      this.withProfiles(own ?? mostRecent ?? EMPTY_SETTINGS, roles ?? this.agentRegistry.listRoles(), profile));
+    return settings!;
   }
 
   private withProfiles(settings: AgentSettings, roles: readonly string[], profile: AgentProfileSettings): AgentSettings {

@@ -504,9 +504,14 @@ export class ExecuteAgentTurnUseCase {
   private async takeUserLanguage(response: string): Promise<string> {
     const { language, text } = extractUserLanguage(response);
     if (!(await this.preferencesStore.load()).language) {
-      const stored = language ?? DEFAULT_USER_LANGUAGE;
-      await this.preferencesStore.update({ language: stored });
-      this.logger.log(`[User Language Stored] Language=${stored}, Detected=${language !== undefined}`);
+      await this.preferencesStore.update((current) => {
+        if (current.language) {
+          return undefined;
+        }
+        const stored = language ?? DEFAULT_USER_LANGUAGE;
+        this.logger.log(`[User Language Stored] Language=${stored}, Detected=${language !== undefined}`);
+        return { language: stored };
+      });
     }
     return text;
   }

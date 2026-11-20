@@ -6,6 +6,7 @@ import { createArtifactsService } from '../../artifacts/testing/artifacts-servic
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { StubAgentSkillsPort } from '../../orchestrator/testing/stub-agent-skills.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { InMemoryLockedFilesFake } from '../../storage/testing/in-memory-locked-files.fake.js';
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebAgentAuthService } from '../services/web-agent-auth.service.js';
 import { WebAgentQuotaService } from '../services/web-agent-quota.service.js';
@@ -63,7 +64,7 @@ describe('WebConnectionHandler', () => {
     handler = new WebConnectionHandler(
       transport,
       store,
-      new AccessTokenService(dataDirectoryAt('/unused')),
+      new AccessTokenService(dataDirectoryAt('/unused'), new InMemoryLockedFilesFake()),
       harness.registry,
       events,
       new ListConversationsUseCase(store),

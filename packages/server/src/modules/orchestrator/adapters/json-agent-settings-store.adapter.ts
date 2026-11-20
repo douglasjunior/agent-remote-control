@@ -1,11 +1,11 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { Inject, Injectable } from '@nestjs/common';
 import { join } from 'node:path';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFile } from '../../storage/ports/locked-files.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
-import type { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
+import type { AgentSettingsChange, IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { profileForAllRoles } from '../utils/agent-profile.util.js';
 
 
@@ -16,66 +16,59 @@ type RawSettings = Partial<AgentProfileSettings> & {
   readonly updatedAt?: string;
 };
 
+type SettingsByConversation = ReadonlyMap<string, AgentSettings>;
+
+/** `DATA_DIR/agent-settings.json`: the settings of every conversation, by conversation id. */
 @Injectable()
 export class JsonAgentSettingsStoreAdapter implements IAgentSettingsStorePort {
-  private readonly logger = new Logger(JsonAgentSettingsStoreAdapter.name);
-  private readonly dataDirectory: string;
-  private readonly filePath: string;
-  private settings: Promise<Map<string, AgentSettings>> | null = null;
-  private writeChain: Promise<void> = Promise.resolve();
+  private readonly file: LockedFile<SettingsByConversation>;
 
   constructor(
     @Inject(IAgentRegistryPort)
     private readonly agentRegistry: IAgentRegistryPort,
     dataDirectoryService: DataDirectoryService,
+    @Inject(ILockedFilesPort) files: ILockedFilesPort,
   ) {
-    this.dataDirectory = dataDirectoryService.resolve();
-    this.filePath = join(this.dataDirectory, SETTINGS_FILENAME);
+    this.file = files.json<SettingsByConversation>(join(dataDirectoryService.resolve(), SETTINGS_FILENAME), {
+      parse: content => this.parse(content),
+      empty: new Map(),
+      serialize: settings => Object.fromEntries(settings),
+    });
   }
 
   async load(conversationId: string): Promise<AgentSettings | null> {
-    this.settings ??= this.read();
-    return (await this.settings).get(conversationId) ?? null;
+    return (await this.file.read()).get(conversationId) ?? null;
   }
 
   async loadMostRecent(): Promise<AgentSettings | null> {
-    this.settings ??= this.read();
-    const all = Array.from((await this.settings).values());
-    if (all.length === 0) {
-      return null;
-    }
-    return all.reduce((latest, current) =>
-      current.updatedAt > latest.updatedAt ? current : latest);
+    return this.mostRecent(await this.file.read());
   }
 
-  async save(conversationId: string, settings: AgentSettings): Promise<void> {
-    this.settings ??= this.read();
-    const all = await this.settings;
-    all.set(conversationId, settings);
-    const content = JSON.stringify(Object.fromEntries(all), null, 2);
-    this.writeChain = this.writeChain
-      .catch(() => undefined)
-      .then(() => this.write(content));
-    await this.writeChain;
+  async update(conversationId: string, change: AgentSettingsChange): Promise<AgentSettings | null> {
+    const stored = await this.file.update((all) => {
+      const updated = change(all.get(conversationId) ?? null, this.mostRecent(all));
+      return updated ? new Map(all).set(conversationId, updated) : undefined;
+    });
+    return stored.get(conversationId) ?? null;
   }
 
-  private async write(content: string): Promise<void> {
-    await mkdir(this.dataDirectory, { recursive: true });
-    await writeFile(this.filePath, content, 'utf-8');
-  }
-
-  private async read(): Promise<Map<string, AgentSettings>> {
-    const result = new Map<string, AgentSettings>();
-    try {
-      const parsed = JSON.parse(await readFile(this.filePath, 'utf-8')) as Record<string, unknown> | null;
-      for (const [key, entry] of Object.entries(parsed ?? {})) {
-        const settings = this.parseEntry(entry);
-        if (settings) {
-          result.set(key, settings);
-        }
+  private mostRecent(all: SettingsByConversation): AgentSettings | null {
+    let latest: AgentSettings | null = null;
+    for (const settings of all.values()) {
+      if (!latest || settings.updatedAt > latest.updatedAt) {
+        latest = settings;
       }
-    } catch {
-      this.logger.debug(`agent_settings_read_skipped: ${this.filePath}`);
+    }
+    return latest;
+  }
+
+  private parse(content: unknown): SettingsByConversation {
+    const result = new Map<string, AgentSettings>();
+    for (const [key, entry] of Object.entries(typeof content === 'object' && content !== null ? content : {})) {
+      const settings = this.parseEntry(entry);
+      if (settings) {
+        result.set(key, settings);
+      }
     }
     return result;
   }

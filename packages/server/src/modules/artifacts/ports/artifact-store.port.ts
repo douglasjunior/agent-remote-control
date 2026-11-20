@@ -17,7 +17,10 @@ export interface IArtifactStorePort {
   conversations(): Promise<readonly string[]>;
   list(conversationId: string): Promise<readonly Artifact[]>;
   find(conversationId: string, id: string): Promise<Artifact | undefined>;
-  /** Runs one change at a time, so a transaction never sees another half done; resolves once the change is on disk. */
+  /**
+   * Runs `work` on the board as it is on disk, one transaction at a time across processes, so none sees another half
+   * done; resolves once its changes are on disk. A transaction that changes nothing writes nothing.
+   */
   transaction<T>(conversationId: string, work: (transaction: ArtifactTransaction) => T): Promise<T>;
 }
 

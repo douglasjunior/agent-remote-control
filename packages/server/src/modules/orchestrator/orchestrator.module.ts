@@ -6,6 +6,7 @@ import { ArtifactsModule } from '../artifacts/artifacts.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { PathsModule } from '../paths/paths.module.js';
 import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
@@ -59,7 +60,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
 
 
 @Module({
-  imports: [AgentModule, AgentDefinitionsModule, ArtifactsModule, LoggingModule, PathsModule, SpeechToTextModule, WorkspaceModule],
+  imports: [AgentModule, AgentDefinitionsModule, ArtifactsModule, LoggingModule, PathsModule, SpeechToTextModule, StorageModule, WorkspaceModule],
   providers: [
     {
       provide: ISessionStorePort,

@@ -6,7 +6,7 @@ The commands that serve the composer: the prompt history, the `@` file search an
 
 - `prompts.history` (with a `requestId`) answers the requester with `prompts.list`: the stored prompts, most recent first.
 - The history is global to the machine, capped at `MAX_PROMPT_HISTORY`, never repeats the latest prompt, and is recorded by the server only (each accepted `message.send` with text); the client never appends.
-- `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`, written atomically after every append. A file that is not a list of strings is ignored.
+- `JsonPromptHistoryAdapter` keeps the history in `<DATA_DIR>/web/prompt-history.json`; each append changes the file as it is on disk under its lock (`storage` module). An append that fails is logged and leaves the prompt out, without failing the message. A file that is not a list of strings is ignored.
 
 ## File search for `@` mentions
 

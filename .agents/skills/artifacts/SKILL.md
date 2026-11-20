@@ -94,8 +94,11 @@ rules shared by create and update live in `ArtifactRulesService`; create, update
 
 `IArtifactStorePort` (`JsonArtifactStoreAdapter`): one file per conversation,
 `DATA_DIR/artifacts/<encodeURIComponent(conversationId)>.json` (`{ counters, artifacts }`, validated with the protocol
-schema; invalid or missing means empty). `transaction(conversationId, work)` runs one at a time over a staged copy and
-commits only after the atomic write (temporary file, then rename). Specs use `InMemoryArtifactStoreFake`,
+schema; invalid or missing means empty), read and written through `ILockedFilesPort` (`storage` module).
+`transaction(conversationId, work)` runs `work` synchronously over a staged copy of the board as it is on disk, under the
+board's lock, so transactions of parallel delegations and of other processes never interleave; it commits only after the
+atomic write, and one that changes nothing writes nothing. `conversations()` lists the `.json` files of the folder, so
+the lockfiles and temporary files beside them never count as boards. Specs use `InMemoryArtifactStoreFake`,
 `buildArtifact`, `createArtifactHarness` and `createArtifactsService` from `testing/`.
 
 ## Agents and the board (orchestrator)

@@ -8,6 +8,9 @@ import { IOpenWorkStorePort } from '../ports/open-work-store.port.js';
  * The work in progress of each conversation, on disk. A record loaded at boot belongs to a process that died, so it
  * is interrupted until a turn claims it. Shutting down stops the turns, and what they report on the way out is
  * ignored, or a restart would erase the very records it needs.
+ *
+ * Each change writes the records the conversation holds in memory when the store applies it, so a write that fails
+ * is logged and the next change of the conversation writes its records again.
  */
 @Injectable()
 export class OpenWorkService implements OnModuleDestroy {
@@ -15,7 +18,6 @@ export class OpenWorkService implements OnModuleDestroy {
   private readonly work = new Map<string, Map<string, OpenWork>>();
   private readonly live = new Set<string>();
   private frozen = false;
-  private writes: Promise<void> = Promise.resolve();
 
   constructor(@Inject(IOpenWorkStorePort) private readonly store: IOpenWorkStorePort) {}
 
@@ -31,42 +33,42 @@ export class OpenWorkService implements OnModuleDestroy {
 
   open(conversationId: string, record: OpenWork): Promise<void> {
     if (this.frozen) {
-      return this.writes;
+      return Promise.resolve();
     }
     this.live.add(record.id);
     const records = this.work.get(conversationId) ?? new Map<string, OpenWork>();
     records.set(record.id, record);
     this.work.set(conversationId, records);
-    return this.persist();
+    return this.persist(conversationId);
   }
 
   update(conversationId: string, id: string, changes: Partial<Pick<OpenWork, 'taskSpec' | 'questions'>>): Promise<void> {
     const records = this.work.get(conversationId);
     const record = records?.get(id);
     if (this.frozen || !records || !record) {
-      return this.writes;
+      return Promise.resolve();
     }
     records.set(id, { ...record, ...changes });
-    return this.persist();
+    return this.persist(conversationId);
   }
 
   close(conversationId: string, id: string): Promise<void> {
     if (this.frozen || !this.work.get(conversationId)?.delete(id)) {
-      return this.writes;
+      return Promise.resolve();
     }
     this.live.delete(id);
-    return this.persist();
+    return this.persist(conversationId);
   }
 
   closeAll(conversationId: string): Promise<void> {
     if (this.frozen || !this.work.has(conversationId)) {
-      return this.writes;
+      return Promise.resolve();
     }
     for (const id of this.work.get(conversationId)!.keys()) {
       this.live.delete(id);
     }
     this.work.delete(conversationId);
-    return this.persist();
+    return this.persist(conversationId);
   }
 
   /** Every record of the conversation that no running turn owns, including those waiting for answers. */
@@ -106,7 +108,7 @@ export class OpenWorkService implements OnModuleDestroy {
   discardInterruptedRoots(conversationId: string): Promise<void> {
     const roots = this.interrupted(conversationId).filter(record => record.root && !record.questions);
     roots.forEach(record => this.work.get(conversationId)!.delete(record.id));
-    return roots.length > 0 && !this.frozen ? this.persist() : this.writes;
+    return roots.length > 0 && !this.frozen ? this.persist(conversationId) : Promise.resolve();
   }
 
   private claim(conversationId: string, id: string, isClaimable: (record: OpenWork) => boolean): OpenWork | undefined {
@@ -117,13 +119,15 @@ export class OpenWorkService implements OnModuleDestroy {
     return record;
   }
 
-  private persist(): Promise<void> {
-    const snapshot = Object.fromEntries([...this.work].map(([conversationId, records]) => [conversationId, [...records.values()]]));
-    this.writes = this.writes
-      .then(() => this.store.save(snapshot))
-      .catch((error: unknown) => {
-        this.logger.error(`open_work_write_failed: ${error instanceof Error ? error.message : String(error)}`);
+  private async persist(conversationId: string): Promise<void> {
+    try {
+      await this.store.update((stored) => {
+        const { [conversationId]: _replaced, ...others } = stored;
+        const records = this.work.get(conversationId);
+        return records ? { ...others, [conversationId]: [...records.values()] } : others;
       });
-    return this.writes;
+    } catch (error) {
+      this.logger.error(`open_work_write_failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 }

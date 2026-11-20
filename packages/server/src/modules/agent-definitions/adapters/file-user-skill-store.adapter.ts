@@ -1,42 +1,54 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { readdir, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { AgentSkillInput } from '../../orchestrator/models/agent-skill.model.js';
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { IFileLockPort } from '../../storage/ports/file-lock.port.js';
+import { ILockedFilesPort } from '../../storage/ports/locked-files.port.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 import type { IUserSkillStorePort } from '../ports/user-skill-store.port.js';
 
 
 const SKILLS_DIRECTORY = 'skills';
 const SKILL_FILE = 'SKILL.md';
+const LOCK_FILE = '.lock';
 const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
 
 /**
  * Reads `DATA_DIR/skills/<skill>/SKILL.md` on every call, so an edited skill applies to the next read without a
  * restart. The frontmatter needs a `description` and the `roles` that may read the skill; `name` defaults to the
- * folder name.
+ * folder name. Writes and deletes take one lock for the whole folder, since a delete finds its skill by name among
+ * all of them.
  */
 @Injectable()
 export class FileUserSkillStoreAdapter implements IUserSkillStorePort {
   private readonly logger = new Logger(FileUserSkillStoreAdapter.name);
   private readonly directory: string;
+  private readonly lockPath: string;
 
-  constructor(dataDirectoryService: DataDirectoryService) {
+  constructor(
+    dataDirectoryService: DataDirectoryService,
+    @Inject(ILockedFilesPort) private readonly files: ILockedFilesPort,
+    @Inject(IFileLockPort) private readonly lock: IFileLockPort,
+  ) {
     this.directory = join(dataDirectoryService.resolve(), SKILLS_DIRECTORY);
+    this.lockPath = join(this.directory, LOCK_FILE);
   }
 
   async list(): Promise<readonly AgentSkillDefinition[]> {
     return (await this.entries()).map(entry => entry.skill);
   }
 
-  async delete(name: string): Promise<boolean> {
-    const entry = (await this.entries()).find(candidate => candidate.skill.name.toLowerCase() === name.toLowerCase());
-    if (!entry) {
-      return false;
-    }
-    await rm(join(this.directory, entry.folder), { recursive: true, force: true });
-    return true;
+  delete(name: string): Promise<boolean> {
+    return this.lock.withLock(this.lockPath, async () => {
+      const entry = (await this.entries()).find(candidate => candidate.skill.name.toLowerCase() === name.toLowerCase());
+      if (!entry) {
+        return false;
+      }
+      await rm(join(this.directory, entry.folder), { recursive: true, force: true });
+      return true;
+    });
   }
 
   private async entries(): Promise<{ folder: string; skill: AgentSkillDefinition }[]> {
@@ -51,10 +63,6 @@ export class FileUserSkillStoreAdapter implements IUserSkillStorePort {
   }
 
   async write(skill: AgentSkillInput): Promise<boolean> {
-    const folder = join(this.directory, skill.name);
-    const path = join(folder, SKILL_FILE);
-    const created = await readFile(path).then(() => false, () => true);
-    await mkdir(folder, { recursive: true });
     const text = [
       '---',
       `name: ${skill.name}`,
@@ -65,9 +73,11 @@ export class FileUserSkillStoreAdapter implements IUserSkillStorePort {
       skill.content,
       '',
     ].join('\n');
-    const temporary = `${path}.tmp`;
-    await writeFile(temporary, text, 'utf-8');
-    await rename(temporary, path);
+    let created = false;
+    await this.files.text(join(this.directory, skill.name, SKILL_FILE), { lockPath: this.lockPath }).update((current) => {
+      created = current === undefined;
+      return text;
+    });
     return created;
   }
 

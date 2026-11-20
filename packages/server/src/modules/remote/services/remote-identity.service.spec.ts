@@ -2,18 +2,19 @@ import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { deriveInstanceId } from '@agent-remote-control/protocol/remote-link';
 import { registrationPayload } from '@agent-remote-control/protocol/signaling';
 import { verify, X509Certificate } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 
 import { RemoteIdentityService } from './remote-identity.service.js';
 
 
 describe('RemoteIdentityService', () => {
   let dataDir: string;
-  const service = () => new RemoteIdentityService(dataDirectoryAt(dataDir));
+  const service = () => new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles());
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'remote-identity-'));
@@ -75,6 +76,24 @@ describe('RemoteIdentityService', () => {
     expect(created.instanceId).toBe(deriveInstanceId(created.fingerprint));
     expect(created.certificate).toBe(x509.raw.toString('base64'));
     expect(readFileSync(created.keyPath, 'utf8')).toMatch(/^-----BEGIN PRIVATE KEY-----\n/);
+  });
+
+  it('should give hosts that start together on one data directory the same identity', async () => {
+    const identities = await Promise.all([service().identity(), service().identity(), service().identity()]);
+
+    expect(new Set(identities.map(identity => identity.fingerprint)).size).toBe(1);
+    expect(readdirSync(join(dataDir, 'remote')).sort()).toEqual(['certificate.pem', 'key.pem']);
+  });
+
+  it('should create the pair again when the certificate is missing', async () => {
+    const created = await service().identity();
+    const key = readFileSync(created.keyPath, 'utf8');
+    rmSync(created.certificatePath);
+
+    const recreated = await service().identity();
+
+    expect(recreated.fingerprint).not.toBe(created.fingerprint);
+    expect(readFileSync(recreated.keyPath, 'utf8')).not.toBe(key);
   });
 
   it('should load the identity once per service', async () => {

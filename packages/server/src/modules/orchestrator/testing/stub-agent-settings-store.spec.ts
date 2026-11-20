@@ -35,10 +35,25 @@ describe('StubAgentSettingsStore', () => {
     const store = new StubAgentSettingsStore();
     const settings = buildSettings('agy');
 
-    await store.save('conv-1', settings);
+    await store.update('conv-1', () => settings);
 
     expect(await store.load('conv-1')).toBe(settings);
     expect(store.saved).toEqual([settings]);
+  });
+
+  it('should pass the own and most recent settings to an update and keep them when it returns null', async () => {
+    const store = new StubAgentSettingsStore();
+    const settings = buildSettings('agy');
+    store.byConversation.set('other', settings);
+    const seen: unknown[] = [];
+
+    await expect(store.update('conv-1', (own, mostRecent) => {
+      seen.push(own, mostRecent);
+      return null;
+    })).resolves.toBeNull();
+
+    expect(seen).toEqual([null, settings]);
+    expect(store.saved).toEqual([]);
   });
 
   it('should return the most recent settings among multiple conversations', async () => {
@@ -47,9 +62,9 @@ describe('StubAgentSettingsStore', () => {
     const newer = buildSettings('newer', '2026-01-02T00:00:00Z');
     const intermediate = buildSettings('mid', '2026-01-01T12:00:00Z');
 
-    await store.save('conv-1', older);
-    await store.save('conv-2', newer);
-    await store.save('conv-3', intermediate);
+    await store.update('conv-1', () => older);
+    await store.update('conv-2', () => newer);
+    await store.update('conv-3', () => intermediate);
 
     expect(await store.loadMostRecent()).toEqual(newer);
   });

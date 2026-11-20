@@ -20,7 +20,7 @@ describe('AgentProfileListService', () => {
   });
 
   it('should describe each role with the agent, model and effort of its profile', async () => {
-    await configuration.store.save('conv', buildStubSettings({
+    configuration.store.byConversation.set('conv', buildStubSettings({
       CEO: buildStubProfile('other', {
         agentName: 'Other Agent',
         modelName: 'Opus',
@@ -45,7 +45,7 @@ describe('AgentProfileListService', () => {
     const settings = buildStubSettings({
       CEO: buildStubProfile('other', { agentName: 'Other Agent', modelName: 'Opus' }),
     });
-    await configuration.store.save('conv', settings);
+    configuration.store.byConversation.set('conv', settings);
     configuration.unavailableAgentIds.add('other');
 
     const selection = await service.open('conv');
@@ -55,7 +55,7 @@ describe('AgentProfileListService', () => {
   });
 
   it('should not mark a profile whose agent is installed', async () => {
-    await configuration.store.save('conv', buildStubSettings({
+    configuration.store.byConversation.set('conv', buildStubSettings({
       CEO: buildStubProfile('stub', { agentName: 'Stub Agent' }),
     }));
 

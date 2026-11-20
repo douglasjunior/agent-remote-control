@@ -69,7 +69,6 @@ export type AgentPromptCost = {
 @Injectable()
 export class AgentRoundService {
   private readonly logger = new Logger(AgentRoundService.name);
-  private sessionBindings: Promise<void> = Promise.resolve();
 
   constructor(
     @Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory,
@@ -274,25 +273,16 @@ export class AgentRoundService {
     await this.updateBinding(session, () => binding);
   }
 
-  /**
-   * Parallel delegations change their bindings concurrently, so each change re-reads the stored session in sequence.
-   * `change` returns the binding that takes the place of the one with its key, or nothing to leave them as they are.
-   */
+  /** `change` returns the binding that takes the place of the one with its key, or nothing to leave them as they are. */
   private async updateBinding(session: SessionContext, change: (latest: SessionContext) => AgentSession | undefined): Promise<void> {
-    const updated = this.sessionBindings.then(async () => {
-      const latest = await this.findLatestSession(session);
+    await this.sessionStore.updateSession(session.conversationId, (latest) => {
       const binding = change(latest);
       if (!binding) {
-        return;
+        return undefined;
       }
       const others = latest.agentSessions.filter(agentSession => !this.isSameAgentSession(agentSession, binding));
-      await this.sessionStore.saveSession({
-        ...latest,
-        agentSessions: [...others, binding],
-      });
+      return { ...latest, agentSessions: [...others, binding] };
     });
-    this.sessionBindings = updated.catch(() => undefined);
-    await updated;
   }
 
   private isSameAgentSession(agentSession: AgentSession, target: AgentSessionKey): boolean {
@@ -373,11 +363,6 @@ export class AgentRoundService {
   /** The conversation's stored session, created empty on its first turn. */
   async resolveSession(request: TurnRequest): Promise<SessionContext> {
     const existing = await this.sessionStore.findSession(request.conversationId);
-    if (existing) {
-      return existing;
-    }
-    const session: SessionContext = { conversationId: request.conversationId, agentSessions: [] };
-    await this.sessionStore.saveSession(session);
-    return session;
+    return existing ?? this.sessionStore.updateSession(request.conversationId, session => session);
   }
 }

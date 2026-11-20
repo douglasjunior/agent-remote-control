@@ -3,17 +3,17 @@ import type { IOpenWorkStorePort, OpenWorkByConversation } from '../ports/open-w
 
 export class InMemoryOpenWorkStoreFake implements IOpenWorkStorePort {
   saved: OpenWorkByConversation = {};
-  failNextSave = false;
+  failNextUpdate = false;
 
   async load(): Promise<OpenWorkByConversation> {
     return this.saved;
   }
 
-  async save(work: OpenWorkByConversation): Promise<void> {
-    if (this.failNextSave) {
-      this.failNextSave = false;
+  async update(change: (work: OpenWorkByConversation) => OpenWorkByConversation): Promise<void> {
+    if (this.failNextUpdate) {
+      this.failNextUpdate = false;
       throw new Error('disk full');
     }
-    this.saved = work;
+    this.saved = change(this.saved);
   }
 }

@@ -895,7 +895,7 @@ describe('agent configuration selection', () => {
 
       it('should not treat messages as a code while the login does not wait for one', async () => {
         agentAuthRequests.startLogin('conv-1', 'codex');
-        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+        settingsStore.byConversation.set('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
 
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'hello' })).resolves.toEqual({ kind: 'execute', prompt: 'hello' });
 
@@ -904,7 +904,7 @@ describe('agent configuration selection', () => {
     });
 
     it('should pass the attachments of a message on untouched, leaving what to do with them to the orchestrator', async () => {
-      await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+      settingsStore.byConversation.set('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
       const file = { name: 'flow.png', path: '/tmp/flow.png', contentType: 'image/png', size: 10 };
 
       await expect(resolve.execute({ conversationId: 'conv-1', prompt: '', attachments: [file] })).resolves.toEqual({
@@ -918,7 +918,7 @@ describe('agent configuration selection', () => {
       const voice = { name: 'voice.ogg', path: '/tmp/voice.ogg', contentType: 'audio/ogg', size: 10 };
 
       it('should leave the audio to the orchestrator when the message runs a turn', async () => {
-        await settingsStore.save('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
+        settingsStore.byConversation.set('conv-1', settingsOf({ agentName: 'Stub', modelId: null }));
 
         await expect(resolve.execute({ conversationId: 'conv-1', prompt: 'See this', attachments: [voice] })).resolves.toEqual({
           kind: 'execute',

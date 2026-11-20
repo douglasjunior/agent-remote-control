@@ -95,11 +95,15 @@ The orchestrator ports live in `packages/server/src/modules/orchestrator/ports/`
 Responsible for persisting and querying session state:
 
 - `findSession(conversationId: string): Promise<SessionContext | null>`
-- `saveSession(session: SessionContext): Promise<void>`
+- `updateSession(conversationId: string, change: SessionChange): Promise<SessionContext>`: `change` receives the stored
+  session, an empty one when there is none, and returns the session to store or `undefined` to leave it; the whole
+  read-change-write is one step under the file's lock, so the bindings that parallel delegations change at once all stay.
+  `AgentRoundService` binds and stamps agent sessions only through it, and `resolveSession` creates the empty session of a
+  new conversation with it.
 - Symbol of the same name: `export const ISessionStorePort = Symbol('ISessionStorePort');`
 
-The implementation is `JsonSessionStoreAdapter`, which writes `DATA_DIR/sessions.json` as a map `{ [conversationId]: { agentSessions } }` and serializes writes. It also reads a file holding an array of items (`conversationId`, or `channelId` with an optional `threadId`, plus `agentSessions`), ignoring every other field, and the next save writes the map; when items share a conversation id, the later one wins. Entries without an `agentId` are discarded. Specs
-use the `InMemorySessionStoreFake` from `testing/`.
+The implementation is `JsonSessionStoreAdapter`, which writes `DATA_DIR/sessions.json` as a map `{ [conversationId]: { agentSessions } }`. It also reads a file holding an array of items (`conversationId`, or `channelId` with an optional `threadId`, plus `agentSessions`), ignoring every other field, and the next update writes the map; when items share a conversation id, the later one wins. Entries without an `agentId` are discarded. Specs
+use the `InMemorySessionStoreFake` from `testing/`, seeded with `seed(session)`.
 
 ### `ISpeechToTextPort` (`speech-to-text/ports/speech-to-text.port.ts`)
 
@@ -108,14 +112,19 @@ use the `InMemorySessionStoreFake` from `testing/`.
 ### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
 
 `load(conversationId: string): Promise<AgentSettings | null>`, `loadMostRecent(): Promise<AgentSettings | null>` and
-`save(conversationId: string, settings: AgentSettings): Promise<void>`. Each conversation
+`update(conversationId: string, change: AgentSettingsChange): Promise<AgentSettings | null>`, where `change(own, mostRecent)`
+returns the settings to store for the conversation or `null` to keep them, and the call resolves to the conversation's
+settings afterwards. Every change of a profile goes through `update`, so concurrent changes to different roles of one
+conversation (four `profiles.set` commands at once) all stay. Each conversation
 has its own configuration: a channel that changes the configuration changes only the conversation (`conversationId`) it runs in.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
-Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map whose writes are serialized, so the last `save` call determines the file content. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
+Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
 
 ### `IPreferencesStorePort` (`preferences-store.port.ts`)
 
-`load(): Promise<Preferences>` and `update(changes): Promise<Preferences>`, which merges the changes and stamps `updatedAt`.
+`load(): Promise<Preferences>` and `update(change): Promise<Preferences>`: `change(current)` returns the changes to merge,
+or `undefined` to leave the preferences, and the merge stamps `updatedAt`. The language the CEO detects is stored only
+when `change` still finds none, so it never replaces one the user set meanwhile.
 The preferences are global to the instance, shared by every conversation and channel. `Preferences.language` is the
 language of the text agents write for the user. Implemented by `JsonPreferencesStoreAdapter` in `DATA_DIR/preferences.json`.
 
@@ -124,10 +133,12 @@ language of the text agents write for the user. Implemented by `JsonPreferencesS
 `DataDirectoryService.resolve()` (`PathsModule`, `paths/services/data-directory.service.ts`) resolves `process.env.DATA_DIR`,
 or `data/` at the repository root when it is unset or blank, and a relative value starts from the repository root.
 Every adapter that persists data receives the service through its constructor, and specs build the adapters with
-`dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`). `WorkspaceDirectoryService` does the same for
-`WORKSPACE_DIR` (default `workspaces/`) and feeds `LocalWorkspaceAdapter`. The JSON adapters load the file
-only once, keep the content in memory, treat a missing or invalid file as empty and
-serialize writes. `JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
+`dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`) and `createNodeLockedFiles()` (`storage/testing/node-locked-files.ts`).
+`WorkspaceDirectoryService` does the same for `WORKSPACE_DIR` (default `workspaces/`) and feeds `LocalWorkspaceAdapter`.
+The JSON adapters read and write their file through `ILockedFilesPort` of the `storage` module: reads use the copy cached
+while the file is unchanged, every change re-reads the file under its lock, a missing or invalid file reads as empty
+and the next change replaces it, and a change that cannot take the lock rejects to its caller.
+`JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
 Settings without any profile with an `agentId` are treated as absent, so the conversation counts as unconfigured, and
 `agentSessions` entries without `agentId` are discarded on read.
 

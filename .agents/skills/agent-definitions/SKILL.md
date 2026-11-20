@@ -217,7 +217,8 @@ Every method: [references/registry-service.md](references/registry-service.md).
 
 The `AgentDefinitionsModule` registers `IAgentRegistryPort` with `useExisting: AgentRegistryService`, guaranteeing a
 single instance. With `useClass`, definitions registered through the exported class would not reach the orchestrator.
-It also binds `IUserSkillStorePort` to `FileUserSkillStoreAdapter` (importing `PathsModule` for `DATA_DIR`) and exports
+It also binds `IUserSkillStorePort` to `FileUserSkillStoreAdapter` (importing `PathsModule` for `DATA_DIR` and
+`StorageModule` for its locks) and exports
 `IAgentSkillsPort`, bound to `AgentSkillsService`.
 
 ## Constants

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { PathsModule } from '../paths/paths.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { JsonArtifactStoreAdapter } from './adapters/json-artifact-store.adapter.js';
@@ -22,7 +23,7 @@ import { UpdateArtifactUseCase } from './use-cases/update-artifact.use-case.js';
 
 
 @Module({
-  imports: [PathsModule, WorkspaceModule],
+  imports: [PathsModule, StorageModule, WorkspaceModule],
   providers: [
     { provide: IArtifactStorePort, useClass: JsonArtifactStoreAdapter },
     ArtifactDerivationService,

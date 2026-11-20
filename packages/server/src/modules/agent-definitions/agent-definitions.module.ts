@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { IAgentRegistryPort } from '../orchestrator/ports/agent-registry.port.js';
 import { IAgentSkillsPort } from '../orchestrator/ports/agent-skills.port.js';
 import { PathsModule } from '../paths/paths.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 
 import { FileUserSkillStoreAdapter } from './adapters/file-user-skill-store.adapter.js';
 import { IUserSkillStorePort } from './ports/user-skill-store.port.js';
@@ -11,7 +12,7 @@ import { AgentSkillsService } from './services/agent-skills.service.js';
 
 
 @Module({
-  imports: [PathsModule],
+  imports: [PathsModule, StorageModule],
   providers: [
     AgentRegistryService,
     {

@@ -304,6 +304,24 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(preferencesStore.updates).toEqual([]);
     });
 
+    it('should keep a language the user set while the CEO was detecting one', async () => {
+      preferencesStore.preferences = {};
+      stubAgentPort.mockResponses = ['Olá!\n\n<user_language>Brazilian Portuguese</user_language>'];
+      const load = preferencesStore.load.bind(preferencesStore);
+      preferencesStore.load = async () => {
+        const loaded = await load();
+        if (stubAgentPort.promptCalls.length > 0) {
+          preferencesStore.preferences = { language: 'Spanish' };
+        }
+        return loaded;
+      };
+
+      await useCase.execute(turnRequest({ prompt: 'Oi' }));
+
+      expect(preferencesStore.updates).toEqual([]);
+      expect(preferencesStore.preferences.language).toBe('Spanish');
+    });
+
     it('should ask delegates for English while no language is stored', async () => {
       preferencesStore.preferences = {};
       preferencesStore.update = async () => ({});
@@ -344,7 +362,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should put the note before the prompt of a resumed session only, and not in its later prompts', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
       }));
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
@@ -363,7 +381,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should put the note of a resumed CEO after its system prompt and before the prompt', async () => {
-      await sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
+      sessionStore.seed(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
       agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
       stubAgentPort.mockResponses = ['Hi.'];
 
@@ -1042,7 +1060,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   it('should return failed when the session cannot be saved', async () => {
-    sessionStore.saveSession = async () => {
+    sessionStore.updateSession = async () => {
       throw new Error('EACCES: permission denied');
     };
 
@@ -1266,7 +1284,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   describe('agent session recovery', () => {
     const persistedSession = () =>
-      sessionStore.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
+      sessionStore.seed(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
     const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
 
     it('should persist the agent session id created for a new conversation', async () => {
@@ -1342,7 +1360,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should resume the stored delegate session without resending the system prompt', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
       }));
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Ok.'];
@@ -1360,7 +1378,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should start a fresh delegate session when sessionMode is new in delegation marker', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }, { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
       }));
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app" session="new">Fix it from scratch.</delegate>', 'Ok.'];
@@ -1378,7 +1396,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should start a fresh delegate session when persona defaults to new session mode', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }, { role: 'CODE_REVIEWER', agentId: 'stub', sessionId: 'rev-old', projectName: 'my-app', artifactId: null }],
       }));
       stubAgentPort.mockResponses = ['<delegate role="CODE_REVIEWER" summary="Working on it" project="my-app">Review it.</delegate>', 'Ok.'];
@@ -1411,7 +1429,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should replace only the delegate role session when its load fails', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [
           { role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null },
           { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null },
@@ -1654,7 +1672,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should not resume a session stored for another agent and keep its entry', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'CEO', agentId: 'agy', sessionId: 'agy-old', projectName: null, artifactId: null }],
       }));
       stubAgentPort.mockResponses = ['Hi.'];
@@ -1670,7 +1688,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should resume the session of the running agent among several stored agents', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [
           { role: 'CEO', agentId: 'agy', sessionId: 'agy-old', projectName: null, artifactId: null },
           { role: 'CEO', agentId: 'stub', sessionId: 'stub-old', projectName: null, artifactId: null },
@@ -1688,7 +1706,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should replace only the entry of the same role and agent when a session is rebound', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [
           { role: 'CEO', agentId: 'agy', sessionId: 'agy-old', projectName: null, artifactId: null },
           { role: 'CEO', agentId: 'stub', sessionId: 'stub-old', projectName: null, artifactId: null },
@@ -2795,7 +2813,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should keep the sessions of one role apart per project', async () => {
-      await sessionStore.saveSession(buildSessionContext({
+      sessionStore.seed(buildSessionContext({
         agentSessions: [
           { role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null },
           { role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-a', projectName: 'project-a', artifactId: null },
@@ -2826,13 +2844,14 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should keep binding sessions after one binding fails to save', async () => {
-      const save = sessionStore.saveSession.bind(sessionStore);
-      sessionStore.saveSession = async (session) => {
-        if (session.agentSessions.at(-1)?.projectName === 'project-a') {
+      const update = sessionStore.updateSession.bind(sessionStore);
+      sessionStore.updateSession = async (conversationId, change) => update(conversationId, (session) => {
+        const updated = change(session);
+        if (updated?.agentSessions.at(-1)?.projectName === 'project-a') {
           throw new Error('EACCES: permission denied');
         }
-        await save(session);
-      };
+        return updated;
+      });
       delegatePorts = [delegatePort('Done in a.'), delegatePort('Done in b.')];
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="project-a">A.</delegate>\n<delegate role="CODE_REVIEWER" summary="Working on it" project="project-b">B.</delegate>', 'Ok.'];
 
@@ -4555,7 +4574,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         ({ role: 'DEVELOPER', agentId: 'stub', sessionId, projectName: 'my-app', artifactId });
 
       beforeEach(async () => {
-        await sessionStore.saveSession(buildSessionContext({
+        sessionStore.seed(buildSessionContext({
           agentSessions: [developerSession('dev-project', null), developerSession('dev-t1', 'T-1')],
         }));
       });
@@ -4593,7 +4612,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       it('should keep the session of the work without a task for a delegation without an artifact', async () => {
         stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Investigating" project="my-app">Investigate.</delegate>', 'Done.'];
         delegateStubPort.mockResponses = ['Found it.'];
-        await sessionStore.saveSession(buildSessionContext({
+        sessionStore.seed(buildSessionContext({
           agentSessions: [
             { role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-t1', projectName: 'my-app', artifactId: 'T-1' },
             { role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-project', projectName: 'my-app', artifactId: null },
@@ -4607,7 +4626,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it('should give a resumed session only what changed on the task since its work on it ended, after the re-entry note', async () => {
         agentRegistry.getReentryNote.mockReturnValue('[RE-ENTRY] note');
-        await sessionStore.saveSession(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
+        sessionStore.seed(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
         seed({
           id: 'T-1',
           title: 'Login',
@@ -4633,7 +4652,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it('should tell a session what changed since its own work ended, the work of the role on another coding agent included', async () => {
         const developer = { kind: 'agent', role: 'DEVELOPER', roleName: 'DEVELOPER' } as const;
-        await sessionStore.saveSession(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
+        sessionStore.seed(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
         seed({
           id: 'T-1',
           sections: { technical_solution: 'Use JWT.', implementation_notes: 'Built on the other agent.' },
@@ -4665,7 +4684,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       });
 
       it('should give a feature whole to a resumed session, since what changed in its tasks is not in its own history', async () => {
-        await sessionStore.saveSession(buildSessionContext({
+        sessionStore.seed(buildSessionContext({
           agentSessions: [{ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-f1', projectName: 'my-app', artifactId: 'F-1', workEndedAt: '2026-01-01T00:00:00.000Z' }],
         }));
         seed({
@@ -4698,7 +4717,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       it('should leave alone a binding another session of the task took while the agent worked', async () => {
         seed({ id: 'T-1' });
         stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
-        whileDelegateWorks(() => sessionStore.saveSession(buildSessionContext({ agentSessions: [developerSession('dev-t1-elsewhere', 'T-1')] })), 'Fixed.');
+        whileDelegateWorks(async () => sessionStore.seed(buildSessionContext({ agentSessions: [developerSession('dev-t1-elsewhere', 'T-1')] })), 'Fixed.');
 
         await useCase.execute(turnRequest());
 
@@ -4707,8 +4726,14 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it('should log a session that fails to record the end of its work, without failing the delegation', async () => {
         seed({ id: 'T-1' });
-        const save = sessionStore.saveSession.bind(sessionStore);
-        sessionStore.saveSession = async session => (session.agentSessions.some(binding => binding.workEndedAt) ? Promise.reject(new Error('disk full')) : save(session));
+        const update = sessionStore.updateSession.bind(sessionStore);
+        sessionStore.updateSession = async (conversationId, change) => update(conversationId, (session) => {
+          const updated = change(session);
+          if (updated?.agentSessions.some(binding => binding.workEndedAt)) {
+            throw new Error('disk full');
+          }
+          return updated;
+        });
         stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
         delegateStubPort.mockResponses = ['Fixed.'];
         const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);

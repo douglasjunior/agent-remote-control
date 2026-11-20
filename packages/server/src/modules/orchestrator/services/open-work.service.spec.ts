@@ -130,9 +130,19 @@ describe('OpenWorkService', () => {
     expect(store.saved['web-1']!.map(work => work.id)).toEqual(['asking', 'd']);
   });
 
+  it('should leave the records of other conversations as they are on disk', async () => {
+    const { service, store } = await afterRestart(delegate);
+    store.saved = { ...store.saved, 'web-9': [root] };
+
+    await service.open('web-2', root);
+    await service.close('web-1', 'd');
+
+    expect(store.saved).toEqual({ 'web-1': [], 'web-9': [root], 'web-2': [root] });
+  });
+
   it('should keep working after a failed write', async () => {
     const { service, store } = await afterRestart();
-    store.failNextSave = true;
+    store.failNextUpdate = true;
 
     await service.open('web-1', delegate);
     await service.open('web-1', root);

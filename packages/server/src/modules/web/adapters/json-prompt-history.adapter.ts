@@ -1,72 +1,46 @@
 import { MAX_PROMPT_HISTORY } from '@agent-remote-control/protocol/limits';
-import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFile } from '../../storage/ports/locked-files.port.js';
 import type { IPromptHistoryPort } from '../ports/prompt-history.port.js';
 
 
+/**
+ * `DATA_DIR/web/prompt-history.json`. The history is a convenience, so a prompt that cannot be written is logged and
+ * left out rather than failing the message that sent it.
+ */
 @Injectable()
 export class JsonPromptHistoryAdapter implements IPromptHistoryPort {
   private readonly logger = new Logger(JsonPromptHistoryAdapter.name);
-  private readonly filePath: string;
-  private prompts: Promise<string[]> | null = null;
-  private writeChain: Promise<void> = Promise.resolve();
+  private readonly file: LockedFile<readonly string[]>;
 
-  constructor(dataDirectoryService: DataDirectoryService) {
-    this.filePath = join(dataDirectoryService.resolve(), 'web', 'prompt-history.json');
+  constructor(dataDirectoryService: DataDirectoryService, @Inject(ILockedFilesPort) files: ILockedFilesPort) {
+    const path = join(dataDirectoryService.resolve(), 'web', 'prompt-history.json');
+    this.file = files.json<readonly string[]>(path, {
+      parse: (content) => {
+        const parsed = z.array(z.string()).safeParse(content);
+        if (!parsed.success) {
+          this.logger.warn(`prompt_history_invalid_file: ${path}`);
+          return [];
+        }
+        return parsed.data.slice(0, MAX_PROMPT_HISTORY);
+      },
+      empty: [],
+    });
   }
 
   async list(): Promise<readonly string[]> {
-    return [...await this.load()];
+    return [...await this.file.read()];
   }
 
   async append(prompt: string): Promise<void> {
-    const prompts = await this.load();
-    if (prompts[0] === prompt) {
-      return;
-    }
-    prompts.unshift(prompt);
-    prompts.length = Math.min(prompts.length, MAX_PROMPT_HISTORY);
-    await this.persist([...prompts]);
-  }
-
-  private load(): Promise<string[]> {
-    this.prompts ??= this.read();
-    return this.prompts;
-  }
-
-  private async read(): Promise<string[]> {
-    let content: unknown;
     try {
-      content = JSON.parse(await readFile(this.filePath, 'utf-8'));
-    } catch {
-      return [];
+      await this.file.update(prompts => (prompts[0] === prompt ? undefined : [prompt, ...prompts].slice(0, MAX_PROMPT_HISTORY)));
+    } catch (error) {
+      this.logger.error(`prompt_history_write_failed: ${error instanceof Error ? error.message : String(error)}`);
     }
-    const parsed = z.array(z.string()).safeParse(content);
-    if (!parsed.success) {
-      this.logger.warn(`prompt_history_invalid_file: ${this.filePath}`);
-      return [];
-    }
-    return parsed.data.slice(0, MAX_PROMPT_HISTORY);
-  }
-
-  private persist(prompts: string[]): Promise<void> {
-    this.writeChain = this.writeChain
-      .then(() => this.writeAtomically(prompts))
-      .catch((error: unknown) => {
-        this.logger.error(`prompt_history_write_failed: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    return this.writeChain;
-  }
-
-  private async writeAtomically(prompts: string[]): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(prompts, null, 2), 'utf-8');
-    await rename(temporary, this.filePath);
   }
 }
