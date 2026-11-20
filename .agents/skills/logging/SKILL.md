@@ -34,4 +34,4 @@ description: >
 grep -h '"conversationId":"<id>"' "$DATA_DIR"/logs/server-*.jsonl
 ```
 
-Compare it with `DATA_DIR/web/history/<id>.json`, the entries the client received. Useful markers: `[Command]`, `[Command Rejected]`, `[Conversation State]`, `[Delegation Started]`, `[Delegation Finished]` (prompts, prompt characters and tokens of the delegation), `[Delegation Restarted]`, `[Agent Prompt]`, `[Agent Usage]`, `[Agent Response]`, `[Agent Requests]`, `[Agent Request Failed]`, `[Stray Requests]`, `[Protocol Repair]`, `[Questions Queued]`, `[Questions Answered]`, `[Questions Discarded]`.
+Compare it with `DATA_DIR/web/history/<id>.json`, the entries the client received. Useful markers: `[Command]`, `[Command Rejected]`, `[Conversation State]`, `[Delegation Started]`, `[Delegation Finished]` (prompts, prompt characters and tokens of the delegation), `[Delegation Restarted]`, `[Agent Prompt]`, `[Agent Usage]`, `[Agent Response]`, `[Agent Requests]`, `[Agent Request Failed]`, `[Stray Requests]`, `[Protocol Repair]`, `[Board Check]`, `[Questions Queued]`, `[Questions Answered]`, `[Questions Discarded]`.

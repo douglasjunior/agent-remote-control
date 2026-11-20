@@ -99,7 +99,17 @@ describe('ArtifactPromptFormatterService', () => {
       const lines = formatter.digest([late, api, second, feature, cart]).split('\n');
 
       expect(lines.map(line => line.split(' ')[1])).toEqual(['F-1', 'F-10', 'T-1', 'T-10']);
-      expect(lines[2]).toBe(formatter.summaryLine(api, [late, api, second, feature, cart]));
+    });
+
+    it('should write a compact line for each feature and each task under way', () => {
+      const standalone = buildArtifact({ id: 'T-4', title: 'Docs', status: 'changes_requested', projectName: 'site', dependsOn: ['T-5'] });
+      const dependency = buildArtifact({ id: 'T-5', status: 'ready' });
+
+      expect(formatter.digest([feature, api, cart, standalone, dependency]).split('\n').slice(0, 3)).toEqual([
+        '- F-1 [feature] "Checkout" · status: in_progress · project: shop',
+        '- T-1 [task] "API" · status: in_review · feature: F-1 · with: CODE_REVIEWER · pull requests: 2',
+        '- T-4 [task] "Docs" · status: changes_requested · project: site · waiting on: T-5',
+      ]);
     });
 
     it('should group the ready tasks by feature and the backlog tasks with what they owe', () => {
@@ -125,9 +135,7 @@ describe('ArtifactPromptFormatterService', () => {
     });
 
     it('should leave the ready and backlog lines out when no task is in them', () => {
-      expect(formatter.digest([feature, api, cart])).toBe(
-        `${formatter.summaryLine(feature, all)}\n${formatter.summaryLine(api, all)}`,
-      );
+      expect(formatter.digest([feature, api, cart]).split('\n')).toHaveLength(2);
     });
   });
 

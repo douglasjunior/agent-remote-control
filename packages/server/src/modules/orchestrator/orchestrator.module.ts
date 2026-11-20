@@ -28,8 +28,11 @@ import { AgentRequestParserService } from './services/agent-request-parser.servi
 import { AgentRoundService } from './services/agent-round.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
+import { CeoBoardService } from './services/ceo-board.service.js';
 import { ConversationRuntimeService } from './services/conversation-runtime.service.js';
 import { DelegationDetectorService } from './services/delegation-detector.service.js';
+import { DelegationLimitsConfigService } from './services/delegation-limits-config.service.js';
+import { DelegationStatusService } from './services/delegation-status.service.js';
 import { DelegationValidatorService } from './services/delegation-validator.service.js';
 import { OpenWorkService } from './services/open-work.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
@@ -79,7 +82,10 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     AgentCapabilitiesService,
     AgentProfilesService,
     ConversationRuntimeService,
+    CeoBoardService,
     DelegationDetectorService,
+    DelegationLimitsConfigService,
+    DelegationStatusService,
     AgentProtocolService,
     ArtifactPromptFormatterService,
     AgentRequestParserService,

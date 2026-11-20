@@ -14,6 +14,8 @@ export type QuestionAsker = {
   readonly role: string;
   readonly roleName: string;
   readonly projectName: string | null;
+  /** The artifact the asking agent holds. */
+  readonly artifactId?: string;
 };
 
 /**

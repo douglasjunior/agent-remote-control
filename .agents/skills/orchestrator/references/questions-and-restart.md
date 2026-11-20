@@ -51,13 +51,17 @@ My understanding is: ... (free text, shown before the first question)
     the front. When it ends, the question is answered with its recommended option, or with nothing when it has none
     (`AnsweredQuestion.timedOut: true`, and no `optionNumber` or text when nothing was assumed), the request moves on
     like after any answer and `listener.timedOut` receives a `QuestionTimedOut` (`asker`, `answered`, `timeoutMs`, and
-    the `next` prompt). Answering, `cancel` and `discard` stop the countdown;
+    the `next` prompt). Answering, `cancel` and `discard` stop the countdown. Once the request is answered,
+    `AnswerAgentQuestionsUseCase.ask` comments on the artifact the asker holds (`QuestionAsker.artifactId`, set by
+    `askerFor` for a delegation with an artifact), as `{ kind: 'system' }`, each assumed answer:
+    `The user did not answer in time, so the recommended answer was assumed:` and a `- "<question>": <option>` line
+    each. Nothing assumed, or an asker without an artifact (the CEO), writes nothing;
   - `current`, `hasPending` and `isWaiting(conversationKey, role, projectName)`;
   - `cancel(conversationKey)`: empties the queue and rejects all waits with `PromptCancelledError`;
   - `discard(conversationKey, role, projectName)`: removes the request of an agent that is being
     replaced, rejecting its wait.
 - `QuestionPrompt` (`models/user-question.model.ts`) is what the channel shows: `asker` (`role`,
-  `roleName`, `projectName`), `question`, `number`, `total`, `message?` (only on the first question),
+  `roleName`, `projectName`, `artifactId?`), `question`, `number`, `total`, `message?` (only on the first question),
   `waitingAskers` and `timeout?` (`expiresAt` in epoch milliseconds and `durationMs`; absent when the timeout is disabled).
 - **Answers to the agent**: a block that repeats the text of each question, to withstand context
   compaction while the user answers, with one `<attachment>` per attached file (downloaded by the

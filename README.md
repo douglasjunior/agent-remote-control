@@ -311,6 +311,8 @@ cp .env.example .env
 | `TURN_RETRY_MAX_DELAY_MS` | The longest a single wait before a retry gets (ms) | Local machine configuration | `7200000` (2 h) |
 | `TURN_RETRY_MAX_TOTAL_MS` | How long after the first failure the retries last (ms); after it the failure stands and you take over | Local machine configuration | `18000000` (5 h) |
 | `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` |
+| `DELEGATION_SPEC_MAX_CHARS` | Longest specification (characters) the CEO may write for a delegation that names a task of the board; the details belong in the task. `0` disables the limit | Local machine configuration | `600` |
+| `AGENT_RESULT_MAX_CHARS` | Longest result (characters) with a verdict that reaches the CEO whole; a longer one is cut. `0` disables the cut | Local machine configuration | `2000` |
 | `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` |
 | `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` |
 | `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` |

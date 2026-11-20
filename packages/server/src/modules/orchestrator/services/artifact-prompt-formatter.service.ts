@@ -30,8 +30,9 @@ export class ArtifactPromptFormatterService {
   }
 
   /**
-   * The whole board in brief: a line for each open artifact that is not a `ready` or `backlog` task (features first, then
-   * tasks, in id order), then the `ready` tasks by feature and the `backlog` tasks with the refinement each still owes.
+   * The whole board in brief: a compact line for each open artifact that is not a `ready` or `backlog` task (features
+   * first, then tasks, in id order), then the `ready` tasks by feature and the `backlog` tasks with the refinement each
+   * still owes.
    */
   digest(all: readonly Artifact[]): string {
     const open = all.filter(artifact => !CLOSED_ARTIFACT_STATUSES.includes(artifact.status)).sort((a, b) => this.compareIds(a, b));
@@ -41,7 +42,8 @@ export class ArtifactPromptFormatterService {
     const features = open.filter(artifact => artifact.type === 'feature');
     const underway = open.filter(artifact => artifact.type === 'task' && !['ready', 'backlog'].includes(artifact.status));
     const lines = [
-      ...[...features, ...underway].map(artifact => this.summaryLine(artifact, all)),
+      ...features.map(feature => this.featureDigestLine(feature)),
+      ...underway.map(task => this.taskDigestLine(task, all)),
       ...(ready.length > 0 ? [`Ready: ${this.readyGroups(ready)}`] : []),
       ...(backlog.length > 0 ? [`Backlog: ${backlog.map(task => this.backlogEntry(task)).join('; ')}`] : []),
     ];
@@ -137,6 +139,23 @@ export class ArtifactPromptFormatterService {
 
   private pullRequestsFact(artifact: Artifact): string {
     return `- Pull requests: ${artifact.pullRequests.length > 0 ? artifact.pullRequests.map(link => `${link.url} (${link.state})${link.title ? ` "${link.title}"` : ''}`).join('; ') : 'none'}`;
+  }
+
+  private featureDigestLine(feature: Artifact): string {
+    return `- ${feature.id} [feature] "${feature.title}" · status: ${feature.status} · project: ${feature.projectName}`;
+  }
+
+  /** A task under a feature runs in the feature's project, so the line names the feature, and the project only for a standalone task. */
+  private taskDigestLine(task: Artifact, all: readonly Artifact[]): string {
+    const waitingOn = this.waitingOn(task, all);
+    return [
+      `- ${task.id} [task] "${task.title}"`,
+      `status: ${task.status}`,
+      task.parentId ? `feature: ${task.parentId}` : `project: ${task.projectName}`,
+      ...(task.assignee ? [`with: ${task.assignee.role}`] : []),
+      ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
+      ...(task.pullRequests.length > 0 ? [`pull requests: ${task.pullRequests.length}`] : []),
+    ].join(' · ');
   }
 
   /** The ids grouped by feature in the id order of the features, the tasks without a feature last. */

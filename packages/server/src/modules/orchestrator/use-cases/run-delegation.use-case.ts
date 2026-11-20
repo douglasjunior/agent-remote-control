@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentUsage } from '../../agent/ports/agent.port.js';
+import { ARTIFACT_SECTION_TITLES } from '../../artifacts/constants/artifact-catalog.constant.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.util.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
@@ -20,6 +21,8 @@ import { describeDelegation } from '../prompts/previous-turn.prompt.js';
 import { type AgentPrompt, type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { DelegationLimitsConfigService } from '../services/delegation-limits-config.service.js';
+import { DelegationStatusService } from '../services/delegation-status.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
@@ -55,6 +58,8 @@ export class RunDelegationUseCase {
     private readonly agentRound: AgentRoundService,
     private readonly agentQuestions: AnswerAgentQuestionsUseCase,
     private readonly runAgentRequests: RunAgentRequestsUseCase,
+    private readonly delegationStatus: DelegationStatusService,
+    private readonly limits: DelegationLimitsConfigService,
   ) {}
 
   /**
@@ -227,6 +232,9 @@ export class RunDelegationUseCase {
     let outcome = 'stopped';
     const costs: AgentPromptCost[] = [];
     try {
+      if (artifactId) {
+        await this.delegationStatus.start(request.conversationId, artifactId, delegateToRole);
+      }
       const runRound = (prompt: AgentPrompt, delivery?: AnswerDelivery) => this.agentRound.run({
         agentPort: delegatePort,
         cwd,
@@ -264,7 +272,7 @@ export class RunDelegationUseCase {
       const response = await this.agentQuestions.execute(
         await resolveRequests(await runRound(opening, answerDelivery)),
         async text => resolveRequests(await runRound(pending.before(text))),
-        this.agentQuestions.askerFor(delegateToRole, projectName),
+        this.agentQuestions.askerFor(delegateToRole, projectName, artifactId),
         request,
         openWorkId,
       );
@@ -284,9 +292,11 @@ export class RunDelegationUseCase {
         durationMs,
       });
       outcome = 'finished';
-      return buildAgentResult(delegateToRole, projectName, response, {
+      const verdict = artifactId ? await this.delegationStatus.finish(request.conversationId, artifactId, delegateToRole, response) : undefined;
+      return buildAgentResult(delegateToRole, projectName, verdict ? this.receipt(response, delegateToRole, artifactId!) : response, {
         agentInfo,
         ...await this.heldArtifactDetails(request.conversationId, artifactId),
+        ...(verdict ? { verdict } : {}),
       });
     } catch (error) {
       // Closing a replaced agent's session can surface as any error, none of which is a failure of its task.
@@ -376,6 +386,20 @@ export class RunDelegationUseCase {
     const artifact = all.find(candidate => candidate.id === artifactId)!;
     const content = (newSession ? undefined : this.artifactFormatter.changesSinceRelease(artifact, role)) ?? this.artifactFormatter.detail(artifact, all);
     return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${content}\n[/DELEGATED_ARTIFACT]\n\n${text}`;
+  }
+
+  /**
+   * A response that opens with a verdict closes a step whose report the agent wrote on its task, so past the limit
+   * the CEO gets its start and where the rest is.
+   */
+  private receipt(response: string, role: string, artifactId: string): string {
+    const maxChars = this.limits.getMaxResultChars();
+    if (maxChars === 0 || response.length <= maxChars) {
+      return response;
+    }
+    const sections = this.agentRegistry.getArtifactAccess(role).sections.map(section => ARTIFACT_SECTION_TITLES[section]);
+    const where = sections.length > 0 ? `${artifactId}, in its ${sections.join(' or ')} section` : artifactId;
+    return `${response.slice(0, maxChars).trimEnd()}\n\n[The rest of this result, ${response.length - maxChars} characters, was left out. The full report is on ${where}.]`;
   }
 
   /** A new delegation of a role takes the place of whatever a restart left stopped for it. */

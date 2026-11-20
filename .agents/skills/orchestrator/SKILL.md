@@ -32,16 +32,18 @@ Each class owns one part of a turn; channels reach them only through the public 
 
 | Class | Responsibility |
 |---|---|
-| `ExecuteAgentTurnUseCase` | The CEO turn: steering a running CEO, its rounds and repairs, its questions, resumed work and the `TurnResult` |
-| `RunDelegationUseCase` | The delegated agents: start, steer or replace, hold the artifact, stop, and the `<agent_result>` of each |
-| `AnswerAgentQuestionsUseCase` | An agent's questions to the user and the answers back, with one repair for invalid or forbidden questions |
+| `ExecuteAgentTurnUseCase` | The CEO turn: steering a running CEO, its rounds and repairs, its questions, resumed work, the board check before its answer and the `TurnResult` |
+| `RunDelegationUseCase` | The delegated agents: start, steer or replace, hold the artifact and move its status, stop, and the `<agent_result>` of each, cut to a receipt when it opens with a verdict and runs long |
+| `AnswerAgentQuestionsUseCase` | An agent's questions to the user and the answers back, with one repair for invalid or forbidden questions; an answer the timeout assumed is commented on the asker's artifact |
 | `RunAgentRequestsUseCase` | Board and skill requests: `execute` runs one response's requests, `resolve` repeats until a response has none or carries them with its outcome or answer |
 | `StopArtifactWorkUseCase` | Stops the agent holding an artifact the user moved to a work-ending status |
 | `CancelAgentTurnUseCase`, `RestoreOpenWorkUseCase`, `ConfigureAgentProfilesUseCase`, `RunShellCommandUseCase`, `TranscribeAudioAttachmentsUseCase`, `GetAgentQuotaUseCase` | Cancellation, open work after a restart, profiles, the shell command, audio transcription and quotas |
 | `RetryCeoRoundUseCase` | A failed prompt of the CEO: shows the failure, waits and sends the same prompt again, like a question waits for an answer (`TurnRetryService`, `TurnRetryConfigService`) |
 | `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session of its role, project and task, system prompt and `[SKILLS]` (new session), re-entry note (resumed session), language, profile, requests written outside the envelope, protocol repair, the cost of each prompt (`onPrompt`) |
 | `DelegationValidatorService` | Classifies a CEO response and checks each delegation against the team, the board, the workspace and the running agents |
-| `TeamProfilesService` | The `[TEAM_PROFILES]` block of the CEO prompt |
+| `DelegationStatusService` | The status flow of a delegated task: `refusal` (a status the role does not take), `start` (the role's start status) and `finish` (the status of the verdict that opens the final answer) |
+| `DelegationLimitsConfigService` | `DELEGATION_SPEC_MAX_CHARS` (600) and `AGENT_RESULT_MAX_CHARS` (2000), `0` disabling each |
+| `TeamProfilesService`, `CeoBoardService` | The `[TEAM_PROFILES]` and `[BOARD]` blocks of the CEO prompt; `CeoBoardService.findStranded` also finds the tasks a turn would leave mid-flow |
 | `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices |
 | `AgentProtocolService`, `DelegationDetectorService`, `QuestionParserService`, `AgentRequestParserService` | Reading agent output: the final response envelope, delegations, questions and requests |
 | `prompts/*.prompt.ts` | Every text the orchestrator writes into a prompt (results, answers, attachments, repairs, notices, language, skills) |
@@ -49,10 +51,10 @@ Each class owns one part of a turn; channels reach them only through the public 
 ## A Turn in Short
 
 1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text, and a message that reaches a CEO already working steers it instead of starting a turn.
-2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, pending notices, attachments and the language block.
+2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round only), pending notices, attachments and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
 4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again.
-5. The turn ends with the CEO's answer once no delegation runs, or as failed, cancelled or steered; delegations still running are stopped.
+5. The turn ends with the CEO's answer once no delegation runs, or as failed, cancelled or steered; delegations still running are stopped. In a turn where an agent ran, an answer that leaves tasks mid-flow with nobody on them and unnamed sends the CEO back once with `[BOARD_CHECK]`.
 
 Read [references/turn-execution.md](references/turn-execution.md) before changing any of these steps; it covers the directory hierarchy, the tag protocol, the CEO rounds, delegations and each agent round in detail.
 
@@ -66,9 +68,9 @@ name fails the request and lists the skills of the role), and, for a role that w
 and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). When any request of a response failed, the `<request_results>` block is followed by a note sending the agent to the grammar in its skills before writing them again. Each `<skill_read>` and `<skill_write>` also reaches the channel as a `skill` activity of the agent (`execute`'s `onSkill`, wired to `TurnRequest.onActivity`). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
 for the CEO, questions for a delegate), or whose requests are all writes (`create`, `update`, `comment`, `skill_write`) that succeeded next to the text of an answer, is classified from that rest and its `<request_results>` open the agent's next prompt
 (`PendingRequestResults`), so an answer that also moves its task arrives in one round. Any other one (a read, a failed or invalid request, or nothing but requests) gets the results right away, followed by a note saying why the response was not taken as the final answer, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). Each failed request is logged as `[Agent Request Failed]` with its reason. A role that creates artifacts (`create`) also writes the `overview` of what it creates, whatever its `sections`; an update stays within `sections`. A delegation with `artifact="T-1"` is validated against the board (`DelegationValidatorService`): known, of a type the
-role works on, neither frozen nor closed, with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, and in its project,
-which becomes the delegation's folder. `RunDelegationUseCase` assigns it before creating the port, prefixes the first prompt with
-`[DELEGATED_ARTIFACT]` and releases it in `finally` with how the work ended; a running delegation is steered only
+role works on, neither frozen nor closed, in a status the role takes (`DelegationStatusService.refusal`), with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, in its project,
+which becomes the delegation's folder, and with a specification no longer than `DELEGATION_SPEC_MAX_CHARS`. `RunDelegationUseCase` assigns it before creating the port, sets the role's start status (`start`), prefixes the first prompt with
+`[DELEGATED_ARTIFACT]`, applies the verdict of the final answer (`finish`) while it still holds the artifact, and releases it in `finally` with how the work ended; a running delegation is steered only
 for the same artifact. The block holds the full content (`ArtifactPromptFormatterService.detail`) when the session is new to the task, and,
 when the role's session for the task was resumed, the facts and only the sections changed and comments added since the role last released it
 (`changesSinceRelease`, see [references/turn-execution.md](references/turn-execution.md)).
@@ -116,7 +118,7 @@ A prompt to the CEO that throws, or a response that stays `invalid` after its re
 
 - **Schedule**: `nextRetryDelay` (`utils/retry-delay.util.ts`) doubles the wait from `TURN_RETRY_BASE_DELAY_MS` (15 s) up to `TURN_RETRY_MAX_DELAY_MS` (2 h), and cuts the last wait to what is left of `TURN_RETRY_MAX_TOTAL_MS` (5 h) counted from the first failure, ending the retries when what is left is shorter than the base wait; `0` in any of them disables the retries. Each `RetryBudget` (`models/retry-budget.model.ts`) holds the attempts and the first failure of one stretch of failures: `execute` opens one per prompt, so a prompt that succeeds ends the failure and the next one starts again from the base, and `runCeoTurn` keeps one for the pauses of invalid responses.
 - **Events**: `TurnRequest.onRetry` gets `scheduled` (`RetryPrompt`: `roleName`, `errorMessage`, `attempt`, `timeout`) and `ended` (`elapsed`, `requested`, `stopped` or `cancelled`). A channel renders them and sends `retryNow` and `stopRetrying`; it runs no turn.
-- **Retry prompt**: `buildTurnRetryPrompt` (`prompts/turn-retry.prompt.ts`) starts with `[RETRY]`, tells the CEO the error and to check what it already did, carries what the user wrote, and ends with the prompt that failed whole, since the failed attempt may not have delivered it. The `[TEAM_PROFILES]` block and the notices are part of the round prompt, so a retry carries them again.
+- **Retry prompt**: `buildTurnRetryPrompt` (`prompts/turn-retry.prompt.ts`) starts with `[RETRY]`, tells the CEO the error and to check what it already did, carries what the user wrote, and ends with the prompt that failed whole, since the failed attempt may not have delivered it. The `[TEAM_PROFILES]` and `[BOARD]` blocks and the notices are part of the round prompt, so a retry carries them again.
 - Delegated agents are not retried: their failure reaches the CEO as a failed `<agent_result>`, and the CEO decides.
 
 ## Mandatory Prescriptive Rules

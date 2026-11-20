@@ -21,4 +21,13 @@ describe('agent-result.prompt', () => {
   it('should leave out a status nobody read', () => {
     expect(buildAgentResult('QA', 'shop', 'Done.', { artifactId: 'T-2' })).toBe('<agent_result role="QA" project="shop" artifact="T-2">\nDone.\n</agent_result>');
   });
+
+  it('should put the verdict after the artifact and before its status', () => {
+    expect(buildAgentResult('DEVELOPER', 'shop', 'DONE\nPushed.', { artifactId: 'T-1', verdict: 'DONE', artifactStatus: 'in_review' }))
+      .toBe('<agent_result role="DEVELOPER" project="shop" artifact="T-1" verdict="DONE" artifact_status="in_review">\nDONE\nPushed.\n</agent_result>');
+  });
+
+  it('should leave the verdict out without an artifact', () => {
+    expect(buildAgentResult('DEVELOPER', 'shop', 'DONE', { verdict: 'DONE' })).toBe('<agent_result role="DEVELOPER" project="shop">\nDONE\n</agent_result>');
+  });
 });

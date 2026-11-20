@@ -119,16 +119,23 @@ commits only after the atomic write (temporary file, then rename). Specs use `In
   `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). Comments need only read access.
   An unknown role reads tasks only.
 - **Delegation**: `<delegate ... artifact="T-1">` (contract `artifact: 'required' | 'optional'`, plus `needsReviewableWork`)
-  is validated before it starts: known artifact, a task for a `task` scope, not closed, a pull request or a branch when required,
-  no holder of another role, and the artifact's project (the `project` attribute may be left out; another one is
-  refused). One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
+  is validated before it starts: known artifact, a task for a `task` scope, not closed, in a status the role takes (its
+  `statusFlow.from`), a pull request or a branch when required, no holder of another role, the artifact's project (the
+  `project` attribute may be left out; another one is refused), and a specification within `DELEGATION_SPEC_MAX_CHARS`.
+  One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
   before the port is created, `release` in `finally` with `finished|failed|cancelled|replaced|stopped|stopped by the user`), starts from a
   `[DELEGATED_ARTIFACT]` block before the task, and is steered only when the artifact is the same. Each role keeps one session
   per task: a session new to the task gets the full content, and a resumed one the facts plus the sections changed and comments
   added since that role's last `released` event (the full content when the role never released it).
+- **Statuses of a delegated task**: the server moves them, as `system` history events (`DelegationStatusService` in the
+  orchestrator). Once assigned, the task takes the role's `statusFlow.start`; the verdict that opens the agent's final
+  answer sets the status `statusFlow.verdicts` maps it to, while the agent still holds the task, unless a user set the
+  status while it worked. A failed, stopped, replaced or cancelled delegation, or an answer without a verdict, changes
+  nothing. The CEO sets only the statuses that are decisions (`done`, `blocked`, `cancelled`, reopening, skipping a step).
   The artifact travels in `ActiveDelegation.artifactId`, `DelegationEvent.artifactId`, `OpenWork.artifactId`,
-  `[TEAM_PROFILES]` (`Artifact: T-1`) and `<agent_result artifact="T-1" artifact_status="…">`, whose status is read when
-  the agent finishes so the CEO never answers with a status the result contradicts. `artifact_status_by="user"` follows
+  `QuestionAsker.artifactId`, `[TEAM_PROFILES]` (`Artifact: T-1`) and
+  `<agent_result artifact="T-1" verdict="…" artifact_status="…">`, whose status is read after the verdict is applied
+  so the CEO never answers with a status the result contradicts. `artifact_status_by="user"` follows
   when a user set that status while the agent worked, and the CEO keeps it; `artifact_read` shows `Status: <status>, set
   by the user` whenever a user set the current status.
 
