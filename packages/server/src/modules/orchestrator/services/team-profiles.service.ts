@@ -10,6 +10,7 @@ import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { resolveProfile } from '../utils/agent-profile.util.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
+import { SteeringSupportService } from './steering-support.service.js';
 import { UserQuestionQueueService } from './user-question-queue.service.js';
 
 
@@ -22,9 +23,13 @@ export class TeamProfilesService {
     @Inject(IAgentSettingsStorePort) private readonly settingsStore: IAgentSettingsStorePort,
     private readonly conversationRuntime: ConversationRuntimeService,
     private readonly questionQueue: UserQuestionQueueService,
+    private readonly steeringSupport: SteeringSupportService,
   ) {}
 
-  /** The signature ignores elapsed time, so only a change in a profile, in who is working, their task summary or their wait state resends the block. */
+  /**
+   * The signature ignores elapsed time, so only a change in a profile, in who is working, their task summary, their wait
+   * state, their steering or what waits for them resends the block.
+   */
   async build(
     conversationKey: string,
     request: TurnRequest,
@@ -47,7 +52,9 @@ export class TeamProfilesService {
       }
       const waiting = this.questionQueue.isWaiting(conversationKey, role, delegation.projectName) ? 'yes' : 'no';
       const artifact = delegation.artifactId ? `Artifact: ${delegation.artifactId}, ` : '';
-      const work = `Project: ${delegation.projectName ?? 'none'}, ${artifact}Waiting for user: ${waiting}, Summary: "${delegation.summary}"`;
+      const queued = delegation.control.queued > 0 ? `Queued: ${delegation.control.queued}, ` : '';
+      const steering = this.describeSteering(delegation.agentPort.agentName);
+      const work = `Project: ${delegation.projectName ?? 'none'}, ${artifact}Waiting for user: ${waiting}, Steering: ${steering}, ${queued}Summary: "${delegation.summary}"`;
       lines.push(`- ${role}: ${profile}, Status: working, Running: ${this.formatElapsed(Date.now() - delegation.startedAt)}, ${work}`);
       signature.push(`${role}\u0000${profile}\u0000working\u0000${work}`);
     }
@@ -65,6 +72,14 @@ export class TeamProfilesService {
       ...(profile.modelName ? { modelName: profile.modelName } : {}),
       ...(profile.effortName ? { effortName: profile.effortName } : {}),
     };
+  }
+
+  private describeSteering(agentId: string): string {
+    const supported = this.steeringSupport.supports(agentId);
+    if (supported === undefined) {
+      return 'unknown';
+    }
+    return supported ? 'supported' : 'not supported';
   }
 
   private formatElapsed(elapsedMs: number): string {

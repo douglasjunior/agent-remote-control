@@ -74,7 +74,7 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `message.send` returns immediately while the turn streams: `SendConversationMessageUseCase` never rejects,
   records the `user_message` and runs the turn as the CEO only when the conversation is configured.
 - Turn callbacks become entries with stable ids (`thought:<turnId>:<role>:<id>`, `tool:<turnId>:<role>:<toolCallId>`,
-  `delegation:<delegationId>:<phase>`) so the store and the client upsert by id. `ConversationEntryService` builds
+  `delegation:<delegationId>:<phase>`, `delegation:<delegationId>:steered:<uuid>` for each new instruction) so the store and the client upsert by id. `ConversationEntryService` builds
   every entry and owns the clock and the random ids.
 - The conversation state (`running`, `queued`, `idle`) belongs to the conversation, not to a turn, and is
   published only when it changes. `WebConversationEventsService` places each entry in the history, then broadcasts it

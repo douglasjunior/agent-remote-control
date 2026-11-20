@@ -86,7 +86,7 @@ export class ConversationEntryService {
 
   delegation(event: DelegationEvent): ConversationEntry {
     const base = {
-      id: `delegation:${event.delegationId}:${event.phase}`,
+      id: `delegation:${event.delegationId}:${event.phase === 'steered' ? `steered:${randomUUID()}` : event.phase}`,
       delegationId: event.delegationId,
       ...this.stamp(),
       type: 'delegation' as const,
@@ -99,7 +99,7 @@ export class ConversationEntryService {
       summary: event.summary,
       prompt: event.taskSpec,
     };
-    if (event.phase === 'started') {
+    if (event.phase === 'started' || event.phase === 'steered') {
       return base;
     }
     if (event.phase === 'failed') {

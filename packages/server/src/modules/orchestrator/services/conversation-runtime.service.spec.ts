@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
+import { DelegationControl } from '../models/delegation-control.model.js';
 import { createServedToolSessions, credentialOf } from '../testing/agent-tool-sessions.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -188,7 +189,7 @@ describe('ConversationRuntimeService', () => {
       startedAt: Date.now(),
       agentPort,
       turn: { cancel: rs.fn() } as never,
-      steer: rs.fn(),
+      control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
       stop: rs.fn(),
     });
 
@@ -358,10 +359,10 @@ describe('ConversationRuntimeService', () => {
       await running;
     });
 
-    it('should return false when the port does not accept the steering', async () => {
+    it('should return false when the port does not take the steering into a running prompt', async () => {
       supportSteeringOnCreate();
       const { gate, running } = await startRunningCeo();
-      ports[0]!.steeringResult = false;
+      ports[0]!.steeringResult = 'not_running';
 
       await expect(runtime.steerCeo('a', 'stub', 'new message')).resolves.toBe(false);
 
@@ -451,7 +452,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -483,7 +484,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
       const frontend = { ...backend, projectName: 'frontend', cwd: '/mock/frontend', agentPort: new StubAgentPort() };
@@ -514,7 +515,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort1,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
       const delegation2 = {
@@ -551,7 +552,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: cancelTurnMock } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -587,7 +588,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
@@ -603,7 +604,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
 
@@ -628,7 +629,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
@@ -644,7 +645,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
 
@@ -669,7 +670,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -696,7 +697,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -732,7 +733,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -742,6 +743,29 @@ describe('ConversationRuntimeService', () => {
       expect(delegatePort.closeSessionCalls).toBe(1);
       expect(delegatePort.connected).toBe(false);
       expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+  });
+
+  describe('agent receipts', () => {
+    it('should keep the receipts of each conversation in order until they are acknowledged', () => {
+      runtime.addAgentReceipt('a', 'first');
+      runtime.addAgentReceipt('a', 'second');
+      runtime.addAgentReceipt('b', 'other');
+
+      runtime.acknowledgeAgentReceipts('a', 1);
+
+      expect(runtime.pendingAgentReceipts('a')).toEqual(['second']);
+      expect(runtime.pendingAgentReceipts('b')).toEqual(['other']);
+    });
+
+    it('should leave none pending once all of them are acknowledged', () => {
+      runtime.addAgentReceipt('a', 'first');
+
+      runtime.acknowledgeAgentReceipts('a', 1);
+      runtime.acknowledgeAgentReceipts('unknown', 1);
+
+      expect(runtime.pendingAgentReceipts('a')).toEqual([]);
+      expect(runtime.pendingAgentReceipts('unknown')).toEqual([]);
     });
   });
 
@@ -824,7 +848,7 @@ describe('ConversationRuntimeService', () => {
       startedAt: Date.now(),
       agentPort: port,
       turn: { cancel: rs.fn() } as any,
-      steer: rs.fn(),
+      control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
       stop: rs.fn(),
     });
 

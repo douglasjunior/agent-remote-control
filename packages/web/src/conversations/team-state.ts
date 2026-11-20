@@ -72,6 +72,10 @@ export function deriveTeam(
           delegationId: entry.delegationId,
           open: true,
         });
+      } else if (entry.phase === 'steered') {
+        if (previous?.delegationId === entry.delegationId) {
+          delegates.set(entry.role, { ...previous, member: { ...previous.member, summary: entry.summary } });
+        }
       } else if (previous?.delegationId === entry.delegationId) {
         delegates.set(entry.role, {
           member: {

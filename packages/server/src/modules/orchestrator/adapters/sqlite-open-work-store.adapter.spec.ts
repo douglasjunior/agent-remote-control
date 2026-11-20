@@ -23,6 +23,7 @@ const asked: OpenWork = {
   artifactId: 'T-1',
   summary: 'Test',
   taskSpec: 'Test T-1',
+  updates: ['Test the login too.', 'Skip the signup.'],
   cwd: '/w/shop',
   round: 3,
   root: true,
@@ -95,13 +96,15 @@ describe('SqliteOpenWorkStoreAdapter', () => {
 
   it('should leave out a row that is not a valid record', async () => {
     const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    await store.update(() => ({ 'web-1': [record, { ...asked, id: 'broken' }, { ...asked, id: 'wrong' }] }));
+    await store.update(() => ({ 'web-1': [record, { ...asked, id: 'broken' }, { ...asked, id: 'wrong' }, { ...asked, id: 'updates' }] }));
     await dataSource.query('UPDATE "open_work" SET "questions" = \'{\' WHERE "id" = \'broken\'');
     await dataSource.query('UPDATE "open_work" SET "questions" = \'{"message": 1}\' WHERE "id" = \'wrong\'');
+    await dataSource.query('UPDATE "open_work" SET "updates" = \'[1]\' WHERE "id" = \'updates\'');
 
     await expect(store.load()).resolves.toEqual({ 'web-1': [record] });
     expect(warn).toHaveBeenCalledWith('open_work_invalid_row: broken of web-1');
     expect(warn).toHaveBeenCalledWith('open_work_invalid_row: wrong of web-1');
+    expect(warn).toHaveBeenCalledWith('open_work_invalid_row: updates of web-1');
   });
 
   it('should roll back a change the database refuses and keep what was stored', async () => {

@@ -65,7 +65,7 @@ same ACP session and the same `cwd`.
 - `agentName: string`: identifier of the concrete agent (`'agy'`, `'claude'`, `'copilot'`, `'codex'`, `'cursor'` or `'opencode'`), equal to the factory `agentId`.
 - `lastAgentMessage: string`: the last message of the turn as the agent wrote it, protocol tags included.
 - `currentSessionId?: string`: ID of the active ACP session. It is `undefined` without a session, including after a lost transport or a forced cancellation.
-- `supportsSteering: boolean`: whether the agent supports native steering while a turn is running.
+- `supportsSteering: boolean`: whether the agent takes text into a running prompt (`_meta.steering.supported` of `initialize`); `false` before `connect()`.
 - `supportsHttpMcp: boolean`: whether the agent advertised Streamable HTTP MCP servers in `initialize` (`agentCapabilities.mcpCapabilities.http`); `false` before `connect()`.
 
 ### Methods
@@ -74,7 +74,7 @@ same ACP session and the same `cwd`.
 - `createSession(cwd: string, options?: AgentSessionOptions): Promise<void>`: creates a session (`session/new`) bound to the given directory, with the MCP servers of `options.mcpServers` (`AgentMcpServer`: `name`, `url` and `headers` of a Streamable HTTP server) as ACP `mcpServers` of type `http`. An agent without `supportsHttpMcp` gets none of them: the adapter leaves them out with a debug log, never throws.
 - `loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean>`: resumes an existing session via `session/load`, with `options.mcpServers` as `createSession` sends them. A new agent process knows none of the servers of the session it loads, so the caller sends them on every load. Returns `false`, without throwing, when the agent does not advertise `loadSession` or when the load fails; returns `true` with `currentSessionId` set.
 - `prompt(text: string): AsyncGenerator<AgentUpdate>`: sends a turn and delivers the consolidated final block.
-- `sendSteeringPrompt(text: string): Promise<boolean>`: injects text into the running prompt. With steering, it sends `_session/steering` with `_meta.steering.idleBehavior = 'promptRequired'` and resolves `true` only with `outcome: 'injected'`; with no running prompt (`promptRequired`), no session or an error, it resolves `false` and the text is not delivered, so the caller decides what to do with it. Without steering, it fires `session/prompt` as a fallback and resolves `true`.
+- `sendSteeringPrompt(text: string): Promise<SteeringOutcome>`: injects text into the running prompt with `_session/steering` and `_meta.steering.idleBehavior = 'promptRequired'`, so an idle agent stays idle. It resolves `injected` when the agent took the text, `not_running` when no prompt was running (the agent answered `promptRequired`, or there is no session), `unsupported` for an agent without steering (nothing is sent) and `failed` for an error or any other answer. Only `injected` delivers the text: on any other outcome the caller still holds it and decides what to do with it.
 - `cancel(): Promise<void>`: interrupts the running prompt through the cancellation ladder. With no running prompt it is a no-op, so a late cancellation does not abort the next turn.
 - `closeSession(): Promise<void>`: closes the active session, keeping the connection.
 - `disconnect(): Promise<void>`: discards the session, terminates the subprocess and clears the cached options.
@@ -83,7 +83,7 @@ same ACP session and the same `cwd`.
 - `setConfig(config: AgentConfig): Promise<void>`: applies model and/or effort to the active session and stores it as the preference for the next sessions.
 - `getLastRoundUsage(): Promise<AgentUsage | undefined>`: token usage of the last turn or via fallback.
 - `getQuota(): Promise<AgentQuota | undefined>`: the agent's usage limits (`groups` → `buckets` with `window`, `remainingFraction` from 0 to 1 and ISO `resetTime`). Resolves `undefined` when the agent does not expose a quota or the query fails; `AbstractAcpAdapter` returns `undefined` by default. Each adapter that overrides it reads its CLI's or service's own usage source and converts it in a private method of the adapter (sources per agent in [references/acp-adapters.md](references/acp-adapters.md)); OpenCode has no quota.
-- `onActivity(listener): () => void`: observes the live feed (thoughts, tools, steering and cancellation).
+- `onActivity(listener): () => void`: observes the live feed (thoughts, tools and cancellation).
 
 ### SDK-free Types
 
@@ -122,7 +122,7 @@ next `connect()` starts a new process.
 ### Cancellation Ladder
 
 1. **Immediate notification**: sends `session/cancel` and opens a 5-second window.
-2. **Escalation**: with steering, injects the abort prompt (`CANCEL_ABORT_PROMPT_TEXT`) via `_session/steering`; without steering, resends `session/cancel`, because a concurrent `session/prompt` would be rejected by the busy agent. Opens a 15-second window.
+2. **Escalation**: with steering, injects the abort prompt (`CANCEL_ABORT_PROMPT_TEXT`) via `_session/steering`, with no activity; without steering, resends `session/cancel`, because a concurrent `session/prompt` would be rejected by the busy agent. Opens a 15-second window.
 3. **Forced cancellation**: rejects the turn locally with `PromptCancelledError` and discards the session and the transport. The next turn reconnects and resumes the session with `loadSession`.
 
 ## Agent Notices

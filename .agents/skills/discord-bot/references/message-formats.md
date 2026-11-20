@@ -38,7 +38,8 @@ response footer and each turn outcome.
 ## Delegation and interim messages
 
 - **`formatDelegation(event)`**: on `started`, the notice says which agent took over, with name and role (e.g.
-  `DEVELOPER`), the project and the artifact it holds (``on `T-3` ``); on `finished`, the notice says the CEO is
+  `DEVELOPER`), the project and the artifact it holds (``on `T-3` ``); on `steered`, that the agent got new
+  instructions, with the new summary; on `finished`, the notice says the CEO is
   reviewing. `cancelled` announces nothing, because the turn's own result reports the cancellation.
 - **`formatDelegateResult(event)`**: the delegate's response on `finished`, naming the project to distinguish parallel
   delegations of the same role, with the footer `formatDelegateFooter(event)` (the same as `formatAgentFooter` with the

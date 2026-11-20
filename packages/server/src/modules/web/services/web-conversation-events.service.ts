@@ -183,7 +183,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
     const live = this.liveDelegations.get(conversationId) ?? new Set<string>();
     if (entry.phase === 'started') {
       live.add(entry.delegationId);
-    } else {
+    } else if (entry.phase !== 'steered') {
       live.delete(entry.delegationId);
     }
     this.liveDelegations.set(conversationId, live);

@@ -30,6 +30,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   private readonly runtimes = new Map<string, ConversationRuntime>();
   /** Outlive the runtime, which expires while the conversation is idle and the notices wait for its next message. */
   private readonly ceoNotices = new Map<string, string[]>();
+  /** `<agent_result>` receipts that wait for the CEO's next prompt instead of starting a round of their own. */
+  private readonly agentReceipts = new Map<string, string[]>();
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -116,7 +118,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     ) {
       return false;
     }
-    return agentPort.sendSteeringPrompt(text);
+    return (await agentPort.sendSteeringPrompt(text)) === 'injected';
   }
 
   getCeoPort(conversationKey: string): IAgentPort | undefined {
@@ -138,6 +140,24 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
       this.ceoNotices.set(conversationKey, remaining);
     } else {
       this.ceoNotices.delete(conversationKey);
+    }
+  }
+
+  addAgentReceipt(conversationKey: string, receipt: string): void {
+    this.agentReceipts.set(conversationKey, [...this.pendingAgentReceipts(conversationKey), receipt]);
+  }
+
+  pendingAgentReceipts(conversationKey: string): readonly string[] {
+    return this.agentReceipts.get(conversationKey) ?? [];
+  }
+
+  /** Drops only the first `count`, so a receipt added while the CEO was reading the others stays pending. */
+  acknowledgeAgentReceipts(conversationKey: string, count: number): void {
+    const remaining = this.pendingAgentReceipts(conversationKey).slice(count);
+    if (remaining.length > 0) {
+      this.agentReceipts.set(conversationKey, remaining);
+    } else {
+      this.agentReceipts.delete(conversationKey);
     }
   }
 

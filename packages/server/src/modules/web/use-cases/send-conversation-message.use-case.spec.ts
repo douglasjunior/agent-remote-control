@@ -231,7 +231,7 @@ describe('SendConversationMessageUseCase', () => {
       agentTurn.turnBehavior = async (request) => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' }, 'CEO');
-        request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' }, 'CEO');
+        request.onActivity?.({ kind: 'cancelled', id: 'c1' }, 'CEO');
         request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' });
         request.onInterimMessage?.('working');
         request.onQuestion?.({ kind: 'asked', prompt });

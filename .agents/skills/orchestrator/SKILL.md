@@ -34,7 +34,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 | Class | Responsibility |
 |---|---|
 | `ExecuteAgentTurnUseCase` | The CEO turn: steering a running CEO, its rounds and repairs, its questions, resumed work, the board check before its answer and the `TurnResult` |
-| `RunDelegationUseCase` | The delegated agents: start, steer or replace, hold the artifact and move its status, stop, record on the session binding when its work ended, and the `<agent_result>` of each, cut to a receipt when its verdict closed the step and it runs long |
+| `RunDelegationUseCase` | The delegated agents: start, reach an agent already at work as the CEO chose (see "Agents Already at Work"), run its follow-ups in the same session, hold the artifact and move its status, stop, record on the session binding when its work ended, and the `<agent_result>` of each, cut to a receipt when its verdict closed the step and it runs long |
 | `AnswerAgentQuestionsUseCase` | An agent's questions to the user and the answers back, with one repair for invalid or forbidden questions; an answer the timeout assumed is commented on the asker's artifact |
 | `RunAgentRequestsUseCase` | Board and skill requests: `execute` runs one response's requests, `resolve` repeats until a response has none or carries them with its outcome, or with its answer when they only update or comment, and `executeOne` runs a single request for a tool call with the same checks and result |
 | `RunAgentToolUseCase` | A tool call of a tool session: the request of the same name, carried out by `executeOne` for the session's requester, logged in its conversation |
@@ -47,8 +47,9 @@ Each class owns one part of a turn; channels reach them only through the public 
 | `DelegationStatusService` | The status flow of a delegated task: `refusal` (a status the role does not take), `start` (moves the task to the role's start status from a status the role takes, and returns the status the delegation works in, none otherwise) and `finish` (applies the status of the verdict that is the first line of the final answer, the word alone in its own case, while the task is still in that working status, and returns the verdict with whether it closed the step) |
 | `DelegationLimitsConfigService` | `DELEGATION_SPEC_MAX_CHARS` (600) and `AGENT_RESULT_MAX_CHARS` (2000), `0` disabling each |
 | `*ConfigService` | `QuestionTimeoutConfigService`, `TurnRetryConfigService`, `DelegationLimitsConfigService` and `ShellCommandConfigService` read their settings from `IRuntimeSettingsPort` on every call, never from `process.env`, so a value saved from the web applies to the next use |
+| `SteeringSupportService` | Whether each coding agent takes text into a running prompt, recorded by `AgentRoundService` at every `connect()`, so the CEO and the validator know it before delegating |
 | `TeamProfilesService`, `CeoBoardService` | The `[TEAM_PROFILES]` and `[BOARD]` blocks of the CEO prompt; `CeoBoardService.findStranded` also finds, among the tasks the turn delegated, those it would leave mid-flow |
-| `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices; closes the tool session of every port it disposes of |
+| `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices and agent receipts; closes the tool session of every port it disposes of |
 | `AgentToolSessionsService`, `AgentToolCatalogService`, `AgentToolRequestService`, `AgentToolsConfigService` | The live tool sessions and their credentials, the tools and instructions of a role, tool arguments read as requests, and `AGENT_MCP_ENABLED` |
 | `AgentProtocolService`, `DelegationDetectorService`, `QuestionParserService`, `AgentRequestParserService` | Reading agent output: the final response envelope, delegations, questions and requests |
 | `prompts/*.prompt.ts` | Every text the orchestrator writes into a prompt (results, answers, attachments, repairs, notices, language, skills) |
@@ -58,7 +59,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text, and a message that reaches a CEO already working steers it instead of starting a turn.
 2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round only), pending notices, attachments and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
-4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again.
+4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again. A delegation to a role already at work goes to that agent (see "Agents Already at Work").
 5. The turn ends with the CEO's answer once no delegation runs, or as failed, cancelled or steered; delegations still running are stopped. An answer that leaves tasks the turn delegated mid-flow with nobody on them and unnamed is not delivered: the CEO goes back once with `[BOARD_CHECK]` and owes a complete answer, attachments included.
 
 Read [references/turn-execution.md](references/turn-execution.md) before changing any of these steps; it covers the directory hierarchy, the tag protocol, the CEO rounds, delegations and each agent round in detail.
@@ -75,9 +76,40 @@ for the CEO, questions for a delegate), or whose requests are all `update`, `com
 (`PendingRequestResults`), so an answer that also moves its task arrives in one round. Any other one (a read, a creation, whose id the agent must read, a failed or invalid request, or nothing but requests) gets the results right away, followed by a note saying why the response was not taken as the final answer and asking for the whole final answer again, opened the way the agent's instructions say, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). Each failed request is logged as `[Agent Request Failed]` with its reason. A role that creates artifacts (`create`) also writes the `overview` of what it creates, whatever its `sections`; an update stays within `sections`. A delegation with `artifact="T-1"` is validated against the board (`DelegationValidatorService`): known, of a type the
 role works on, neither frozen nor closed, in a status the role takes (`DelegationStatusService.refusal`), with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, in its project,
 which becomes the delegation's folder, and with a specification no longer than `DELEGATION_SPEC_MAX_CHARS` unless it redirects the agent of that role already working on that artifact. `RunDelegationUseCase` assigns it before creating the port, sets the role's start status (`start`), prefixes the first prompt with
-`[DELEGATED_ARTIFACT]`, applies the verdict of the final answer (`finish`) while it still holds the artifact and the task is in the status it worked in, releases it in `finally` with how the work ended, and records on the session binding when its work ended, once the agent answered a prompt of the delegation; a running delegation is steered only
-for the same artifact. The block holds the full content (`ArtifactPromptFormatterService.detail`) for a session new to the task, a resumed one whose binding records no end of work, and any feature; a resumed session on a task whose binding records one gets the facts and only the sections changed and comments added since
+`[DELEGATED_ARTIFACT]`, applies the verdict of the final answer (`finish`) while it still holds the artifact and the task is in the status it worked in, releases it in `finally` with how the work ended, and records on the session binding when its work ended, once the agent answered a prompt of the delegation; an instruction reaches a running delegation without a new one only
+on its same artifact. The block holds the full content (`ArtifactPromptFormatterService.detail`) for a session new to the task, a resumed one whose binding records no end of work, and any feature; a resumed session on a task whose binding records one gets the facts and only the sections changed and comments added since
 (`changesSince`, see [references/turn-execution.md](references/turn-execution.md)).
+
+### Agents Already at Work
+
+A conversation runs one agent per role, so a delegation to a role with an active delegation goes to that agent. Its
+same work is the same project and artifact (`null` alike), and never work restored after a restart, which keeps its
+own record. `on_busy` (`wait` or `interrupt`, `DelegationResult.onBusy`) says what happens to the current work:
+
+- **Same work, no `on_busy`** (the validator allows it only when `SteeringSupportService` says the agent takes
+  steering): the instruction goes to the running prompt in an `[INSTRUCTION_UPDATE]` block
+  (`prompts/instruction-update.prompt.ts`: the new text, what changed on its task since it was last sent, and the
+  reminder that a tool call moved to the background must end before the answer). When it is not `injected`, it is kept
+  (`DelegationControl.keep`) and the run's next prompt carries it; a run whose last prompt left one kept sends one more
+  prompt instead of ending.
+- **`interrupt` on the same work**: the instruction is kept and, in the same tick, the running prompt is cancelled
+  (`IAgentPort.cancel`), or the agent's questions are discarded when it waits for the user; the cancellation is caught
+  and the next prompt, in the same session, carries the instruction.
+- **`wait` on the same work**: a follow-up (`DelegationControl.follow`), run in the same session as a `[FOLLOW_UP]`
+  prompt once the current run has its result, with its own events and its own `<agent_result>` for the turn that sent it.
+- **Other work**: `wait` waits for the agent's delegation to end (`DelegationControl.ended`) and starts after it;
+  `interrupt` ends that work as replaced and waits until it released its artifact before starting the new one.
+- A run that is finishing takes no more instructions, so a steering or interruption that comes too late becomes a
+  follow-up, and a delegation that is closing takes no more follow-ups, so they wait for it to end instead.
+- The validator rejects a delegation without `on_busy` to a busy role on other work, or on the same work of an agent
+  whose steering is unsupported or not known yet, with a repair that explains both choices (`prompts/busy-role.prompt.ts`).
+- Steering, keeping and interrupting record the instruction on the delegation (its `summary` and its updates, kept on
+  the open work), emit a `steered` delegation event, and leave a receipt; so does queueing a follow-up or a delegation
+  that waits. A receipt is an `<agent_result status="steered|queued|interrupted">` (`prompts/agent-receipt.prompt.ts`)
+  held by `ConversationRuntimeService` until the CEO's next prompt, a round or a steered user message, so it never costs
+  a round of its own; a turn whose only delegations joined another agent's run ends as `steered`.
+- One decision per role at a time: `RunDelegationUseCase` decides what an arriving delegation does, and starts one,
+  under a lock per conversation and role, so two never start side by side.
 
 ### Agent Tools over MCP
 

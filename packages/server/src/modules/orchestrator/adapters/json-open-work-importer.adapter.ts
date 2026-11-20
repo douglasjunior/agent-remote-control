@@ -66,6 +66,7 @@ export class JsonOpenWorkImporterAdapter implements ILegacyJsonImporterPort {
       round: record.round,
       root: record.root,
       questions: record.questions ? JSON.stringify(record.questions) : null,
+      updates: null,
     };
   }
 }

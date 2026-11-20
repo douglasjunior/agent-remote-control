@@ -29,7 +29,7 @@ Encapsulates the parameters for running an interaction round:
 - `onQueued`: optional callback `() => void` called when the turn is queued behind another turn of the same conversation.
 - `onInterimMessage`: optional callback `(message: string) => void`, called with the `message` of a CEO response that delegates, when not empty, before the delegations start.
 - `onQuestion`: optional callback `(event: QuestionEvent) => void` (`question-event.model.ts`), called with `{ kind: 'asked', prompt }` when an agent of this turn asks and the question reaches the front of the conversation queue on its own, and with `{ kind: 'timedOut', asker, answered, timeoutMs, next? }` when the user did not answer in time (see "Questions to the User").
-- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per delegation and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation), `round`, `role`, `roleName`, `projectName?`, `artifactId?` (the artifact the agent holds) and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo`, `usage` (the token usage of every prompt of the delegation added up, absent when none reported it) and `durationMs`.
+- `onDelegation`: optional callback `(event: DelegationEvent) => void` (`delegation-event.model.ts`), called with `phase: 'started'` before the delegate works, `phase: 'steered'` when the CEO sends the running agent a new instruction (`taskSpec` is that instruction and `summary` its summary, which the events after it carry too), `phase: 'finished'` when it completes successfully and `phase: 'failed'` (with `errorMessage` and `durationMs`) when it stops with an error and `phase: 'cancelled'` (with `durationMs`) when it is cancelled, so that a delegation still open afterwards can only be one a restart stopped; carries `delegationId` (a UUID generated once per run of a delegation, the first one being the id that holds its artifact, and shared by all its phases, because `round` restarts in each turn and cannot identify a delegation; a follow-up run in the same session has its own), `round`, `role`, `roleName`, `projectName?`, `artifactId?` (the artifact the agent holds) and `summary` (the plain-language `summary` attribute of the `<delegate>` tag, required, whitespace collapsed and cut at 120 characters; a `<delegate>` without it is an invalid response the CEO is asked to repair) and `taskSpec` (the task as the CEO wrote it). `finished` also carries the delegate's `response`, `agentInfo`, `usage` (the token usage of every prompt of the delegation added up, absent when none reported it) and `durationMs`.
 
 ### `ActiveTurn` (`active-turn.model.ts`)
 
@@ -48,24 +48,38 @@ Represents a technical delegation currently running in the background:
 - `role`: role of the delegated agent;
 - `roleName`: readable role name;
 - `projectName`: target project/directory of the task or `null`;
-- `taskSpec`: current specification of the delegated task;
+- `summary`: the summary of the last instruction the agent received;
+- `taskSpec`: the task as first delegated;
 - `cwd`: the delegate's working directory;
 - `startedAt`: start timestamp;
 - `agentPort`: `IAgentPort` instance of the delegated agent;
 - `turn`: `ActiveTurn` instance associated with the delegate's execution;
-- `steer(newSpec)`: redirects the task's execution via native ACP steering;
+- `control`: its `DelegationControl` (below);
 - `stop(reason)`: ends the work before it finishes without ending the turn; the CEO receives `reason` as a result with `status="stopped"`.
+
+### `DelegationControl` (`delegation-control.model.ts`)
+
+What reaches a running delegation between its prompts. `runId` is the event id of the run in progress and
+`contextSince` the moment the agent was last told what changed on its artifact; `summary` and `updates` hold the
+instructions it received after its task (`record`). `keep(instruction, interrupt?)` keeps one for the next prompt and
+`take()` hands them to the prompt being written; `takeInterruption()` says once whether a prompt was cancelled to
+deliver them; `seal()` ends the run when nothing is kept, after which `acceptsInstructions` is false and `keep` refuses.
+`follow`, `withdraw` and `next` queue, take back and start follow-ups (`FollowUp`: the instruction, the turn that sent it,
+its round and `settle`); `next` with none left closes the delegation to new ones. `addWaiter` counts a delegation
+waiting for this one (`queued` adds them to the follow-ups), `close()` hands back the follow-ups that never ran, and
+`finish(end)` resolves `ended` with how it ended (`DelegationEnd`: `finished`, `failed`, `stopped`, `replaced` or
+`cancelled`).
 
 ### `ValidatedDelegation` (`validated-delegation.model.ts`)
 
-A delegation that passed every check, with the `cwd` its agent runs in, plus, for work resumed after a restart, the `workId` it continues, the `firstPrompt` it receives in place of the task and the `answerDelivery` (`AnswerDelivery`) carrying answers the agent asked for before the restart. `ValidatedDecision` is the CEO decision with its delegations validated.
+A delegation that passed every check, with the `cwd` its agent runs in, plus, for work resumed after a restart, the `workId` it continues, the `firstPrompt` it receives in place of the task, the `updates` it had received and the `answerDelivery` (`AnswerDelivery`, with the task and its updates) carrying answers the agent asked for before the restart. `ValidatedDecision` is the CEO decision with its delegations validated.
 
 ### `TurnResult` (`turn-result.model.ts`)
 
 Immutable structure with the turn outcome:
 
 - `response`: consolidated final text response;
-- `status`: `'completed'` on success, `'cancelled'` if interrupted, `'failed'` if aborted by an error, or `'steered'` when another turn carries on (a prompt injected into the CEO round already in progress, or a turn whose agents another turn replaced), with the response coming from that turn's result, so `response` is empty and there is no `usage`);
+- `status`: `'completed'` on success, `'cancelled'` if interrupted, `'failed'` if aborted by an error, or `'steered'` when another turn carries on (a prompt injected into the CEO round already in progress, or a turn whose agents were replaced or took its instructions into a run another turn waits for), with the response coming from that turn's result, so `response` is empty and there is no `usage`);
 - `usage`: token usage of the CEO's last round (`getLastRoundUsage()`); absent when the agent does not report it or collection fails;
 - `errorMessage`: error message present exclusively in failed outcomes;
 - `agentInfo`: `TurnAgentInfo` (`roleName`, `agentName`, `modelName?`, `effortName?`), filled in all three statuses so the channel can show which agent, model and effort generated the response;
@@ -197,7 +211,8 @@ inside the queue:
 - **Conversation agent**: a CEO `IAgentPort` created with `IAgentPortFactory.create(agentId)` on the first run and reused while `agentName === agentId`. When the turn asks for another agent, the previous port receives `closeSession()` and `disconnect()` (failures ignored) and a new one is created. The switch happens inside the CEO queue, after the turns that still use the previous port. `getCeoPort(conversationKey)` returns the current port or `undefined` before the first run;
 - **Lifecycle and concurrency**: `beginTurn(conversationKey)` tracks `activeTurnsCount` and prevents premature expiration; `runOnCeo(conversationKey, agentId, work, onQueued)` guarantees mutual exclusion only on the use of the CEO port, releasing it while delegated agents run in the background;
 - **CEO turn queue**: turns that arrive while the CEO is busy call `onQueued` and wait for the CEO port to be released, except when they enter the round through steering. New user messages are processed immediately by the CEO even with active delegations;
-- **CEO steering**: `steerCeo(conversationKey, agentId, text)` injects the text into the CEO round in progress with `sendSteeringPrompt` and returns whether it was delivered. It only tries when there is an active, non-cancelled turn, no other turn in the queue (`pendingTurns === 1`, so as not to jump ahead of an earlier message), the CEO port belongs to the requested `agentId` and advertises `supportsSteering` (read from the ACP `initialize`);
+- **CEO steering**: `steerCeo(conversationKey, agentId, text)` injects the text into the CEO round in progress with `sendSteeringPrompt` and returns whether it was delivered (`injected`). It only tries when there is an active, non-cancelled turn, no other turn in the queue (`pendingTurns === 1`, so as not to jump ahead of an earlier message), the CEO port belongs to the requested `agentId` and advertises `supportsSteering` (read from the ACP `initialize`);
+- **Agent receipts**: `addAgentReceipt`, `pendingAgentReceipts` and `acknowledgeAgentReceipts(conversationKey, count)` hold the `<agent_result>` receipts of delegations that reached an agent already at work until the CEO's next prompt reads them, outside the runtime that expires when idle, like the CEO notices;
 - **Active delegations**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` and `findActiveDelegation(conversationKey, role)` keep the registry of specialists running in the background, indexed by role: a conversation runs one agent per role, in any project, and different roles run in parallel. `unregisterDelegation` ignores a delegation that has already been replaced by a newer one of the same role;
 - **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `IAgentTurnPort` exposes `isShellCommandEnabled()` and `runShellCommand()`;
 - **Cancellation**: `cancel(conversationKey)` cancels the CEO's `ActiveTurn` and all active `activeDelegations` of the conversation. Returns `false` when there is no work in progress;
@@ -220,7 +235,7 @@ or single quotes, and hands the remaining text to `QuestionParserService` to rec
 `utils/protocol-tag.util.ts`, shared by both parsers. The text outside the tags, with repeated blank
 lines collapsed, is the `message` addressed to the user:
 
-- `{ kind: 'delegate', message, delegations: [{ delegateToRole, projectName, taskSpec, sessionMode? }] }` when there is at least one `<delegate role="ROLE" project="folder" session="new|resume">task</delegate>`. `role` is required and normalized to uppercase, `project` and `session` are optional, and `taskSpec` is the tag content with surrounding whitespace trimmed, preserving markdown and stray `<`/`>`. Only the tag content reaches the agent;
+- `{ kind: 'delegate', message, delegations: [{ delegateToRole, projectName, taskSpec, sessionMode?, artifactId?, onBusy? }] }` when there is at least one `<delegate role="ROLE" project="folder" session="new|resume" on_busy="wait|interrupt">task</delegate>`. `role` is required and normalized to uppercase, `project`, `session` and `on_busy` (case-insensitive) are optional, and `taskSpec` is the tag content with surrounding whitespace trimmed, preserving markdown and stray `<`/`>`. Only the tag content reaches the agent;
 - `{ kind: 'ask', message, questions }` when there is a `<question>`: questions to the user, whose answers return to the CEO in the same turn;
 - `{ kind: 'reply', message, attachments }` when there is neither `<delegate>` nor `<question>`: the response to the user, which ends the turn. `attachments` lists the `path` attribute of each `<attachment path="...">description</attachment>` or `<attachment path="..." />`, in the order they appear;
-- `{ kind: 'invalid', reason }` for a closing tag without an opening; `<delegate>` or `<attachment>` without closing or with another of the same name inside; an unknown or unquoted attribute; `<delegate>` without a valid `role`, with an empty `project`, `session` other than `new`/`resume` or without a task; `<attachment>` without `path`; attachments in a response that delegates; a malformed `<question>`; and questions together with `<delegate>` or with `<attachment>`. `reason` is written in English for the CEO to fix the response.
+- `{ kind: 'invalid', reason }` for a closing tag without an opening; `<delegate>` or `<attachment>` without closing or with another of the same name inside; an unknown or unquoted attribute; `<delegate>` without a valid `role`, with an empty `project`, `session` other than `new`/`resume`, `on_busy` other than `wait`/`interrupt` or without a task; `<attachment>` without `path`; attachments in a response that delegates; a malformed `<question>`; and questions together with `<delegate>` or with `<attachment>`. `reason` is written in English for the CEO to fix the response.

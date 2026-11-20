@@ -12,6 +12,7 @@
 `deriveTeam(entries, running)` (`conversations/team-state.ts`) turns the entries into one `TeamMember` per role for the current turn plus the delegations still open from earlier turns:
 
 - A `user_message` drops the closed delegations, because the CEO accepts new messages while delegates keep running; open ones stay `working` while a turn runs and keep counting their steps, other agents count only the current turn.
+- A `steered` entry gives the open delegation of the same `delegationId` its new `summary`.
 - A `finished`, `failed` or `cancelled` entry closes the delegation with the same `delegationId`; a cancelled agent is `idle` and its handoff row reads "Stopped", whatever turn runs later. A delegation still open when no turn runs counts as stopped.
 - The members are `working`, `waiting` (the asker of the `openQuestion`, by `askerRole`, whatever entries follow it), `done`, `failed` or `idle`, with the CEO's `summary`, project, start time, duration, step count and last action.
 - The CEO is `idle`, not `working`, while a delegate works or another agent has an open question. Roles the turn did not involve stay `idle`.

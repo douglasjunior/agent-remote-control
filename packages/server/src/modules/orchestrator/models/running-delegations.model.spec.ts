@@ -12,6 +12,7 @@ const deferred = () => {
 };
 
 const result = (block: string): DelegationOutcome => ({ kind: 'result', block });
+const started = ({ outcome }: ReturnType<typeof deferred>, cancel = rs.fn(async () => undefined)) => ({ outcome, cancel });
 
 describe('RunningDelegations', () => {
   afterEach(() => {
@@ -24,14 +25,12 @@ describe('RunningDelegations', () => {
 
     expect(running.isEmpty).toBe(true);
 
-    running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+    running.add([started(developer)]);
     expect(running.isEmpty).toBe(false);
-    expect(running.pendingRoles).toEqual(['DEVELOPER']);
 
     developer.settle(result('done'));
     expect(await running.nextResults()).toBe('done');
     expect(running.isEmpty).toBe(true);
-    expect(running.pendingRoles).toEqual([]);
   });
 
   it('should hand over each result as soon as its agent finishes', async () => {
@@ -39,13 +38,12 @@ describe('RunningDelegations', () => {
     const planner = deferred();
     const developer = deferred();
     running.add([
-      { role: 'TECH_LEAD', outcome: planner.outcome },
-      { role: 'DEVELOPER', outcome: developer.outcome },
+      started(planner),
+      started(developer),
     ]);
 
     developer.settle(result('implemented'));
     expect(await running.nextResults()).toBe('implemented');
-    expect(running.pendingRoles).toEqual(['TECH_LEAD']);
 
     planner.settle(result('planned'));
     expect(await running.nextResults()).toBe('planned');
@@ -56,8 +54,8 @@ describe('RunningDelegations', () => {
     const first = deferred();
     const second = deferred();
     running.add([
-      { role: 'TECH_LEAD', outcome: first.outcome },
-      { role: 'DEVELOPER', outcome: second.outcome },
+      started(first),
+      started(second),
     ]);
 
     first.settle(result('one'));
@@ -70,12 +68,11 @@ describe('RunningDelegations', () => {
   it('should keep a finished result available while nothing else is running', async () => {
     const running = new RunningDelegations();
     const developer = deferred();
-    running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+    running.add([started(developer)]);
 
     developer.settle(result('done'));
     await running.settled();
 
-    expect(running.pendingRoles).toEqual([]);
     expect(running.isEmpty).toBe(false);
   });
 
@@ -83,24 +80,25 @@ describe('RunningDelegations', () => {
     const running = new RunningDelegations();
     const developer = deferred();
     const reason = new Error('cancelled');
-    running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+    running.add([started(developer)]);
 
     developer.settle({ kind: 'cancelled', reason });
 
     await expect(running.nextResults()).rejects.toBe(reason);
   });
 
-  describe('replaced delegations', () => {
-    const replaced: DelegationOutcome = { kind: 'replaced' };
-
+  describe.each<[string, DelegationOutcome]>([
+    ['replaced', { kind: 'replaced' }],
+    ['merged', { kind: 'merged' }],
+  ])('%s delegations', (_kind, replaced) => {
     it('should not hand over a replaced delegation and keep waiting for a pending result', async () => {
       rs.useFakeTimers();
       const running = new RunningDelegations();
       const old = deferred();
       const current = deferred();
       running.add([
-        { role: 'DEVELOPER', outcome: old.outcome },
-        { role: 'TECH_LEAD', outcome: current.outcome },
+        started(old),
+        started(current),
       ]);
 
       old.settle(replaced);
@@ -111,7 +109,6 @@ describe('RunningDelegations', () => {
       });
       await rs.advanceTimersByTimeAsync(0);
       expect(handedOver).toBeUndefined();
-      expect(running.pendingRoles).toEqual(['TECH_LEAD']);
 
       current.settle(result('planned'));
       await waiting;
@@ -122,7 +119,7 @@ describe('RunningDelegations', () => {
     it('should resolve to undefined and be empty when the only delegation was replaced', async () => {
       const running = new RunningDelegations();
       const developer = deferred();
-      running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+      running.add([started(developer)]);
 
       developer.settle(replaced);
 
@@ -135,8 +132,8 @@ describe('RunningDelegations', () => {
       const old = deferred();
       const current = deferred();
       running.add([
-        { role: 'DEVELOPER', outcome: old.outcome },
-        { role: 'TECH_LEAD', outcome: current.outcome },
+        started(old),
+        started(current),
       ]);
 
       old.settle(replaced);
@@ -148,10 +145,26 @@ describe('RunningDelegations', () => {
     });
   });
 
+  it('should cancel only the delegations still pending and wait for them to settle', async () => {
+    const running = new RunningDelegations();
+    const developer = deferred();
+    const planner = deferred();
+    const cancelDeveloper = rs.fn(async () => developer.settle({ kind: 'cancelled', reason: new Error('stopped') }));
+    const cancelPlanner = rs.fn(async () => undefined);
+    running.add([started(developer, cancelDeveloper), started(planner, cancelPlanner)]);
+    planner.settle(result('planned'));
+    expect(await running.nextResults()).toBe('planned');
+
+    await running.cancelPending();
+
+    expect(cancelDeveloper).toHaveBeenCalledTimes(1);
+    expect(cancelPlanner).not.toHaveBeenCalled();
+  });
+
   it('should wait for every pending delegation to settle', async () => {
     const running = new RunningDelegations();
     const developer = deferred();
-    running.add([{ role: 'DEVELOPER', outcome: developer.outcome }]);
+    running.add([started(developer)]);
     let settled = false;
 
     const waiting = running.settled().then(() => {

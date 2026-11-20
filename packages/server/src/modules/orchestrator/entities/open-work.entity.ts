@@ -43,4 +43,8 @@ export class OpenWorkEntity {
   /** The questions asked and the answers so far, as JSON. */
   @Column({ type: 'text', nullable: true })
   questions: string | null;
+
+  /** The instructions received after the task, as a JSON array. */
+  @Column({ type: 'text', nullable: true })
+  updates: string | null;
 }

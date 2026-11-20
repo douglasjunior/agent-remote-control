@@ -50,6 +50,18 @@ describe('deriveTeam', () => {
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 5000, projectName: 'app' });
   });
 
+  it('should give a working delegate the summary of its new instruction, and ignore one for another delegation', () => {
+    const team = deriveTeam([
+      user,
+      delegation('started', 'DEVELOPER'),
+      delegation('steered', 'DEVELOPER', { summary: 'Adding the tests too' }),
+      delegation('steered', 'CODE_REVIEWER', { summary: 'Not running' }),
+    ], true);
+
+    expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working', summary: 'Adding the tests too' });
+    expect(stateOf(team, 'CODE_REVIEWER').state).toBe('idle');
+  });
+
   it('should mark a delegate that failed', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER'), delegation('failed', 'DEVELOPER', { errorMessage: 'boom' })], true);
 

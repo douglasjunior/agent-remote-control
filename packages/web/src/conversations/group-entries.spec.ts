@@ -45,7 +45,7 @@ describe('groupEntries', () => {
   });
 
   describe('delegations', () => {
-    const delegation = (phase: 'started' | 'finished' | 'failed', role: string, round = 1, extra: object = {}): ConversationEntry => ({
+    const delegation = (phase: 'started' | 'steered' | 'finished' | 'failed', role: string, round = 1, extra: object = {}): ConversationEntry => ({
       id: `d:${round}:${role}:${phase}`, at, type: 'delegation', delegationId: `${round}:${role}`, phase, round, role, roleName: role, prompt: 'Do the work', summary: `${role} summary`, ...extra,
     });
 
@@ -60,8 +60,19 @@ describe('groupEntries', () => {
       expect(items.map(item => item.kind)).toEqual(['entry', 'squad', 'activity']);
       expect(items[1]).toMatchObject({
         id: 'squad:d:1:DEVELOPER:started',
-        handoffs: [{ role: 'DEVELOPER', summary: 'DEVELOPER summary', prompt: 'Do the work', projectName: 'app', status: 'done', response: 'done', durationMs: 9000, startedAt: Date.parse(at) }],
+        handoffs: [{ role: 'DEVELOPER', summary: 'DEVELOPER summary', prompt: 'Do the work', updates: [], projectName: 'app', status: 'done', response: 'done', durationMs: 9000, startedAt: Date.parse(at) }],
       });
+    });
+
+    it('should keep a delegation working through its new instructions, under the summary of the last one', () => {
+      const items = groupEntries([
+        delegation('started', 'DEVELOPER'),
+        { ...delegation('steered', 'DEVELOPER', 1, { prompt: 'Add tests', summary: 'Adding tests' }), id: 's1' },
+        { ...delegation('steered', 'DEVELOPER', 1, { prompt: 'Use JWT', summary: 'Using JWT' }), id: 's2' },
+      ]);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({ handoffs: [{ summary: 'Using JWT', prompt: 'Do the work', updates: ['Add tests', 'Use JWT'], status: 'working' }] });
     });
 
     it('should file the steps of a delegated agent under its delegation instead of the feed', () => {

@@ -68,12 +68,13 @@ describe('WebConversationEventsService', () => {
   it('should know the delegations that run until they end or the conversation goes idle', async () => {
     const { events, store } = createWebHarness();
     store.seed('web-1');
-    const delegation = (delegationId: string, phase: 'started' | 'finished'): ConversationEntry => ({
+    const delegation = (delegationId: string, phase: 'started' | 'steered' | 'finished'): ConversationEntry => ({
       id: `${delegationId}:${phase}`, at: entry.at, type: 'delegation', delegationId, phase, round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: '', summary: '',
     });
 
     await events.publishEntry('web-1', delegation('a', 'started'));
     await events.publishEntry('web-1', delegation('b', 'started'));
+    await events.publishEntry('web-1', delegation('b', 'steered'));
     await events.publishEntry('web-1', delegation('a', 'finished'));
 
     expect([...events.liveDelegationsOf('web-1')]).toEqual(['b']);

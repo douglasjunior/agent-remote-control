@@ -150,6 +150,24 @@ describe('ConversationView', () => {
     expect(feed.getByText('login')).toBeInTheDocument();
   });
 
+  it('should show the new instructions the CEO sent an agent at work, under the latest summary', async () => {
+    const user = userEvent.setup();
+    openConversation({
+      entries: [
+        userEntry('u1'),
+        { id: 'a1', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'started', round: 1, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Build the login screen', summary: 'Building the login' },
+        { id: 'a2', at: AT, type: 'delegation', delegationId: '1:DEVELOPER', phase: 'steered', round: 2, role: 'DEVELOPER', roleName: 'Developer Agent', prompt: 'Add its tests too', summary: 'Building the login with tests' },
+      ],
+    });
+    const feed = within(screen.getByTestId('message-viewport'));
+
+    await user.click(feed.getByRole('button', { name: 'See the prompt' }));
+
+    expect(feed.getByText('Building the login with tests')).toBeInTheDocument();
+    expect(feed.getByText('New instruction from the CEO')).toBeInTheDocument();
+    expect(feed.getByText('Add its tests too')).toBeInTheDocument();
+  });
+
   it('should open a delegation stored without a prompt empty', async () => {
     const user = userEvent.setup();
     openConversation({

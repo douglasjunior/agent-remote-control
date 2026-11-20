@@ -35,6 +35,7 @@ export const openWorkSchema: z.ZodType<OpenWork> = z.object({
   artifactId: z.string().optional(),
   summary: z.string(),
   taskSpec: z.string(),
+  updates: z.array(z.string()).optional(),
   cwd: z.string(),
   round: z.number().int(),
   root: z.boolean(),

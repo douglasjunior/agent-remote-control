@@ -241,7 +241,7 @@ export class ExecuteAgentTurnUseCase {
         session = await this.agentRound.resolveSession(request);
         observers.onSessionResolved(session);
         const restored = await this.toResumedDelegation(resumed, request);
-        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey, running));
+        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey));
         this.trackArtifacts(delegatedArtifacts, [restored]);
         await this.openWork.discardInterruptedRoots(request.conversationId);
         const results = await running.nextResults();
@@ -269,6 +269,7 @@ export class ExecuteAgentTurnUseCase {
       }
       for (let round = 1; ; round++) {
         let deliveredNotices = 0;
+        let deliveredReceipts = 0;
         const { response, decision, requestResults } = await this.conversationRuntime.runOnCeo(
           conversationKey,
           agentId,
@@ -285,7 +286,9 @@ export class ExecuteAgentTurnUseCase {
             // Each <agent_result> carries the status it left, so the board goes only with the round that opens the turn.
             const board = round === 1 ? `${await this.ceoBoard.buildPrompt(request.conversationId)}\n` : '';
             const team = block.signature !== lastBlockSignature ? `${block.text}\n` : '';
-            prompt = `${team}${board}${prompt}`;
+            const receipts = this.conversationRuntime.pendingAgentReceipts(conversationKey);
+            deliveredReceipts = receipts.length;
+            prompt = `${team}${board}${receipts.map(receipt => `${receipt}\n\n`).join('')}${prompt}`;
             lastBlockSignature = block.signature;
             const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
             if (notices.length > 0) {
@@ -299,6 +302,7 @@ export class ExecuteAgentTurnUseCase {
           round === 1 ? request.onQueued : undefined,
         );
         this.conversationRuntime.acknowledgeCeoNotices(conversationKey, deliveredNotices);
+        this.conversationRuntime.acknowledgeAgentReceipts(conversationKey, deliveredReceipts);
 
         if (decision.kind === 'invalid') {
           return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
@@ -324,7 +328,7 @@ export class ExecuteAgentTurnUseCase {
             }
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
-          running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey, running));
+          running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey));
           this.trackArtifacts(delegatedArtifacts, decision.delegations);
         }
         if (decision.message) {
@@ -338,7 +342,7 @@ export class ExecuteAgentTurnUseCase {
         prompt = requestResults ? `${requestResults}\n\n${results}` : results;
       }
     } finally {
-      await this.runDelegation.stopRunning(running, conversationKey);
+      await this.runDelegation.stopRunning(running);
       if (ceoWorkId) {
         await this.openWork.close(request.conversationId, ceoWorkId);
       }
@@ -362,6 +366,7 @@ export class ExecuteAgentTurnUseCase {
       taskSpec: work.taskSpec,
       summary: work.summary,
       ...(work.artifactId ? { artifactId: work.artifactId } : {}),
+      ...(work.updates ? { updates: work.updates } : {}),
       sessionMode: 'resume',
       cwd: work.cwd,
       workId: work.id,
@@ -371,14 +376,16 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private answerDeliveryOf({ work, answers }: Resumption): AnswerDelivery | undefined {
-    return answers && work.questions ? { workId: work.id, questions: work.questions, taskSpec: work.taskSpec } : undefined;
+    return answers && work.questions
+      ? { workId: work.id, questions: work.questions, taskSpec: work.taskSpec, ...(work.updates ? { updates: work.updates } : {}) }
+      : undefined;
   }
 
   /** An agent that asked gets its answers like any other; only one that stopped mid-round is told it was interrupted. */
   private async firstPromptOf({ work, answers }: Resumption, request: TurnRequest): Promise<string> {
     return answers
       ? buildUserAnswersPrompt(await this.agentQuestions.transcribe(request, answers))
-      : buildResumedWorkPrompt(work.taskSpec);
+      : buildResumedWorkPrompt(work.taskSpec, work.updates);
   }
 
   private async steerRunningCeo(
@@ -390,12 +397,14 @@ export class ExecuteAgentTurnUseCase {
     const languagePrompt = await this.agentRound.buildLanguagePrompt(request.agentRole, request.agentRole);
     const block = (await this.teamProfiles.build(conversationKey, request)).text;
     const board = await this.ceoBoard.buildPrompt(request.conversationId);
+    const receipts = this.conversationRuntime.pendingAgentReceipts(conversationKey);
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
-      [`${block}\n${board}`, prompt, languagePrompt].filter(Boolean).join('\n\n'),
+      [`${block}\n${board}`, ...receipts, prompt, languagePrompt].filter(Boolean).join('\n\n'),
     );
     if (steered) {
+      this.conversationRuntime.acknowledgeAgentReceipts(conversationKey, receipts.length);
       this.logger.log(
         `[CEO Steered] Conversation=${conversationKey}, User=${request.userId}, Prompt="${previewForLog(request.prompt)}"`,
       );

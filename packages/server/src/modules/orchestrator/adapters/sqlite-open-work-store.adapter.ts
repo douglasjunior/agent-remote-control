@@ -8,11 +8,11 @@ import type { IOpenWorkStorePort, OpenWorkByConversation } from '../ports/open-w
 
 
 const SELECT_ALL = `SELECT "conversation_id" AS "conversationId", "id", "role", "role_name" AS "roleName", "project_name" AS "projectName",
-    "artifact_id" AS "artifactId", "summary", "task_spec" AS "taskSpec", "cwd", "round", "root", "questions"
+    "artifact_id" AS "artifactId", "summary", "task_spec" AS "taskSpec", "cwd", "round", "root", "questions", "updates"
   FROM "open_work" ORDER BY "conversation_id", "position"`;
 const DELETE_CONVERSATION = 'DELETE FROM "open_work" WHERE "conversation_id" = ?';
 const INSERT_RECORD = `INSERT INTO "open_work" ("conversation_id", "id", "position", "role", "role_name", "project_name", "artifact_id", "summary",
-    "task_spec", "cwd", "round", "root", "questions") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    "task_spec", "cwd", "round", "root", "questions", "updates") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 type OpenWorkRow = Omit<OpenWorkEntity, 'position' | 'root'> & { readonly root: number };
 
@@ -59,6 +59,7 @@ export class SqliteOpenWorkStoreAdapter implements IOpenWorkStorePort {
       record.round,
       record.root ? 1 : 0,
       record.questions ? JSON.stringify(record.questions) : null,
+      record.updates?.length ? JSON.stringify(record.updates) : null,
     ]);
   }
 
@@ -77,6 +78,7 @@ export class SqliteOpenWorkStoreAdapter implements IOpenWorkStorePort {
         round: row.round,
         root: row.root === 1,
         ...(row.questions !== null && { questions: this.parseJson(row.questions) }),
+        ...(row.updates !== null && { updates: this.parseJson(row.updates) }),
       });
       if (parsed.success) {
         (work[row.conversationId] ??= []).push(parsed.data);

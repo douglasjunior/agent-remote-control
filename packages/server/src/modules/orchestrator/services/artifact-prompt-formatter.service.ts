@@ -62,9 +62,10 @@ export class ArtifactPromptFormatterService {
 
   /**
    * The facts of the artifact and only the sections changed and the comments added from `since` on, for a session that
-   * worked on it until then. Events at that very moment count, so a change is never left out.
+   * worked on it until then, or, `received`, for an agent still at work that was last sent it then. Events at that very
+   * moment count, so a change is never left out.
    */
-  changesSince(artifact: Artifact, all: readonly Artifact[], since: string): string {
+  changesSince(artifact: Artifact, all: readonly Artifact[], since: string, lastSeen: 'worked' | 'received' = 'worked'): string {
     const recent = artifact.history.filter(event => event.at >= since);
     const changedSections = new Set(recent.flatMap(event => (event.changes ?? []).map(change => change.field)));
     const sections = ARTIFACT_SECTIONS
@@ -83,8 +84,8 @@ export class ArtifactPromptFormatterService {
         this.pullRequestsFact(artifact),
       ].join('\n'),
       changed
-        ? `Below are only the sections changed and the comments added since you last worked on ${artifact.id}; everything else on it is unchanged.`
-        : `Nothing on ${artifact.id} besides the facts above changed since you last worked on it.`,
+        ? `Below are only the sections changed and the comments added since ${lastSeen === 'worked' ? `you last worked on ${artifact.id}` : `${artifact.id} was last sent to you`}; everything else on it is unchanged.`
+        : `Nothing on ${artifact.id} besides the facts above changed since ${lastSeen === 'worked' ? 'you last worked on it' : 'it was last sent to you'}.`,
       ...sections,
       ...(comments ? [comments] : []),
     ].join('\n\n');

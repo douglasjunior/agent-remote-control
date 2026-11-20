@@ -27,6 +27,7 @@ import { CreateSquads1795180000000 } from '../migrations/1795180000000-create-sq
 import { CreateArtifacts1795190000000 } from '../migrations/1795190000000-create-artifacts.migration.js';
 import { CreateSessions1795200000000 } from '../migrations/1795200000000-create-sessions.migration.js';
 import { CreateOpenWork1795210000000 } from '../migrations/1795210000000-create-open-work.migration.js';
+import { AddOpenWorkUpdates1795220000000 } from '../migrations/1795220000000-add-open-work-updates.migration.js';
 
 
 /** Every entity of the database, whichever module owns it. */
@@ -37,4 +38,4 @@ export const DATABASE_ENTITIES = [
 ];
 
 /** Every migration, oldest first. A migration once released is never edited: a schema change is a new migration. */
-export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000, CreateArtifacts1795190000000, CreateSessions1795200000000, CreateOpenWork1795210000000];
+export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000, CreateArtifacts1795190000000, CreateSessions1795200000000, CreateOpenWork1795210000000, AddOpenWorkUpdates1795220000000];

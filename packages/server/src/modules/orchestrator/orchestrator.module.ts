@@ -50,6 +50,7 @@ import { OpenWorkService } from './services/open-work.service.js';
 import { QuestionParserService } from './services/question-parser.service.js';
 import { QuestionTimeoutConfigService } from './services/question-timeout-config.service.js';
 import { ShellCommandConfigService } from './services/shell-command-config.service.js';
+import { SteeringSupportService } from './services/steering-support.service.js';
 import { TeamProfilesService } from './services/team-profiles.service.js';
 import { TurnRetryConfigService } from './services/turn-retry-config.service.js';
 import { TurnRetryService } from './services/turn-retry.service.js';
@@ -124,6 +125,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     TurnRetryConfigService,
     TurnRetryService,
     ShellCommandConfigService,
+    SteeringSupportService,
     UserLanguageService,
     UserQuestionQueueService,
     AgentRoundService,

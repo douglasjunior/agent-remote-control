@@ -212,18 +212,6 @@ describe('DiscordActivityFormatter', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null for steering activity', () => {
-      const activity: AgentActivity = {
-        kind: 'steering',
-        id: 'steer-1',
-        text: 'Adjust course',
-      };
-
-      const result = formatter.formatActivity(activity);
-
-      expect(result).toBeNull();
-    });
-
     it('should return null for cancelled activity', () => {
       const activity: AgentActivity = {
         kind: 'cancelled',
@@ -461,6 +449,9 @@ describe('DiscordActivityFormatter', () => {
       );
       expect(formatter.formatDelegation({ ...delegation, phase: 'failed', errorMessage: 'boom', durationMs: 5, projectName: 'my-app' })).toBe(
         '⚠️ **Developer failed** in project `my-app` — the CEO is deciding what to do next.',
+      );
+      expect(formatter.formatDelegation({ ...delegation, phase: 'steered', summary: 'Adding the tests too', projectName: 'my-app' })).toBe(
+        '↪️ **Developer got new instructions** in project `my-app` — Adding the tests too',
       );
     });
 

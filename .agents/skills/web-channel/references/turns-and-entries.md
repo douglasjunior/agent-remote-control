@@ -20,11 +20,11 @@
 `WebConversationTurnsService.run` turns the callbacks of any turn into entries:
 
 - `onActivity` → `thought`, `tool` or `skill` (a skill read or written: `action`, `names`, `status`, `created`, `error`); every one carries the `role` of the agent that produced it, the CEO included.
-- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it, so the entry stays in the history; `phase` is `started`, `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
+- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it, so the entry stays in the history; `phase` is `started`, `steered` (a new instruction the CEO sent the running agent: `prompt` is that instruction and `summary` replaces the one before), `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
 - `onInterimMessage` → `interim`.
 - `onQuestion` → `question`, with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply. When a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`.
 - The `TurnResult` becomes `agent_response`.
-- Steering and cancellation markers have no entry.
+- Cancellation markers have no entry.
 
 ## Entry ids
 
@@ -33,7 +33,7 @@
 Entry ids are stable so the store and the client upsert by id, and each carries what makes it unique across the conversation; other entries get a random id:
 
 - `thought:<turnId>:<role>:<id>` and `tool:<turnId>:<role>:<toolCallId>`: the `turnId` is generated for each `SendConversationMessageUseCase` turn execution, because thought and tool ids are unique only within one agent's stream, and a shared id would overwrite another turn's or agent's entry. A step streamed again within its turn updates in place.
-- `delegation:<delegationId>:<phase>`: each delegation reaches the channel with a `delegationId` (UUID), and the `delegation` entry carries it as a required field. The `round` restarts at 1 in each turn, so an id built from it would overwrite the delegation of an earlier turn.
+- `delegation:<delegationId>:<phase>`: each delegation reaches the channel with a `delegationId` (UUID), and the `delegation` entry carries it as a required field. The `round` restarts at 1 in each turn, so an id built from it would overwrite the delegation of an earlier turn. A delegation may be steered several times, so each `steered` entry adds a random part: `delegation:<delegationId>:steered:<uuid>`. A `steered` entry neither closes the delegation nor ends the span of a history page.
 
 ## Conversation state
 

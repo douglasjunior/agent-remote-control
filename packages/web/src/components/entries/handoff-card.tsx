@@ -28,11 +28,11 @@ function triggerLabel({ status, response, steps }: Handoff): string {
 }
 
 /** A prompt can run for pages, so it scrolls in place and leaves the steps and the result in view. */
-function HandoffPrompt({ prompt }: { readonly prompt: string }) {
+function HandoffPrompt({ prompt, label = 'Prompt' }: { readonly prompt: string; readonly label?: string }) {
   return (
     <div className="rounded-r-lg border-l-2 border-(--c) bg-[color-mix(in_oklab,var(--c)_7%,transparent)] py-2 pr-1 pl-3">
       <p className="mb-1 text-[11.5px] font-medium tracking-[.05em] text-muted-foreground/80 uppercase">
-        {`Prompt from the ${agentIdentity('CEO').label}`}
+        {`${label} from the ${agentIdentity('CEO').label}`}
       </p>
       <div className="max-h-60 overflow-y-auto pr-2">
         <Markdown text={prompt} className="text-foreground" />
@@ -102,6 +102,7 @@ function HandoffRow({ handoff, running, open, dimmed, onOpenChange, onHover }: {
       </div>
       <CollapsibleContent className="flex flex-col gap-2.5 px-[13px] pt-0.5 pb-[13px] text-sm text-muted-foreground">
         {handoff.prompt && <HandoffPrompt prompt={handoff.prompt} />}
+        {handoff.updates.map((update, index) => <HandoffPrompt key={index} prompt={update} label="New instruction" />)}
         {handoff.steps.length > 0 && <ActivitySteps steps={handoff.steps} />}
         {handoff.response && <Markdown text={handoff.response} className="text-foreground" />}
         {handoff.errorMessage && <p className="text-destructive">{handoff.errorMessage}</p>}
