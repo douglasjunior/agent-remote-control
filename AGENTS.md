@@ -14,7 +14,7 @@ Everything in the repository is written in **English**: source code, identifiers
 agent-remote-control/
 ├── .agents/                        # AI agent governance
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
-├── data/                           # Runtime data persisted in DATA_DIR (outside Git): the SQLite database (arc.sqlite: web conversations, prompt history, global preferences such as the user language, and the settings saved from the web), sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and the JSON files the database imported (legacy-json-backup/)
+├── data/                           # Runtime data persisted in DATA_DIR (outside Git): the SQLite database (arc.sqlite: web conversations, prompt history, global preferences such as the user language, per-conversation agent settings, the board of each conversation and the settings saved from the web), sessions, the user's own agent skills (skills/) and the JSON files the database imported (legacy-json-backup/)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
 │   ├── web/                        # @agent-remote-control/web: React + Rsbuild web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access

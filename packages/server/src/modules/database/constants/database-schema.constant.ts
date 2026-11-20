@@ -1,3 +1,11 @@
+import { ArtifactCounterEntity } from '../../artifacts/entities/artifact-counter.entity.js';
+import { ArtifactDependencyEntity } from '../../artifacts/entities/artifact-dependency.entity.js';
+import { ArtifactHistoryChangeEntity } from '../../artifacts/entities/artifact-history-change.entity.js';
+import { ArtifactHistoryEntity } from '../../artifacts/entities/artifact-history.entity.js';
+import { ArtifactPullRequestEntity } from '../../artifacts/entities/artifact-pull-request.entity.js';
+import { ArtifactRefinementEntity } from '../../artifacts/entities/artifact-refinement.entity.js';
+import { ArtifactSectionEntity } from '../../artifacts/entities/artifact-section.entity.js';
+import { ArtifactEntity } from '../../artifacts/entities/artifact.entity.js';
 import { AgentProfileEntity } from '../../orchestrator/entities/agent-profile.entity.js';
 import { AgentSettingsEntity } from '../../orchestrator/entities/agent-settings.entity.js';
 import { PreferencesEntity } from '../../orchestrator/entities/preferences.entity.js';
@@ -13,10 +21,15 @@ import { CreateWebHistory1795150145081 } from '../migrations/1795150145081-creat
 import { CreateSettings1795160000000 } from '../migrations/1795160000000-create-settings.migration.js';
 import { CreateAgentSettings1795170000000 } from '../migrations/1795170000000-create-agent-settings.migration.js';
 import { CreateSquads1795180000000 } from '../migrations/1795180000000-create-squads.migration.js';
+import { CreateArtifacts1795190000000 } from '../migrations/1795190000000-create-artifacts.migration.js';
 
 
 /** Every entity of the database, whichever module owns it. */
-export const DATABASE_ENTITIES = [LegacyImportEntity, ConversationEntity, ConversationEntryEntity, PromptHistoryEntity, SettingEntity, PreferencesEntity, AgentSettingsEntity, AgentProfileEntity, SquadEntity, SquadProfileEntity];
+export const DATABASE_ENTITIES = [
+  LegacyImportEntity, ConversationEntity, ConversationEntryEntity, PromptHistoryEntity, SettingEntity, PreferencesEntity, AgentSettingsEntity, AgentProfileEntity, SquadEntity, SquadProfileEntity,
+  ArtifactEntity, ArtifactRefinementEntity, ArtifactSectionEntity, ArtifactDependencyEntity, ArtifactPullRequestEntity, ArtifactHistoryEntity,
+  ArtifactHistoryChangeEntity, ArtifactCounterEntity,
+];
 
 /** Every migration, oldest first. A migration once released is never edited: a schema change is a new migration. */
-export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000];
+export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000, CreateArtifacts1795190000000];

@@ -518,8 +518,10 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     );
     expect(threadMessages).toContain('↩️ **Developer Agent finished** in project `my-app` on `T-1` — the CEO is reviewing the result.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
-    const board = JSON.parse(readFileSync(join(dataDir, 'artifacts', `${encodeURIComponent('channel-delegation:thread-delegation')}.json`), 'utf-8'));
-    expect(board.artifacts).toEqual([expect.objectContaining({ id: 'T-1', status: 'done', branch: 'feat/t-1-login', assignee: null, projectName: 'my-app' })]);
+    expect(await app.get(DataSource).query(
+      'SELECT "id", "status", "branch", "assignee_role", "project_name" FROM "artifact" WHERE "conversation_id" = ?',
+      ['channel-delegation:thread-delegation'],
+    )).toEqual([{ id: 'T-1', status: 'done', branch: 'feat/t-1-login', assignee_role: null, project_name: 'my-app' }]);
 
     await app.close();
   });

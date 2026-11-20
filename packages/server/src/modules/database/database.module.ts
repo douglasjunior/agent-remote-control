@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
+import { JsonArtifactsImporterAdapter } from '../artifacts/adapters/json-artifacts-importer.adapter.js';
 import { JsonAgentSettingsImporterAdapter } from '../orchestrator/adapters/json-agent-settings-importer.adapter.js';
 import { JsonPreferencesImporterAdapter } from '../orchestrator/adapters/json-preferences-importer.adapter.js';
 import { PathsModule } from '../paths/paths.module.js';
@@ -23,6 +24,7 @@ const LEGACY_JSON_IMPORTERS = [
   JsonPromptHistoryImporterAdapter,
   JsonPreferencesImporterAdapter,
   JsonAgentSettingsImporterAdapter,
+  JsonArtifactsImporterAdapter,
 ];
 
 @Module({

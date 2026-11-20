@@ -52,7 +52,7 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
 ## Entities
 
 - An entity lives in `entities/<name>.entity.ts` of the module that owns the data (`web/entities/`,
-  `settings/entities/`, `orchestrator/entities/`), and only that module's adapters use it. Ports and use cases keep their domain types; the adapter maps rows to them.
+  `settings/entities/`, `orchestrator/entities/`, `artifacts/entities/`), and only that module's adapters use it. Ports and use cases keep their domain types; the adapter maps rows to them.
 - The database module owns `LegacyImportEntity` (`legacy_import`) only.
 
 ## Store adapters
@@ -97,6 +97,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `SqlitePreferencesStoreAdapter` (orchestrator) | `preferences`, one row with id 1; `update(change)` reads, changes and writes in one `SqliteTransactionService.run` |
 | `SqliteAgentSettingsStoreAdapter` (orchestrator) | `agent_settings` (one row per conversation, with the applied squad), `agent_profile` (one row per conversation and role); `update(id, change)` reads the conversation's and the most recent settings, changes and replaces the conversation's rows in one `SqliteTransactionService.run` |
 | `SqliteSquadStoreAdapter` (orchestrator) | `squad`, `squad_profile` (one row per squad and role); `save` checks the id and the name in any letter case, keeps one default and replaces the squad's rows in one `SqliteTransactionService.run` |
+| `SqliteArtifactStoreAdapter` (artifacts) | `artifact` (one row per conversation and id, with the holder and the board `position`), `artifact_refinement` (one row per kind; a kind without a row is owed), `artifact_section`, `artifact_dependency`, `artifact_pull_request`, `artifact_history` (lists by position), `artifact_history_change` (by event position), `artifact_counter` (last number per id prefix); every child table cascades from its artifact, and `parent_id`/`depends_on_id` are not foreign keys. `transaction(id, work)` reads the board, runs `work` on a copy and writes only the rows that differ in one `SqliteTransactionService.run` |
 
 ## Legacy JSON import
 
@@ -125,6 +126,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `web-prompt-history` | `web/prompt-history.json` | most recent first, capped at `MAX_PROMPT_HISTORY` |
 | `preferences` | `preferences.json` | a field of another type is left out; a row already in the database is kept |
 | `agent-settings` | `agent-settings.json` | a flat entry of the earliest format gives its profile to every role of `IAgentRegistryPort.listRoles()` (so `DatabaseModule` imports `AgentDefinitionsModule`); profiles without a text `agentId` and entries left without profiles are dropped; a conversation already in the database is kept |
+| `artifacts` | `artifacts/<encodeURIComponent(conversationId)>.json` | validated with the protocol's `artifactDetailSchema` (counters default to none); an id listed twice keeps its first place and its last content; a conversation with artifacts or counters in the database is kept |
 
 ### Adding a store and its importer
 

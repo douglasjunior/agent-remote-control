@@ -3,7 +3,7 @@ name: artifacts
 description: >
   Board of features and tasks of each conversation: the artifacts module, the IArtifactsPort and its rules
   (two levels, one project per feature, dependencies, statuses, refinements, one holder per artifact, history),
-  the per-conversation JSON store, and how agents read and write the board with artifact requests
+  the board tables of the SQLite store, and how agents read and write the board with artifact requests
   (<artifact_list>, <artifact_read>, <artifact_create>, <artifact_update>, <artifact_comment>) under the access
   of their role. Use when working with tasks, features, the board, artifact delegation or artifact permissions.
 ---
@@ -92,14 +92,17 @@ rules shared by create and update live in `ArtifactRulesService`; create, update
   `utils/artifact-status.util.ts` tells who set the current status (`lastStatusChange`) and whether a user set it while
   the holder worked (`statusSetByUserWhileHeld`).
 
-`IArtifactStorePort` (`JsonArtifactStoreAdapter`): one file per conversation,
-`DATA_DIR/artifacts/<encodeURIComponent(conversationId)>.json` (`{ counters, artifacts }`, validated with the protocol
-schema; invalid or missing means empty), read and written through `ILockedFilesPort` (`storage` module).
-`transaction(conversationId, work)` runs `work` synchronously over a staged copy of the board as it is on disk, under the
-board's lock, so transactions of parallel delegations and of other processes never interleave; it commits only after the
-atomic write, and one that changes nothing writes nothing. `conversations()` lists the `.json` files of the folder, so
-the lockfiles and temporary files beside them never count as boards. Specs use `InMemoryArtifactStoreFake`,
-`buildArtifact`, `createArtifactHarness` and `createArtifactsService` from `testing/`.
+`IArtifactStorePort` (`SqliteArtifactStoreAdapter`, see the `database` skill): the board of every conversation lives
+in the `artifact` tables, keyed by conversation and artifact id. `transaction(conversationId, work)` runs, in one
+`SqliteTransactionService.run`, a read of the board, `work` synchronously over a staged copy of it, and the writes of
+the rows that differ from what was read: an artifact saved again unchanged writes nothing, and of a changed one only
+its row and the lists that changed are rewritten (history events by position, so an appended event is one insert).
+Parallel delegations and other processes never interleave, a `work` that throws writes nothing, and the `F`/`T`
+counters of `artifact_counter` outlive deleted artifacts, so ids are never reused. Each artifact keeps the place on the
+board it took when first saved. Rows are validated with the protocol's `artifactDetailSchema` on read; an invalid
+artifact is logged (`artifacts_invalid_row`) and left out. `conversations()` lists the conversations with artifacts.
+Specs use `InMemoryArtifactStoreFake`, `buildArtifact`, `buildPopulatedArtifact`, `createArtifactHarness` and
+`createArtifactsService` from `testing/`.
 
 ## Agents and the board (orchestrator)
 

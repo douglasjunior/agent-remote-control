@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
 
-import { PathsModule } from '../paths/paths.module.js';
+import { DatabaseModule } from '../database/database.module.js';
 import { SettingsModule } from '../settings/settings.module.js';
-import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
-import { JsonArtifactStoreAdapter } from './adapters/json-artifact-store.adapter.js';
+import { SqliteArtifactStoreAdapter } from './adapters/sqlite-artifact-store.adapter.js';
 import { IArtifactStorePort } from './ports/artifact-store.port.js';
 import { IArtifactsPort } from './ports/artifacts.port.js';
 import { ArtifactDerivationService } from './services/artifact-derivation.service.js';
@@ -24,9 +23,9 @@ import { UpdateArtifactUseCase } from './use-cases/update-artifact.use-case.js';
 
 
 @Module({
-  imports: [PathsModule, SettingsModule, StorageModule, WorkspaceModule],
+  imports: [DatabaseModule, SettingsModule, WorkspaceModule],
   providers: [
-    { provide: IArtifactStorePort, useClass: JsonArtifactStoreAdapter },
+    { provide: IArtifactStorePort, useClass: SqliteArtifactStoreAdapter },
     ArtifactDerivationService,
     ArtifactEventsService,
     ArtifactHistoryService,
