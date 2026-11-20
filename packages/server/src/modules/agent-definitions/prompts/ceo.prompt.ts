@@ -98,11 +98,11 @@ function formatTeam(team: readonly AgentDefinition[]): string {
     .join('\n');
 }
 
-/** The routing of each status, written from what the definitions of the team declare. */
+/** The routing of each status, written from what the definitions of the team declare, the refinements in the order of their kinds. */
 function formatRouting(team: readonly AgentDefinition[]): string {
-  const refinements = team
-    .filter(agent => agent.delegation.refines)
-    .map(agent => `  - \`backlog\` with the ${agent.delegation.refines} refinement pending: delegate ${agent.role}, which settles it.`);
+  const refiners = REFINEMENT_KINDS.flatMap(kind => team.filter(agent => agent.delegation.refines === kind));
+  const refinements = refiners.map(agent => `  - \`backlog\` with the ${agent.delegation.refines} refinement pending: delegate ${agent.role}, which settles it.`);
+  const order = refiners.length > 1 ? ['  - A task that owes several refinements goes through them in the order above.'] : [];
   const flows = team.flatMap((agent) => {
     const flow = agent.delegation.statusFlow;
     if (!flow) {
@@ -115,6 +115,7 @@ function formatRouting(team: readonly AgentDefinition[]): string {
   });
   return [
     ...refinements,
+    ...order,
     '  - The server keeps a task `ready` exactly while no refinement is pending, moving it between `backlog` and `ready`, and a feature follows its tasks.',
     ...flows,
   ].join('\n');

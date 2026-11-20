@@ -37,11 +37,11 @@ AI coding agents are incredible, as long as you are sitting in front of the term
 
 - 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open a browser or Discord, you can ship.
 - 🛰️ **Your machine, one link away.** Turn on [remote access](#️-remote-access) and the server prints a link: open it on your phone and the browser talks to your machine over an end-to-end encrypted WebRTC channel, with no port to open and no VPN.
-- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer, QA and Git Ops agent, and, only when you agree, to an IT Support agent, in parallel when it can.
+- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, UX/UI Designer, Tech Lead, Developer, Code Reviewer, QA and Git Ops agent, and, only when you agree, to an IT Support agent, in parallel when it can.
 - 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, save the whole team as a **squad** and apply it to a conversation in one go (`/squad`), and every agent keeps its own session.
 - 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
 - 👀 **Watch it work, live.** Reasoning and tool calls stream into the web feed and the Discord thread as they happen.
-- 📋 **A board per mission.** Every conversation keeps a board of features and tasks, as a tree or a kanban in the web interface. The Product Owner writes the business side, the Tech Lead the technical solution, the Developer implements, Git Ops links the pull request, the Code Reviewer reviews it and QA tests it in practice, each agent reading and writing the task itself, one agent per task at a time, with the full history of every change. You can create tasks yourself too, and send simple ones straight to development.
+- 📋 **A board per mission.** Every conversation keeps a board of features and tasks, as a tree or a kanban in the web interface. The Product Owner writes the business side, the UX/UI Designer the design with a working prototype, the Tech Lead the technical solution, the Developer implements, Git Ops links the pull request, the Code Reviewer reviews it and QA tests it in practice, each agent reading and writing the task itself, one agent per task at a time, with the full history of every change. You can create tasks yourself too, and send simple ones straight to development.
 - 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
 - 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
 - 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
@@ -180,6 +180,7 @@ Every conversation is handled by a **CEO** agent that never touches the code its
 |---|---|
 | 🧭 **CEO** | Talks with you, scopes requests, delegates all hands-on work and reviews the results. |
 | 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left, then writes them as a feature and its tasks on the board. |
+| 🎨 **UX/UI Designer** | Visual direction, screens, flows and every interaction state, responsive and accessible, proven in a working prototype on a `design/` branch that is never merged: in the project's own stack and design system, or a self-contained HTML page for a new idea. Writes the design on the task for the developer to follow. |
 | 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and the technical solution of each task, splitting large work into dependent tasks. |
 | 🛠️ **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
 | 🔍 **Code Reviewer** | Unbiased review in a fresh session of the task's pull request, or of its branch locally when there is no PR, against the task, project conventions, security and correctness. Relies on the PR pipeline instead of running the project, records its findings on the task (and publishes them on the PR when there is one) and approves or requests changes. |
@@ -213,12 +214,13 @@ flowchart LR
     D --> O
     O --> CEO{{"🧭 CEO"}}
     CEO --> PO["Product Owner"]
+    CEO --> UX["UX/UI Designer"]
     CEO --> TL["Tech Lead"]
     CEO --> DEV["Developer"]
     CEO --> CR["Code Reviewer"]
     CEO --> QA["QA"]
     CEO --> GIT["Git Ops"]
-    PO & TL & DEV & CR & QA & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
+    PO & UX & TL & DEV & CR & QA & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
     CLI --> WS[("Workspace<br/>your repositories")]
     O -.->|live activity<br/>+ final answer| W & D
 ```
@@ -521,7 +523,7 @@ The Discord bot connects to your development environment. You can talk to it in 
 - **Choosing Agent, Model and Effort**:
   - On the first message, a conversation without settings takes the default squad, if one is marked in the web interface, or the settings of the most recently configured conversation. If there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex, Cursor and OpenCode). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
   - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
-  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer, QA, Git Ops and IT Support): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
+  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, UX/UI Designer, Tech Lead, Developer, Code Reviewer, QA, Git Ops and IT Support): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
   - Type `/squad` to apply a squad saved in the web interface to the conversation: reply with its number, or `0` to close. Every role the squad sets takes its agent, model and effort; `/profiles` still changes any role afterwards.
   - Type `/usage` to see the usage limits of every available agent, one section per agent.
   - Type `/shell <command>` (e.g. `/shell df -h`) to run a command directly on the host, in the workspace directory, without going through the agents. The answer is visible only to you and shows the output and exit code. The command is only available when `SHELL_COMMAND_ENABLED=true`; `/cancel` stops it.
@@ -590,7 +592,7 @@ A NestJS application built on **Clean Architecture with Ports & Adapters** and *
 
 - **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (Google Antigravity CLI through its native ACP mode `agy acp`), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) `CursorAdapter` (Cursor CLI through its native ACP mode) and `OpenCodeAdapter` (OpenCode CLI through its native ACP mode `opencode acp`).
 - **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer**, **QA**, **Git Ops** and **IT Support**, with the skills each one reads on demand.
+- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **UX/UI Designer**, **Tech Lead**, **Developer**, **Code Reviewer**, **QA**, **Git Ops** and **IT Support**, with the skills each one reads on demand.
 - **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
 - **`web`** (`packages/server/src/modules/web`): primary input adapter of the web interface. Authenticates every connection with the access token, local over WebSocket or remote over WebRTC, and serves the conversations, the board, the skills and the agent login.
 - **`remote`** (`packages/server/src/modules/remote`): remote access. Keeps the host's certificate, registers it with the signaling server and answers browsers that prove the access token with a WebRTC data channel handed to the web channel.

@@ -150,7 +150,7 @@ describe('AgentSkillsService', () => {
     ['CEO', input({ name: 'api-testing' }), '"api-testing" is a built-in skill and is not replaced from a conversation. Choose another name.'],
     ['CEO', input({ description: 'd'.repeat(1025) }), 'The description has 1025 characters; keep it within 1024.'],
     ['CEO', input({ content: 'c'.repeat(30_001) }), 'The content has 30001 characters; keep it within 30000, or split it into several skills.'],
-    ['CEO', input({ roles: ['QA', 'TESTER', 'X'] }), 'Unknown role "TESTER", "X". The roles are: CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA, IT_SUPPORT.'],
+    ['CEO', input({ roles: ['QA', 'TESTER', 'X'] }), 'Unknown role "TESTER", "X". The roles are: CEO, GIT_OPS, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA, IT_SUPPORT.'],
   ])('should refuse a skill written by %s: %s', async (role, skill, error) => {
     const { service, userSkills } = setup();
 

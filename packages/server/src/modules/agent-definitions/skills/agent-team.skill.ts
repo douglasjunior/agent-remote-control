@@ -12,7 +12,7 @@ export const AGENT_TEAM_SKILL: AgentSkillDefinition = {
 
 ## Choosing an Agent
 - Delegate each technical task to the agent whose description below best fits it.
-- Order the phases of one item by dependency: discovery of what to build before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${SKILL_NAMES.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${SKILL_NAMES.delegationProtocol}\` skill).
+- Order the phases of one item by dependency: discovery of what to build before its design, design before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${SKILL_NAMES.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${SKILL_NAMES.delegationProtocol}\` skill).
 - Do not interview the user about requirements yourself: discovery belongs to the agent that runs it, which asks the user directly.
 - A repository that is not in the workspace yet has to be added before any agent that requires a project folder can work on it.
 

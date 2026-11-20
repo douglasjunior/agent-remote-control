@@ -23,6 +23,7 @@ const CONTRACTS: Record<string, DelegationContract> = {
     statusFlow: { from: ['in_review'], verdicts: { APPROVED: 'approved', CHANGES_REQUESTED: 'changes_requested' } },
   },
   PRODUCT_OWNER: { refines: 'business' },
+  UX_DESIGNER: { refines: 'design' },
   TECH_LEAD: { refines: 'technical' },
   GIT_OPS: {},
 };
@@ -81,6 +82,12 @@ describe('DelegationStatusService', () => {
       const { status, task } = setup('backlog', { refinement: { business: 'skipped', design: 'skipped', technical: 'pending' } });
 
       expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the technical refinement (TECH_LEAD):');
+    });
+
+    it('should name the design refinement and the designer for a backlog task', async () => {
+      const { status, task } = setup('backlog', { refinement: { business: 'done', design: 'pending', technical: 'done' } });
+
+      expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the design refinement (UX_DESIGNER):');
     });
 
     it('should name both refinements for a backlog task that owes both', async () => {

@@ -135,7 +135,7 @@ Specs use `InMemoryArtifactStoreFake`, `buildArtifact`, `buildPopulatedArtifact`
   messages, one request per call. The tags keep working alongside.
 - **Access** (`ArtifactAccess` from `IAgentRegistryPort.getArtifactAccess`, declared per definition in
   `agent-definitions/constants/artifact-access.constant.ts`): `scope` `board` (CEO: lists everything, reads one
-  artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner and Tech Lead:
+  artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner, UX/UI Designer and Tech Lead:
   `tree="true"` reads, writes any artifact nobody else holds) or `task` (Developer, Git Ops, Code Reviewer, QA: lists and
   reads tasks only, writes only the task it holds); `create`; writable `sections`; writable `fields` (`title`,
   `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). Comments need only read access.

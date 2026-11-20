@@ -18,7 +18,7 @@ import { BOARD_REQUESTS_SKILL, buildBoardRequestsBody } from './board-requests.s
 describe('board-requests skill', () => {
   it('should be read by every executor role, the CEO having the board in its own skill', () => {
     expect(BOARD_REQUESTS_SKILL.name).toBe('board-requests');
-    expect(BOARD_REQUESTS_SKILL.roles).toEqual(['GIT_OPS', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA']);
+    expect(BOARD_REQUESTS_SKILL.roles).toEqual(['GIT_OPS', 'PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA']);
   });
 
   it('should hold the full board protocol, written for the access of the reader', () => {

@@ -15,14 +15,15 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 | Roles | Skills |
 |---|---|
 | CEO | `agent-team`, `artifact-board`, `delegation-protocol`, `response-protocol`, `workspace-navigation`, `skill-authoring` |
-| Every executor (GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
+| Every executor (GIT_OPS, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
 | Every executor and IT_SUPPORT | `role-guide` |
-| CEO, PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
+| CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
 | DEVELOPER, GIT_OPS | `git-remote` |
 | GIT_OPS | `repository-setup` |
 | CODE_REVIEWER | `review-publishing` |
 | DEVELOPER, CODE_REVIEWER, QA | `running-checks` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
+| UX_DESIGNER | `running-the-app` |
 
 ### `role-guide`
 
@@ -68,7 +69,7 @@ mocha; eslint, biome, prettier; tsc, vue-tsc), turbo, nx, lerna, Python (uv, poe
 
 ### `running-the-app` and `mobile-testing`
 
-The QA prepares its own environment with them: `running-the-app` brings up local services with migrations and seeds,
+The QA prepares its own environment with them, and UX_DESIGNER reads `running-the-app` to run the app it designs for and its prototype: `running-the-app` brings up local services with migrations and seeds,
 points the application and its clients at them, rebuilding what reads a setting at build time, shapes the state a test
 needs in local data or, when data cannot reach it, in code, and undoes it all at shutdown (tracked files reverted,
 `git status` as found, kept local data listed); `mobile-testing` adds how a device reaches the host, with `adb reverse`

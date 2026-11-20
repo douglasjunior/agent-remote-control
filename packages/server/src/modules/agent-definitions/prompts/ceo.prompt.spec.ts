@@ -231,11 +231,19 @@ describe('ceo.prompt', () => {
       );
     });
 
-    it('should route a pending refinement to the agent that settles it', () => {
-      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } })], 'tags');
+    it('should route each pending refinement to the agent that settles it, in the order of the kinds', () => {
+      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } }), agent('DESIGNER', { delegation: { refines: 'design' } })], 'tags');
 
-      expect(prompt).toContain('  - `backlog` with the technical refinement pending: delegate PLANNER, which settles it.');
-      expect(prompt).toContain('  - `backlog` with the business refinement pending: delegate ANALYST, which settles it.');
+      expect(prompt).toContain([
+        '  - `backlog` with the business refinement pending: delegate ANALYST, which settles it.',
+        '  - `backlog` with the design refinement pending: delegate DESIGNER, which settles it.',
+        '  - `backlog` with the technical refinement pending: delegate PLANNER, which settles it.',
+        '  - A task that owes several refinements goes through them in the order above.',
+      ].join('\n'));
+    });
+
+    it('should give no refinement order with a single agent that refines', () => {
+      expect(buildCeoSystemPrompt([planner], 'tags')).not.toContain('goes through them in the order above');
     });
 
     it('should route the statuses an agent accepts, the status the task takes on start and each verdict', () => {

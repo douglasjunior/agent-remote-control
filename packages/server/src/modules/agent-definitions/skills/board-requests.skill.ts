@@ -30,7 +30,7 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
 export const BOARD_REQUESTS_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.boardRequests,
   description: 'The board in full, written for your role: listing, dependencies, statuses, refinements, creating several artifacts at once and what each field holds. Your instructions already cover reading, updating and commenting on the task you hold. Read it only for something beyond them.',
-  roles: ['GIT_OPS', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA'],
+  roles: ['GIT_OPS', 'PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA'],
   buildContent: ({ artifacts, agentInterface }) => `# Board Requests\n\n${buildBoardRequestsBody(artifacts, agentInterface)}`,
 };
 

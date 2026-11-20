@@ -43,6 +43,7 @@ export type AgentRole =
   | 'CODE_REVIEWER'
   | 'TECH_LEAD'
   | 'PRODUCT_OWNER'
+  | 'UX_DESIGNER'
   | 'QA'
   | 'IT_SUPPORT';
 ```
@@ -51,6 +52,7 @@ export type AgentRole =
 |---|---|---|
 | `CEO` | Leads the team: talks to the user, triages, routes the board's tasks through their statuses, delegates all hands-on work and reports the results. | [ceo-prompt.md](references/ceo-prompt.md) |
 | `PRODUCT_OWNER` | Product discovery with the user before technical planning; writes the business sections of a feature and its tasks. | [product-owner-prompt.md](references/product-owner-prompt.md) |
+| `UX_DESIGNER` | Expert UX/UI design after the business refinement and before technical planning: visual direction, tokens, screens, flows and every state, proven in a working prototype on a never-merged `design/<artifact id>-<slug>` branch; writes the `ux_design` section and settles the design refinement. | [ux-designer-prompt.md](references/ux-designer-prompt.md) |
 | `TECH_LEAD` | Technical planning and investigation; writes each task's technical solution and splits large work. | [tech-lead-prompt.md](references/tech-lead-prompt.md) |
 | `DEVELOPER` | Works one task end to end on a branch of its own: code, tests, commits, push and its pull request; DONE or INCOMPLETE. | [developer-prompt.md](references/developer-prompt.md) |
 | `CODE_REVIEWER` | Independent review of a task's pull request or branch without running it; APPROVED or CHANGES_REQUESTED. | [code-reviewer-prompt.md](references/code-reviewer-prompt.md) |
@@ -70,14 +72,14 @@ export type AgentRole =
 - `delegation`: the `DelegationContract` of `orchestrator/ports/agent-registry.port.ts`, declaring which `<delegate>` attributes the agent accepts and how a delegation moves the task. A new parameter is added there:
   - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder;
   - `sessionMode`: `'overridable'`; when absent, the mode of a delegation without an artifact is fixed to `defaultSessionMode` and passing the `session` attribute there is rejected (with an artifact, `session` is accepted and ignored);
-  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test;
-  - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
+  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test, and so is UX_DESIGNER, which commits its prototype on a branch of its own;
+  - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
-  - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
+  - `asksUser: true` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
   - `userInitiatedOnly: true` (IT_SUPPORT): the CEO delegates to the agent only in a turn that answers the user's message or answers, after suggesting it to the user with a `<question>`;
-  - `refines`: a `RefinementKind` of the artifacts module's `REFINEMENT_KINDS`, the refinement the role settles on the artifacts it is delegated: `'business'` (PRODUCT_OWNER) or `'technical'` (TECH_LEAD);
+  - `refines`: a `RefinementKind` of the artifacts module's `REFINEMENT_KINDS`, the refinement the role settles on the artifacts it is delegated: `'business'` (PRODUCT_OWNER), `'design'` (UX_DESIGNER) or `'technical'` (TECH_LEAD), one role per kind;
   - `statusFlow`: how a delegation moves the status of its task (below); absent, a delegation leaves the status alone;
-- `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
+- `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER, UX_DESIGNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
 - `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills;
 - `buildReentryNote(agentInterface)`: optional note put before the prompt that resumes a session the agent already has, never in a new or live session (written with the `buildReentryNote` of `prompts/reentry-note.prompt.ts`, below);
 - `systemPromptEveryTurn`: when `true` (the CEO), the system prompt accompanies every user message, so the agent does without a re-entry note.
@@ -92,7 +94,7 @@ export type AgentRole =
 | `CODE_REVIEWER` | `in_review` | none | `APPROVED` → `approved`, `CHANGES_REQUESTED` → `changes_requested` |
 | `QA` | `approved`, `in_testing` | `in_testing` | `PASSED` → `tested`, `FAILED` → `changes_requested`, `BLOCKED` → `in_testing` |
 
-A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`): on the tags interface an artifact request in the same final response as the answer writes it, on the tools interface an `artifact_update` call before the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
+A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`): on the tags interface an artifact request in the same final response as the answer writes it, on the tools interface an `artifact_update` call before the answer. PRODUCT_OWNER, UX_DESIGNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
 
 ## Two interfaces
 
@@ -155,7 +157,7 @@ Every agent writes its deliverable to the board of the conversation, never to a 
   stops and returns in its final response an access request with path, reason and mode. The request is the response to
   the caller, never a direct question to the user, so that the CEO can assess the risk first. GIT_OPS has `$HOME/.ssh`
   authorized in its own prompt for SSH key setup.
-- **Project orientation**: DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA and PRODUCT_OWNER include
+- **Project orientation**: DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA, PRODUCT_OWNER and UX_DESIGNER include
   `PROJECT_ORIENTATION_INSTRUCTIONS` (`prompts/project-orientation.prompt.ts`). Before its first action on a project
   in a session, the agent reads the guidance the project keeps at its root that is not in its context yet (`AGENTS.md`,
   `CLAUDE.md`, `.github/copilot-instructions.md`, `README.md`, `CONTRIBUTING.md`) and the `AGENTS.md` files inside the
@@ -181,20 +183,21 @@ writes. Which role reads which skill, and the details: [references/agent-skills.
 
 Every executor but IT_SUPPORT reads `board-requests`; every executor reads `role-guide`. The procedures a role needs only
 sometimes are skills of that role: `git-remote` (DEVELOPER, GIT_OPS), `repository-setup` (GIT_OPS),
-`review-publishing` (CODE_REVIEWER), `running-checks` (DEVELOPER, CODE_REVIEWER, QA), the testing skills (QA).
+`review-publishing` (CODE_REVIEWER), `running-checks` (DEVELOPER, CODE_REVIEWER, QA), the testing skills (QA),
+`running-the-app` (QA, UX_DESIGNER).
 
 ## Questions to the user
 
-The CEO, PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT ask the user directly when they need a decision from them to proceed, with
+The CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD and IT_SUPPORT ask the user directly when they need a decision from them to proceed, with
 `<question rationale="…">text<option>…</option></question>` tags in their final response. The instructions:
 
 - `USER_QUESTIONS_BRIEF` (`prompts/user-questions.prompt.ts`): the essentials under `### Asking the User`, in the
-  system prompt of PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT: the tag with its `rationale`, context in the text outside
+  system prompt of PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD and IT_SUPPORT: the tag with its `rationale`, context in the text outside
   the tags, one option per plausible answer and no "Other", the recommended option first and assumed on a timeout,
   facts looked up instead of asked, and the decisions mapped before the first round so that each response asks the
   whole frontier (every decision whose prerequisites are settled) while dependent ones wait;
-- the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER, TECH_LEAD and
-  IT_SUPPORT) covers the rest: keeping the decision map across rounds, ending an interview with an empty frontier and
+- the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD
+  and IT_SUPPORT) covers the rest: keeping the decision map across rounds, ending an interview with an empty frontier and
   a confirmed summary, attachments in the answers and timed-out answers. The brief names it. The role prompts say,
   in their own terms, what a fact is and what the reason of a recommendation is, and when the summary is confirmed.
   The CEO's core carries its own short version of the tag.

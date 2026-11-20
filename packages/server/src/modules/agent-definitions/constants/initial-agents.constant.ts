@@ -7,6 +7,7 @@ import { buildItSupportReentryNote, IT_SUPPORT_SYSTEM_PROMPT } from '../prompts/
 import { buildProductOwnerReentryNote, buildProductOwnerSystemPrompt } from '../prompts/product-owner.prompt.js';
 import { buildQaReentryNote, buildQaSystemPrompt } from '../prompts/qa.prompt.js';
 import { buildTechLeadReentryNote, buildTechLeadSystemPrompt } from '../prompts/tech-lead.prompt.js';
+import { buildUxDesignerReentryNote, buildUxDesignerSystemPrompt } from '../prompts/ux-designer.prompt.js';
 
 import {
   CEO_ARTIFACT_ACCESS,
@@ -17,6 +18,7 @@ import {
   PRODUCT_OWNER_ARTIFACT_ACCESS,
   QA_ARTIFACT_ACCESS,
   TECH_LEAD_ARTIFACT_ACCESS,
+  UX_DESIGNER_ARTIFACT_ACCESS,
 } from './artifact-access.constant.js';
 
 
@@ -54,6 +56,17 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional', asksUser: true, refines: 'business' },
     artifacts: PRODUCT_OWNER_ARTIFACT_ACCESS,
     buildReentryNote: buildProductOwnerReentryNote,
+  },
+  {
+    role: 'UX_DESIGNER',
+    name: 'UX/UI Designer Agent',
+    summary: 'Designs how the work looks and behaves: screens, states and a working prototype on a design branch, recorded on the board.',
+    description:
+      'Expert UX/UI designer for visual interfaces: visual direction, design tokens, screens and flows, every interaction state, responsive layouts, accessibility, motion and copy. Delegate to it work with screens or interactions whose look and flow are not settled, after its business refinement and before its technical planning, or with a project folder to explore a visual direction. It reads the product sections of the artifact and the design system the project already has, asks the user about the visual direction when it is open, and builds a working prototype on a design/<artifact id>-<slug> branch that is never merged: in the project\'s own stack, or as a self-contained HTML page for a new idea. It writes the ux_design section of the artifact (the branch and how to open it, the screens, states and design decisions), complements its flows and acceptance criteria, and sets its design refinement done. It does not implement the production feature. It answers with the ids it changed, the prototype branch and what the caller must decide next.',
+    buildSystemPrompt: (_team, agentInterface) => buildUxDesignerSystemPrompt(agentInterface),
+    delegation: { project: 'optional', sessionMode: 'overridable', artifact: 'optional', asksUser: true, refines: 'design' },
+    artifacts: UX_DESIGNER_ARTIFACT_ACCESS,
+    buildReentryNote: buildUxDesignerReentryNote,
   },
   {
     role: 'TECH_LEAD',

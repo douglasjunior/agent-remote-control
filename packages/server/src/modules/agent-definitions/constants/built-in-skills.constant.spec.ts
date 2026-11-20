@@ -32,9 +32,13 @@ describe('built-in-skills.constant', () => {
     for (const name of ['agent-team', 'artifact-board', 'delegation-protocol', 'response-protocol', 'workspace-navigation', 'skill-authoring']) {
       expect(rolesOf(name)).toEqual(['CEO']);
     }
-    for (const name of ['running-the-app', 'web-ui-testing', 'api-testing', 'mobile-testing']) {
+    for (const name of ['web-ui-testing', 'api-testing', 'mobile-testing']) {
       expect(rolesOf(name)).toEqual(['QA']);
     }
+  });
+
+  it('should let the designer run the app to look at it, as QA runs it to test it', () => {
+    expect(BUILT_IN_SKILLS.find(skill => skill.name === SKILL_NAMES.runningTheApp)?.roles).toEqual(['QA', 'UX_DESIGNER']);
   });
 
   it('should give the roles that work on a repository the skills of their procedures', () => {

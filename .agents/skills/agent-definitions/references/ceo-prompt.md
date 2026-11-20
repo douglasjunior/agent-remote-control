@@ -25,7 +25,8 @@ The prompt text does not name roles. Two pieces are generated from the definitio
   `formatDelegationTargets` (`with \`artifact\` (a task)`, `with \`project\``, `with neither`, as the contract allows). An
   empty team gets a sentence telling the CEO to say the work cannot be carried out.
 - **Status routing** (`formatRouting`): a line for every agent that declares `refines` (a `backlog` task with that refinement
-  pending is delegated to it); the fixed line that the server keeps a task `ready` exactly while no refinement is pending, moving it between
+  pending is delegated to it), in the order of `REFINEMENT_KINDS` (business, design, technical), followed, when more
+  than one agent refines, by the line that a task owing several refinements goes through them in that order; the fixed line that the server keeps a task `ready` exactly while no refinement is pending, moving it between
   `backlog` and `ready`, and that a feature follows its tasks; and a line per `statusFlow` listing the `from` statuses, the status the task takes at the start and what each
   verdict leaves.
 
