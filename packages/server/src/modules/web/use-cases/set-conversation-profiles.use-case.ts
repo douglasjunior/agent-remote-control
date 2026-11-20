@@ -28,8 +28,7 @@ export class SetConversationProfilesUseCase {
   async execute(input: SetConversationProfilesInput): Promise<SetConversationProfilesResult> {
     const result = await this.configuration.configureProfiles(input);
     if (result.ok) {
-      const { configured, profiles } = await this.getProfiles.execute(input.conversationId);
-      this.events.publishProfiles(input.conversationId, configured, profiles);
+      this.events.publishProfiles(input.conversationId, await this.getProfiles.execute(input.conversationId));
     }
     return result;
   }

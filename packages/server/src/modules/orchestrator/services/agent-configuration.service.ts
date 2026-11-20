@@ -8,8 +8,19 @@ import type {
   ConfigureProfilesResult,
   ConversationSettingsStatus,
 } from '../models/configure-profiles.model.js';
+import type {
+  ApplySquadResult,
+  ConversationSquadState,
+  SaveSquadInput,
+  SaveSquadResult,
+  SquadView,
+} from '../models/squad.model.js';
 import type { IAgentConfigurationPort } from '../ports/agent-configuration.port.js';
+import { ApplySquadToConversationUseCase } from '../use-cases/apply-squad-to-conversation.use-case.js';
 import { ConfigureAgentProfilesUseCase } from '../use-cases/configure-agent-profiles.use-case.js';
+import { DeleteSquadUseCase } from '../use-cases/delete-squad.use-case.js';
+import { ListSquadsUseCase } from '../use-cases/list-squads.use-case.js';
+import { SaveSquadUseCase } from '../use-cases/save-squad.use-case.js';
 
 import { AgentCapabilitiesService } from './agent-capabilities.service.js';
 import { AgentProfilesService } from './agent-profiles.service.js';
@@ -23,6 +34,10 @@ export class AgentConfigurationService implements IAgentConfigurationPort {
     private readonly profiles: AgentProfilesService,
     private readonly language: UserLanguageService,
     private readonly configureProfilesUseCase: ConfigureAgentProfilesUseCase,
+    private readonly listSquadsUseCase: ListSquadsUseCase,
+    private readonly saveSquadUseCase: SaveSquadUseCase,
+    private readonly deleteSquadUseCase: DeleteSquadUseCase,
+    private readonly applySquadUseCase: ApplySquadToConversationUseCase,
   ) {}
 
   listAgents(): readonly AgentOption[] {
@@ -71,6 +86,26 @@ export class AgentConfigurationService implements IAgentConfigurationPort {
 
   configureProfiles(input: ConfigureProfilesInput): Promise<ConfigureProfilesResult> {
     return this.configureProfilesUseCase.execute(input);
+  }
+
+  listSquads(): Promise<readonly SquadView[]> {
+    return this.listSquadsUseCase.execute();
+  }
+
+  saveSquad(input: SaveSquadInput): Promise<SaveSquadResult> {
+    return this.saveSquadUseCase.execute(input);
+  }
+
+  deleteSquad(squadId: string): Promise<boolean> {
+    return this.deleteSquadUseCase.execute(squadId);
+  }
+
+  applySquad(conversationId: string, squadId: string): Promise<ApplySquadResult> {
+    return this.applySquadUseCase.execute(conversationId, squadId);
+  }
+
+  getSquadState(conversationId: string): Promise<ConversationSquadState> {
+    return this.profiles.squadState(conversationId);
   }
 
   getLanguage(): Promise<string> {

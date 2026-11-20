@@ -73,7 +73,8 @@ Immutable structure with the turn outcome:
 
 ### `AgentSettings` (`agent-settings.model.ts`)
 
-Configuration of a conversation: `profiles` (role → `AgentProfileSettings`) and `updatedAt`.
+Configuration of a conversation: `profiles` (role → `AgentProfileSettings`), `appliedSquad?` (`{ id, name }` of the
+squad last copied in, kept after the squad is deleted) and `updatedAt`.
 `AgentProfileSettings` holds `agentId`, `agentName` (catalog display name), `modelId`, `modelName`,
 `effortId` and `effortName`. `modelId === null` indicates an agent without published models;
 `effortId === null`, a model without effort levels.
@@ -118,7 +119,8 @@ settings afterwards. Every change of a profile goes through `update`, so concurr
 conversation (four `profiles.set` commands at once) all stay. Each conversation
 has its own configuration: a channel that changes the configuration changes only the conversation (`conversationId`) it runs in.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
-Implemented by `SqliteAgentSettingsStoreAdapter`: one `agent_settings` row per conversation (`updated_at`) and one
+Implemented by `SqliteAgentSettingsStoreAdapter`: one `agent_settings` row per conversation (`applied_squad_id`,
+`applied_squad_name`, `updated_at`) and one
 `agent_profile` row per role of it; `update` reads both settings, calls `change` and replaces the conversation's rows in
 one `SqliteTransactionService.run`. The `agent-settings` legacy importer moves `DATA_DIR/agent-settings.json` into them,
 reading a flat entry of the earliest format (`agentId`, `modelId`... at the top level) as the same profile for every role

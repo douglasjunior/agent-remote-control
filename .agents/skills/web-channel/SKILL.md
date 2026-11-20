@@ -3,7 +3,7 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
+  stateless agent configuration and squads, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
   (auth.* commands and events), the settings.* commands, uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
   access token, web conversations or the settings commands.
 ---
@@ -115,7 +115,7 @@ Each area has a reference with the exact commands, events, limits and edge cases
 - **Skills**: `skills.list`, `skill.get` and `skill.delete` over `IAgentSkillsPort`; the web never writes a skill.
   Read [references/skills.md](references/skills.md).
 - **Agents**: the stateless configuration API (`agents.list`, `models.list`, `efforts.list`, `profiles.get`,
-  `profiles.set`), the cached `quota.get` and `auth.status` queries that answer `quota.failed`/`auth.status.failed`
+  `profiles.set`, `squads.list`, `squads.save`, `squads.delete`, `squads.apply`), the cached `quota.get` and `auth.status` queries that answer `quota.failed`/`auth.status.failed`
   (never `error`), and the CLI login (`auth.login`, `auth.input`, `auth.cancel`) broadcast to every connection.
   Read [references/agents.md](references/agents.md).
 - **Settings**: `settings.get`, `settings.set`, `settings.reset` over the runtime settings and the user language,

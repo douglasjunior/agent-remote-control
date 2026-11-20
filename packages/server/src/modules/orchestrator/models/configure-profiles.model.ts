@@ -9,4 +9,5 @@ export type ConfigureProfilesInput = {
 
 export type ConfigureProfilesResult = { readonly ok: true } | { readonly ok: false; readonly error: string };
 
-export type ConversationSettingsStatus = 'configured' | 'inherited' | 'missing';
+/** `squad`: the default squad was applied to a conversation without settings. */
+export type ConversationSettingsStatus = 'configured' | 'inherited' | 'squad' | 'missing';

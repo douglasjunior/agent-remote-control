@@ -32,8 +32,10 @@ import { WebConversationUploadsService } from './services/web-conversation-uploa
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
 import { WebSettingsService } from './services/web-settings.service.js';
 import { WebSkillsService } from './services/web-skills.service.js';
+import { WebSquadsService } from './services/web-squads.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
+import { ApplyConversationSquadUseCase } from './use-cases/apply-conversation-squad.use-case.js';
 import { ArchiveConversationUseCase } from './use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from './use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from './use-cases/create-conversation.use-case.js';
@@ -80,6 +82,7 @@ import { WebStaticModule } from './web-static.module.js';
     WebAgentAuthService,
     WebArtifactsService,
     WebSkillsService,
+    WebSquadsService,
     WebSettingsService,
     WebConnectionRegistryService,
     ConversationEntryService,
@@ -98,6 +101,7 @@ import { WebStaticModule } from './web-static.module.js';
     ListAgentOptionsUseCase,
     GetConversationProfilesUseCase,
     SetConversationProfilesUseCase,
+    ApplyConversationSquadUseCase,
     AnswerConversationQuestionUseCase,
     RetryConversationTurnUseCase,
     ListPromptHistoryUseCase,

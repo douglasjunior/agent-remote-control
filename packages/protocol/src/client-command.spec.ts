@@ -1,5 +1,5 @@
 import { parseClientCommand } from './client-command.js';
-import { MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
+import { MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_SQUAD_NAME_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
 
 
 describe('parseClientCommand', () => {
@@ -57,6 +57,18 @@ describe('parseClientCommand', () => {
     { type: 'profiles.get', conversationId: 'c' },
     { type: 'profiles.set', conversationId: 'c', agentId: 'claude' },
     { type: 'profiles.set', conversationId: 'c', roles: ['CEO', 'DEVELOPER'], agentId: 'claude', modelId: 'opus', effortId: 'high' },
+    { type: 'squads.list' },
+    { type: 'squads.save', name: 'Backend team', isDefault: false, profiles: { CEO: { agentId: 'claude' } } },
+    {
+      type: 'squads.save',
+      id: 's',
+      name: 'Backend team',
+      description: 'APIs',
+      isDefault: true,
+      profiles: { CEO: { agentId: 'claude', modelId: 'opus', effortId: 'high' }, DEVELOPER: { agentId: 'codex' } },
+    },
+    { type: 'squads.delete', id: 's' },
+    { type: 'squads.apply', conversationId: 'c', squadId: 's' },
     { type: 'retry.now', conversationId: 'c' },
     { type: 'retry.stop', conversationId: 'c' },
     { type: 'question.answer', conversationId: 'c', answer: { kind: 'option', optionIndex: 2 } },
@@ -104,6 +116,11 @@ describe('parseClientCommand', () => {
     ['removed selection command', { type: 'selection.choose', conversationId: 'c', optionIndexes: [1] }],
     ['empty role list', { type: 'profiles.set', conversationId: 'c', roles: [], agentId: 'claude' }],
     ['profiles.set without an agent', { type: 'profiles.set', conversationId: 'c' }],
+    ['squads.save with a blank name', { type: 'squads.save', name: '  ', isDefault: false, profiles: {} }],
+    ['squads.save with a name too long', { type: 'squads.save', name: 'x'.repeat(MAX_SQUAD_NAME_LENGTH + 1), isDefault: false, profiles: {} }],
+    ['squads.save without the default flag', { type: 'squads.save', name: 'A', profiles: {} }],
+    ['squads.save with a profile without an agent', { type: 'squads.save', name: 'A', isDefault: false, profiles: { CEO: { modelId: 'm' } } }],
+    ['squads.apply without a squad', { type: 'squads.apply', conversationId: 'c' }],
     ['prompts.history without a request id', { type: 'prompts.history' }],
     ['files.close without a request id', { type: 'files.close' }],
     ['files.search without a query', { type: 'files.search', requestId: 'r' }],

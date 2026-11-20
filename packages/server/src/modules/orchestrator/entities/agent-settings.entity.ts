@@ -8,6 +8,13 @@ export class AgentSettingsEntity {
   @PrimaryColumn({ name: 'conversation_id', type: 'text' })
   conversationId: string;
 
+  /** The squad whose profiles were last copied in, kept after the squad is deleted. */
+  @Column({ name: 'applied_squad_id', type: 'text', nullable: true })
+  appliedSquadId: string | null;
+
+  @Column({ name: 'applied_squad_name', type: 'text', nullable: true })
+  appliedSquadName: string | null;
+
   @Column({ name: 'updated_at', type: 'text' })
   updatedAt: string;
 }

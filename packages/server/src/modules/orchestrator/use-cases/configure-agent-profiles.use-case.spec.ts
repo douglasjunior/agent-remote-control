@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
+import { SqliteTransactionService } from '../../database/services/sqlite-transaction.service.js';
+import { createInMemoryDataSource } from '../../database/testing/in-memory-data-source.js';
+import { SqliteAgentSettingsStoreAdapter } from '../adapters/sqlite-agent-settings-store.adapter.js';
 import { AgentCapabilitiesService } from '../services/agent-capabilities.service.js';
+import { AgentProfileResolverService } from '../services/agent-profile-resolver.service.js';
 import { AgentProfilesService } from '../services/agent-profiles.service.js';
+import { InMemorySquadStoreFake } from '../testing/in-memory-squad-store.fake.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -28,7 +33,11 @@ describe('ConfigureAgentProfilesUseCase', () => {
     factory.agents = [{ agentId: 'stub', displayName: 'Stub Agent' }];
     store = new StubAgentSettingsStore();
     const capabilities = new AgentCapabilitiesService(factory);
-    useCase = new ConfigureAgentProfilesUseCase(capabilities, new AgentProfilesService(capabilities, store, new AgentRegistryService()));
+    useCase = new ConfigureAgentProfilesUseCase(
+      capabilities,
+      new AgentProfileResolverService(capabilities),
+      new AgentProfilesService(capabilities, store, new AgentRegistryService(), new InMemorySquadStoreFake()),
+    );
   });
 
   it('should save the profile with names taken from the lists, for every role when none are given', async () => {
@@ -65,5 +74,33 @@ describe('ConfigureAgentProfilesUseCase', () => {
     await expect(useCase.execute({ conversationId: 'conv', ...input })).resolves.toEqual({ ok: false, error });
 
     expect(store.saved).toEqual([]);
+  });
+
+  it('should keep every role of profile changes sent together, while each waits on its agent', async () => {
+    const dataSource = await createInMemoryDataSource();
+    try {
+      const sqliteStore = new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+      const capabilities = new AgentCapabilitiesService(factory);
+      const stored = new ConfigureAgentProfilesUseCase(
+        capabilities,
+        new AgentProfileResolverService(capabilities),
+        new AgentProfilesService(capabilities, sqliteStore, new AgentRegistryService(), new InMemorySquadStoreFake()),
+      );
+      const roles = ['CEO', 'DEVELOPER', 'QA', 'TECH_LEAD'];
+
+      await Promise.all(roles.map((role, index) => stored.execute({
+        conversationId: 'conv',
+        roles: [role],
+        agentId: 'stub',
+        ...(index % 2 === 0 && { modelId: 'fast', effortId: 'high' }),
+      })));
+
+      const settings = await sqliteStore.load('conv');
+      expect(Object.keys(settings!.profiles).sort()).toEqual([...roles].sort());
+      expect(settings!.profiles.CEO).toMatchObject({ modelId: 'fast', effortId: 'high' });
+      expect(settings!.profiles.DEVELOPER).toMatchObject({ modelId: null });
+    } finally {
+      await dataSource.destroy();
+    }
   });
 });

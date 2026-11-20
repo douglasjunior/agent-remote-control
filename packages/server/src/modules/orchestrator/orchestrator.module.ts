@@ -15,6 +15,7 @@ import { JsonOpenWorkStoreAdapter } from './adapters/json-open-work-store.adapte
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
 import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
+import { SqliteSquadStoreAdapter } from './adapters/sqlite-squad-store.adapter.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
 import { IAgentToolsPort } from './ports/agent-tools.port.js';
@@ -22,10 +23,12 @@ import { IAgentTurnPort } from './ports/agent-turn.port.js';
 import { IOpenWorkStorePort } from './ports/open-work-store.port.js';
 import { IPreferencesStorePort } from './ports/preferences-store.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
+import { ISquadStorePort } from './ports/squad-store.port.js';
 import { ITurnRetryPort } from './ports/turn-retry.port.js';
 import { IUserQuestionPort } from './ports/user-question.port.js';
 import { AgentCapabilitiesService } from './services/agent-capabilities.service.js';
 import { AgentConfigurationService } from './services/agent-configuration.service.js';
+import { AgentProfileResolverService } from './services/agent-profile-resolver.service.js';
 import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentRequestParserService } from './services/agent-request-parser.service.js';
@@ -54,16 +57,20 @@ import { UserLanguageService } from './services/user-language.service.js';
 import { UserQuestionQueueService } from './services/user-question-queue.service.js';
 import { UserQuestionService } from './services/user-question.service.js';
 import { AnswerAgentQuestionsUseCase } from './use-cases/answer-agent-questions.use-case.js';
+import { ApplySquadToConversationUseCase } from './use-cases/apply-squad-to-conversation.use-case.js';
 import { CancelAgentTurnUseCase } from './use-cases/cancel-agent-turn.use-case.js';
 import { ConfigureAgentProfilesUseCase } from './use-cases/configure-agent-profiles.use-case.js';
+import { DeleteSquadUseCase } from './use-cases/delete-squad.use-case.js';
 import { ExecuteAgentTurnUseCase } from './use-cases/execute-agent-turn.use-case.js';
 import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
+import { ListSquadsUseCase } from './use-cases/list-squads.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
 import { RetryCeoRoundUseCase } from './use-cases/retry-ceo-round.use-case.js';
 import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
 import { RunAgentToolUseCase } from './use-cases/run-agent-tool.use-case.js';
 import { RunDelegationUseCase } from './use-cases/run-delegation.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
+import { SaveSquadUseCase } from './use-cases/save-squad.use-case.js';
 import { StopArtifactWorkUseCase } from './use-cases/stop-artifact-work.use-case.js';
 import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-attachments.use-case.js';
 
@@ -94,6 +101,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
       provide: IPreferencesStorePort,
       useClass: SqlitePreferencesStoreAdapter,
     },
+    { provide: ISquadStorePort, useClass: SqliteSquadStoreAdapter },
     {
       provide: IOpenWorkStorePort,
       useClass: JsonOpenWorkStoreAdapter,
@@ -102,6 +110,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     RestoreOpenWorkUseCase,
     AgentCapabilitiesService,
     AgentProfilesService,
+    AgentProfileResolverService,
     ConversationRuntimeService,
     CeoBoardService,
     DelegationDetectorService,
@@ -136,6 +145,10 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     RunShellCommandUseCase,
     TranscribeAudioAttachmentsUseCase,
     ConfigureAgentProfilesUseCase,
+    ListSquadsUseCase,
+    SaveSquadUseCase,
+    DeleteSquadUseCase,
+    ApplySquadToConversationUseCase,
     { provide: IAgentTurnPort, useClass: AgentTurnService },
     { provide: IAgentConfigurationPort, useClass: AgentConfigurationService },
     { provide: IUserQuestionPort, useClass: UserQuestionService },

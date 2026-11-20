@@ -1,14 +1,9 @@
-import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { IAgentConfigurationPort } from '../../orchestrator/ports/agent-configuration.port.js';
+import type { ConversationProfiles } from '../models/conversation-profiles.model.js';
+import { toRoleProfile } from '../utils/role-profile.util.js';
 
-
-export type ConversationProfiles = {
-  /** Whether a message sent now runs: the conversation has settings, or can inherit the most recent ones. */
-  readonly configured: boolean;
-  readonly profiles: readonly RoleProfile[];
-};
 
 @Injectable()
 export class GetConversationProfilesUseCase {
@@ -16,19 +11,12 @@ export class GetConversationProfilesUseCase {
 
   async execute(conversationId: string): Promise<ConversationProfiles> {
     const roles = await this.configuration.listProfiles(conversationId);
+    const { appliedSquad, customized } = await this.configuration.getSquadState(conversationId);
     return {
       configured: await this.configuration.hasSettings(conversationId),
-      profiles: roles.map(({ role, roleName, profile, agentAvailable }): RoleProfile => ({
-        role,
-        roleName,
-        ...(profile
-          ? {
-            agent: { id: profile.agentId, name: profile.agentName, available: agentAvailable ?? false },
-            ...(profile.modelId ? { model: { id: profile.modelId, name: profile.modelName ?? profile.modelId } } : {}),
-            ...(profile.effortId ? { effort: { id: profile.effortId, name: profile.effortName ?? profile.effortId } } : {}),
-          }
-          : {}),
-      })),
+      profiles: roles.map(toRoleProfile),
+      ...(appliedSquad && { appliedSquad: { id: appliedSquad.id, name: appliedSquad.name } }),
+      customized,
     };
   }
 }

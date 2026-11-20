@@ -1,9 +1,9 @@
-import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { ConversationState, ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 
 import type { InterruptedWork } from '../../orchestrator/models/open-work.model.js';
+import type { ConversationProfiles } from '../models/conversation-profiles.model.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 
 import { ConversationEntryService } from './conversation-entry.service.js';
@@ -138,8 +138,8 @@ export class WebConversationEventsService implements OnModuleDestroy {
     return this.states.get(conversationId) ?? 'idle';
   }
 
-  publishProfiles(conversationId: string, configured: boolean, profiles: readonly RoleProfile[]): void {
-    this.registry.broadcast({ type: 'profiles', conversationId, configured, profiles: [...profiles] });
+  publishProfiles(conversationId: string, { profiles, ...state }: ConversationProfiles): void {
+    this.registry.broadcast({ type: 'profiles', conversationId, ...state, profiles: [...profiles] });
   }
 
   publishInterrupted(conversationId: string, interrupted: readonly InterruptedWork[]): void {

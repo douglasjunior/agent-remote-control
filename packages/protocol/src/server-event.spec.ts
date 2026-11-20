@@ -106,11 +106,13 @@ describe('parseServerEvent', () => {
     { type: 'auth.login', agentId: 'claude', event: { kind: 'cancelled' } },
     { type: 'models.list', agentId: 'claude', models: [{ id: 'opus', name: 'Opus' }] },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus', efforts: [{ id: 'high', name: 'High' }] },
-    { type: 'profiles', conversationId: 'c', configured: false, profiles: [{ role: 'CEO', roleName: 'CEO' }] },
+    { type: 'profiles', conversationId: 'c', configured: false, profiles: [{ role: 'CEO', roleName: 'CEO' }], customized: false },
     {
       type: 'profiles',
       conversationId: 'c',
       configured: true,
+      appliedSquad: { id: 's', name: 'Backend team' },
+      customized: true,
       profiles: [
         {
           role: 'CEO',
@@ -118,6 +120,21 @@ describe('parseServerEvent', () => {
           agent: { id: 'claude', name: 'Claude Code', available: true },
           model: { id: 'opus', name: 'Opus' },
           effort: { id: 'high', name: 'High' },
+        },
+      ],
+    },
+    { type: 'squads', squads: [] },
+    {
+      type: 'squads',
+      squads: [
+        {
+          id: 's',
+          name: 'Backend team',
+          description: 'APIs',
+          isDefault: true,
+          profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'claude', name: 'Claude Code', available: false } }],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
         },
       ],
     },
@@ -141,7 +158,9 @@ describe('parseServerEvent', () => {
     ['files.results with an unknown kind', { type: 'files.results', requestId: 'r', items: [{ path: 'a', kind: 'link', matches: [] }], walking: false }],
     ['upload.done without a path', { type: 'upload.done', uploadId: 'u', attachment: { name: 'a' } }],
     ['upload.ack with a negative index', { type: 'upload.ack', uploadId: 'u', index: -1 }],
-    ['profile without availability', { type: 'profiles', conversationId: 'c', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'a', name: 'A' } }] }],
+    ['profile without availability', { type: 'profiles', conversationId: 'c', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'a', name: 'A' } }], customized: false }],
+    ['profiles without the customized flag', { type: 'profiles', conversationId: 'c', configured: true, profiles: [] }],
+    ['a squad without the default flag', { type: 'squads', squads: [{ id: 's', name: 'A', profiles: [], createdAt: 'x', updatedAt: 'x' }] }],
     ['an auth status with an unknown state', { type: 'auth.status', fetchedAt: '2026-11-07T00:00:00.000Z', agents: [{ agentId: 'a', displayName: 'A', status: 'maybe' }] }],
     ['a login event of an unknown kind', { type: 'auth.login', agentId: 'claude', event: { kind: 'x' } }],
     ['invalid entry', { type: 'conversation.entry', conversationId: 'c', entry: { type: 'x' }, position: 0 }],

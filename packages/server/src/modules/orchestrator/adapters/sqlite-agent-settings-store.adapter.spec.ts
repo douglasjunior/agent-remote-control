@@ -62,6 +62,19 @@ describe('SqliteAgentSettingsStoreAdapter', () => {
     ]);
   });
 
+  it('should keep the squad the profiles were copied from, and forget it when a change leaves it out', async () => {
+    const applied: AgentSettings = { ...SETTINGS, appliedSquad: { id: 's1', name: 'Backend team' } };
+
+    await store.update('conv', () => applied);
+    await expect(storeOver(dataSource).load('conv')).resolves.toEqual(applied);
+    await expect(store.update('conv', (own) => {
+      expect(own).toEqual(applied);
+      return SETTINGS;
+    })).resolves.toEqual(SETTINGS);
+
+    await expect(store.load('conv')).resolves.toEqual(SETTINGS);
+  });
+
   it('should keep settings isolated per conversation', async () => {
     const copilot: AgentSettings = { profiles: { CEO: { ...CLAUDE, agentId: 'copilot' } }, updatedAt: SETTINGS.updatedAt };
 

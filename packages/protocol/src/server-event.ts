@@ -10,6 +10,7 @@ import { conversationEntrySchema } from './conversation-entry.js';
 import { conversationStateSchema, conversationSummarySchema } from './conversation.js';
 import { settingViewSchema } from './settings.js';
 import { skillDetailSchema, skillSummarySchema } from './skill.js';
+import { appliedSquadSchema, squadSchema } from './squad.js';
 
 
 export const interruptedWorkSchema = z.object({
@@ -155,7 +156,13 @@ export const serverEventSchema = z.discriminatedUnion('type', [
     conversationId: z.string(),
     configured: z.boolean(),
     profiles: z.array(roleProfileSchema),
+    /** The squad the profiles were last copied from; absent when none was applied. */
+    appliedSquad: appliedSquadSchema.optional(),
+    /** Whether a role differs from the applied squad as it is saved now, or the squad was deleted; `false` without one. */
+    customized: z.boolean(),
   }),
+  /** Every squad, by name, answering `squads.list` and broadcast to every connection after a change. */
+  z.object({ type: z.literal('squads'), squads: z.array(squadSchema) }),
   z.object({
     type: z.literal('error'),
     message: z.string(),

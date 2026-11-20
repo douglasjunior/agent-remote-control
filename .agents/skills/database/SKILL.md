@@ -44,6 +44,8 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
   `dataSource.driver.createSchemaBuilder().log()` over an empty in-memory database, and name every index and foreign
   key in the entity (`@Index('IDX_<table>_<columns>')`, `foreignKeyConstraintName: 'FK_<table>_<target>'`) so the
   migration does not carry generated names.
+- A column added to a table that other tables reference with `ON DELETE CASCADE` is added with `ALTER TABLE … ADD COLUMN`,
+  never through the rebuild the schema builder logs: dropping the old table would delete the referencing rows.
 - Times are ISO-8601 `text` columns and JSON documents are `text`, so values round-trip exactly as the protocol
   carries them.
 
@@ -93,7 +95,8 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `SqlitePromptHistoryAdapter` (web) | `prompt_history` (greater id is more recent, capped at `MAX_PROMPT_HISTORY`) |
 | `SqliteSettingsStoreAdapter` (settings) | `setting` (key, value as JSON); `save` upserts and deletes in one `SqliteTransactionService.run` |
 | `SqlitePreferencesStoreAdapter` (orchestrator) | `preferences`, one row with id 1; `update(change)` reads, changes and writes in one `SqliteTransactionService.run` |
-| `SqliteAgentSettingsStoreAdapter` (orchestrator) | `agent_settings` (one row per conversation), `agent_profile` (one row per conversation and role); `update(id, change)` reads the conversation's and the most recent settings, changes and replaces the conversation's rows in one `SqliteTransactionService.run` |
+| `SqliteAgentSettingsStoreAdapter` (orchestrator) | `agent_settings` (one row per conversation, with the applied squad), `agent_profile` (one row per conversation and role); `update(id, change)` reads the conversation's and the most recent settings, changes and replaces the conversation's rows in one `SqliteTransactionService.run` |
+| `SqliteSquadStoreAdapter` (orchestrator) | `squad`, `squad_profile` (one row per squad and role); `save` checks the id and the name in any letter case, keeps one default and replaces the squad's rows in one `SqliteTransactionService.run` |
 
 ## Legacy JSON import
 

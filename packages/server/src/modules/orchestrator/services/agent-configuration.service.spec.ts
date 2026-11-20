@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import type { ConfigureProfilesResult } from '../models/configure-profiles.model.js';
 import { buildStubProfile } from '../testing/stub-agent-settings-store.js';
+import type { ApplySquadToConversationUseCase } from '../use-cases/apply-squad-to-conversation.use-case.js';
 import type { ConfigureAgentProfilesUseCase } from '../use-cases/configure-agent-profiles.use-case.js';
+import type { DeleteSquadUseCase } from '../use-cases/delete-squad.use-case.js';
+import type { ListSquadsUseCase } from '../use-cases/list-squads.use-case.js';
+import type { SaveSquadUseCase } from '../use-cases/save-squad.use-case.js';
 
 import type { AgentCapabilitiesService } from './agent-capabilities.service.js';
 import { AgentConfigurationService } from './agent-configuration.service.js';
@@ -18,6 +22,10 @@ describe('AgentConfigurationService', () => {
   let profiles: AgentProfilesService;
   let language: UserLanguageService;
   let configure: ConfigureAgentProfilesUseCase;
+  let listSquads: ListSquadsUseCase;
+  let saveSquad: SaveSquadUseCase;
+  let deleteSquad: DeleteSquadUseCase;
+  let applySquad: ApplySquadToConversationUseCase;
 
   beforeEach(() => {
     capabilities = {
@@ -32,6 +40,7 @@ describe('AgentConfigurationService', () => {
       listRoles: rs.fn().mockReturnValue([{ role: 'CEO', roleName: 'CEO' }]),
       save: rs.fn().mockResolvedValue({ profiles: {}, updatedAt: '' }),
       ensure: rs.fn().mockResolvedValue('configured'),
+      squadState: rs.fn().mockResolvedValue({ customized: false }),
     } as unknown as AgentProfilesService;
     language = {
       get: rs.fn().mockResolvedValue('Spanish'),
@@ -40,7 +49,11 @@ describe('AgentConfigurationService', () => {
       reset: rs.fn().mockResolvedValue(undefined),
     } as unknown as UserLanguageService;
     configure = { execute: rs.fn().mockResolvedValue({ ok: true }) } as unknown as ConfigureAgentProfilesUseCase;
-    service = new AgentConfigurationService(capabilities, profiles, language, configure);
+    listSquads = { execute: rs.fn().mockResolvedValue([]) } as unknown as ListSquadsUseCase;
+    saveSquad = { execute: rs.fn().mockResolvedValue({ ok: false, error: 'Unknown role' }) } as unknown as SaveSquadUseCase;
+    deleteSquad = { execute: rs.fn().mockResolvedValue(true) } as unknown as DeleteSquadUseCase;
+    applySquad = { execute: rs.fn().mockResolvedValue({ ok: true }) } as unknown as ApplySquadToConversationUseCase;
+    service = new AgentConfigurationService(capabilities, profiles, language, configure, listSquads, saveSquad, deleteSquad, applySquad);
   });
 
   it('should list agents, models and efforts through the capabilities', async () => {
@@ -87,6 +100,21 @@ describe('AgentConfigurationService', () => {
 
     expect(profiles.save).toHaveBeenCalledWith('conv-1', ['CEO'], profile);
     expect(configure.execute).toHaveBeenCalledWith({ conversationId: 'conv-1', agentId: 'stub' });
+  });
+
+  it('should list, save, delete and apply squads, and read the squad state of a conversation', async () => {
+    const input = { name: 'Backend', isDefault: false, profiles: { PIRATE: { agentId: 'stub' } } };
+
+    await expect(service.listSquads()).resolves.toEqual([]);
+    await expect(service.saveSquad(input)).resolves.toEqual({ ok: false, error: 'Unknown role' });
+    await expect(service.deleteSquad('s1')).resolves.toBe(true);
+    await expect(service.applySquad('conv-1', 's1')).resolves.toEqual({ ok: true });
+    await expect(service.getSquadState('conv-1')).resolves.toEqual({ customized: false });
+
+    expect(saveSquad.execute).toHaveBeenCalledWith(input);
+    expect(deleteSquad.execute).toHaveBeenCalledWith('s1');
+    expect(applySquad.execute).toHaveBeenCalledWith('conv-1', 's1');
+    expect(profiles.squadState).toHaveBeenCalledWith('conv-1');
   });
 
   it('should read, set and reset the user language', async () => {

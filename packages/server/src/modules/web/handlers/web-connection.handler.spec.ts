@@ -4,6 +4,8 @@ import { AccessTokenService } from '../../access-token/services/access-token.ser
 import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
+import type { SquadView } from '../../orchestrator/models/squad.model.js';
+import { buildStubProfile } from '../../orchestrator/testing/stub-agent-settings-store.js';
 import { StubAgentSkillsPort } from '../../orchestrator/testing/stub-agent-skills.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { InMemoryLockedFilesFake } from '../../storage/testing/in-memory-locked-files.fake.js';
@@ -14,12 +16,14 @@ import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
 import { WebSkillsService } from '../services/web-skills.service.js';
+import { WebSquadsService } from '../services/web-squads.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
 import { FakeClientConnection, FakeClientTransport } from '../testing/fake-client-connection.js';
 import { createWebHarness } from '../testing/web-harness.js';
 import { createWebSettings } from '../testing/web-settings.fixture.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
+import { ApplyConversationSquadUseCase } from '../use-cases/apply-conversation-squad.use-case.js';
 import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
@@ -94,6 +98,8 @@ describe('WebConnectionHandler', () => {
       new ArchiveConversationUseCase(store, events),
       new WebSkillsService(skills, harness.registry),
       settings.service,
+      new WebSquadsService(configuration, harness.registry),
+      new ApplyConversationSquadUseCase(configuration, getProfiles, events),
     );
     handler.onModuleInit();
     connection = new FakeClientConnection();
@@ -635,7 +641,7 @@ describe('WebConnectionHandler', () => {
       connection.receive({ type: 'profiles.get', conversationId: 'web-1' });
       await settle();
 
-      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: false, profiles: expect.any(Array) }]);
+      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: false, profiles: expect.any(Array), customized: false }]);
     });
 
     it('should save profiles and let every connection know', async () => {
@@ -645,7 +651,7 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(harness.configuration.configureCalls).toHaveLength(1);
-      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array) }]);
+      expect(sent()).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array), customized: false }]);
     });
 
     it('should answer an invalid profiles.set with an error', async () => {
@@ -656,6 +662,90 @@ describe('WebConnectionHandler', () => {
       await settle();
 
       expect(sent()).toEqual([{ type: 'error', message: 'Unknown agent', conversationId: 'web-1' }]);
+    });
+
+    describe('squads', () => {
+      const squad: SquadView = {
+        id: 's1',
+        name: 'Backend team',
+        isDefault: true,
+        profiles: [{ role: 'CEO', roleName: 'CEO', profile: buildStubProfile('codex', { agentName: 'Codex' }), agentAvailable: true }],
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      };
+      const event = {
+        type: 'squads',
+        squads: [{ ...squad, profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'codex', name: 'Codex', available: true } }] }],
+      };
+
+      it('should answer squads.list to the requester', async () => {
+        harness.configuration.squads = [squad];
+
+        connection.receive({ type: 'squads.list' });
+        await settle();
+
+        expect(sent()).toEqual([event]);
+        expect(harness.observer.sent).toEqual([]);
+      });
+
+      it('should save a squad and let every connection know, or answer the refusal to the requester', async () => {
+        harness.configuration.squads = [{ ...squad, description: 'APIs' }];
+
+        connection.receive({ type: 'squads.save', name: 'Backend team', isDefault: true, profiles: { CEO: { agentId: 'codex' } } });
+        await settle();
+
+        expect(harness.configuration.savedSquads).toEqual([{ name: 'Backend team', isDefault: true, profiles: { CEO: { agentId: 'codex' } } }]);
+        expect(harness.observer.sent).toEqual([{ type: 'squads', squads: [{ ...event.squads[0], description: 'APIs' }] }]);
+
+        harness.configuration.saveSquadResult = { ok: false, error: 'Another squad is named "Backend team"' };
+        connection.receive({ type: 'squads.save', name: 'Backend team', isDefault: false, profiles: {} });
+        await settle();
+
+        expect(sent().at(-1)).toEqual({ type: 'error', message: 'Another squad is named "Backend team"' });
+        expect(harness.observer.sent).toHaveLength(1);
+      });
+
+      it('should delete a squad and let every connection know, or answer an unknown one with an error', async () => {
+        harness.configuration.squads = [squad];
+
+        connection.receive({ type: 'squads.delete', id: 's1' });
+        await settle();
+        connection.receive({ type: 'squads.delete', id: 's1' });
+        await settle();
+
+        expect(harness.observer.sent).toEqual([{ type: 'squads', squads: [] }]);
+        expect(sent().at(-1)).toEqual({ type: 'error', message: 'Unknown squad' });
+      });
+
+      it('should apply a squad to a conversation and let every connection see its profiles', async () => {
+        harness.store.seed('web-1');
+        harness.configuration.squads = [squad];
+
+        connection.receive({ type: 'squads.apply', conversationId: 'web-1', squadId: 's1' });
+        await settle();
+
+        expect(harness.configuration.appliedSquads).toEqual([{ conversationId: 'web-1', squadId: 's1' }]);
+        expect(harness.observer.sent).toEqual([
+          {
+            type: 'profiles',
+            conversationId: 'web-1',
+            configured: true,
+            profiles: expect.any(Array),
+            appliedSquad: { id: 's1', name: 'Backend team' },
+            customized: false,
+          },
+        ]);
+      });
+
+      it('should answer applying an unknown squad with an error of the conversation', async () => {
+        harness.store.seed('web-1');
+
+        connection.receive({ type: 'squads.apply', conversationId: 'web-1', squadId: 'ghost' });
+        await settle();
+
+        expect(sent()).toEqual([{ type: 'error', message: 'Unknown squad', conversationId: 'web-1' }]);
+        expect(harness.observer.sent).toEqual([]);
+      });
     });
 
     it('should answer a question by option or by text', async () => {

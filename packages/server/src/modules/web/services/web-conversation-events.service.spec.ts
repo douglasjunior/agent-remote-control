@@ -201,9 +201,18 @@ describe('WebConversationEventsService', () => {
   it('should broadcast the profiles of a conversation', () => {
     const { events, observer } = createWebHarness();
 
-    events.publishProfiles('web-1', true, [{ role: 'CEO', roleName: 'CEO' }]);
+    events.publishProfiles('web-1', { configured: true, profiles: [{ role: 'CEO', roleName: 'CEO' }], appliedSquad: { id: 's1', name: 'Backend' }, customized: true });
 
-    expect(observer.sent).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO' }] }]);
+    expect(observer.sent).toEqual([
+      {
+        type: 'profiles',
+        conversationId: 'web-1',
+        configured: true,
+        profiles: [{ role: 'CEO', roleName: 'CEO' }],
+        appliedSquad: { id: 's1', name: 'Backend' },
+        customized: true,
+      },
+    ]);
   });
 
   describe('closeOpenQuestions', () => {

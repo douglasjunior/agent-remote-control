@@ -12,6 +12,7 @@ import {
   MAX_UPLOAD_BYTES,
   UPLOAD_CHUNK_BYTES,
 } from './limits.js';
+import { squadDescriptionSchema, squadNameSchema, squadProfileInputSchema } from './squad.js';
 
 
 export const clientCommandSchema = z.discriminatedUnion('type', [
@@ -105,6 +106,19 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     modelId: z.string().optional(),
     effortId: z.string().optional(),
   }),
+  z.object({ type: z.literal('squads.list') }),
+  /** Creates a squad, or replaces the one with `id`; the answer is a `squads` to every connection, or an `error`. */
+  z.object({
+    type: z.literal('squads.save'),
+    id: z.string().optional(),
+    name: squadNameSchema,
+    description: squadDescriptionSchema.optional(),
+    isDefault: z.boolean(),
+    profiles: z.record(z.string(), squadProfileInputSchema),
+  }),
+  z.object({ type: z.literal('squads.delete'), id: z.string() }),
+  /** Copies the squad's profiles into the conversation; the answer is a `profiles` to every connection, or an `error`. */
+  z.object({ type: z.literal('squads.apply'), conversationId: z.string(), squadId: z.string() }),
   z.object({
     type: z.literal('question.answer'),
     conversationId: z.string(),
