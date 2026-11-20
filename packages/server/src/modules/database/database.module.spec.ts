@@ -62,6 +62,26 @@ describe('DatabaseModule', () => {
     await module.close();
   });
 
+  it('should import the conversations before their histories, upgrading the entries of earlier versions', async () => {
+    const id = 'web-11111111-1111-4111-8111-111111111111';
+    const at = '2026-01-01T00:00:00.000Z';
+    mkdirSync(join(dataDir, 'web', 'history'), { recursive: true });
+    writeFileSync(join(dataDir, 'web', 'conversations.json'), JSON.stringify([{ id, title: 'Old', createdAt: at, updatedAt: at }]));
+    writeFileSync(join(dataDir, 'web', 'history', `${id}.json`), JSON.stringify([{ id: 'thought:1', at, type: 'thought', text: 'hmm' }]));
+    const module = await createTestingModule({ imports: [DatabaseModule] }).compile();
+
+    await module.init();
+
+    const dataSource = module.get(DataSource);
+    expect(await dataSource.query('SELECT "importer" FROM "legacy_import" WHERE "importer" LIKE \'web-%\' ORDER BY "importer"')).toEqual([
+      { importer: 'web-conversations' },
+      { importer: 'web-histories' },
+      { importer: 'web-prompt-history' },
+    ]);
+    expect(await dataSource.query('SELECT "payload" FROM "conversation_entry" WHERE "conversation_id" = ?', [id])).toEqual([{ payload: JSON.stringify({ id: 'thought:1', at, type: 'thought', text: 'hmm', role: 'CEO' }) }]);
+    await module.close();
+  });
+
   it('should create with its migrations the schema the entities describe', async () => {
     const dataSource = await createInMemoryDataSource();
 

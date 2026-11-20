@@ -115,20 +115,27 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 - `read()` reads through `LegacyJsonFilesService` and changes nothing. `read(path, schema)` takes the lock the JSON
   store wrote the file under (`<file>.lock`), so a process of an earlier version finishes its write first, and returns
   `undefined` for a missing file or one that does not match the schema (logged as `legacy_file_skipped`). `list(directory)`
-  gives the `.json` files of a folder store. `read()` returns the `files` it parsed (paths relative to `DATA_DIR`),
+  gives the `.json` files of a folder store and `listTemporary(directory)` its `.tmp` files, which interrupted writes
+  left behind. `read()` returns the `files` it parsed (paths relative to `DATA_DIR`),
   the `counts` by kind and `write(manager)`.
 - For each importer not recorded in `legacy_import`: `read()`, then one transaction that runs `write` and inserts the
   record, then the files move to `DATA_DIR/legacy-json-backup/<timestamp>/` keeping their relative paths, and a
   `[Legacy Import]` summary is logged. An importer that throws (lock timeout, I/O, constraint) rolls back, is logged
   as `legacy_import_failed` and runs again on the next boot; boot goes on. Files that did not parse stay in place.
 - `write` inserts at most 500 rows per statement, under SQLite's limit of bound parameters.
+- An importer may read the database in `read()` (it changes nothing) to decide which files to take, as
+  `web-histories` does; the importers run one after the other and each commits before the next reads, so it sees the
+  rows of the importers listed before it. Data that earlier importers dropped and that a later release can recover goes
+  in a new importer with its own `name`, idempotent per record, since installs that recorded the old one never run it
+  again.
 - An importer's `name` never changes once released: it is what keeps it from running twice.
 - `pnpm migrate:legacy` (`src/migrate-legacy.ts`, `ConfigModule` and `DatabaseModule` only) runs the same import
   without starting the server; the Docker image runs it with `node packages/server/dist/migrate-legacy`.
 
 | Importer | Files | Notes |
 |---|---|---|
-| `web-conversations` | `web/conversations.json`, `web/history/<id>.json` | ids must be file names (`[\w-]+`); one entry per id at its first place, latest version; histories of no listed conversation are logged and left |
+| `web-conversations` | `web/conversations.json` | ids must be file names (`[\w-]+`); an id listed twice keeps its first place and its last content |
+| `web-histories` | `web/history/<id>.json` | runs right after `web-conversations`, the only order that lets it find the conversations. A file is imported only when its conversation is in the database and has no entries, so it also recovers the files an install that already recorded `web-conversations` left behind; one entry per id at its first place, latest version. Every entry goes through `LegacyConversationEntryUpgraderService` (web-channel skill), so a file is skipped only when it is not valid JSON or not an array. Files of no conversation, of a conversation that has entries, and `*.tmp` leftovers stay in place and are logged (`legacy_file_skipped`); a file with entries converted logs `legacy_entries_upgraded: <path>: <n> upgraded, <m> turned into warning notices`; the `legacy_import` counts are `histories`, `entries`, `upgraded` and `warnings` |
 | `web-prompt-history` | `web/prompt-history.json` | most recent first, capped at `MAX_PROMPT_HISTORY` |
 | `preferences` | `preferences.json` | a field of another type is left out; a row already in the database is kept |
 | `agent-settings` | `agent-settings.json` | a flat entry of the earliest format gives its profile to every role of `IAgentRegistryPort.listRoles()` (so `DatabaseModule` imports `AgentDefinitionsModule`); profiles without a text `agentId` and entries left without profiles are dropped; a conversation already in the database is kept |

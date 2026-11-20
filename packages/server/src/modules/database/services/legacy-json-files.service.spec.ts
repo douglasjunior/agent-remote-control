@@ -70,6 +70,14 @@ describe('LegacyJsonFilesService', () => {
     expect(await files.list(join('web', 'history'))).toEqual([join('web', 'history', 'a.json'), join('web', 'history', 'b.json')]);
   });
 
+  it('should list the temporary files of a directory', async () => {
+    seed('web/history/a.json', '[]');
+    seed('web/history/a.json.7b1f.tmp', '[');
+    seed('web/history/a.json.lock', '{}');
+
+    expect(await files.listTemporary(join('web', 'history'))).toEqual([join('web', 'history', 'a.json.7b1f.tmp')]);
+  });
+
   it('should list nothing for a missing directory and reject other failures', async () => {
     seed('web/file', '');
 

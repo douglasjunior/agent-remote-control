@@ -12,7 +12,9 @@ import { PathsModule } from '../paths/paths.module.js';
 import { DataDirectoryService } from '../paths/services/data-directory.service.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { JsonConversationsImporterAdapter } from '../web/adapters/json-conversations-importer.adapter.js';
+import { JsonHistoriesImporterAdapter } from '../web/adapters/json-histories-importer.adapter.js';
 import { JsonPromptHistoryImporterAdapter } from '../web/adapters/json-prompt-history-importer.adapter.js';
+import { LegacyConversationEntryUpgraderService } from '../web/services/legacy-conversation-entry-upgrader.service.js';
 
 import { DATABASE_ENTITIES, DATABASE_MIGRATIONS } from './constants/database-schema.constant.js';
 import { ILegacyJsonImporterPort } from './ports/legacy-json-importer.port.js';
@@ -23,6 +25,7 @@ import { SqliteTransactionService } from './services/sqlite-transaction.service.
 
 const LEGACY_JSON_IMPORTERS = [
   JsonConversationsImporterAdapter,
+  JsonHistoriesImporterAdapter,
   JsonPromptHistoryImporterAdapter,
   JsonPreferencesImporterAdapter,
   JsonAgentSettingsImporterAdapter,
@@ -52,6 +55,7 @@ const LEGACY_JSON_IMPORTERS = [
   ],
   providers: [
     LegacyJsonFilesService,
+    LegacyConversationEntryUpgraderService,
     ...LEGACY_JSON_IMPORTERS,
     { provide: ILegacyJsonImporterPort, useFactory: (...importers: ILegacyJsonImporterPort[]) => importers, inject: LEGACY_JSON_IMPORTERS },
     LegacyJsonImportService,

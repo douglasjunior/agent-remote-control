@@ -39,16 +39,13 @@ export class LegacyJsonFilesService {
   }
 
   /** The `.json` files right inside the directory, relative to `DATA_DIR`; none when the directory is missing. */
-  async list(directory: string): Promise<string[]> {
-    try {
-      const entries = await readdir(join(this.dataDirectory.resolve(), directory), { withFileTypes: true });
-      return entries.filter(entry => entry.isFile() && entry.name.endsWith('.json')).map(entry => join(directory, entry.name)).sort();
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-        return [];
-      }
-      throw error;
-    }
+  list(directory: string): Promise<string[]> {
+    return this.listFiles(directory, '.json');
+  }
+
+  /** The `.tmp` files right inside the directory, which a write interrupted before it renamed its file leaves behind. */
+  listTemporary(directory: string): Promise<string[]> {
+    return this.listFiles(directory, '.tmp');
   }
 
   /** Moves the files into `backupDirectory`, relative to `DATA_DIR`, keeping their paths; returns how many moved. */
@@ -66,6 +63,18 @@ export class LegacyJsonFilesService {
       }
     }
     return moved;
+  }
+
+  private async listFiles(directory: string, extension: string): Promise<string[]> {
+    try {
+      const entries = await readdir(join(this.dataDirectory.resolve(), directory), { withFileTypes: true });
+      return entries.filter(entry => entry.isFile() && entry.name.endsWith(extension)).map(entry => join(directory, entry.name)).sort();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return [];
+      }
+      throw error;
+    }
   }
 
   private parseJson(text: string): unknown {
