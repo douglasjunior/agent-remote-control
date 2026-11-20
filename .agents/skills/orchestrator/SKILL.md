@@ -2,7 +2,7 @@
 name: orchestrator
 description: >
   Channel-agnostic agent orchestration: turns, CEO delegation (<delegate>/<agent_result>),
-  questions agents ask the user, ACP session resumption by role and project, per-conversation
+  questions agents ask the user, ACP session resumption by role, project and task, per-conversation
   agent/model/effort settings, user language, agent requests (artifacts and skills read on demand),
   cancellation and queueing. Agents only: menus and typed input belong to each channel. Use when
   implementing turns, delegation, cancellation, session or settings persistence, agent configuration,
@@ -39,7 +39,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 | `StopArtifactWorkUseCase` | Stops the agent holding an artifact the user moved to a work-ending status |
 | `CancelAgentTurnUseCase`, `RestoreOpenWorkUseCase`, `ConfigureAgentProfilesUseCase`, `RunShellCommandUseCase`, `TranscribeAudioAttachmentsUseCase`, `GetAgentQuotaUseCase` | Cancellation, open work after a restart, profiles, the shell command, audio transcription and quotas |
 | `RetryCeoRoundUseCase` | A failed prompt of the CEO: shows the failure, waits and sends the same prompt again, like a question waits for an answer (`TurnRetryService`, `TurnRetryConfigService`) |
-| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session, system prompt and `[SKILLS]`, reminder, language, profile, requests written outside the envelope, protocol repair, the cost of each prompt (`onPrompt`) |
+| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session of its role, project and task, system prompt and `[SKILLS]` (new session), re-entry note (resumed session), language, profile, requests written outside the envelope, protocol repair, the cost of each prompt (`onPrompt`) |
 | `DelegationValidatorService` | Classifies a CEO response and checks each delegation against the team, the board, the workspace and the running agents |
 | `TeamProfilesService` | The `[TEAM_PROFILES]` block of the CEO prompt |
 | `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices |
@@ -49,9 +49,9 @@ Each class owns one part of a turn; channels reach them only through the public 
 ## A Turn in Short
 
 1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text, and a message that reaches a CEO already working steers it instead of starting a turn.
-2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, pending notices, attachments, its reminder and the language block.
+2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, pending notices, attachments and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
-4. Delegations run in parallel, each agent in its own session and project folder; the CEO gets each `<agent_result>` as it finishes and decides again.
+4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again.
 5. The turn ends with the CEO's answer once no delegation runs, or as failed, cancelled or steered; delegations still running are stopped.
 
 Read [references/turn-execution.md](references/turn-execution.md) before changing any of these steps; it covers the directory hierarchy, the tag protocol, the CEO rounds, delegations and each agent round in detail.
@@ -68,14 +68,16 @@ for the CEO, questions for a delegate), or whose requests are all writes (`creat
 (`PendingRequestResults`), so an answer that also moves its task arrives in one round. Any other one (a read, a failed or invalid request, or nothing but requests) gets the results right away, followed by a note saying why the response was not taken as the final answer, until a response carries none (`MAX_REQUEST_ROUNDS`, 30). Each failed request is logged as `[Agent Request Failed]` with its reason. A role that creates artifacts (`create`) also writes the `overview` of what it creates, whatever its `sections`; an update stays within `sections`. A delegation with `artifact="T-1"` is validated against the board (`DelegationValidatorService`): known, of a type the
 role works on, neither frozen nor closed, with a pull request or a branch when the contract has `needsReviewableWork`, held by no agent of another role, and in its project,
 which becomes the delegation's folder. `RunDelegationUseCase` assigns it before creating the port, prefixes the first prompt with
-`[DELEGATED_ARTIFACT]` (its full content) and releases it in `finally` with how the work ended; a running delegation is steered only
-for the same artifact.
+`[DELEGATED_ARTIFACT]` and releases it in `finally` with how the work ended; a running delegation is steered only
+for the same artifact. The block holds the full content (`ArtifactPromptFormatterService.detail`) when the session is new to the task, and,
+when the role's session for the task was resumed, the facts and only the sections changed and comments added since the role last released it
+(`changesSinceRelease`, see [references/turn-execution.md](references/turn-execution.md)).
 
 ### User Language
 
 Agents talk to each other in English; only the text that reaches the user follows `Preferences.language`.
-`AgentRoundService` appends a `[USER_LANGUAGE]` block (`prompts/user-language.prompt.ts`) to every prompt, after
-the turn reminder, including CEO steering and steering of an active delegation:
+`AgentRoundService` appends a `[USER_LANGUAGE]` block (`prompts/user-language.prompt.ts`) at the end of every prompt,
+including CEO steering and steering of an active delegation:
 
 - **CEO with a stored language**: `buildCeoLanguagePrompt(language)`: everything shown to the user in that language, delegation specifications in English.
 - **CEO without a stored language**: `buildLanguageDetectionPrompt()` asks it to answer in the language of the user's message and add `<user_language>language name in English</user_language>`.
@@ -123,7 +125,7 @@ A prompt to the CEO that throws, or a response that stays `invalid` after its re
 - **Ports and Symbols**: every dependency external to the use cases must use Symbol injection (`@Inject(ISessionStorePort)`).
 - **No barrel exports**: never create `index.ts` in `models/`, `ports/`, `adapters/`, `services/` or `use-cases/`.
 - **Cleanup of reactive resources**: every callback registered in `onActivity` must be disconnected in a `finally` block.
-- **One ACP session per conversation, role, agent and project**: obtain `IAgentPort` instances exclusively through `IAgentPortFactory`, always with the turn's `agentId`. Each conversation's CEO agent lives in `ConversationRuntimeService`, and each delegation uses a disposable instance that resumes the role's ACP session in that project.
+- **One ACP session per conversation, role, agent, project and task**: obtain `IAgentPort` instances exclusively through `IAgentPortFactory`, always with the turn's `agentId`. Each conversation's CEO agent lives in `ConversationRuntimeService`, and each delegation uses a disposable instance that resumes the role's ACP session for its task, or for its project when it has no artifact.
 - **Session holds only data**: `SessionContext` stores only serializable data. Live agents, queue and active turn stay in `ConversationRuntimeService`, because the store is persisted to disk.
 - **Concurrency control and CEO mutual exclusion**: every turn registers its lifecycle in `ConversationRuntimeService.beginTurn(conversationKey)`, and interactions with the CEO go through `ConversationRuntimeService.runOnCeo(conversationKey, work)`. The CEO is released while delegates run in the background, keeping strict queuing of simultaneous calls on the same CEO port to avoid parallel calls to `prompt()`.
 - **Cancellable delegation**: every running agent must be registered with `turn.activate(agentPort)`, and `turn.throwIfCancelled()` must precede `connect` and `prompt`.

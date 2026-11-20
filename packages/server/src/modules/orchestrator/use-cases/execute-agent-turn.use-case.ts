@@ -360,13 +360,12 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
   ): Promise<boolean> {
     const prompt = buildCeoSteeringPrompt(buildAttachmentsPrompt(request.prompt, request.attachments));
-    const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
     const languagePrompt = await this.agentRound.buildLanguagePrompt(request.agentRole, request.agentRole);
     const block = (await this.teamProfiles.build(conversationKey, request)).text;
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
-      [block, prompt, reminder, languagePrompt].filter(Boolean).join('\n\n'),
+      [block, prompt, languagePrompt].filter(Boolean).join('\n\n'),
     );
     if (steered) {
       this.logger.log(

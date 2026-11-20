@@ -4,7 +4,7 @@ import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js'
 import type { AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
-import type { AgentSession } from '../models/agent-session.model.js';
+import type { AgentSession, AgentSessionState } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
@@ -32,17 +32,23 @@ import { AgentRequestParserService } from './agent-request-parser.service.js';
 import { OpenWorkService } from './open-work.service.js';
 
 
+/** A prompt that depends on whether the agent's session was resumed, built once the round knows it. */
+export type AgentPrompt = string | ((sessionState: AgentSessionState) => Promise<string>);
+
 export type AgentRoundInput = {
   readonly agentPort: IAgentPort;
   /** The folder the session of the agent runs in. */
   readonly cwd: string;
   readonly role: string;
-  readonly prompt: string;
+  readonly prompt: AgentPrompt;
   readonly request: TurnRequest;
   readonly turn: ActiveTurn;
   readonly session: SessionContext;
+  /** `new` skips the stored session of the role and starts another in its place. */
   readonly sessionMode?: 'resume' | 'new';
   readonly projectName?: string;
+  /** The task the agent works on, which has a session of its own. */
+  readonly artifactId?: string;
   /** A message the user wrote, which brings the CEO its system prompt again when it gets one every turn. */
   readonly isUserMessage?: boolean;
   readonly answerDelivery?: AnswerDelivery;
@@ -56,7 +62,7 @@ export type AgentPromptCost = {
   readonly usage?: AgentUsage;
 };
 
-/** Runs the prompts of one agent in the session the conversation keeps for its role and project, with the role's profile. */
+/** Runs the prompts of one agent in the session the conversation keeps for its role, project and task, with the role's profile. */
 @Injectable()
 export class AgentRoundService {
   private readonly logger = new Logger(AgentRoundService.name);
@@ -77,9 +83,10 @@ export class AgentRoundService {
 
   /**
    * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
-   * for the role and project, adds the system prompt to a new session, the reminder and the language, applies the
-   * role's profile and returns the final response. Requests written outside the final response go in front of it, as
-   * written, for the caller to carry out with the rest; any other protocol tag written there gets one repair prompt.
+   * for the role, project and task, puts the system prompt in front of a new session's prompt and the re-entry note in
+   * front of a resumed one's, adds the language, applies the role's profile and returns the final response. Requests
+   * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
+   * other protocol tag written there gets one repair prompt.
    */
   async run({
     agentPort,
@@ -91,6 +98,7 @@ export class AgentRoundService {
     session,
     sessionMode = 'resume',
     projectName,
+    artifactId,
     isUserMessage = false,
     answerDelivery,
     onPrompt,
@@ -104,41 +112,22 @@ export class AgentRoundService {
       await agentPort.connect();
       turn.throwIfCancelled();
 
-      const reminder = this.agentRegistry.getTurnReminder(role);
-      const languagePrompt = await this.buildLanguagePrompt(role, request.agentRole);
-      let fullPrompt = [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n');
-      let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
-      let sessionState: 'live' | 'resumed' | 'new' = 'live';
-      if (!agentPort.currentSessionId) {
-        const latest = await this.findLatestSession(session);
-        const storedSessionId = sessionMode === 'new'
-          ? undefined
-          : latest.agentSessions.find(agentSession =>
-            this.isSameAgentSession(agentSession, { role, agentId: agentPort.agentName, projectName: projectName ?? null }))?.sessionId;
-        const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
-        sessionState = resumed ? 'resumed' : 'new';
-        if (!resumed) {
-          await this.workspacePort.ensureDirectory(workspacePath);
-          await agentPort.createSession(workspacePath);
-          systemPromptPending = true;
-          if (answerDelivery) {
-            fullPrompt = `${buildLostSessionTaskPrompt(answerDelivery.taskSpec)}\n\n${fullPrompt}`;
-          }
-        }
-        const { currentSessionId } = agentPort;
-        if (currentSessionId && currentSessionId !== storedSessionId) {
-          await this.bindAgentSession(latest, {
-            role,
-            agentId: agentPort.agentName,
-            sessionId: currentSessionId,
-            projectName: projectName ?? null,
-          });
-        }
-      }
-
-      if (systemPromptPending) {
-        fullPrompt = `${await this.buildSystemPrompt(role)}\n\n${fullPrompt}`;
-      }
+      const sessionState = agentPort.currentSessionId
+        ? 'live'
+        : await this.openSession(agentPort, workspacePath, session, sessionMode, {
+          role,
+          agentId: agentPort.agentName,
+          projectName: projectName ?? null,
+          artifactId: artifactId ?? null,
+        });
+      const systemPromptPending = sessionState === 'new' || (isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role));
+      const fullPrompt = [
+        systemPromptPending ? await this.buildSystemPrompt(role) : '',
+        sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role) : '',
+        sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
+        typeof prompt === 'string' ? prompt : await prompt(sessionState),
+        await this.buildLanguagePrompt(role, request.agentRole),
+      ].filter(Boolean).join('\n\n');
 
       await this.applyAgentConfig(agentPort, role, request.conversationId);
 
@@ -181,6 +170,30 @@ export class AgentRoundService {
 
   private isRequestTag(tag: string): boolean {
     return tag.startsWith('artifact_') || tag.startsWith('skill_');
+  }
+
+  /** Loads the stored session of the key, or creates one in its place, and stores the id the port ends up with. */
+  private async openSession(
+    agentPort: IAgentPort,
+    workspacePath: string,
+    session: SessionContext,
+    sessionMode: 'resume' | 'new',
+    key: Omit<AgentSession, 'sessionId'>,
+  ): Promise<Exclude<AgentSessionState, 'live'>> {
+    const latest = await this.findLatestSession(session);
+    const storedSessionId = sessionMode === 'new'
+      ? undefined
+      : latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key))?.sessionId;
+    const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
+    if (!resumed) {
+      await this.workspacePort.ensureDirectory(workspacePath);
+      await agentPort.createSession(workspacePath);
+    }
+    const { currentSessionId } = agentPort;
+    if (currentSessionId && currentSessionId !== storedSessionId) {
+      await this.bindAgentSession(latest, { ...key, sessionId: currentSessionId });
+    }
+    return resumed ? 'resumed' : 'new';
   }
 
   /** `last` is the agent's final message, falling back to everything it wrote; `all` is everything it wrote. */
@@ -235,13 +248,11 @@ export class AgentRoundService {
     await bound;
   }
 
-  private isSameAgentSession(
-    agentSession: AgentSession,
-    target: Pick<AgentSession, 'role' | 'agentId' | 'projectName'>,
-  ): boolean {
+  private isSameAgentSession(agentSession: AgentSession, target: Omit<AgentSession, 'sessionId'>): boolean {
     return agentSession.role === target.role
       && agentSession.agentId === target.agentId
-      && agentSession.projectName === target.projectName;
+      && agentSession.projectName === target.projectName
+      && agentSession.artifactId === target.artifactId;
   }
 
   private async applyAgentConfig(agentPort: IAgentPort, role: string, conversationId: string): Promise<void> {

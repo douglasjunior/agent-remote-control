@@ -10,9 +10,10 @@ import type { ISessionStorePort } from '../ports/session-store.port.js';
 
 const SESSIONS_FILENAME = 'sessions.json';
 
-type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName'> & {
+type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName' | 'artifactId'> & {
   readonly agentId?: string;
   readonly projectName?: string | null;
+  readonly artifactId?: string | null;
 };
 
 type StoredSession = {
@@ -68,8 +69,8 @@ export class JsonSessionStoreAdapter implements ISessionStorePort {
       for (const [conversationId, item] of entries) {
         sessions.set(conversationId, {
           conversationId,
-          agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, ...agentSession }) =>
-            typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null }] : []),
+          agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, artifactId, ...agentSession }) =>
+            typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null, artifactId: artifactId ?? null }] : []),
         });
       }
     } catch {

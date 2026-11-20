@@ -95,12 +95,14 @@ ends, however it ends, and `CancelAgentTurnUseCase` closes every record of the c
 - **Boot**: `RestoreOpenWorkUseCase` loads the records as interrupted and puts unanswered questions back in the queue.
 - **An agent that asked** was not interrupted: it was already waiting. `IAgentTurnPort.deliverAnswers` claims the record
   (`claimAsked`) and the agent receives `<user_answers>` like any other answer. Only when its session cannot be resumed, the
-  answers are preceded by `buildLostSessionTaskPrompt`, since a new session does not know the task.
+  answers are preceded by `buildLostSessionTaskPrompt`, since a new session does not know the task, and, for a delegation
+  with an artifact, by the full `[DELEGATED_ARTIFACT]` block.
 - **An agent that stopped mid-round** has no question to set it going, so the user continues it: `IAgentTurnPort.resumeWork`
-  claims the record (`claimStopped`) and the agent receives `buildResumedWorkPrompt`. `listInterruptedWork`
+  claims the record (`claimStopped`) and the agent receives `buildResumedWorkPrompt`, after the full `[DELEGATED_ARTIFACT]`
+  block when its task's session cannot be resumed. `listInterruptedWork`
   (`OpenWorkService.continuable`) lists these records only. A root is listed only when no delegate stopped with it, because
   the delegates' results start its next round.
-- **Either way** a delegate keeps its `delegationId`, runs on its stored ACP session (`session="resume"`), and its result goes
+- **Either way** a delegate keeps its `delegationId` and its `artifactId`, runs on its stored ACP session (`session="resume"`, the session of its task when it has one), and its result goes
   to a new CEO round like any other; a root record runs on the CEO.
 - **Replaced work**: a new turn discards interrupted roots that did not ask, and delegating a role again discards
   what a restart left stopped for that role, its questions included.

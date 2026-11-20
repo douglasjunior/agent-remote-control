@@ -56,7 +56,7 @@ describe('InMemorySessionStoreFake', () => {
 
   it('should replace the session saved again for the same conversation', async () => {
     await store.saveSession(buildSessionContext());
-    const agentSessions = [{ role: 'CEO', agentId: 'stub', sessionId: 'acp-1', projectName: null }];
+    const agentSessions = [{ role: 'CEO', agentId: 'stub', sessionId: 'acp-1', projectName: null, artifactId: null }];
 
     await store.saveSession(buildSessionContext({ agentSessions }));
 

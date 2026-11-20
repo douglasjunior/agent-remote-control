@@ -8,6 +8,7 @@ import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
+import type { AgentSessionState } from '../models/agent-session.model.js';
 import { PendingRequestResults } from '../models/pending-request-results.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
@@ -16,7 +17,7 @@ import type { AnswerDelivery, ValidatedDelegation } from '../models/validated-de
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { type AgentResultDetails, buildAgentResult } from '../prompts/agent-result.prompt.js';
 import { describeDelegation } from '../prompts/previous-turn.prompt.js';
-import { type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
+import { type AgentPrompt, type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
@@ -168,7 +169,8 @@ export class RunDelegationUseCase {
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
-    const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+    // A task has a session of its own, so the session mode chooses only among the sessions of work without one.
+    const effectiveSessionMode = artifactId ? 'resume' : sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
     let currentTaskSpec = taskSpec;
     const openWorkId = request.resumable ? event.delegationId : undefined;
 
@@ -225,16 +227,17 @@ export class RunDelegationUseCase {
     let outcome = 'stopped';
     const costs: AgentPromptCost[] = [];
     try {
-      const runRound = (text: string, delivery?: AnswerDelivery) => this.agentRound.run({
+      const runRound = (prompt: AgentPrompt, delivery?: AnswerDelivery) => this.agentRound.run({
         agentPort: delegatePort,
         cwd,
         role: delegateToRole,
-        prompt: text,
+        prompt,
         request,
         turn: delegationTurn,
         session,
         sessionMode: effectiveSessionMode,
         projectName,
+        artifactId,
         answerDelivery: delivery,
         onPrompt: cost => costs.push(cost),
       });
@@ -246,17 +249,21 @@ export class RunDelegationUseCase {
         ...(artifactId ? { artifactId } : {}),
       };
       const pending = new PendingRequestResults();
-      const runDelegate = async (text: string, delivery?: AnswerDelivery) => pending.keep(await this.runAgentRequests.resolve(
-        await runRound(pending.before(text), delivery),
+      const resolveRequests = async (response: string) => pending.keep(await this.runAgentRequests.resolve(
+        response,
         results => runRound(results),
         requester,
         rest => this.questionParser.parse(rest).kind !== 'none',
         activity => request.onActivity?.(activity, requester.role),
       ));
-      const opening = firstPrompt ?? await this.withDelegatedArtifact(request.conversationId, artifactId, currentTaskSpec);
+      const opening = (sessionState: AgentSessionState) => this.openingPrompt(sessionState, request.conversationId, delegateToRole, {
+        artifactId,
+        taskSpec: currentTaskSpec,
+        firstPrompt,
+      });
       const response = await this.agentQuestions.execute(
-        await runDelegate(opening, answerDelivery),
-        text => runDelegate(text),
+        await resolveRequests(await runRound(opening, answerDelivery)),
+        async text => resolveRequests(await runRound(pending.before(text))),
         this.agentQuestions.askerFor(delegateToRole, projectName),
         request,
         openWorkId,
@@ -349,14 +356,26 @@ export class RunDelegationUseCase {
     };
   }
 
-  /** The agent starts from the content of the artifact it holds, read when it starts, so the specification only says what to do with it. */
-  private async withDelegatedArtifact(conversationId: string, artifactId: string | undefined, taskSpec: string): Promise<string> {
-    if (!artifactId) {
-      return taskSpec;
+  /**
+   * The agent starts from the artifact it holds, so the specification only says what to do with it. A session new to
+   * the task gets its whole content; one that worked on it before gets what changed since. A session that carries on
+   * from where it stopped (a `firstPrompt`) was holding the task until then, so it gets the prompt alone.
+   */
+  private async openingPrompt(
+    sessionState: AgentSessionState,
+    conversationId: string,
+    role: string,
+    { artifactId, taskSpec, firstPrompt }: Pick<ValidatedDelegation, 'artifactId' | 'taskSpec' | 'firstPrompt'>,
+  ): Promise<string> {
+    const text = firstPrompt ?? taskSpec;
+    const newSession = sessionState === 'new';
+    if (!artifactId || (firstPrompt !== undefined && !newSession)) {
+      return text;
     }
     const all = await this.artifacts.list(conversationId, { statuses: 'all' });
     const artifact = all.find(candidate => candidate.id === artifactId)!;
-    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${this.artifactFormatter.detail(artifact, all)}\n[/DELEGATED_ARTIFACT]\n\n${taskSpec}`;
+    const content = (newSession ? undefined : this.artifactFormatter.changesSinceRelease(artifact, role)) ?? this.artifactFormatter.detail(artifact, all);
+    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${content}\n[/DELEGATED_ARTIFACT]\n\n${text}`;
   }
 
   /** A new delegation of a role takes the place of whatever a restart left stopped for it. */

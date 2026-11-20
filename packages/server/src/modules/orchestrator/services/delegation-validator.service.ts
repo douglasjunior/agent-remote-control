@@ -198,7 +198,7 @@ export class DelegationValidatorService {
   private checkDelegationContract(
     role: string,
     contract: DelegationContract,
-    { projectName, sessionMode }: DelegationResult,
+    { projectName, sessionMode, artifactId }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
       return `Role "${role}" does not take a project folder. Use <delegate role="${role}" summary="<summary>"> without the project attribute.`;
@@ -206,7 +206,8 @@ export class DelegationValidatorService {
     if (!projectName && contract.project === 'required') {
       return `Role "${role}" requires a project folder. Use <delegate role="${role}" summary="<summary>" project="<project-folder>">.`;
     }
-    if (sessionMode && !contract.sessionMode) {
+    // A delegation with an artifact runs in the session of its task, so its session attribute is ignored rather than refused.
+    if (sessionMode && !artifactId && !contract.sessionMode) {
       return `Role "${role}" does not take a session mode. Use <delegate role="${role}" summary="<summary>"> without the session attribute.`;
     }
     return undefined;

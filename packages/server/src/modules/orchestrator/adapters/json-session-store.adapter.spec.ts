@@ -29,20 +29,20 @@ describe('JsonSessionStoreAdapter', () => {
   });
 
   it('should persist sessions as a map keyed by conversation id and reload them in a new instance', async () => {
-    const session = buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] });
+    const session = buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null }] });
     await new JsonSessionStoreAdapter(dataDirectoryAt(dataDir)).saveSession(session);
 
     const reloaded = await new JsonSessionStoreAdapter(dataDirectoryAt(dataDir)).findSession('conv-1');
 
     expect(reloaded).toEqual(session);
     expect(JSON.parse(readFileSync(join(dataDir, 'sessions.json'), 'utf-8'))).toEqual({
-      'conv-1': { agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] },
+      'conv-1': { agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null }] },
     });
   });
 
   it('should keep sessions of different conversations apart', async () => {
     const store = new JsonSessionStoreAdapter(dataDirectoryAt(dataDir));
-    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null }] }));
     await store.saveSession(buildSessionContext({ conversationId: 'conv-th-1' }));
 
     expect((await store.findSession('conv-1'))?.agentSessions).toHaveLength(1);
@@ -53,11 +53,11 @@ describe('JsonSessionStoreAdapter', () => {
   it('should replace a session saved again for the same conversation', async () => {
     const store = new JsonSessionStoreAdapter(dataDirectoryAt(dataDir));
     await store.saveSession(buildSessionContext());
-    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null }] }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null, artifactId: null }] }));
 
     const reloaded = await new JsonSessionStoreAdapter(dataDirectoryAt(dataDir)).findSession('conv-1');
 
-    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null }]);
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-2', projectName: null, artifactId: null }]);
   });
 
   it('should keep every session saved concurrently', async () => {
@@ -80,9 +80,9 @@ describe('JsonSessionStoreAdapter', () => {
     await expect(store.saveSession(buildSessionContext())).rejects.toThrow();
 
     rmSync(dataDir);
-    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }] }));
+    await store.saveSession(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null }] }));
     const reloaded = await new JsonSessionStoreAdapter(dataDirectoryAt(dataDir)).findSession('conv-1');
-    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null }]);
+    expect(reloaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null }]);
   });
 
   it('should load sessions stored without agent sessions with an empty list', async () => {
@@ -142,8 +142,8 @@ describe('JsonSessionStoreAdapter', () => {
     const reloaded = await new JsonSessionStoreAdapter(dataDirectoryAt(rootDir)).findSession('conv-1');
 
     expect(reloaded?.agentSessions).toEqual([
-      { role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null },
-      { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-1', projectName: 'my-app' },
+      { role: 'CEO', agentId: 'claude', sessionId: 'conv-1', projectName: null, artifactId: null },
+      { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-1', projectName: 'my-app', artifactId: null },
     ]);
   });
 
@@ -190,13 +190,14 @@ describe('JsonSessionStoreAdapter', () => {
     const store = new JsonSessionStoreAdapter(dataDirectoryAt(rootDir));
 
     const loaded = await store.findSession('conv-1');
-    expect(loaded).toEqual({ conversationId: 'conv-1', agentSessions: [legacyAgentSession] });
+    const migrated = { ...legacyAgentSession, artifactId: null };
+    expect(loaded).toEqual({ conversationId: 'conv-1', agentSessions: [migrated] });
 
     await store.saveSession(buildSessionContext({ conversationId: 'conv-2' }));
 
     expect(JSON.parse(readFileSync(join(rootDir, 'sessions.json'), 'utf-8'))).toEqual({
-      'conv-1': { agentSessions: [legacyAgentSession] },
-      'ch:th': { agentSessions: [legacyAgentSession] },
+      'conv-1': { agentSessions: [migrated] },
+      'ch:th': { agentSessions: [migrated] },
       'conv-2': { agentSessions: [] },
     });
   });
@@ -210,6 +211,24 @@ describe('JsonSessionStoreAdapter', () => {
 
     const loaded = await new JsonSessionStoreAdapter(dataDirectoryAt(rootDir)).findSession('conv-1');
 
-    expect(loaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'acp-2', projectName: null }]);
+    expect(loaded?.agentSessions).toEqual([{ role: 'CEO', agentId: 'claude', sessionId: 'acp-2', projectName: null, artifactId: null }]);
+  });
+
+  it('should keep the task of an agent session and read one stored without it as a session without a task', async () => {
+    writeFileSync(join(rootDir, 'sessions.json'), JSON.stringify({
+      'conv-1': {
+        agentSessions: [
+          { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-project', projectName: 'my-app' },
+          { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-t1', projectName: 'my-app', artifactId: 'T-1' },
+        ],
+      },
+    }));
+
+    const loaded = await new JsonSessionStoreAdapter(dataDirectoryAt(rootDir)).findSession('conv-1');
+
+    expect(loaded?.agentSessions).toEqual([
+      { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-project', projectName: 'my-app', artifactId: null },
+      { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-t1', projectName: 'my-app', artifactId: 'T-1' },
+    ]);
   });
 });
