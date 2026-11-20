@@ -1,13 +1,14 @@
 import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
 import { deriveInstanceId } from '@agent-remote-control/protocol/remote-link';
 import { registrationPayload, SIGNALING_HOST_PATH } from '@agent-remote-control/protocol/signaling';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import * as x509 from '@peculiar/x509';
 import { randomBytes, sign, X509Certificate } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFileOptions } from '../../storage/ports/locked-files.port.js';
 import type { RemoteIdentity } from '../models/remote-identity.model.js';
 
 
@@ -15,17 +16,21 @@ import type { RemoteIdentity } from '../models/remote-identity.model.js';
 const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 const CERTIFICATE_YEARS = 20;
 const SIGNING_ALGORITHM = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
+const IDENTITY_FILES: LockedFileOptions = { mode: 0o600, directoryMode: 0o700 };
 
 /**
  * The settings of remote access and the identity of this host: the DTLS certificate whose fingerprint the remote link
- * pins and derives the instance id, with its key, kept in `<DATA_DIR>/remote`. They are created once, so the link
- * stays the same across restarts.
+ * pins and derives the instance id, with its key, kept in `<DATA_DIR>/remote`. They are created once, under the key's
+ * lock so hosts that start together on one `DATA_DIR` create one pair, and the link stays the same across restarts.
  */
 @Injectable()
 export class RemoteIdentityService {
   private loading?: Promise<RemoteIdentity>;
 
-  constructor(private readonly dataDirectory: DataDirectoryService) {}
+  constructor(
+    private readonly dataDirectory: DataDirectoryService,
+    @Inject(ILockedFilesPort) private readonly files: ILockedFilesPort,
+  ) {}
 
   /**
    * Off unless `REMOTE_ENABLED` is `true`: whoever operates the signaling server serves the page that holds the
@@ -70,13 +75,16 @@ export class RemoteIdentityService {
     const directory = join(this.dataDirectory.resolve(), 'remote');
     const certificatePath = join(directory, 'certificate.pem');
     const keyPath = join(directory, 'key.pem');
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
-    if (!existsSync(certificatePath) || !existsSync(keyPath)) {
-      const { certificate, key } = await this.createCertificate();
-      writeFileSync(keyPath, key, { mode: 0o600 });
-      writeFileSync(certificatePath, certificate, { mode: 0o600 });
-    }
-    const x509 = new X509Certificate(readFileSync(certificatePath));
+    const certificateFile = this.files.text(certificatePath, IDENTITY_FILES);
+    await this.files.text(keyPath, IDENTITY_FILES).update(async (key) => {
+      if (key && await certificateFile.read()) {
+        return undefined;
+      }
+      const created = await this.createCertificate();
+      await certificateFile.update(() => created.certificate);
+      return created.key;
+    });
+    const x509 = new X509Certificate((await certificateFile.read())!);
     const fingerprint = encodeFingerprint(x509.fingerprint256);
     return {
       instanceId: deriveInstanceId(fingerprint),

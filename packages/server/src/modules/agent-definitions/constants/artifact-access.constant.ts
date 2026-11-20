@@ -39,7 +39,7 @@ export const TECH_LEAD_ARTIFACT_ACCESS: ArtifactAccess = {
 export const DEVELOPER_ARTIFACT_ACCESS: ArtifactAccess = {
   scope: 'task',
   sections: ['implementation_notes'],
-  fields: ['branch'],
+  fields: ['branch', 'pull_requests'],
 };
 
 export const GIT_OPS_ARTIFACT_ACCESS: ArtifactAccess = {

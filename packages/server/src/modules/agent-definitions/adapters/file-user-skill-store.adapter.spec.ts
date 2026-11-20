@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { NodeFileLockAdapter } from '../../storage/adapters/node-file-lock.adapter.js';
+import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 import { skillContext } from '../testing/skill-context.fixture.js';
 
 import { FileUserSkillStoreAdapter } from './file-user-skill-store.adapter.js';
@@ -12,6 +14,10 @@ import { FileUserSkillStoreAdapter } from './file-user-skill-store.adapter.js';
 describe('FileUserSkillStoreAdapter', () => {
   let dataDir: string;
   let store: FileUserSkillStoreAdapter;
+  const createStore = () => {
+    const lock = new NodeFileLockAdapter();
+    return new FileUserSkillStoreAdapter(dataDirectoryAt(dataDir), createNodeLockedFiles(lock), lock);
+  };
 
   const writeSkill = async (folder: string, text: string) => {
     await mkdir(join(dataDir, 'skills', folder), { recursive: true });
@@ -21,7 +27,7 @@ describe('FileUserSkillStoreAdapter', () => {
 
   beforeEach(async () => {
     dataDir = await mkdtemp(join(tmpdir(), 'arc-skills-'));
-    store = new FileUserSkillStoreAdapter(dataDirectoryAt(dataDir));
+    store = createStore();
   });
 
   afterEach(async () => {
@@ -73,5 +79,22 @@ describe('FileUserSkillStoreAdapter', () => {
       '---\nname: electron-testing\ndescription: Testing Electron apps.\nroles: QA, DEVELOPER\n---\n\n# Electron\n\nLaunch it again.\n',
     );
     expect(await listed()).toEqual([{ name: 'electron-testing', description: 'Testing Electron apps.', roles: ['QA', 'DEVELOPER'], content: '# Electron\n\nLaunch it again.' }]);
+  });
+
+  it('should report one creation among concurrent writes of a new skill, from this process and another', async () => {
+    const otherProcess = createStore();
+    const skill = { name: 'cypress', description: 'Cypress.', roles: ['QA'], content: 'Body' };
+
+    const created = await Promise.all([store.write(skill), otherProcess.write(skill), store.write(skill), otherProcess.write(skill)]);
+
+    expect(created.filter(Boolean)).toHaveLength(1);
+    expect(await readdir(join(dataDir, 'skills', 'cypress'))).toEqual(['SKILL.md']);
+  });
+
+  it('should leave no lockfile among the skills it lists', async () => {
+    await store.write({ name: 'cypress', description: 'Cypress.', roles: ['QA'], content: 'Body' });
+    await store.delete('cypress');
+
+    expect(await readdir(join(dataDir, 'skills'))).toEqual([]);
   });
 });

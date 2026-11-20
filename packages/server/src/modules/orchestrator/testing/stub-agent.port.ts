@@ -2,9 +2,11 @@ import type {
   AgentActivity,
   AgentConfig,
   AgentEffortState,
+  AgentMcpServer,
   AgentModelState,
   AgentUpdate,
   AgentQuota,
+  AgentSessionOptions,
   AgentUsage,
   IAgentPort,
 } from '../../agent/ports/agent.port.js';
@@ -15,11 +17,14 @@ export class StubAgentPort implements IAgentPort {
   lastAgentMessage = '';
   currentSessionId?: string = undefined;
   supportsSteering = false;
+  supportsHttpMcp = false;
   connected = false;
   connectCalls = 0;
   createSessionCalls: string[] = [];
   loadSessionCalls: { cwd: string; sessionId: string }[] = [];
   loadSessionResult = true;
+  /** The MCP servers of each `createSession` and `loadSession`, in order. */
+  mcpServersSent: (readonly AgentMcpServer[] | undefined)[] = [];
   modelsToReturn: AgentModelState | null = null;
   effortsByModel: Record<string, AgentEffortState | null> = {};
   promptCalls: string[] = [];
@@ -50,16 +55,18 @@ export class StubAgentPort implements IAgentPort {
     this.connected = true;
   }
 
-  async createSession(cwd: string): Promise<void> {
+  async createSession(cwd: string, options?: AgentSessionOptions): Promise<void> {
     this.createSessionCalls.push(cwd);
+    this.mcpServersSent.push(options?.mcpServers);
     if (this.errorToThrowOnCreateSession) {
       throw this.errorToThrowOnCreateSession;
     }
     this.currentSessionId = `session-${this.createSessionCalls.length}`;
   }
 
-  async loadSession(cwd: string, sessionId: string): Promise<boolean> {
+  async loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean> {
     this.loadSessionCalls.push({ cwd, sessionId });
+    this.mcpServersSent.push(options?.mcpServers);
     if (this.loadSessionResult) {
       this.currentSessionId = sessionId;
     }

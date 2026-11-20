@@ -44,8 +44,9 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 ## Access token and auth gate
 
 - `AccessTokenService` (module `access-token`, imported by the web and remote modules) takes the token from
-  `WEB_ACCESS_TOKEN`, otherwise from `<DATA_DIR>/web/access-token`, generated once with
-  `randomBytes(24).toString('base64url')` and file mode `0o600`. `token()` returns it; `verify` compares with
+  `WEB_ACCESS_TOKEN`, otherwise from `<DATA_DIR>/web/access-token`, read in `onModuleInit` and generated once with
+  `randomBytes(24).toString('base64url')` and file mode `0o600` under the file's lock, so hosts that start together on
+  one `DATA_DIR` share one token. `token()` returns it and throws before the module starts; `verify` compares with
   `timingSafeEqual` and returns false on a length mismatch.
 - On bootstrap it logs `Web interface access token: <token>` from a context the log files leave out.
 - `WebConnectionHandler` waits at most 5 s for an `auth` command on each connection. A wrong token, any
@@ -79,9 +80,12 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   with its position, and keeps the CEO's response being written as an in-memory draft (`conversation.draft`), never
   stored.
 - `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
-  `<DATA_DIR>/web/history/<id>.json` atomically (temporary file, then rename), debounced by 1 s per file,
-  and flushes at the end of every turn and on module destroy. An id reaches a file path only after it is
-  found among the known conversations. Files that do not match the protocol schemas are ignored.
+  `<DATA_DIR>/web/history/<id>.json` through `ILockedFilesPort` (`storage` module), debounced by 1 s per file,
+  and flushes at the end of every turn and on module destroy. Changes wait in memory, each as a value to set (a
+  summary field, an entry by id), and every read applies them over the file; a write applies them to the file as it is
+  on disk under its lock and drops only those it wrote, so a failed write is logged and its changes go with the next
+  flush. An id reaches a file path only after it is found among the known conversations. Files that do not match the
+  protocol schemas are ignored.
 
 - The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in
   place or appends, and returns the position). `conversation.history` (`GetConversationHistoryUseCase`) answers the

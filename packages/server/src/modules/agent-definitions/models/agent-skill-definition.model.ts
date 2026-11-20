@@ -1,12 +1,18 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import type { ArtifactAccess } from '../../orchestrator/ports/agent-registry.port.js';
 
 import type { AgentDefinition } from './agent-definition.model.js';
 
 
-/** What a skill's content may depend on: the team and the board access of the role reading it, and the workspaces root. */
+/**
+ * What a skill's content may depend on: the team, the board access and the system prompt of the role reading it, the
+ * interface of the session it is read in, and the workspaces root.
+ */
 export interface SkillContext {
   readonly team: readonly AgentDefinition[];
   readonly artifacts: ArtifactAccess;
+  readonly rolePrompt: string;
+  readonly agentInterface: AgentInterface;
   readonly workspaceDir: string;
 }
 

@@ -26,7 +26,7 @@ function setup() {
     buildArtifact({ id: 'T-2', parentId: 'F-1' }),
     buildArtifact({ id: 'T-3' }),
   ]);
-  return { ...harness, useCase: new UpdateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events) };
+  return { ...harness, useCase: new UpdateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events, harness.derivation) };
 }
 
 describe('UpdateArtifactUseCase', () => {
@@ -87,7 +87,11 @@ describe('UpdateArtifactUseCase', () => {
       { field: 'section:technical_solution', to: 'replaced' },
       { field: 'section:glossary', to: 'replaced' },
     ].filter(change => change.field !== 'business_refinement'));
-    expect(published).toEqual([{ kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('T-1') }]);
+    expect(published).toEqual([
+      { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('T-1') },
+      { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('F-2') },
+    ]);
+    expect(store.artifactsOf().get('F-2')?.status).toBe('in_progress');
   });
 
   it('should summarize a change without status by its fields', async () => {
@@ -145,5 +149,226 @@ describe('UpdateArtifactUseCase', () => {
     expect(await useCase.execute('c1', id, changes, ceo)).toEqual({ ok: false, error });
     expect(store.artifactsOf().get('T-1')).toBe(before);
     expect(published).toEqual([]);
+  });
+});
+
+describe('UpdateArtifactUseCase derived statuses', () => {
+  const pending = { business: 'pending', technical: 'pending' } as const;
+  const businessPending = { business: 'pending', technical: 'done' } as const;
+
+  function setupBoard() {
+    const harness = createArtifactHarness([
+      buildArtifact({ id: 'T-1', status: 'backlog', refinement: pending }),
+      buildArtifact({ id: 'T-2', status: 'backlog', refinement: businessPending }),
+      buildArtifact({ id: 'T-3', status: 'backlog', refinement: businessPending }),
+      buildArtifact({ id: 'T-4', status: 'blocked', refinement: businessPending }),
+      buildArtifact({ id: 'T-5' }),
+      buildArtifact({ id: 'F-1', type: 'feature', status: 'backlog', refinement: pending }),
+      buildArtifact({ id: 'F-2', type: 'feature', status: 'backlog' }),
+      buildArtifact({ id: 'T-6', parentId: 'F-2', status: 'ready' }),
+      buildArtifact({ id: 'T-7', parentId: 'F-2', status: 'ready' }),
+      buildArtifact({ id: 'F-3', type: 'feature', status: 'ready' }),
+      buildArtifact({ id: 'T-8', parentId: 'F-3', status: 'ready' }),
+      buildArtifact({ id: 'F-4', type: 'feature', status: 'done' }),
+      buildArtifact({ id: 'T-9', parentId: 'F-4', status: 'done' }),
+      buildArtifact({ id: 'T-10', parentId: 'F-4', status: 'cancelled' }),
+      buildArtifact({ id: 'F-5', type: 'feature', status: 'in_progress' }),
+      buildArtifact({ id: 'T-11', parentId: 'F-5', status: 'in_progress' }),
+      buildArtifact({ id: 'T-12', parentId: 'F-5', status: 'done' }),
+      buildArtifact({ id: 'F-6', type: 'feature', status: 'in_progress' }),
+      buildArtifact({ id: 'T-13', parentId: 'F-6', status: 'in_review' }),
+      buildArtifact({ id: 'T-14', parentId: 'F-6', status: 'cancelled' }),
+      buildArtifact({ id: 'F-7', type: 'feature', status: 'in_progress' }),
+      buildArtifact({ id: 'T-15', parentId: 'F-7', status: 'done' }),
+      buildArtifact({ id: 'T-16', parentId: 'F-7', status: 'ready' }),
+      buildArtifact({ id: 'F-8', type: 'feature', status: 'blocked' }),
+      buildArtifact({ id: 'T-17', parentId: 'F-8', status: 'ready' }),
+      buildArtifact({ id: 'F-9', type: 'feature', status: 'frozen' }),
+      buildArtifact({ id: 'T-18', parentId: 'F-9', status: 'ready' }),
+      buildArtifact({ id: 'F-10', type: 'feature', status: 'cancelled' }),
+      buildArtifact({ id: 'T-19', parentId: 'F-10', status: 'ready' }),
+      buildArtifact({ id: 'F-11', type: 'feature', status: 'ready' }),
+    ]);
+    return { ...harness, useCase: new UpdateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events, harness.derivation) };
+  }
+
+  const statusOf = (store: { artifactsOf(): Map<string, { status: string }> }, id: string) => store.artifactsOf().get(id)?.status;
+
+  it.each([
+    ['done', { business: 'done' }],
+    ['skipped', { business: 'skipped' }],
+  ] as const)('should make a task ready when its last pending refinement is %s', async (_name, refinement) => {
+    const { useCase, store, published } = setupBoard();
+
+    const outcome = await useCase.execute('c1', 'T-2', { refinement }, ceo);
+
+    const task = store.artifactsOf().get('T-2')!;
+    expect(outcome).toEqual({ ok: true, artifact: task, changed: true });
+    expect(task.status).toBe('ready');
+    expect(task.history).toHaveLength(2);
+    expect(task.history[0]).toMatchObject({ actor: ceo, summary: 'Updated business refinement' });
+    expect(task.history[1]).toMatchObject({
+      kind: 'updated',
+      actor: { kind: 'system' },
+      summary: 'Ready: no refinement is pending',
+      changes: [{ field: 'status', from: 'backlog', to: 'ready' }],
+    });
+    expect(published).toEqual([{ kind: 'saved', conversationId: 'c1', artifact: task }]);
+  });
+
+  it('should keep a task in the backlog while a refinement is pending', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-1', { refinement: { business: 'done' } }, ceo);
+
+    expect(statusOf(store, 'T-1')).toBe('backlog');
+    expect(store.artifactsOf().get('T-1')?.history).toHaveLength(1);
+  });
+
+  it('should make a task ready when it is sent back to the backlog owing no refinement', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-5', { status: 'backlog' }, ceo);
+
+    expect(statusOf(store, 'T-5')).toBe('ready');
+    expect(store.artifactsOf().get('T-5')?.history.map(event => event.summary)).toEqual(['Status ready → backlog', 'Ready: no refinement is pending']);
+  });
+
+  it('should send a ready task back to the backlog when a refinement is set back to pending, recording why', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-5', { refinement: { technical: 'pending' } }, ceo);
+
+    const task = store.artifactsOf().get('T-5')!;
+    expect(task.status).toBe('backlog');
+    expect(task.history[1]).toMatchObject({
+      kind: 'updated',
+      actor: { kind: 'system' },
+      summary: 'Back to the backlog: a refinement is pending',
+      changes: [{ field: 'status', from: 'ready', to: 'backlog' }],
+    });
+  });
+
+  it('should send a task set to ready while it owes a refinement back to the backlog', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-1', { status: 'ready' }, ceo);
+
+    expect(statusOf(store, 'T-1')).toBe('backlog');
+  });
+
+  it('should leave alone a task parked out of the backlog and ready, whatever it owes', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-4', { refinement: { business: 'done' } }, ceo);
+
+    expect(statusOf(store, 'T-4')).toBe('blocked');
+  });
+
+  it('should not make a feature ready when its refinements are settled', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'F-1', { refinement: { business: 'done', technical: 'skipped' } }, ceo);
+
+    expect(statusOf(store, 'F-1')).toBe('backlog');
+  });
+
+  it.each([
+    ['backlog', 'T-6', 'F-2'],
+    ['ready', 'T-8', 'F-3'],
+  ])('should put a %s feature in progress when one of its tasks starts', async (from, taskId, featureId) => {
+    const { useCase, store, published } = setupBoard();
+
+    await useCase.execute('c1', taskId, { status: 'in_progress' }, ceo);
+
+    const feature = store.artifactsOf().get(featureId)!;
+    expect(feature.status).toBe('in_progress');
+    expect(feature.history).toEqual([
+      expect.objectContaining({
+        kind: 'updated',
+        actor: { kind: 'system' },
+        summary: 'In progress: work on its tasks is under way',
+        changes: [{ field: 'status', from, to: 'in_progress' }],
+      }),
+    ]);
+    expect(published.map(event => event.kind === 'saved' && event.artifact.id)).toEqual([taskId, featureId]);
+  });
+
+  it('should reopen a done feature when a task of it is open again', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-10', { status: 'ready' }, ceo);
+
+    expect(statusOf(store, 'F-4')).toBe('in_progress');
+    expect(store.artifactsOf().get('F-4')?.history.at(-1)?.changes).toEqual([{ field: 'status', from: 'done', to: 'in_progress' }]);
+  });
+
+  it.each([
+    ['done', 'T-11', 'done', 'F-5'],
+    ['cancelled', 'T-11', 'cancelled', 'F-5'],
+  ] as const)('should finish a feature when its last open task is %s', async (_name, taskId, status, featureId) => {
+    const { useCase, store, published } = setupBoard();
+
+    await useCase.execute('c1', taskId, { status }, ceo);
+
+    const feature = store.artifactsOf().get(featureId)!;
+    expect(feature.status).toBe('done');
+    expect(feature.history.at(-1)).toMatchObject({
+      actor: { kind: 'system' },
+      summary: 'Done: every task is done or cancelled',
+      changes: [{ field: 'status', from: 'in_progress', to: 'done' }],
+    });
+    expect(published).toEqual([
+      { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get(taskId) },
+      { kind: 'saved', conversationId: 'c1', artifact: feature },
+    ]);
+  });
+
+  it('should not finish a feature whose tasks are all cancelled', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-13', { status: 'cancelled' }, ceo);
+
+    expect(statusOf(store, 'F-6')).toBe('in_progress');
+  });
+
+  it('should leave a feature without tasks alone', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'F-11', { title: 'Renamed' }, ceo);
+
+    expect(statusOf(store, 'F-11')).toBe('ready');
+  });
+
+  it.each([
+    ['blocked', 'T-17', 'F-8'],
+    ['frozen', 'T-18', 'F-9'],
+    ['cancelled', 'T-19', 'F-10'],
+  ])('should leave a %s feature alone when its task starts', async (status, taskId, featureId) => {
+    const { useCase, store, published } = setupBoard();
+
+    await useCase.execute('c1', taskId, { status: 'in_progress' }, ceo);
+
+    expect(statusOf(store, featureId)).toBe(status);
+    expect(published).toHaveLength(1);
+  });
+
+  it('should settle the feature a task leaves and the one it joins', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-16', { parentId: 'F-3' }, ceo);
+
+    expect(statusOf(store, 'F-7')).toBe('done');
+    expect(statusOf(store, 'F-3')).toBe('ready');
+  });
+
+  it('should keep the status a user gives a feature, whatever its tasks', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'F-7', { status: 'ready' }, ceo);
+    await useCase.execute('c1', 'F-5', { status: 'backlog' }, ceo);
+
+    expect(statusOf(store, 'F-7')).toBe('ready');
+    expect(statusOf(store, 'F-5')).toBe('backlog');
   });
 });

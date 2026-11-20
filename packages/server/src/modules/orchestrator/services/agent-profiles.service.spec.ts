@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, rs } from '@rstest/core';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
+import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
+import { JsonAgentSettingsStoreAdapter } from '../adapters/json-agent-settings-store.adapter.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 
@@ -56,6 +62,18 @@ describe('AgentProfilesService', () => {
       const saved = await store.load('conv');
       expect(saved?.profiles.CEO?.agentId).toBe('recent');
       expect(saved?.updatedAt).not.toBe('2026-01-01T00:00:00Z');
+    });
+
+    it('should keep the settings another change stored after the first check', async () => {
+      const load = store.load.bind(store);
+      store.load = async () => {
+        store.load = load;
+        return null;
+      };
+      store.byConversation.set('conv', buildStubSettings({ CEO: buildStubProfile('own') }));
+
+      await expect(service.ensure('conv')).resolves.toBe('configured');
+      expect(store.saved).toEqual([]);
     });
 
     it('should report missing settings when nothing was ever saved', async () => {
@@ -129,5 +147,21 @@ describe('AgentProfilesService', () => {
       expect(settings.profiles.CEO?.agentId).toBe('old');
       expect(settings.profiles.DEVELOPER?.agentId).toBe('stub');
     });
+  });
+
+  it('should keep four concurrent profile changes to different roles of one conversation on disk', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'agent-profiles-'));
+    try {
+      const jsonStore = new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(dataDir), createNodeLockedFiles());
+      const onDisk = new AgentProfilesService(new AgentCapabilitiesService(factory), jsonStore, registry);
+      const roles = ['CEO', 'DEVELOPER', 'QA', 'TECH_LEAD'];
+
+      await Promise.all(roles.map(role => onDisk.save('conv', [role], buildStubProfile(`agent-${role}`))));
+
+      const stored = await new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(dataDir), createNodeLockedFiles()).load('conv');
+      expect(roles.map(role => stored?.profiles[role]?.agentId)).toEqual(roles.map(role => `agent-${role}`));
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });

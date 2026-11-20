@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@rstest/core';
 
+import type { ArtifactStatus } from '../models/artifact.model.js';
 import type { ArtifactTransaction } from '../ports/artifact-store.port.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';
 import { InMemoryArtifactStoreFake } from '../testing/in-memory-artifact-store.fake.js';
@@ -114,5 +115,56 @@ describe('ArtifactRulesService', () => {
     ['github.com/o/r/pull/1', '"github.com/o/r/pull/1" is not a pull request URL: use its full http(s) address.'],
   ])('should check the pull request URL %s', (url, expected) => {
     expect(rules.checkPullRequestUrl(url)).toBe(expected);
+  });
+
+  it.each([
+    [{ business: 'pending', technical: 'done' }, true],
+    [{ business: 'skipped', technical: 'pending' }, true],
+    [{ business: 'done', technical: 'skipped' }, false],
+  ] as const)('should tell whether %j owes a refinement', (refinement, expected) => {
+    expect(rules.owesRefinement(refinement)).toBe(expected);
+  });
+
+  it.each([
+    ['a backlog task owing nothing', { status: 'backlog', refinement: { business: 'done', technical: 'skipped' } }, 'ready'],
+    ['a backlog task owing the business refinement', { status: 'backlog', refinement: { business: 'pending', technical: 'done' } }, undefined],
+    ['a backlog task owing the technical refinement', { status: 'backlog', refinement: { business: 'done', technical: 'pending' } }, undefined],
+    ['a ready task owing the business refinement', { status: 'ready', refinement: { business: 'pending', technical: 'done' } }, 'backlog'],
+    ['a ready task owing the technical refinement', { status: 'ready', refinement: { business: 'skipped', technical: 'pending' } }, 'backlog'],
+    ['a ready task owing nothing', { status: 'ready', refinement: { business: 'done', technical: 'skipped' } }, undefined],
+    ['a task in another status', { status: 'blocked', refinement: { business: 'done', technical: 'done' } }, undefined],
+    ['a parked task owing a refinement', { status: 'blocked', refinement: { business: 'pending', technical: 'done' } }, undefined],
+    ['a ready feature owing a refinement', { type: 'feature', status: 'ready', refinement: { business: 'pending', technical: 'done' } }, undefined],
+    ['a backlog feature owing nothing', { type: 'feature', status: 'backlog', refinement: { business: 'done', technical: 'done' } }, undefined],
+  ] as const)('should derive the status of %s', (_name, overrides, expected) => {
+    expect(rules.derivedTaskStatus(buildArtifact({ id: 'T-1', ...overrides }))).toBe(expected);
+  });
+
+  const tasksIn = (...statuses: ArtifactStatus[]) => statuses.map((status, index) => buildArtifact({ id: `T-${index + 1}`, parentId: 'F-1', status }));
+
+  it.each<[string, ArtifactStatus, ArtifactStatus[], ArtifactStatus | undefined]>([
+    ['a backlog feature once a task is in progress', 'backlog', ['in_progress', 'ready'], 'in_progress'],
+    ['a ready feature once a task is in review', 'ready', ['ready', 'in_review'], 'in_progress'],
+    ['a ready feature once a task is in testing', 'ready', ['in_testing', 'backlog'], 'in_progress'],
+    ['a reopened done feature with a task under way', 'done', ['done', 'changes_requested'], 'in_progress'],
+    ['a done feature with a done task and an open one', 'done', ['done', 'ready'], 'in_progress'],
+    ['a ready feature whose tasks all wait', 'ready', ['ready', 'backlog', 'cancelled'], undefined],
+    ['a feature already in progress with a task under way', 'in_progress', ['approved', 'ready'], undefined],
+    ['a feature in progress once every task is closed', 'in_progress', ['done', 'cancelled'], 'done'],
+    ['a ready feature once every task is closed', 'ready', ['done', 'done'], 'done'],
+    ['a backlog feature once every task is closed', 'backlog', ['cancelled', 'done'], 'done'],
+    ['a done feature whose tasks are all closed', 'done', ['done', 'cancelled'], undefined],
+    ['a feature whose tasks are all cancelled', 'in_progress', ['cancelled', 'cancelled'], undefined],
+    ['a blocked feature', 'blocked', ['done', 'cancelled'], undefined],
+    ['a frozen feature', 'frozen', ['in_progress'], undefined],
+    ['a cancelled feature', 'cancelled', ['in_progress', 'ready'], undefined],
+    ['a feature in review', 'in_review', ['in_progress'], undefined],
+  ])('should derive the status of %s', (_name, status, tasks, expected) => {
+    expect(rules.derivedFeatureStatus(buildArtifact({ id: 'F-1', type: 'feature', status }), tasksIn(...tasks))).toBe(expected);
+  });
+
+  it('should leave a feature without tasks and a task alone', () => {
+    expect(rules.derivedFeatureStatus(buildArtifact({ id: 'F-1', type: 'feature', status: 'backlog' }), [])).toBeUndefined();
+    expect(rules.derivedFeatureStatus(buildArtifact({ id: 'T-1', status: 'backlog' }), tasksIn('in_progress'))).toBeUndefined();
   });
 });

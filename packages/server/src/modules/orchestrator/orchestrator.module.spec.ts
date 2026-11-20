@@ -8,10 +8,12 @@ import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.j
 import { OrchestratorModule } from './orchestrator.module.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
+import { IAgentToolsPort } from './ports/agent-tools.port.js';
 import { IAgentTurnPort } from './ports/agent-turn.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
 import { IUserQuestionPort } from './ports/user-question.port.js';
 import { AgentConfigurationService } from './services/agent-configuration.service.js';
+import { AgentToolsService } from './services/agent-tools.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { UserQuestionService } from './services/user-question.service.js';
 
@@ -27,5 +29,6 @@ describe('OrchestratorModule', () => {
     expect(module.get(IAgentTurnPort)).toBeInstanceOf(AgentTurnService);
     expect(module.get(IAgentConfigurationPort)).toBeInstanceOf(AgentConfigurationService);
     expect(module.get(IUserQuestionPort)).toBeInstanceOf(UserQuestionService);
+    expect(module.get(IAgentToolsPort)).toBeInstanceOf(AgentToolsService);
   });
 });

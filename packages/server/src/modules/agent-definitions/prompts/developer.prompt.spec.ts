@@ -1,82 +1,147 @@
 import { describe, expect, it } from '@rstest/core';
 
 import { DEVELOPER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
-import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
-import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
-import { DEVELOPER_SYSTEM_PROMPT, DEVELOPER_TURN_REMINDER } from './developer.prompt.js';
+import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
+import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
+import { buildDeveloperReentryNote, buildDeveloperSystemPrompt } from './developer.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
 
+
+const DEVELOPER_SYSTEM_PROMPT = buildDeveloperSystemPrompt('tags');
+const DEVELOPER_REENTRY_NOTE = buildDeveloperReentryNote('tags');
 
 describe('developer.prompt', () => {
-  it('should define developer agent role and its capabilities', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Developer Agent');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Technical Execution');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Implement the task you hold faithfully');
-  });
-
-  it('should implement the delegated task on its own branch and record it on the task', () => {
+  it('should define the developer as the agent that takes one task to work ready for review', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('You are the Developer Agent');
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('The task opens your prompt in a `[DELEGATED_ARTIFACT]` block');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('`<type>/<task id lowercase>-<short-slug>`');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('the branch (`branch` attribute) and the `implementation_notes` section');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS));
-    expect(DEVELOPER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(DEVELOPER_ARTIFACT_ACCESS));
   });
 
-  it('should embed commit conventions directly in Developer prompt', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits format in English');
+  it('should make the notes it records part of the deliverable for the reviewer and the tester', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('a reviewer with no memory of this session judges the branch against the task, and a tester runs it');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('those notes are part of the deliverable');
   });
 
-  it('should keep the developer on the local side of Git', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(
-      'You own the local side of Git: inspecting the working tree, creating and switching local branches, staging, and committing your own work.',
-    );
+  it('should fix the findings of the review or the test report when the task comes back', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('fix the findings in its `review_findings` or `test_report` section');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('append what you fixed and how (`mode="append"`)');
   });
 
-  it('should put ad-hoc Git operations against a remote outside its scope without naming another agent', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Ad-hoc Git operations against a remote are outside your scope');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('state that in your final response and stop there');
-    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('GIT_OPS');
-    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('ssh-keygen');
-    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('git clone');
+  it('should run the checks of the project and wait for them before it finishes', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Run the checks the project defines');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Work whose checks you did not see pass is not done.');
   });
 
-  it('should run the project documented commands even when they reach the network', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(
-      'The project\'s own commands are within your scope even when they reach the network',
-    );
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('run it instead of reproducing its steps manually');
-    expect(DEVELOPER_TURN_REMINDER).toContain('Prefer the commands the project documents');
-  });
-
-  it('should not contain plan ability since planning belongs to Tech Lead', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('Plan Mode & Codebase Inspection');
-  });
-
-  it('should require the final answer inside the final response block', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
-  });
-
-  it('should confine the developer to its CWD in the prompt and in every turn', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
-    expect(DEVELOPER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
-    expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('currently running you');
-  });
-
-  it('should orient the developer in the project documentation in the prompt and in every turn', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
-    expect(DEVELOPER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
-  });
-
-  it('should define DEVELOPER_TURN_REMINDER with tests, and final response instructions', () => {
-    expect(DEVELOPER_TURN_REMINDER).toContain('automated tests');
-    expect(DEVELOPER_TURN_REMINDER).toContain('<final_response>...</final_response>');
+  it('should use the commands the project documents for itself', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Use the commands the project documents for itself');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('rather than reproducing their steps');
   });
 
   it('should bring the decisions the user must make back to the caller instead of asking', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('<question');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('stop and report the conflict and the options in your final answer instead of choosing silently');
-    expect(DEVELOPER_TURN_REMINDER).toContain('You never ask the user: when the work needs a decision only the user can make, stop and end your turn with that decision and its options in your final answer.');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('You do not ask the user yourself');
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain('put the conflict and its options in your final answer');
+  });
+
+  describe('git', () => {
+    it('should work on the branch of the task, naming a new one after the project convention', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Work on the branch of the task');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`<type>/<task id>-<short-slug>`');
+    });
+
+    it('should commit in atomic commits that follow the project convention, keeping secrets out', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('atomic commits that follow the project\'s commit convention');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Conventional Commits in English');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('keep credentials, keys and `.env` files out of commits');
+    });
+
+    it('should push the branch and open or update the pull request through the git-remote skill', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('push the branch of the task and open its pull request, or update the one already linked on the task');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain(`The \`${SKILL_NAMES.gitRemote}\` skill has the procedure`);
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Without a remote the branch stays local');
+    });
+
+    it('should change no branch but its own and leave the rest to another agent without naming it', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('The branch of the task is the only one you change.');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('force pushes, deleting remote refs, cloning and remote configuration belong to another agent');
+      expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('GIT_OPS');
+      expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('ssh-keygen');
+    });
+  });
+
+  describe('verdict', () => {
+    it('should record the branch, the notes and the pull request on the task together with the answer', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('<artifact_update id="T-3" branch="feat/t-3-login-api"><section name="implementation_notes">Markdown</section><pull_request url="https://..." title="T-3: Login API" state="open"/></artifact_update>');
+    });
+
+    it('should keep the verdict DONE when only the pull request cannot be opened', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('A pull request that cannot be opened (no hosting provider, no tooling for it) does not make the work incomplete');
+    });
+
+    it('should start the answer with DONE or INCOMPLETE on a line of its own', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('starting with the verdict on a line of its own');
+      expect(DEVELOPER_SYSTEM_PROMPT).toMatch(/starting with the verdict on a line of its own, written exactly as shown (here|above), in English whatever the language of the rest/);
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`DONE`: everything the task asks is committed, pushed when there is a remote, and its checks passed.');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`INCOMPLETE`: anything else.');
+    });
+
+    it('should keep the answer short because the details are on the task', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('The details are in the notes, so do not repeat them.');
+    });
+  });
+
+  it('should include the board brief of its access and the shared blocks', () => {
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, 'tags'));
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+  });
+
+  describe('re-entry note', () => {
+    it('should send the developer back to its role guide', () => {
+      expect(DEVELOPER_REENTRY_NOTE.startsWith('[RE-ENTRY]')).toBe(true);
+      expect(DEVELOPER_REENTRY_NOTE).toContain('a session you started as the Developer Agent');
+      expect(DEVELOPER_REENTRY_NOTE).toContain(`<skill_read name="${SKILL_NAMES.roleGuide}"/>`);
+    });
+
+    it('should carry the checks, the push and the record with the verdict words', () => {
+      expect(DEVELOPER_REENTRY_NOTE).toContain('run the project\'s checks and wait for them, then push and update its pull request');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('Record the branch, the pull request and the implementation notes on the task');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildDeveloperSystemPrompt('tools');
+    const note = buildDeveloperReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### How Your Work Is Used');
+      expect(prompt).toContain('Work whose checks you did not see pass is not done.');
+      expect(prompt).toContain('The branch of the task is the only one you change.');
+      expect(prompt).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, 'tools'));
+      expect(prompt).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+    });
+
+    it('should record the branch, the pull request and the notes with artifact_update before the answer', () => {
+      expect(prompt).toContain('1. Record the work on the task with `artifact_update` before you answer: the branch, the pull request');
+      expect(prompt).toContain('the `implementation_notes` section. The notes say what you changed and why');
+      expect(prompt).toContain('append what you fixed and how rather than replacing the notes');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should open the answer with the verdict that follows the record', () => {
+      expect(prompt).toContain('2. Then write your answer to the coordinator, starting with the verdict on a line of its own, written exactly as shown here, in English');
+      expect(prompt).toContain('`DONE`: everything the task asks is committed');
+    });
+
+    it('should name the tools in the re-entry note with the verdict words', () => {
+      expect(note).toContain('the tools of the `arc` MCP server');
+      expect(note).toContain('on the task with `artifact_update`, then write your answer');
+      expect(note).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
+      expect(note).not.toContain('<skill_read');
+    });
   });
 });

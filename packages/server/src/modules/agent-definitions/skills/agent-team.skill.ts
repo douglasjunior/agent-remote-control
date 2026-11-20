@@ -57,9 +57,15 @@ function formatProjectAccess(agent: AgentDefinition): string {
 
 function formatSessionMode(agent: AgentDefinition): string {
   const mode = agent.defaultSessionMode ?? 'resume';
-  return agent.delegation.sessionMode
-    ? `Runs in "${mode}" session mode unless you set session="new" or session="resume".`
-    : `Always runs in "${mode}" session mode, so never set the session attribute.`;
+  const withoutArtifact = agent.delegation.sessionMode
+    ? `runs in "${mode}" session mode unless you set session="new" or session="resume"`
+    : `always runs in "${mode}" session mode, so never set the session attribute`;
+  if (!agent.delegation.artifact) {
+    return `${withoutArtifact.charAt(0).toUpperCase()}${withoutArtifact.slice(1)}.`;
+  }
+  return agent.delegation.artifact === 'required'
+    ? 'Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.'
+    : `Keeps one session per artifact it is delegated; without an artifact it ${withoutArtifact}.`;
 }
 
 function formatUserDecision(agent: AgentDefinition): string {

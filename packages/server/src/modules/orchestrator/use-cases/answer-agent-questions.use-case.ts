@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
+import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import type { AudioTranscript } from '../models/audio-transcription.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { AnsweredQuestion, QuestionAsker, UserQuestion } from '../models/user-question.model.js';
@@ -22,6 +23,7 @@ export class AnswerAgentQuestionsUseCase {
 
   constructor(
     @Inject(IAgentRegistryPort) private readonly agentRegistry: IAgentRegistryPort,
+    @Inject(IArtifactsPort) private readonly artifacts: IArtifactsPort,
     private readonly questionParser: QuestionParserService,
     private readonly questionQueue: UserQuestionQueueService,
     private readonly openWork: OpenWorkService,
@@ -64,7 +66,10 @@ export class AnswerAgentQuestionsUseCase {
     }
   }
 
-  /** Queues the questions for the user and keeps them on the open work, so a restart can ask them again. */
+  /**
+   * Queues the questions for the user and keeps them on the open work, so a restart can ask them again. An answer the
+   * timeout assumed is written on the artifact the asker holds, where every later agent and the user find it.
+   */
   async ask(
     request: TurnRequest,
     asker: QuestionAsker,
@@ -94,6 +99,9 @@ export class AnswerAgentQuestionsUseCase {
     if (workId) {
       await this.openWork.update(conversationId, workId, { questions: undefined });
     }
+    if (asker.artifactId) {
+      await this.recordAssumedAnswers(conversationId, asker.artifactId, answers);
+    }
     return this.transcribe(request, answers);
   }
 
@@ -121,7 +129,22 @@ export class AnswerAgentQuestionsUseCase {
     return transcribed;
   }
 
-  askerFor(role: string, projectName: string | undefined): QuestionAsker {
-    return { role, roleName: this.agentRegistry.getDisplayName(role), projectName: projectName ?? null };
+  askerFor(role: string, projectName: string | undefined, artifactId?: string): QuestionAsker {
+    return { role, roleName: this.agentRegistry.getDisplayName(role), projectName: projectName ?? null, ...(artifactId ? { artifactId } : {}) };
+  }
+
+  private async recordAssumedAnswers(conversationId: string, artifactId: string, answers: readonly AnsweredQuestion[]): Promise<void> {
+    const assumed = answers.filter(answered => answered.timedOut && answered.optionNumber !== undefined);
+    if (assumed.length === 0) {
+      return;
+    }
+    const text = [
+      'The user did not answer in time, so the recommended answer was assumed:',
+      ...assumed.map(answered => `- "${answered.question.text}": ${answered.answer}`),
+    ].join('\n');
+    const outcome = await this.artifacts.comment(conversationId, artifactId, text, { kind: 'system' });
+    if (!outcome.ok) {
+      this.logger.warn(`Could not comment on ${artifactId}: ${outcome.error}`);
+    }
   }
 }

@@ -13,6 +13,7 @@ import type {
   SectionChange,
 } from '../models/artifact.model.js';
 import { type ArtifactTransaction, IArtifactStorePort } from '../ports/artifact-store.port.js';
+import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
 import { ArtifactEventsService } from '../services/artifact-events.service.js';
 import { ArtifactHistoryService } from '../services/artifact-history.service.js';
 import { ArtifactRulesService } from '../services/artifact-rules.service.js';
@@ -22,7 +23,12 @@ type Draft = { -readonly [K in keyof Artifact]: Artifact[K] };
 
 const NONE = 'none';
 
-/** Applies the changes all together or none of them; a change that sets what is already there is not recorded. */
+type UpdateOutcome = ArtifactOutcome & { readonly changed?: boolean; readonly derived?: readonly Artifact[] };
+
+/**
+ * Applies the changes all together or none of them; a change that sets what is already there is not recorded. A task
+ * that changes also settles the statuses the board derives from it (see `ArtifactDerivationService`).
+ */
 @Injectable()
 export class UpdateArtifactUseCase {
   constructor(
@@ -31,11 +37,12 @@ export class UpdateArtifactUseCase {
     private readonly rules: ArtifactRulesService,
     private readonly history: ArtifactHistoryService,
     private readonly events: ArtifactEventsService,
+    private readonly derivation: ArtifactDerivationService,
   ) {}
 
   async execute(conversationId: string, id: string, changes: ArtifactChanges, actor: ArtifactActor): Promise<ArtifactOutcome & { readonly changed?: boolean }> {
     const folders = changes.projectName === undefined ? [] : await this.workspace.listProjectFolders();
-    const outcome = await this.store.transaction(conversationId, (transaction) => {
+    const outcome = await this.store.transaction(conversationId, (transaction): UpdateOutcome => {
       const current = transaction.find(id);
       if (!current) {
         return { ok: false as const, error: `Unknown artifact "${id}".` };
@@ -60,12 +67,17 @@ export class UpdateArtifactUseCase {
         ],
       };
       transaction.save(artifact);
-      return { ok: true as const, artifact, changed: true };
+      const settled = this.derivation.settleTask(transaction, artifact, current.parentId);
+      return { ok: true as const, artifact: settled.artifact, changed: true, derived: settled.derived };
     });
-    if (outcome.ok && outcome.changed) {
-      this.events.publish([{ kind: 'saved', conversationId, artifact: outcome.artifact }]);
+    if (!outcome.ok) {
+      return outcome;
     }
-    return outcome;
+    const { derived = [], ...result } = outcome;
+    if (result.changed) {
+      this.events.publish([result.artifact, ...derived].map(artifact => ({ kind: 'saved', conversationId, artifact })));
+    }
+    return result;
   }
 
   private applyFields(

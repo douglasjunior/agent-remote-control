@@ -81,6 +81,17 @@ export type AgentConfig = {
   readonly effortId?: string;
 };
 
+/** A Streamable HTTP MCP server the agent CLI connects to for the tools of one session. */
+export type AgentMcpServer = {
+  readonly name: string;
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+};
+
+export type AgentSessionOptions = {
+  readonly mcpServers?: readonly AgentMcpServer[];
+};
+
 export class PromptCancelledError extends Error {
   constructor() {
     super('Prompt cancelled by user');
@@ -103,12 +114,16 @@ export interface IAgentPort {
   readonly lastAgentMessage: string;
   readonly currentSessionId?: string;
   readonly supportsSteering: boolean;
+  /** Whether the agent advertised HTTP MCP servers in `initialize`; `false` before `connect()`. */
+  readonly supportsHttpMcp: boolean;
   getLastRoundUsage(): Promise<AgentUsage | undefined>;
   /** Resolves `undefined` when the agent does not expose quota or the query fails. */
   getQuota(): Promise<AgentQuota | undefined>;
   connect(): Promise<void>;
-  createSession(cwd: string): Promise<void>;
-  loadSession(cwd: string, sessionId: string): Promise<boolean>;
+  /** An agent without `supportsHttpMcp` gets none of `options.mcpServers`. */
+  createSession(cwd: string, options?: AgentSessionOptions): Promise<void>;
+  /** The agent process forgets the MCP servers of the session it loads, so the caller sends them again. */
+  loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean>;
   prompt(text: string): AsyncGenerator<AgentUpdate>;
   cancel(): Promise<void>;
   /**

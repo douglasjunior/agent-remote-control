@@ -6,6 +6,8 @@ import type {
   SectionChange,
 } from '../../artifacts/models/artifact.model.js';
 
+import type { AgentInterface } from './agent-interface.model.js';
+
 
 /**
  * What an agent asked the orchestrator for in one response: reading or changing the board, or reading and writing skills. A `parent` or `dependsOn` value is an artifact id or the
@@ -65,4 +67,6 @@ export type AgentRequester = {
   readonly conversationId: string;
   readonly delegationId?: string;
   readonly artifactId?: string;
+  /** The interface of the agent's session, which the skills it reads are written for; `tags` when absent. */
+  readonly agentInterface?: AgentInterface;
 };

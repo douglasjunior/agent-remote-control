@@ -77,15 +77,19 @@ export class StubAgentConfigurationPort implements IAgentConfigurationPort {
   }
 
   async ensureSettings(conversationId: string): Promise<ConversationSettingsStatus> {
-    if (await this.store.load(conversationId)) {
-      return 'configured';
-    }
-    const mostRecent = await this.store.loadMostRecent();
-    if (!mostRecent) {
-      return 'missing';
-    }
-    await this.store.save(conversationId, { ...mostRecent, updatedAt: new Date().toISOString() });
-    return 'inherited';
+    let status: ConversationSettingsStatus = 'missing';
+    await this.store.update(conversationId, (own, mostRecent) => {
+      if (own) {
+        status = 'configured';
+        return null;
+      }
+      if (mostRecent) {
+        status = 'inherited';
+        return { ...mostRecent, updatedAt: new Date().toISOString() };
+      }
+      return null;
+    });
+    return status;
   }
 
   async saveProfiles(
@@ -93,13 +97,11 @@ export class StubAgentConfigurationPort implements IAgentConfigurationPort {
     roles: readonly string[] | undefined,
     profile: AgentProfileSettings,
   ): Promise<AgentSettings> {
-    const current = (await this.current(conversationId)) ?? EMPTY_SETTINGS;
-    const settings: AgentSettings = {
-      profiles: { ...current.profiles, ...profileForAllRoles(roles ?? this.registry.listRoles(), profile) },
+    const settings = await this.store.update(conversationId, (own, mostRecent) => ({
+      profiles: { ...(own ?? mostRecent ?? EMPTY_SETTINGS).profiles, ...profileForAllRoles(roles ?? this.registry.listRoles(), profile) },
       updatedAt: new Date().toISOString(),
-    };
-    await this.store.save(conversationId, settings);
-    return settings;
+    }));
+    return settings!;
   }
 
   async configureProfiles(input: ConfigureProfilesInput): Promise<ConfigureProfilesResult> {

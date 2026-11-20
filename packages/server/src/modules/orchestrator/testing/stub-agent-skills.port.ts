@@ -1,3 +1,4 @@
+import type { AgentInterface } from '../models/agent-interface.model.js';
 import type {
   AgentSkill,
   AgentSkillInput,
@@ -15,12 +16,15 @@ export class StubAgentSkillsPort implements IAgentSkillsPort {
   writeResult: AgentSkillWriteResult = { ok: true, created: true };
   readonly written: AgentSkillInput[] = [];
   readonly deleted: string[] = [];
+  /** The interface each `read` was made for. */
+  readonly readInterfaces: AgentInterface[] = [];
 
   async list(role: string): Promise<readonly AgentSkillSummary[]> {
     return (this.skills[role] ?? []).map(({ name, description }) => ({ name, description }));
   }
 
-  async read(role: string, name: string): Promise<AgentSkill | undefined> {
+  async read(role: string, name: string, agentInterface: AgentInterface): Promise<AgentSkill | undefined> {
+    this.readInterfaces.push(agentInterface);
     return (this.skills[role] ?? []).find(skill => skill.name === name);
   }
 

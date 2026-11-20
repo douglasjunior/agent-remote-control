@@ -12,7 +12,10 @@ import {
 import {
   acpHarness,
   acpSdkMockModule,
+  ACP_HTTP_MCP_SERVER,
+  advertiseHttpMcp,
   effortConfigOption,
+  HTTP_MCP_SERVER,
   messageChunk,
   modelConfigOption,
   permissionsConfigOption,
@@ -2054,6 +2057,60 @@ describe('AbstractAcpAdapter', () => {
 
       expect(proc?.listenerCount('exit')).toBe(0);
       expect(proc?.listenerCount('error')).toBe(0);
+    });
+  });
+
+  describe('MCP servers', () => {
+    it('should report no HTTP MCP support before connect() and when initialize does not advertise it', async () => {
+      const adapter = new TestAcpAdapter();
+      expect(adapter.supportsHttpMcp).toBe(false);
+
+      await adapter.connect();
+
+      expect(adapter.supportsHttpMcp).toBe(false);
+    });
+
+    it('should pass the HTTP MCP servers to session/new and session/load when the agent advertises them', async () => {
+      advertiseHttpMcp();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+
+      await adapter.createSession('/repo', { mcpServers: [HTTP_MCP_SERVER] });
+      await adapter.loadSession('/repo', 'conv-1', { mcpServers: [HTTP_MCP_SERVER] });
+
+      expect(adapter.supportsHttpMcp).toBe(true);
+      expect(acpHarness.connectionInstance?.newSession).toHaveBeenLastCalledWith({ cwd: '/repo', mcpServers: [ACP_HTTP_MCP_SERVER] });
+      expect(acpHarness.connectionInstance?.loadSession).toHaveBeenCalledWith({ sessionId: 'conv-1', cwd: '/repo', mcpServers: [ACP_HTTP_MCP_SERVER] });
+    });
+
+    it('should leave the servers out for an agent that does not advertise HTTP MCP servers', async () => {
+      acpHarness.pendingConnectionOverrides = {
+        initialize: rs.fn().mockResolvedValue({ agentCapabilities: { loadSession: true, mcpCapabilities: { sse: true } } }),
+      };
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+
+      await adapter.createSession('/repo', { mcpServers: [HTTP_MCP_SERVER] });
+      await adapter.loadSession('/repo', 'conv-1', { mcpServers: [HTTP_MCP_SERVER] });
+
+      expect(acpHarness.connectionInstance?.newSession).toHaveBeenLastCalledWith({ cwd: '/repo', mcpServers: [] });
+      expect(acpHarness.connectionInstance?.loadSession).toHaveBeenCalledWith({ sessionId: 'conv-1', cwd: '/repo', mcpServers: [] });
+    });
+
+    it('should attach nothing to the discovery and effort probing sessions', async () => {
+      advertiseHttpMcp();
+      const adapter = new TestAcpAdapter();
+      await adapter.connect();
+      await adapter.createSession('/repo', { mcpServers: [HTTP_MCP_SERVER] });
+
+      await adapter.getAvailableEffortsForModel('m1');
+
+      const sessions = acpHarness.connectionInstance?.newSession.mock.calls.map(([params]) => params);
+      expect(sessions).toEqual([
+        { cwd: expect.any(String), mcpServers: [] },
+        { cwd: '/repo', mcpServers: [ACP_HTTP_MCP_SERVER] },
+        { cwd: expect.any(String), mcpServers: [] },
+      ]);
     });
   });
 

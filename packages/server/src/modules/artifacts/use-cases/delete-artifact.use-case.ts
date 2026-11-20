@@ -2,17 +2,22 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import type { Artifact, ArtifactActor, ArtifactChangeEvent, ArtifactRemoval } from '../models/artifact.model.js';
 import { IArtifactStorePort } from '../ports/artifact-store.port.js';
+import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
 import { ArtifactEventsService } from '../services/artifact-events.service.js';
 import { ArtifactHistoryService } from '../services/artifact-history.service.js';
 
 
-/** The artifacts that depended on the removed one lose that dependency, and their history says why. */
+/**
+ * The artifacts that depended on the removed one lose that dependency, and their history says why. The feature of a
+ * removed task settles the status it derives from the tasks left.
+ */
 @Injectable()
 export class DeleteArtifactUseCase {
   constructor(
     @Inject(IArtifactStorePort) private readonly store: IArtifactStorePort,
     private readonly history: ArtifactHistoryService,
     private readonly events: ArtifactEventsService,
+    private readonly derivation: ArtifactDerivationService,
   ) {}
 
   async execute(conversationId: string, id: string, actor: ArtifactActor): Promise<ArtifactRemoval> {
@@ -43,9 +48,13 @@ export class DeleteArtifactUseCase {
           ],
         }));
       dependents.forEach(artifact => transaction.save(artifact));
+      const features = this.derivation.settleFeature(transaction, current.parentId);
       return {
         ok: true,
-        events: [{ kind: 'deleted', conversationId, id }, ...dependents.map(artifact => ({ kind: 'saved' as const, conversationId, artifact }))],
+        events: [
+          { kind: 'deleted', conversationId, id },
+          ...[...dependents, ...features].map(artifact => ({ kind: 'saved' as const, conversationId, artifact })),
+        ],
       };
     });
     if (!outcome.ok) {

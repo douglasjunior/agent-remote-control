@@ -23,6 +23,7 @@ import type { AnswerDelivery, ValidatedDecision, ValidatedDelegation } from '../
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { buildAttachmentsPrompt } from '../prompts/attachments.prompt.js';
+import { buildBoardCheckPrompt } from '../prompts/board.prompt.js';
 import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
 import { buildPreviousTurnPrompt, describeDelegation } from '../prompts/previous-turn.prompt.js';
@@ -32,6 +33,7 @@ import { buildUserAnswersPrompt } from '../prompts/user-answers.prompt.js';
 import { DEFAULT_USER_LANGUAGE } from '../prompts/user-language.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { AgentRoundService } from '../services/agent-round.service.js';
+import { CeoBoardService } from '../services/ceo-board.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
 import { DelegationValidatorService } from '../services/delegation-validator.service.js';
@@ -80,6 +82,7 @@ export class ExecuteAgentTurnUseCase {
     private readonly agentProtocol: AgentProtocolService,
     private readonly agentRound: AgentRoundService,
     private readonly teamProfiles: TeamProfilesService,
+    private readonly ceoBoard: CeoBoardService,
     private readonly openWork: OpenWorkService,
     private readonly logContext: ConversationLogContextService,
     private readonly audioTranscription: TranscribeAudioAttachmentsUseCase,
@@ -229,12 +232,17 @@ export class ExecuteAgentTurnUseCase {
     const resumedRoot = resumed?.work.root ? resumed : undefined;
     const ceoWorkId = request.resumable ? resumedRoot?.work.id ?? randomUUID() : undefined;
     let ceoAnswerDelivery = resumedRoot && this.answerDeliveryOf(resumedRoot);
+    /** The tasks this turn started delegations for, restored work included: the ones the board check looks at. */
+    const delegatedArtifacts = new Set<string>();
+    let boardChecked = false;
 
     try {
       if (resumed && !resumed.work.root) {
         session = await this.agentRound.resolveSession(request);
         observers.onSessionResolved(session);
-        running.add(this.runDelegation.start(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey, running));
+        const restored = await this.toResumedDelegation(resumed, request);
+        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey, running));
+        this.trackArtifacts(delegatedArtifacts, [restored]);
         await this.openWork.discardInterruptedRoots(request.conversationId);
         const results = await running.nextResults();
         if (results === undefined) {
@@ -274,9 +282,10 @@ export class ExecuteAgentTurnUseCase {
               );
             }
             const block = await this.teamProfiles.build(conversationKey, request);
-            if (block.signature !== lastBlockSignature) {
-              prompt = `${block.text}\n${prompt}`;
-            }
+            // Each <agent_result> carries the status it left, so the board goes only with the round that opens the turn.
+            const board = round === 1 ? `${await this.ceoBoard.buildPrompt(request.conversationId)}\n` : '';
+            const team = block.signature !== lastBlockSignature ? `${block.text}\n` : '';
+            prompt = `${team}${board}${prompt}`;
             lastBlockSignature = block.signature;
             const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
             if (notices.length > 0) {
@@ -296,7 +305,16 @@ export class ExecuteAgentTurnUseCase {
         }
 
         if (decision.kind === 'reply' && running.isEmpty) {
-          return await finish('completed', decision.message, undefined, decision.attachments);
+          const stranded = boardChecked ? [] : await this.ceoBoard.findStranded(request.conversationId, decision.message, delegatedArtifacts);
+          if (stranded.length === 0) {
+            return await finish('completed', decision.message, undefined, decision.attachments);
+          }
+          boardChecked = true;
+          this.logger.log(`[Board Check] Conversation=${request.conversationId}, Tasks=${stranded.map(task => task.id).join(',')}`);
+          request.onDraft?.('');
+          const check = buildBoardCheckPrompt(stranded);
+          prompt = requestResults ? `${requestResults}\n\n${check}` : check;
+          continue;
         }
 
         if (decision.kind === 'delegate') {
@@ -307,6 +325,7 @@ export class ExecuteAgentTurnUseCase {
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
           running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey, running));
+          this.trackArtifacts(delegatedArtifacts, decision.delegations);
         }
         if (decision.message) {
           request.onInterimMessage?.(decision.message);
@@ -322,6 +341,14 @@ export class ExecuteAgentTurnUseCase {
       await this.runDelegation.stopRunning(running, conversationKey);
       if (ceoWorkId) {
         await this.openWork.close(request.conversationId, ceoWorkId);
+      }
+    }
+  }
+
+  private trackArtifacts(tracked: Set<string>, delegations: readonly ValidatedDelegation[]): void {
+    for (const { artifactId } of delegations) {
+      if (artifactId) {
+        tracked.add(artifactId);
       }
     }
   }
@@ -360,13 +387,13 @@ export class ExecuteAgentTurnUseCase {
     request: TurnRequest,
   ): Promise<boolean> {
     const prompt = buildCeoSteeringPrompt(buildAttachmentsPrompt(request.prompt, request.attachments));
-    const reminder = this.agentRegistry.getTurnReminder(request.agentRole);
     const languagePrompt = await this.agentRound.buildLanguagePrompt(request.agentRole, request.agentRole);
     const block = (await this.teamProfiles.build(conversationKey, request)).text;
+    const board = await this.ceoBoard.buildPrompt(request.conversationId);
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       agentId,
-      [block, prompt, reminder, languagePrompt].filter(Boolean).join('\n\n'),
+      [`${block}\n${board}`, prompt, languagePrompt].filter(Boolean).join('\n\n'),
     );
     if (steered) {
       this.logger.log(
@@ -396,12 +423,18 @@ export class ExecuteAgentTurnUseCase {
     answerDelivery: AnswerDelivery | undefined,
   ): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> {
     const prepareRetryMessage: PrepareRetryMessage = message => this.prepareRetryMessage(request, message);
+    const requester: AgentRequester = {
+      role: request.agentRole,
+      roleName: this.agentRegistry.getDisplayName(request.agentRole),
+      conversationId: request.conversationId,
+    };
     const runRound = (text: string, isUserText = false, delivery?: AnswerDelivery) => this.retryCeoRound.execute(
       request,
       async retry => this.takeUserLanguage(await this.agentRound.run({
         agentPort: ceoPort,
         cwd: request.workspacePath,
         role: request.agentRole,
+        requester,
         prompt: retry ? buildTurnRetryPrompt(retry, text) : text,
         request,
         turn,
@@ -411,11 +444,6 @@ export class ExecuteAgentTurnUseCase {
       })),
       prepareRetryMessage,
     );
-    const requester: AgentRequester = {
-      role: request.agentRole,
-      roleName: this.agentRegistry.getDisplayName(request.agentRole),
-      conversationId: request.conversationId,
-    };
     const pending = new PendingRequestResults();
     const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => pending.keep(await this.runAgentRequests.resolve(
       await runRound(pending.before(text), isUserText, delivery),
@@ -423,7 +451,7 @@ export class ExecuteAgentTurnUseCase {
         request.onDraft?.('');
         return runRound(results);
       },
-      requester,
+      { ...requester, agentInterface: this.agentRound.interfaceOf(ceoPort) },
       rest => this.delegationDetector.detect(rest).kind !== 'reply',
       activity => request.onActivity?.(activity, requester.role),
     ));
@@ -477,9 +505,14 @@ export class ExecuteAgentTurnUseCase {
   private async takeUserLanguage(response: string): Promise<string> {
     const { language, text } = extractUserLanguage(response);
     if (!(await this.preferencesStore.load()).language) {
-      const stored = language ?? DEFAULT_USER_LANGUAGE;
-      await this.preferencesStore.update({ language: stored });
-      this.logger.log(`[User Language Stored] Language=${stored}, Detected=${language !== undefined}`);
+      await this.preferencesStore.update((current) => {
+        if (current.language) {
+          return undefined;
+        }
+        const stored = language ?? DEFAULT_USER_LANGUAGE;
+        this.logger.log(`[User Language Stored] Language=${stored}, Detected=${language !== undefined}`);
+        return { language: stored };
+      });
     }
     return text;
   }

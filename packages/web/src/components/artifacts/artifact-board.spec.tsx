@@ -102,7 +102,7 @@ describe('ArtifactBoard', () => {
     expect(localStorage.getItem('arc.artifactsBoard')).toBe('true');
     expect(screen.queryByRole('combobox', { name: 'Type' })).not.toBeInTheDocument();
 
-    const columns = ['Backlog', 'Ready', 'In progress', 'In review', 'Changes requested', 'Approved', 'In testing', 'Done', 'Blocked', 'Cancelled'];
+    const columns = ['Backlog', 'Ready', 'In progress', 'In review', 'Changes requested', 'Approved', 'In testing', 'Tested', 'Done', 'Blocked', 'Cancelled'];
     expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label')).filter(label => columns.includes(label!))).toEqual(columns);
     const progress = screen.getByRole('region', { name: 'In progress' });
     expect(within(progress).getByRole('listitem', { name: 'T-2 Login API' })).toBeInTheDocument();

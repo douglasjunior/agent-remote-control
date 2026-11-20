@@ -16,19 +16,21 @@ import type {
   SectionChange,
 } from '../../artifacts/models/artifact.model.js';
 import type { AgentRequest } from '../models/agent-request.model.js';
+import { isNoneValue, normalizeArtifactId, readArtifactReference } from '../utils/artifact-reference.util.js';
 import { type CodeSpan, findCodeSpans, isInCode, parseTagAttributes, readTagBody, type TagAttributes } from '../utils/protocol-tag.util.js';
 
 
-/** `rest` is the response without its requests, which still carries whatever else the agent wrote. */
+/**
+ * `rest` is the response without its requests, which still carries whatever else the agent wrote; `raw` is the text of
+ * each request as the agent wrote it, in order.
+ */
 export type ParsedAgentRequests =
   | { readonly kind: 'none' }
-  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string };
+  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string; readonly raw: readonly string[] };
 
 const REQUEST_TAG = /<(\/?)(artifact_list|artifact_read|artifact_create|artifact_update|artifact_comment|skill_read|skill_list|skill_write)\b([^>]*)>/gi;
 const CHILD_TAG = /<(\/?)(section|pull_request)\b([^>]*)>/gi;
 const DELEGATE_BLOCK = /<delegate\b[^>]*>[\s\S]*?<\/delegate>/gi;
-const ARTIFACT_ID = /^[a-z]-\d+$/i;
-const NONE = 'none';
 
 const ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   artifact_list: ['type', 'status', 'parent', 'project'],
@@ -54,6 +56,7 @@ export class AgentRequestParserService {
     const ignored = [...findCodeSpans(response), ...this.delegateBlocks(response)];
     const tags = new RegExp(REQUEST_TAG.source, REQUEST_TAG.flags);
     const requests: AgentRequest[] = [];
+    const raw: string[] = [];
     let rest = '';
     let cursor = 0;
 
@@ -63,6 +66,7 @@ export class AgentRequestParserService {
       rest += response.slice(cursor, tag.index);
       cursor = tag.index + rawTag.length;
       if (closing) {
+        raw.push(rawTag);
         requests.push(this.invalid(rawTag, `Found ${rawTag} without its opening <${name}> tag.`));
         continue;
       }
@@ -73,10 +77,12 @@ export class AgentRequestParserService {
         ? { content: '', end: contentStart + this.emptyClosingLength(response, name, contentStart, selfClosing) }
         : readTagBody(response, name, contentStart);
       if (typeof body === 'string') {
+        raw.push(response.slice(tag.index));
         requests.push(this.invalid(rawTag, body));
         cursor = response.length;
         break;
       }
+      raw.push(response.slice(tag.index, body.end));
       tags.lastIndex = body.end;
       cursor = body.end;
       requests.push(typeof attributes === 'string' ? this.invalid(rawTag, attributes) : this.toRequest(name, rawTag, attributes, body.content));
@@ -85,7 +91,7 @@ export class AgentRequestParserService {
     rest += response.slice(cursor);
     return requests.length === 0
       ? { kind: 'none' }
-      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim() };
+      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim(), raw };
   }
 
   private toRequest(name: string, rawTag: string, attributes: TagAttributes, content: string): AgentRequest {
@@ -130,7 +136,7 @@ export class AgentRequestParserService {
       kind: 'list',
       ...(types ? { types: types.values } : {}),
       ...(statuses ? { statuses: typeof statuses === 'string' ? statuses : statuses.values } : {}),
-      ...(parent !== undefined ? { parent: this.reference(parent) } : {}),
+      ...(parent !== undefined ? { parent: readArtifactReference(parent) } : {}),
       ...(project ? { project } : {}),
     };
   }
@@ -195,7 +201,7 @@ export class AgentRequestParserService {
       ...(title ? { title } : {}),
       ...(status ? { status } : {}),
       ...fields,
-      ...(branch !== undefined ? { branch: branch.toLowerCase() === NONE || branch === '' ? null : branch } : {}),
+      ...(branch !== undefined ? { branch: isNoneValue(branch) ? null : branch } : {}),
       ...(note ? { note } : {}),
       sections: children.sections,
       pullRequests: children.pullRequests,
@@ -248,9 +254,9 @@ export class AgentRequestParserService {
     const project = attributes.get('project');
     const dependsOn = attributes.get('depends_on');
     return {
-      ...(parent !== undefined ? { parent: this.reference(parent) } : {}),
+      ...(parent !== undefined ? { parent: readArtifactReference(parent) } : {}),
       ...(project ? { project } : {}),
-      ...(dependsOn !== undefined ? { dependsOn: dependsOn.toLowerCase() === NONE ? [] : this.ids(dependsOn) } : {}),
+      ...(dependsOn !== undefined ? { dependsOn: isNoneValue(dependsOn) ? [] : this.ids(dependsOn) } : {}),
       ...(Object.keys(refinement).length > 0 ? { refinement } : {}),
     };
   }
@@ -345,16 +351,7 @@ export class AgentRequestParserService {
   }
 
   private ids(raw: string | undefined): string[] {
-    return (raw ?? '').split(',').map(value => value.trim()).filter(Boolean).map(value => this.normalizeId(value));
-  }
-
-  private reference(raw: string): string | null {
-    return raw.toLowerCase() === NONE || raw === '' ? null : this.normalizeId(raw);
-  }
-
-  /** Ids are written as `T-1`; a ref of the same response keeps its spelling. */
-  private normalizeId(value: string): string {
-    return ARTIFACT_ID.test(value) ? value.toUpperCase() : value;
+    return (raw ?? '').split(',').map(value => value.trim()).filter(Boolean).map(value => normalizeArtifactId(value));
   }
 
   /** `<artifact_read id="T-1"></artifact_read>` reads like the self-closing form. */

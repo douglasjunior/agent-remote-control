@@ -9,6 +9,8 @@ import { join } from 'node:path';
 
 import { AccessTokenService } from '../../access-token/services/access-token.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { InMemoryLockedFilesFake } from '../../storage/testing/in-memory-locked-files.fake.js';
+import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 import type { IClientConnection } from '../../web/ports/client-transport.port.js';
 import { RemoteIdentityService } from '../services/remote-identity.service.js';
 import { FakeRemoteChannel, FakeRemotePeerFactory } from '../testing/fake-remote-peer.js';
@@ -56,8 +58,8 @@ describe('RemoteClientTransportAdapter', () => {
     rs.stubEnv('REMOTE_ENABLED', 'true');
     rs.stubEnv('REMOTE_URL', 'http://localhost:3100');
     rs.stubEnv('WEB_ACCESS_TOKEN', TOKEN);
-    identity = new RemoteIdentityService(dataDirectoryAt(dataDir));
-    accessToken = new AccessTokenService(dataDirectoryAt(dataDir));
+    identity = new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles());
+    accessToken = new AccessTokenService(dataDirectoryAt(dataDir), new InMemoryLockedFilesFake());
     signaling = new FakeSignalingClient();
     peers = new FakeRemotePeerFactory();
     transport = create();
@@ -113,7 +115,7 @@ describe('RemoteClientTransportAdapter', () => {
   it('should stay off with an access token too short to face the Internet', async () => {
     const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
     rs.stubEnv('WEB_ACCESS_TOKEN', 'short');
-    accessToken = new AccessTokenService(dataDirectoryAt(dataDir));
+    accessToken = new AccessTokenService(dataDirectoryAt(dataDir), new InMemoryLockedFilesFake());
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
 

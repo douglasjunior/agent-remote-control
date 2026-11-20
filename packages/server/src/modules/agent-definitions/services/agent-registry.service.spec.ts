@@ -14,8 +14,8 @@ describe('AgentRegistryService', () => {
 
   describe('getSystemPrompt', () => {
     it('should return specialized system prompt for DEVELOPER role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('DEVELOPER');
-      const promptLower = service.getSystemPrompt('developer');
+      const promptUpper = service.getSystemPrompt('DEVELOPER', 'tags');
+      const promptLower = service.getSystemPrompt('developer', 'tags');
 
       expect(promptUpper).toBeDefined();
       expect(promptUpper).toContain('Developer Agent');
@@ -23,8 +23,8 @@ describe('AgentRegistryService', () => {
     });
 
     it('should return specialized system prompt for TECH_LEAD role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('TECH_LEAD');
-      const promptLower = service.getSystemPrompt('tech_lead');
+      const promptUpper = service.getSystemPrompt('TECH_LEAD', 'tags');
+      const promptLower = service.getSystemPrompt('tech_lead', 'tags');
 
       expect(promptUpper).toBeDefined();
       expect(promptUpper).toContain('Tech Lead Agent');
@@ -32,38 +32,45 @@ describe('AgentRegistryService', () => {
     });
 
     it('should return specialized system prompt for CEO role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('CEO');
-      const promptMixed = service.getSystemPrompt('Ceo');
+      const promptUpper = service.getSystemPrompt('CEO', 'tags');
+      const promptMixed = service.getSystemPrompt('Ceo', 'tags');
 
       expect(promptUpper).toBeDefined();
-      expect(promptUpper).toContain('You are the CEO, the lead orchestrator of agent-remote-control.');
+      expect(promptUpper).toContain('You are the CEO');
       expect(promptMixed).toBe(promptUpper);
     });
 
     it('should point the CEO to its delegation skill for the project folder and the other attributes', () => {
-      expect(service.getSystemPrompt('CEO')).toContain('with `artifact`, `project` and `session` as the `delegation-protocol` skill explains');
+      expect(service.getSystemPrompt('CEO', 'tags')).toContain('in the `delegation-protocol` skill');
     });
 
     it('should give the CEO its team of every other registered agent', () => {
       service.registerDefinition({
         role: 'REVIEWER' as AgentRole,
         name: 'Reviewer Agent',
+        summary: 'Summary.',
         description: 'Reviews pull requests.',
         buildSystemPrompt: () => 'Reviewer prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        turnReminder: 'Reviewer turn reminder',
+        buildReentryNote: () => 'Reviewer re-entry note',
       });
 
-      const prompt = service.getSystemPrompt('CEO');
+      const prompt = service.getSystemPrompt('CEO', 'tags');
 
-      expect(prompt).toContain('- DEVELOPER (Developer Agent):');
-      expect(prompt).toContain('- REVIEWER (Reviewer Agent): <delegate role="REVIEWER" summary="<summary>">.');
-      expect(prompt).not.toContain('- CEO (');
+      expect(prompt).toContain('- DEVELOPER: ');
+      expect(prompt).toContain('- REVIEWER: Summary. Delegated with neither.');
+      expect(prompt).not.toContain('- CEO: ');
+    });
+
+    it('should build the prompt for the interface of the session', () => {
+      expect(service.getSystemPrompt('DEVELOPER', 'tools')).toContain('the tools of the `arc` MCP server');
+      expect(service.getSystemPrompt('DEVELOPER', 'tags')).toContain('<artifact_update');
+      expect(service.getSystemPrompt('CEO', 'tools')).toContain('`artifact_create` creates one and returns its id.');
     });
 
     it('should return fallback prompt when role is unknown', () => {
-      const prompt = service.getSystemPrompt('QA_ENGINEER');
+      const prompt = service.getSystemPrompt('QA_ENGINEER', 'tags');
       expect(prompt).toBe(
         'You are an AI assistant acting in the role of QA_ENGINEER.',
       );
@@ -79,12 +86,13 @@ describe('AgentRegistryService', () => {
       service.registerDefinition({
         role: 'TESTER' as AgentRole,
         name: 'Tester Agent',
+        summary: 'Summary.',
         description: 'Testing specialist',
         buildSystemPrompt: () => 'You test things.',
         defaultModel: 'claude-3-5-sonnet',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        turnReminder: 'Tester turn reminder',
+        buildReentryNote: () => 'Tester re-entry note',
       });
 
       expect(service.getDefaultModel('tester')).toBe('claude-3-5-sonnet');
@@ -129,9 +137,19 @@ describe('AgentRegistryService', () => {
       expect(service.getDefaultSessionMode('TECH_LEAD')).toBe('resume');
     });
 
-    it('should return new for CODE_REVIEWER role in case-insensitive manner', () => {
-      expect(service.getDefaultSessionMode('code_reviewer')).toBe('new');
-      expect(service.getDefaultSessionMode('CODE_REVIEWER')).toBe('new');
+    it('should return the mode a definition declares', () => {
+      service.registerDefinition({
+        role: 'FRESH' as AgentRole,
+        name: 'Fresh Agent',
+        summary: 'Summary.',
+        description: 'Starts over every time.',
+        buildSystemPrompt: () => 'prompt',
+        defaultSessionMode: 'new',
+        delegation: {},
+        artifacts: { scope: 'task', sections: [], fields: [] },
+      });
+
+      expect(service.getDefaultSessionMode('fresh')).toBe('new');
     });
 
     it('should return resume as fallback for unknown role or agent without explicit mode', () => {
@@ -142,9 +160,8 @@ describe('AgentRegistryService', () => {
 
   describe('getDelegationContract', () => {
     it('should return the contract declared by the role in case-insensitive manner', () => {
-      expect(service.getDelegationContract('developer')).toEqual({
+      expect(service.getDelegationContract('developer')).toMatchObject({
         project: 'required',
-        sessionMode: 'overridable',
         artifact: 'required',
       });
       expect(service.getDelegationContract('GIT_OPS')).toEqual({
@@ -152,15 +169,16 @@ describe('AgentRegistryService', () => {
         sessionMode: 'overridable',
         artifact: 'optional',
       });
+      expect(service.getDelegationContract('TECH_LEAD')).toMatchObject({ refines: 'technical' });
     });
 
-    it('should have the code reviewer review the pull request of a task while allowing an explicit session mode', () => {
-      expect(service.getDelegationContract('CODE_REVIEWER')).toEqual({
+    it('should have the code reviewer review the pull request of a task', () => {
+      expect(service.getDelegationContract('CODE_REVIEWER')).toMatchObject({
         project: 'required',
-        sessionMode: 'overridable',
         readOnly: true,
         artifact: 'required',
         needsReviewableWork: true,
+        statusFlow: { from: ['in_review'] },
       });
     });
 
@@ -182,7 +200,7 @@ describe('AgentRegistryService', () => {
       expect(service.getArtifactAccess('ceo').scope).toBe('board');
       expect(service.getArtifactAccess('PRODUCT_OWNER')).toMatchObject({ scope: 'tree', create: true });
       expect(service.getArtifactAccess('TECH_LEAD').sections).toContain('technical_solution');
-      expect(service.getArtifactAccess('DEVELOPER')).toEqual({ scope: 'task', sections: ['implementation_notes'], fields: ['branch'] });
+      expect(service.getArtifactAccess('DEVELOPER')).toEqual({ scope: 'task', sections: ['implementation_notes'], fields: ['branch', 'pull_requests'] });
       expect(service.getArtifactAccess('GIT_OPS').fields).toContain('pull_requests');
       expect(service.getArtifactAccess('UNKNOWN_ROLE')).toEqual({ scope: 'task', sections: [], fields: [] });
     });
@@ -197,47 +215,51 @@ describe('AgentRegistryService', () => {
     });
   });
 
-  describe('getTurnReminder', () => {
-    it('should return an empty reminder for a role without one', () => {
-      expect(service.getTurnReminder('CEO')).toBe('');
+  describe('getReentryNote', () => {
+    it('should return an empty note for a role without one', () => {
+      expect(service.getReentryNote('CEO', 'tags')).toBe('');
     });
 
-    it('should return turn reminder for TECH_LEAD role in case-insensitive manner', () => {
-      const reminderUpper = service.getTurnReminder('TECH_LEAD');
-      const reminderLower = service.getTurnReminder('tech_lead');
+    it('should return the re-entry note of TECH_LEAD in case-insensitive manner', () => {
+      const noteUpper = service.getReentryNote('TECH_LEAD', 'tags');
 
-      expect(reminderUpper).toBeDefined();
-      expect(reminderLower).toBe(reminderUpper);
-      expect(reminderUpper).toContain('Tech Lead and software architect');
+      expect(service.getReentryNote('tech_lead', 'tags')).toBe(noteUpper);
+      expect(noteUpper.startsWith('[RE-ENTRY]')).toBe(true);
+      expect(noteUpper).toContain('as the Tech Lead Agent');
     });
 
-    it('should return turn reminder for DEVELOPER role in case-insensitive manner', () => {
-      const reminderUpper = service.getTurnReminder('DEVELOPER');
-      const reminderLower = service.getTurnReminder('developer');
+    it('should return the re-entry note of DEVELOPER in case-insensitive manner', () => {
+      const noteUpper = service.getReentryNote('DEVELOPER', 'tags');
 
-      expect(reminderUpper).toBeDefined();
-      expect(reminderLower).toBe(reminderUpper);
-      expect(reminderUpper).toContain('read its guidance files');
+      expect(service.getReentryNote('developer', 'tags')).toBe(noteUpper);
+      expect(noteUpper).toContain('as the Developer Agent');
+      expect(noteUpper).toContain('DONE or INCOMPLETE');
     });
 
-    it('should return fallback turn reminder string for unknown role', () => {
-      const fallback = service.getTurnReminder('NON_EXISTENT');
-      expect(typeof fallback).toBe('string');
+    it('should build the note for the interface of the session', () => {
+      expect(service.getReentryNote('DEVELOPER', 'tools')).toContain('the tools of the `arc` MCP server');
+      expect(service.getReentryNote('DEVELOPER', 'tags')).toContain('<skill_read name="role-guide"/>');
+    });
+
+    it('should return fallback note string for unknown role', () => {
+      const fallback = service.getReentryNote('NON_EXISTENT', 'tags');
+
       expect(fallback).toContain('NON_EXISTENT');
       expect(fallback).toContain('<final_response>');
     });
 
-    it('should return custom turn reminder for dynamically registered agent', () => {
+    it('should return the re-entry note of a dynamically registered agent', () => {
       service.registerDefinition({
         role: 'CUSTOM' as AgentRole,
         name: 'Custom Agent',
+        summary: 'Summary.',
         description: 'Custom description',
         buildSystemPrompt: () => 'prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        turnReminder: 'Custom turn reminder',
+        buildReentryNote: () => 'Custom re-entry note',
       });
-      expect(service.getTurnReminder('custom')).toBe('Custom turn reminder');
+      expect(service.getReentryNote('custom', 'tags')).toBe('Custom re-entry note');
     });
   });
 
@@ -266,35 +288,37 @@ describe('AgentRegistryService', () => {
       service.registerDefinition({
         role: 'ARCHITECT' as AgentRole,
         name: 'Solution Architect',
+        summary: 'Summary.',
         description: 'Architectural governance',
         buildSystemPrompt: () => 'Architect prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        turnReminder: 'Architect turn reminder',
+        buildReentryNote: () => 'Architect re-entry note',
       });
 
       const found = service.getDefinition('ARCHITECT');
       expect(found).toBeDefined();
       expect(found?.name).toBe('Solution Architect');
-      expect(service.getSystemPrompt('ARCHITECT')).toBe('Architect prompt');
-      expect(service.getTurnReminder('ARCHITECT')).toBe('Architect turn reminder');
+      expect(service.getSystemPrompt('ARCHITECT', 'tags')).toBe('Architect prompt');
+      expect(service.getReentryNote('ARCHITECT', 'tags')).toBe('Architect re-entry note');
     });
 
     it('should allow overriding an existing agent definition', () => {
       service.registerDefinition({
         role: 'DEVELOPER',
         name: 'Custom Developer',
+        summary: 'Summary.',
         description: 'Overridden developer',
         buildSystemPrompt: () => 'Overridden prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        turnReminder: 'Overridden turn reminder',
+        buildReentryNote: () => 'Overridden re-entry note',
       });
 
       const found = service.getDefinition('DEVELOPER');
       expect(found?.name).toBe('Custom Developer');
-      expect(service.getSystemPrompt('DEVELOPER')).toBe('Overridden prompt');
-      expect(service.getTurnReminder('DEVELOPER')).toBe('Overridden turn reminder');
+      expect(service.getSystemPrompt('DEVELOPER', 'tags')).toBe('Overridden prompt');
+      expect(service.getReentryNote('DEVELOPER', 'tags')).toBe('Overridden re-entry note');
     });
   });
 });

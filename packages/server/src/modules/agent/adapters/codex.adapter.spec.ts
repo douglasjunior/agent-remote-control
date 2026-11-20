@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import {
   acpHarness,
   acpSdkMockModule,
+  advertiseHttpMcp,
   createProcessRunnerMock,
+  expectHttpMcpServerAttached,
   resetAcpHarness,
   streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
@@ -52,6 +54,12 @@ function modeConfigOption(currentValue: string, values: readonly string[]) {
 }
 
 describe('CodexAdapter', () => {
+  it('should attach an HTTP MCP server to new and loaded sessions when the CLI advertises it', async () => {
+    advertiseHttpMcp();
+
+    await expectHttpMcpServerAttached(buildAdapter().adapter);
+  });
+
   const originalEnv = { CODEX_PATH: process.env.CODEX_PATH, CODEX_CONFIG: process.env.CODEX_CONFIG };
 
   beforeEach(() => {

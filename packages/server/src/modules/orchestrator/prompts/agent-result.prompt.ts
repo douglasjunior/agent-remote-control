@@ -9,6 +9,8 @@ export type AgentResultDetails = {
   readonly status?: 'failed' | 'stopped';
   readonly agentInfo?: TurnAgentInfo;
   readonly artifactId?: string;
+  /** The verdict that opens the agent's final answer, as the status flow of its role writes it. */
+  readonly verdict?: string;
   /** The status of the artifact when the agent finished, which the CEO sets next from the result. */
   readonly artifactStatus?: string;
   /** The user set that status while the agent worked, which makes it their decision. */
@@ -24,7 +26,7 @@ export function buildAgentResult(
 ): string {
   const project = projectName ? ` project="${projectName}"` : '';
   const artifact = details.artifactId
-    ? ` artifact="${details.artifactId}"${details.artifactStatus ? ` artifact_status="${details.artifactStatus}"` : ''}${details.artifactStatusByUser ? ' artifact_status_by="user"' : ''}`
+    ? ` artifact="${details.artifactId}"${details.verdict ? ` verdict="${details.verdict}"` : ''}${details.artifactStatus ? ` artifact_status="${details.artifactStatus}"` : ''}${details.artifactStatusByUser ? ' artifact_status_by="user"' : ''}`
     : '';
   const { agentInfo } = details;
   const config = agentInfo

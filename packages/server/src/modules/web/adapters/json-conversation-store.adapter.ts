@@ -1,12 +1,12 @@
 import { conversationSummarySchema, type ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import { conversationEntrySchema, type ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
-import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { z } from 'zod';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFile } from '../../storage/ports/locked-files.port.js';
 import type { IConversationStorePort } from '../ports/conversation-store.port.js';
 
 
@@ -14,29 +14,46 @@ const DEFAULT_TITLE = 'New conversation';
 const WRITE_DEBOUNCE_MS = 1_000;
 const CONVERSATIONS_KEY = 'conversations';
 
+type Summaries = ReadonlyMap<string, ConversationSummary>;
+type SummaryChange = { readonly id: string; readonly change: (current: ConversationSummary | undefined) => ConversationSummary | undefined };
+
+/**
+ * `DATA_DIR/web/conversations.json` and `DATA_DIR/web/history/<id>.json`. A history is rewritten whole and changes
+ * many times a second while an agent works, so changes wait in memory and each file is written at most once per
+ * debounce interval. A write applies the waiting changes to the file as it is on disk, under its lock, and every
+ * waiting change sets a value, so applying one again after its write leaves the same result.
+ */
 @Injectable()
 export class JsonConversationStoreAdapter implements IConversationStorePort, OnModuleDestroy {
   private readonly logger = new Logger(JsonConversationStoreAdapter.name);
   private readonly webDirectory: string;
-  private conversations: Promise<Map<string, ConversationSummary>> | null = null;
-  private readonly histories = new Map<string, Promise<ConversationEntry[]>>();
-  private readonly pendingWrites = new Map<string, NodeJS.Timeout>();
-  private writeChain: Promise<void> = Promise.resolve();
+  private readonly index: LockedFile<Summaries>;
+  private readonly histories = new Map<string, LockedFile<readonly ConversationEntry[]>>();
+  private readonly positions = new WeakMap<readonly ConversationEntry[], ReadonlyMap<string, number>>();
+  private readonly pendingSummaries: SummaryChange[] = [];
+  /** By conversation, the latest version of each entry not yet written, in the order the entries first came. */
+  private readonly pendingEntries = new Map<string, Map<string, ConversationEntry>>();
+  private readonly timers = new Map<string, NodeJS.Timeout>();
 
-  constructor(dataDirectoryService: DataDirectoryService) {
+  constructor(dataDirectoryService: DataDirectoryService, @Inject(ILockedFilesPort) private readonly files: ILockedFilesPort) {
     this.webDirectory = join(dataDirectoryService.resolve(), 'web');
+    const path = join(this.webDirectory, 'conversations.json');
+    this.index = files.json<Summaries>(path, {
+      parse: content => new Map((this.validate(path, content, z.array(conversationSummarySchema)) ?? []).map(summary => [summary.id, summary])),
+      empty: new Map(),
+      serialize: summaries => [...summaries.values()],
+    });
   }
 
   async list(): Promise<readonly ConversationSummary[]> {
-    const all = [...(await this.loadConversations()).values()];
+    const all = [...(await this.summaries()).values()];
     return all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   async create(): Promise<ConversationSummary> {
     const now = new Date().toISOString();
     const summary: ConversationSummary = { id: `web-${randomUUID()}`, title: DEFAULT_TITLE, createdAt: now, updatedAt: now };
-    (await this.loadConversations()).set(summary.id, summary);
-    this.histories.set(summary.id, Promise.resolve([]));
+    this.pendingSummaries.push({ id: summary.id, change: () => summary });
     this.scheduleWrite(CONVERSATIONS_KEY);
     return summary;
   }
@@ -46,31 +63,45 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
   }
 
   archive(id: string, archived: boolean): Promise<ConversationSummary> {
-    return this.update(id, ({ archivedAt: _archivedAt, ...current }) => (archived ? { ...current, archivedAt: new Date().toISOString() } : current));
+    const archivedAt = new Date().toISOString();
+    return this.update(id, ({ archivedAt: _archivedAt, ...current }) => (archived ? { ...current, archivedAt } : current));
   }
 
   touch(id: string): Promise<ConversationSummary> {
-    return this.update(id, current => ({ ...current, updatedAt: new Date().toISOString() }));
+    const updatedAt = new Date().toISOString();
+    return this.update(id, current => ({ ...current, updatedAt }));
   }
 
   async exists(id: string): Promise<boolean> {
-    return (await this.loadConversations()).has(id);
+    return (await this.summaries()).has(id);
   }
 
   async history(id: string): Promise<readonly ConversationEntry[]> {
-    return [...await this.loadHistory(id)];
+    const stored = await this.storedHistory(id);
+    const pending = this.pendingEntries.get(id);
+    return pending ? this.applyEntries(stored, pending) : [...stored];
   }
 
   async upsertEntry(id: string, entry: ConversationEntry): Promise<number> {
-    const entries = await this.loadHistory(id);
-    const position = entries.findIndex(existing => existing.id === entry.id);
-    if (position === -1) {
-      entries.push(entry);
-    } else {
-      entries[position] = entry;
-    }
+    const stored = await this.storedHistory(id);
+    const pending = this.pendingEntries.get(id) ?? new Map<string, ConversationEntry>();
+    pending.set(entry.id, entry);
+    this.pendingEntries.set(id, pending);
     this.scheduleWrite(id);
-    return position === -1 ? entries.length - 1 : position;
+    const position = this.positionsOf(stored).get(entry.id);
+    if (position !== undefined) {
+      return position;
+    }
+    let appended = stored.length;
+    for (const entryId of pending.keys()) {
+      if (entryId === entry.id) {
+        break;
+      }
+      if (!this.positionsOf(stored).has(entryId)) {
+        appended += 1;
+      }
+    }
+    return appended;
   }
 
   async flush(id: string): Promise<void> {
@@ -79,56 +110,83 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
   }
 
   async onModuleDestroy(): Promise<void> {
-    await Promise.all([...this.pendingWrites.keys()].map(key => this.flushKey(key)));
-    await this.writeChain;
+    const keys = [...this.pendingEntries.keys(), ...(this.pendingSummaries.length > 0 ? [CONVERSATIONS_KEY] : [])];
+    await Promise.all(keys.map(key => this.flushKey(key)));
   }
 
   private async update(id: string, change: (current: ConversationSummary) => ConversationSummary): Promise<ConversationSummary> {
-    const conversations = await this.loadConversations();
-    const current = conversations.get(id);
+    const current = (await this.summaries()).get(id);
     if (!current) {
       throw new Error(`Unknown conversation: ${id}`);
     }
-    const updated = change(current);
-    conversations.set(id, updated);
+    this.pendingSummaries.push({ id, change: summary => summary && change(summary) });
     this.scheduleWrite(CONVERSATIONS_KEY);
-    return updated;
+    return change(current);
   }
 
-  private loadConversations(): Promise<Map<string, ConversationSummary>> {
-    this.conversations ??= this.readConversations();
-    return this.conversations;
+  private async summaries(): Promise<Summaries> {
+    return this.applySummaries(await this.index.read(), this.pendingSummaries);
+  }
+
+  private applySummaries(stored: Summaries, changes: readonly SummaryChange[]): Summaries {
+    if (changes.length === 0) {
+      return stored;
+    }
+    const summaries = new Map(stored);
+    for (const { id, change } of changes) {
+      const summary = change(summaries.get(id));
+      if (summary) {
+        summaries.set(id, summary);
+      }
+    }
+    return summaries;
   }
 
   /** The id is looked up among the known conversations before it reaches a file path. */
-  private async loadHistory(id: string): Promise<ConversationEntry[]> {
+  private async storedHistory(id: string): Promise<readonly ConversationEntry[]> {
     if (!(await this.exists(id))) {
       throw new Error(`Unknown conversation: ${id}`);
     }
-    let history = this.histories.get(id);
-    if (!history) {
-      history = this.readHistory(id);
-      this.histories.set(id, history);
+    return this.historyFile(id).read();
+  }
+
+  private historyFile(id: string): LockedFile<readonly ConversationEntry[]> {
+    let file = this.histories.get(id);
+    if (!file) {
+      const path = join(this.webDirectory, 'history', `${id}.json`);
+      file = this.files.json<readonly ConversationEntry[]>(path, {
+        parse: content => this.validate(path, content, z.array(conversationEntrySchema)) ?? [],
+        empty: [],
+      });
+      this.histories.set(id, file);
     }
-    return history;
+    return file;
   }
 
-  private async readConversations(): Promise<Map<string, ConversationSummary>> {
-    const parsed = await this.readJson(join(this.webDirectory, 'conversations.json'), z.array(conversationSummarySchema));
-    return new Map((parsed ?? []).map(summary => [summary.id, summary]));
-  }
-
-  private async readHistory(id: string): Promise<ConversationEntry[]> {
-    return await this.readJson(this.historyPath(id), z.array(conversationEntrySchema)) ?? [];
-  }
-
-  private async readJson<T>(path: string, schema: z.ZodType<T>): Promise<T | null> {
-    let content: unknown;
-    try {
-      content = JSON.parse(await readFile(path, 'utf-8'));
-    } catch {
-      return null;
+  private applyEntries(stored: readonly ConversationEntry[], pending: ReadonlyMap<string, ConversationEntry>): ConversationEntry[] {
+    const entries = [...stored];
+    const positions = this.positionsOf(stored);
+    for (const entry of pending.values()) {
+      const position = positions.get(entry.id);
+      if (position === undefined) {
+        entries.push(entry);
+      } else {
+        entries[position] = entry;
+      }
     }
+    return entries;
+  }
+
+  private positionsOf(entries: readonly ConversationEntry[]): ReadonlyMap<string, number> {
+    let positions = this.positions.get(entries);
+    if (!positions) {
+      positions = new Map(entries.map((entry, position) => [entry.id, position]));
+      this.positions.set(entries, positions);
+    }
+    return positions;
+  }
+
+  private validate<T>(path: string, content: unknown, schema: z.ZodType<T>): T | null {
     const parsed = schema.safeParse(content);
     if (!parsed.success) {
       this.logger.warn(`conversation_store_invalid_file: ${path}`);
@@ -137,47 +195,60 @@ export class JsonConversationStoreAdapter implements IConversationStorePort, OnM
     return parsed.data;
   }
 
-  private historyPath(id: string): string {
-    return join(this.webDirectory, 'history', `${id}.json`);
-  }
-
   private scheduleWrite(key: string): void {
-    if (this.pendingWrites.has(key)) {
+    if (this.timers.has(key)) {
       return;
     }
     const timer = setTimeout(() => void this.flushKey(key), WRITE_DEBOUNCE_MS);
     timer.unref();
-    this.pendingWrites.set(key, timer);
+    this.timers.set(key, timer);
   }
 
-  private flushKey(key: string): Promise<void> {
-    const timer = this.pendingWrites.get(key);
-    if (!timer) {
-      return this.writeChain;
+  /**
+   * Writes what the key has waiting. Changes wait until a write of them succeeds, so a flush during a write writes
+   * them again after it, and a failed write leaves them for the next flush.
+   */
+  private async flushKey(key: string): Promise<void> {
+    clearTimeout(this.timers.get(key));
+    this.timers.delete(key);
+    const waiting = key === CONVERSATIONS_KEY ? this.pendingSummaries.length > 0 : this.pendingEntries.has(key);
+    if (!waiting) {
+      return;
     }
-    clearTimeout(timer);
-    this.pendingWrites.delete(key);
-    this.writeChain = this.writeChain
-      .then(() => this.writeKey(key))
-      .catch((error: unknown) => {
-        this.logger.error(`conversation_store_write_failed: ${key}: ${error instanceof Error ? error.message : String(error)}`);
-      });
-    return this.writeChain;
+    try {
+      await this.writeKey(key);
+    } catch (error) {
+      this.logger.error(`conversation_store_write_failed: ${key}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private async writeKey(key: string): Promise<void> {
     if (key === CONVERSATIONS_KEY) {
-      const summaries = [...(await this.loadConversations()).values()];
-      await this.writeAtomically(join(this.webDirectory, 'conversations.json'), summaries);
+      let written = 0;
+      await this.index.update((stored) => {
+        written = this.pendingSummaries.length;
+        return written > 0 ? this.applySummaries(stored, this.pendingSummaries) : undefined;
+      });
+      this.pendingSummaries.splice(0, written);
       return;
     }
-    await this.writeAtomically(this.historyPath(key), await this.loadHistory(key));
-  }
-
-  private async writeAtomically(path: string, value: unknown): Promise<void> {
-    await mkdir(join(path, '..'), { recursive: true });
-    const temporary = `${path}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(value, null, 2), 'utf-8');
-    await rename(temporary, path);
+    const snapshot: { pending?: Map<string, ConversationEntry>; written?: ReadonlyMap<string, ConversationEntry> } = {};
+    await this.historyFile(key).update((stored) => {
+      snapshot.pending = this.pendingEntries.get(key);
+      snapshot.written = snapshot.pending && new Map(snapshot.pending);
+      return snapshot.written && this.applyEntries(stored, snapshot.written);
+    });
+    const { pending, written } = snapshot;
+    if (!pending || !written) {
+      return;
+    }
+    for (const [entryId, entry] of written) {
+      if (pending.get(entryId) === entry) {
+        pending.delete(entryId);
+      }
+    }
+    if (pending.size === 0 && this.pendingEntries.get(key) === pending) {
+      this.pendingEntries.delete(key);
+    }
   }
 }

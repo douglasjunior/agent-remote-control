@@ -37,8 +37,8 @@ describe('AgentRequestParserService', () => {
 
     it.each([
       ['<artifact_list type="epic"/>', 'Unknown type "epic". Use a comma-separated list of: feature, task.'],
-      ['<artifact_list status="wip"/>', 'Unknown status "wip". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, done, blocked, frozen, cancelled.'],
-      ['<artifact_list status=","/>', 'Unknown status ",". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, done, blocked, frozen, cancelled.'],
+      ['<artifact_list status="wip"/>', 'Unknown status "wip". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, tested, done, blocked, frozen, cancelled.'],
+      ['<artifact_list status=","/>', 'Unknown status ",". Use a comma-separated list of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, tested, done, blocked, frozen, cancelled.'],
       ['<artifact_list kind="x"/>', 'Unknown attribute "kind" in <artifact_list kind="x"/>. Use only "type", "status", "parent", "project".'],
     ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
@@ -148,7 +148,7 @@ describe('AgentRequestParserService', () => {
 
     it.each([
       ['<artifact_update status="done"/>', '<artifact_update> needs the id of the artifact, as in <artifact_update id="T-1">.'],
-      ['<artifact_update id="T-1" status="wip"/>', 'Unknown status "wip". Use one of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, done, blocked, frozen, cancelled.'],
+      ['<artifact_update id="T-1" status="wip"/>', 'Unknown status "wip". Use one of: backlog, ready, in_progress, in_review, changes_requested, approved, in_testing, tested, done, blocked, frozen, cancelled.'],
       ['<artifact_update id="T-1" technical_refinement="nope"/>', 'The technical_refinement attribute is one of: pending, done, skipped.'],
       ['<artifact_update id="T-1"><section name="scope" mode="merge">x</section></artifact_update>', 'The mode of a <section> is "replace" or "append".'],
       ['<artifact_update id="T-1"><pull_request url="https://x"></artifact_update>', 'Write a pull request as a self-closing tag: <pull_request url="..." state="open"/>.'],
@@ -199,15 +199,20 @@ describe('AgentRequestParserService', () => {
     });
   });
 
-  it('should keep the rest of the response, without its requests', () => {
-    const parsed = parser.parse('Moving it.\n<artifact_update id="T-1" status="in_progress"/>\n\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>');
+  it('should keep the rest of the response, without its requests, and the requests as they were written', () => {
+    const parsed = parser.parse('Moving it.\n<artifact_update id="T-1" status="in_progress"/>\n\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>\n<artifact_comment id="T-1">Go.</artifact_comment> `<artifact_list/>`');
 
-    expect(parsed).toMatchObject({ kind: 'requests', rest: 'Moving it.\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>' });
+    expect(parsed).toEqual({
+      kind: 'requests',
+      requests: expect.any(Array),
+      rest: 'Moving it.\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>\n `<artifact_list/>`',
+      raw: ['<artifact_update id="T-1" status="in_progress"/>', '<artifact_comment id="T-1">Go.</artifact_comment>'],
+    });
   });
 
   it('should drop everything from a request that never closes', () => {
-    expect(parser.parse('Before <artifact_comment id="T-1">never closed')).toMatchObject({ kind: 'requests', rest: 'Before' });
-    expect(parser.parse('A </artifact_read> B')).toMatchObject({ kind: 'requests', rest: 'A  B' });
+    expect(parser.parse('Before <artifact_comment id="T-1">never closed')).toMatchObject({ kind: 'requests', rest: 'Before', raw: ['<artifact_comment id="T-1">never closed'] });
+    expect(parser.parse('A </artifact_read> B')).toMatchObject({ kind: 'requests', rest: 'A  B', raw: ['</artifact_read>'] });
   });
 
   it('should report a closing tag without its opening and go on with the next request', () => {

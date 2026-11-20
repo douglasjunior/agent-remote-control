@@ -1,5 +1,6 @@
 import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import type { Artifact } from '../models/artifact.model.js';
+import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
 import { ArtifactEventsService } from '../services/artifact-events.service.js';
 import { ArtifactHistoryService } from '../services/artifact-history.service.js';
 import { ArtifactLimitsConfigService } from '../services/artifact-limits-config.service.js';
@@ -22,12 +23,13 @@ export function createArtifactsService(options: { readonly initial?: readonly Ar
   const rules = new ArtifactRulesService();
   const history = new ArtifactHistoryService();
   const events = new ArtifactEventsService();
+  const derivation = new ArtifactDerivationService(rules, history);
   const service = new ArtifactsService(
     store,
-    new CreateArtifactUseCase(store, workspace, rules, history, events),
-    new UpdateArtifactUseCase(store, workspace, rules, history, events),
+    new CreateArtifactUseCase(store, workspace, rules, history, events, derivation),
+    new UpdateArtifactUseCase(store, workspace, rules, history, events, derivation),
     new CommentOnArtifactUseCase(store, history, events),
-    new DeleteArtifactUseCase(store, history, events),
+    new DeleteArtifactUseCase(store, history, events, derivation),
     new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService()),
     new ReleaseArtifactUseCase(store, history, events),
     events,

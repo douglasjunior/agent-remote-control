@@ -35,7 +35,8 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   feature (or out of one) only when no sibling it leaves behind depends on it (`checkDependents`), and its own
   dependencies must fit the new place. Listings show the dependencies still open as `waiting on`.
 - **Fields**: `title`, `status` (`backlog`, `ready`, `in_progress`, `in_review`, `changes_requested`, `approved`,
-  `in_testing`, `done`, `blocked`, `frozen`, `cancelled`; `done` and `cancelled` are closed), `refinement.business` / `refinement.technical`
+  `in_testing`, `tested`, `done`, `blocked`, `frozen`, `cancelled`; `done` and `cancelled` are closed; `tested` is a task
+  that passed its practical test and waits for the merge), `refinement.business` / `refinement.technical`
   (`pending`, `done`, `skipped`), `dependsOn`, `assignee`, `branch`,
   `pullRequests` (`url`, `title?`, `state` `open|merged|closed`, upserted by URL), `sections` and `history`.
 - **Sections** (`ARTIFACT_SECTIONS`, titles in `ARTIFACT_SECTION_TITLES`): `overview`, `user_stories`, `scope`,
@@ -46,6 +47,19 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   fixes the task finds them there.
 - **Creation**: a task that owes no refinement starts `ready` (a simple task straight to development); anything
   else starts in the `backlog`. A refinement left out is `pending`.
+- **Derived statuses** (`ArtifactRulesService.derivedTaskStatus` and `derivedFeatureStatus`, applied by
+  `ArtifactDerivationService` inside the transaction of the change, as `system` history events that say why, and
+  published like any saved artifact):
+  - A task is `ready` exactly while no refinement is `pending`: one left in `backlog` with none pending becomes `ready`
+    ("Ready: no refinement is pending"), and a `ready` one whose refinement goes back to `pending` returns to `backlog`
+    ("Back to the backlog: a refinement is pending"). Every other status is left alone, so a refined task is parked with
+    `blocked`, never with `backlog`.
+  - A feature becomes `in_progress` when one of its tasks is active (`in_progress`, `in_review`, `changes_requested`,
+    `approved`, `in_testing`, `tested`, `ACTIVE_TASK_STATUSES`) or `done`, another is still open and the feature is `backlog`,
+    `ready` or `done`; it becomes `done` when every task is `done` or `cancelled`, at least one is `done` and the
+    feature is `backlog`, `ready` or `in_progress`.
+  - `blocked`, `frozen` and `cancelled` features, features without tasks and the status a user gives a feature are left
+    alone: the feature is settled when one of its tasks is created, changed, moved (the feature it leaves too) or deleted.
 - **History**: every change appends an `ArtifactHistoryEvent` (`created`, `updated` with `changes`
   `{ field, from?, to? }` where sections read `section:<name>` and `to` is `replaced|appended|cleared`,
   `commented` with `text`, `assigned`, `released`) by an `ArtifactActor` (`agent` with role, `user` with channel,
@@ -58,7 +72,7 @@ responses, and every channel (web today, Discord later) reads and changes it thr
 `create`, `update`, `comment`, `remove`, `assign`, `release` and `onChange(listener)` (`saved` or `deleted`, with the
 `conversationId`). Mutations return `{ ok: true, artifact } | { ok: false, error }` with an English reason, never throw.
 Each mutation is one use case (`create-`, `update-`, `comment-on-`, `delete-`, `assign-`, `release-artifact`); the
-rules shared by create and update live in `ArtifactRulesService`.
+rules shared by create and update live in `ArtifactRulesService`; create, update and delete apply the derived statuses.
 
 - `update` applies all changes or none, records only real changes and publishes nothing when nothing changed.
 - `remove` refuses an artifact with children or a holder, and removes it from the dependencies of the others,
@@ -80,8 +94,11 @@ rules shared by create and update live in `ArtifactRulesService`.
 
 `IArtifactStorePort` (`JsonArtifactStoreAdapter`): one file per conversation,
 `DATA_DIR/artifacts/<encodeURIComponent(conversationId)>.json` (`{ counters, artifacts }`, validated with the protocol
-schema; invalid or missing means empty). `transaction(conversationId, work)` runs one at a time over a staged copy and
-commits only after the atomic write (temporary file, then rename). Specs use `InMemoryArtifactStoreFake`,
+schema; invalid or missing means empty), read and written through `ILockedFilesPort` (`storage` module).
+`transaction(conversationId, work)` runs `work` synchronously over a staged copy of the board as it is on disk, under the
+board's lock, so transactions of parallel delegations and of other processes never interleave; it commits only after the
+atomic write, and one that changes nothing writes nothing. `conversations()` lists the `.json` files of the folder, so
+the lockfiles and temporary files beside them never count as boards. Specs use `InMemoryArtifactStoreFake`,
 `buildArtifact`, `createArtifactHarness` and `createArtifactsService` from `testing/`.
 
 ## Agents and the board (orchestrator)
@@ -98,9 +115,14 @@ commits only after the atomic write (temporary file, then rename). Specs use `In
   `<request_result request id ref status="ok|error">` each). The parser also returns the response without its requests
   (`rest`). When that rest has an outcome (a `<delegate>` or `<question>` for the CEO, a `<question>` for a delegate),
   it goes on as usual and the results open the agent's next prompt (`PendingRequestResults`), so the CEO sets a status
-  and delegates in one response. Otherwise the results come back right away with a note that the response was not the
-  final answer, until a response carries none (at most 30 rounds); the CEO's draft is discarded first, and
+  and delegates in one response. A response whose requests all update, comment or write a skill and succeeded, next to
+  the text of an answer, is that answer, delivered with them. Otherwise (a read, a creation, whose id the agent must read,
+  a failure, nothing but requests) the results come back right away with a note that the response was not the final
+  answer and asking for the whole final answer again, until a response carries none (at most 30 rounds); the CEO's draft is discarded first, and
   `AgentProtocolService.visibleReply` hides the tags. The content an agent reads never passes through the CEO.
+- **Tools**: an agent whose CLI takes an HTTP MCP server also makes each request as a tool of the same name during its
+  turn; the orchestrator reads the tool's arguments into the same request and carries it out with the same checks and
+  messages, one request per call. The tags keep working alongside.
 - **Access** (`ArtifactAccess` from `IAgentRegistryPort.getArtifactAccess`, declared per definition in
   `agent-definitions/constants/artifact-access.constant.ts`): `scope` `board` (CEO: lists everything, reads one
   artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner and Tech Lead:
@@ -109,14 +131,27 @@ commits only after the atomic write (temporary file, then rename). Specs use `In
   `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). Comments need only read access.
   An unknown role reads tasks only.
 - **Delegation**: `<delegate ... artifact="T-1">` (contract `artifact: 'required' | 'optional'`, plus `needsReviewableWork`)
-  is validated before it starts: known artifact, a task for a `task` scope, not closed, a pull request or a branch when required,
-  no holder of another role, and the artifact's project (the `project` attribute may be left out; another one is
-  refused). One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
+  is validated before it starts: known artifact, a task for a `task` scope, not closed, in a status the role takes (its
+  `statusFlow.from`), a pull request or a branch when required, no holder of another role, the artifact's project (the
+  `project` attribute may be left out; another one is refused), and a specification within `DELEGATION_SPEC_MAX_CHARS`
+  (no limit to redirect the agent of that role already working on that artifact, which receives only the new text).
+  One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
   before the port is created, `release` in `finally` with `finished|failed|cancelled|replaced|stopped|stopped by the user`), starts from a
-  `[DELEGATED_ARTIFACT]` block with its full content before the task, and is steered only when the artifact is the same.
+  `[DELEGATED_ARTIFACT]` block before the task, and is steered only when the artifact is the same. Each role keeps one session
+  per task and coding agent: a session new to the task gets the full content, and a resumed one the facts (status,
+  dependencies, refinements, holder, branch, pull requests) plus the sections changed and comments added since its own work
+  on the task ended, which its session binding records (the full content when it records none, and always for a feature).
+- **Statuses of a delegated task**: the server moves them, as `system` history events (`DelegationStatusService` in the
+  orchestrator). Once assigned, a task in one of the role's `statusFlow.from` takes its `statusFlow.start`, and the
+  delegation works in that status; a task somewhere the role does not take (restored work skips the validator) is left
+  alone and gets no verdict. The verdict that opens the agent's final answer, written in English exactly as its prompt
+  shows it, sets the status `statusFlow.verdicts` maps it to, while the agent still holds the task and only while the task
+  is still in the status the delegation worked in, so a status anyone else set meanwhile stands. QA's `PASSED` leaves it
+  `tested`. A failed, stopped, replaced or cancelled delegation, or an answer without a verdict, changes nothing. The CEO sets only the statuses that are decisions (`done`, `blocked`, `cancelled`, reopening, skipping a step).
   The artifact travels in `ActiveDelegation.artifactId`, `DelegationEvent.artifactId`, `OpenWork.artifactId`,
-  `[TEAM_PROFILES]` (`Artifact: T-1`) and `<agent_result artifact="T-1" artifact_status="…">`, whose status is read when
-  the agent finishes so the CEO never answers with a status the result contradicts. `artifact_status_by="user"` follows
+  `QuestionAsker.artifactId`, `[TEAM_PROFILES]` (`Artifact: T-1`) and
+  `<agent_result artifact="T-1" verdict="…" artifact_status="…">`, whose status is read after the verdict is applied
+  so the CEO never answers with a status the result contradicts. `artifact_status_by="user"` follows
   when a user set that status while the agent worked, and the CEO keeps it; `artifact_read` shows `Status: <status>, set
   by the user` whenever a user set the current status.
 

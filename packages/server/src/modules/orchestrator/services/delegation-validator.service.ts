@@ -9,6 +9,8 @@ import { type DelegationContract, IAgentRegistryPort } from '../ports/agent-regi
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
 import { type DelegationResult, DelegationDetectorService } from './delegation-detector.service.js';
+import { DelegationLimitsConfigService } from './delegation-limits-config.service.js';
+import { DelegationStatusService } from './delegation-status.service.js';
 
 
 /** Checks the delegations of a CEO response against the team, the board, the workspace and the agents already running. */
@@ -20,6 +22,8 @@ export class DelegationValidatorService {
     @Inject(IArtifactsPort) private readonly artifacts: IArtifactsPort,
     @Inject(IWorkspacePort) private readonly workspacePort: IWorkspacePort,
     private readonly conversationRuntime: ConversationRuntimeService,
+    private readonly delegationStatus: DelegationStatusService,
+    private readonly limits: DelegationLimitsConfigService,
   ) {}
 
   /** Reads the CEO response and checks every delegation in it, so an invalid one goes back to the CEO before any agent starts. */
@@ -69,8 +73,9 @@ export class DelegationValidatorService {
 
   /**
    * A delegation names the artifact its agent works on and then runs in that artifact's project: the folder may be
-   * left out, and a different one is a mistake. The artifact must be open, of a type the agent works on, ready for
-   * it and with no agent of another role holding it, because an artifact is with one agent at a time.
+   * left out, and a different one is a mistake. The artifact must be open, of a type the agent works on, in a status
+   * the agent takes, ready for it and with no agent of another role holding it, because an artifact is with one agent
+   * at a time. The agent receives the artifact in full, so the specification only names the step.
    */
   private async applyArtifact(
     delegation: DelegationResult,
@@ -99,6 +104,10 @@ export class DelegationValidatorService {
     if (CLOSED_ARTIFACT_STATUSES.includes(artifact.status)) {
       return { reason: `${artifactId} is ${artifact.status}. Set its status back to an open one before delegating work on it.` };
     }
+    const outOfOrder = this.delegationStatus.refusal(role, artifact);
+    if (outOfOrder) {
+      return { reason: outOfOrder };
+    }
     if (contract.needsReviewableWork && artifact.pullRequests.length === 0 && !artifact.branch) {
       return { reason: `${role} inspects the work of ${artifactId}, which has neither a pull request nor a branch yet. Record the branch of its implementation first.` };
     }
@@ -108,7 +117,19 @@ export class DelegationValidatorService {
     if (projectName && projectName !== artifact.projectName) {
       return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
+    const maxSpecChars = this.limits.getMaxSpecChars();
+    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, role, artifactId)) {
+      return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
+    }
     return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
+  }
+
+  /**
+   * A delegation to a role already working on the same artifact steers that agent, which receives only the new text and
+   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply.
+   */
+  private redirects(conversationId: string, role: string, artifactId: string): boolean {
+    return this.conversationRuntime.findActiveDelegation(conversationId, role)?.artifactId === artifactId;
   }
 
   private async resolveDelegationFolder(
@@ -198,7 +219,7 @@ export class DelegationValidatorService {
   private checkDelegationContract(
     role: string,
     contract: DelegationContract,
-    { projectName, sessionMode }: DelegationResult,
+    { projectName, sessionMode, artifactId }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
       return `Role "${role}" does not take a project folder. Use <delegate role="${role}" summary="<summary>"> without the project attribute.`;
@@ -206,7 +227,8 @@ export class DelegationValidatorService {
     if (!projectName && contract.project === 'required') {
       return `Role "${role}" requires a project folder. Use <delegate role="${role}" summary="<summary>" project="<project-folder>">.`;
     }
-    if (sessionMode && !contract.sessionMode) {
+    // A delegation with an artifact runs in the session of its task, so its session attribute is ignored rather than refused.
+    if (sessionMode && !artifactId && !contract.sessionMode) {
       return `Role "${role}" does not take a session mode. Use <delegate role="${role}" summary="<summary>"> without the session attribute.`;
     }
     return undefined;

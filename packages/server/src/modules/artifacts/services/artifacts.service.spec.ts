@@ -22,13 +22,13 @@ function setup() {
     buildArtifact({ id: 'T-2', status: 'done', projectName: 'web', createdAt: '2026-01-01T00:00:02.000Z' }),
     buildArtifact({ id: 'T-3', status: 'cancelled', parentId: 'F-1', createdAt: '2026-01-01T00:00:04.000Z' }),
   ]);
-  const { store, rules, history, events, workspace } = harness;
+  const { store, rules, history, events, workspace, derivation } = harness;
   const service = new ArtifactsService(
     store,
-    new CreateArtifactUseCase(store, workspace, rules, history, events),
-    new UpdateArtifactUseCase(store, workspace, rules, history, events),
+    new CreateArtifactUseCase(store, workspace, rules, history, events, derivation),
+    new UpdateArtifactUseCase(store, workspace, rules, history, events, derivation),
     new CommentOnArtifactUseCase(store, history, events),
-    new DeleteArtifactUseCase(store, history, events),
+    new DeleteArtifactUseCase(store, history, events, derivation),
     new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService()),
     new ReleaseArtifactUseCase(store, history, events),
     events,

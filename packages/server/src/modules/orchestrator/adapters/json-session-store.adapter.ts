@@ -1,18 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { Inject, Injectable } from '@nestjs/common';
 import { join } from 'node:path';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFile } from '../../storage/ports/locked-files.port.js';
 import type { AgentSession } from '../models/agent-session.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
-import type { ISessionStorePort } from '../ports/session-store.port.js';
+import type { ISessionStorePort, SessionChange } from '../ports/session-store.port.js';
 
 
 const SESSIONS_FILENAME = 'sessions.json';
 
-type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName'> & {
+type StoredAgentSession = Omit<AgentSession, 'agentId' | 'projectName' | 'artifactId'> & {
   readonly agentId?: string;
   readonly projectName?: string | null;
+  readonly artifactId?: string | null;
 };
 
 type StoredSession = {
@@ -22,69 +23,53 @@ type StoredSession = {
   readonly agentSessions?: readonly StoredAgentSession[];
 };
 
+type SessionsByConversation = ReadonlyMap<string, SessionContext>;
+
+/** `DATA_DIR/sessions.json`: the agent sessions of every conversation, by conversation id. */
 @Injectable()
 export class JsonSessionStoreAdapter implements ISessionStorePort {
-  private readonly logger = new Logger(JsonSessionStoreAdapter.name);
-  private readonly dataDirectory: string;
-  private readonly filePath: string;
-  private sessions: Promise<Map<string, SessionContext>> | null = null;
-  private writeChain: Promise<void> = Promise.resolve();
+  private readonly file: LockedFile<SessionsByConversation>;
 
-  constructor(dataDirectoryService: DataDirectoryService) {
-    this.dataDirectory = dataDirectoryService.resolve();
-    this.filePath = join(this.dataDirectory, SESSIONS_FILENAME);
+  constructor(dataDirectoryService: DataDirectoryService, @Inject(ILockedFilesPort) files: ILockedFilesPort) {
+    this.file = files.json<SessionsByConversation>(join(dataDirectoryService.resolve(), SESSIONS_FILENAME), {
+      parse: content => this.parse(content),
+      empty: new Map(),
+      serialize: sessions => Object.fromEntries(Array.from(sessions, ([conversationId, { agentSessions }]) => [conversationId, { agentSessions }])),
+    });
   }
 
   async findSession(conversationId: string): Promise<SessionContext | null> {
-    return (await this.load()).get(conversationId) ?? null;
+    return (await this.file.read()).get(conversationId) ?? null;
   }
 
-  async saveSession(session: SessionContext): Promise<void> {
-    const sessions = await this.load();
-    sessions.set(session.conversationId, session);
-    const content = JSON.stringify(
-      Object.fromEntries(Array.from(sessions, ([conversationId, { agentSessions }]) => [conversationId, { agentSessions }])),
-      null,
-      2,
-    );
-    this.writeChain = this.writeChain
-      .catch(() => undefined)
-      .then(() => this.write(content));
-    await this.writeChain;
+  async updateSession(conversationId: string, change: SessionChange): Promise<SessionContext> {
+    const empty: SessionContext = { conversationId, agentSessions: [] };
+    const sessions = await this.file.update((all) => {
+      const updated = change(all.get(conversationId) ?? empty);
+      return updated ? new Map(all).set(conversationId, updated) : undefined;
+    });
+    return sessions.get(conversationId) ?? empty;
   }
 
-  private load(): Promise<Map<string, SessionContext>> {
-    this.sessions ??= this.read();
-    return this.sessions;
-  }
-
-  private async read(): Promise<Map<string, SessionContext>> {
-    const sessions = new Map<string, SessionContext>();
+  /** Content out of shape reads as no sessions at all, which the next update replaces. */
+  private parse(content: unknown): SessionsByConversation {
     try {
-      const parsed = JSON.parse(await readFile(this.filePath, 'utf-8')) as StoredSession[] | Record<string, StoredSession>;
-      const entries: [string, StoredSession][] = Array.isArray(parsed)
-        ? parsed.map(item => [this.resolveLegacyConversationId(item), item])
-        : Object.entries(parsed);
-      for (const [conversationId, item] of entries) {
-        sessions.set(conversationId, {
+      const entries: [string, StoredSession][] = Array.isArray(content)
+        ? (content as StoredSession[]).map(item => [this.resolveLegacyConversationId(item), item])
+        : Object.entries(content as Record<string, StoredSession>);
+      return new Map(entries.map(([conversationId, item]) => [
+        conversationId, {
           conversationId,
-          agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, ...agentSession }) =>
-            typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null }] : []),
-        });
-      }
+          agentSessions: (item.agentSessions ?? []).flatMap(({ agentId, projectName, artifactId, ...agentSession }) =>
+            typeof agentId === 'string' ? [{ ...agentSession, agentId, projectName: projectName ?? null, artifactId: artifactId ?? null }] : []),
+        },
+      ]));
     } catch {
-      this.logger.debug(`sessions_read_skipped: ${this.filePath}`);
-      sessions.clear();
+      return new Map();
     }
-    return sessions;
   }
 
   private resolveLegacyConversationId({ conversationId, channelId, threadId }: StoredSession): string {
     return conversationId ?? (threadId ? `${channelId}:${threadId}` : channelId ?? '');
-  }
-
-  private async write(content: string): Promise<void> {
-    await mkdir(this.dataDirectory, { recursive: true });
-    await writeFile(this.filePath, content, 'utf-8');
   }
 }

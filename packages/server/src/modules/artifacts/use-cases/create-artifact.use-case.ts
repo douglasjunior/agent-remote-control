@@ -10,6 +10,7 @@ import type {
   CreateArtifactInput,
 } from '../models/artifact.model.js';
 import { IArtifactStorePort } from '../ports/artifact-store.port.js';
+import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
 import { ArtifactEventsService } from '../services/artifact-events.service.js';
 import { ArtifactHistoryService } from '../services/artifact-history.service.js';
 import { ArtifactRulesService } from '../services/artifact-rules.service.js';
@@ -23,15 +24,17 @@ export class CreateArtifactUseCase {
     private readonly rules: ArtifactRulesService,
     private readonly history: ArtifactHistoryService,
     private readonly events: ArtifactEventsService,
+    private readonly derivation: ArtifactDerivationService,
   ) {}
 
   /**
    * A task that owes no refinement is `ready` at once, the path of a simple task straight to development; anything
-   * else starts in the `backlog`. Without a project, a task takes its feature's.
+   * else starts in the `backlog`. Without a project, a task takes its feature's. A task under a feature settles the
+   * status its feature derives from its tasks.
    */
   async execute(conversationId: string, input: CreateArtifactInput, actor: ArtifactActor): Promise<ArtifactOutcome> {
     const folders = await this.workspace.listProjectFolders();
-    const outcome = await this.store.transaction(conversationId, (transaction): ArtifactOutcome => {
+    const outcome = await this.store.transaction(conversationId, (transaction): ArtifactOutcome & { readonly derived?: readonly Artifact[] } => {
       const title = input.title.trim();
       const parentId = input.parentId ?? null;
       const projectName = input.projectName?.trim() || (parentId ? transaction.find(parentId)?.projectName : undefined) || '';
@@ -49,14 +52,13 @@ export class CreateArtifactUseCase {
         business: input.refinement?.business ?? 'pending',
         technical: input.refinement?.technical ?? 'pending',
       };
-      const owesRefinement = refinement.business === 'pending' || refinement.technical === 'pending';
       const id = transaction.allocateId(input.type);
       const now = this.history.now();
       const artifact: Artifact = {
         id,
         type: input.type,
         title,
-        status: input.type === 'task' && !owesRefinement ? 'ready' : 'backlog',
+        status: input.type === 'task' && !this.rules.owesRefinement(refinement) ? 'ready' : 'backlog',
         parentId,
         projectName,
         dependsOn,
@@ -70,12 +72,13 @@ export class CreateArtifactUseCase {
         updatedAt: now,
       };
       transaction.save(artifact);
-      return { ok: true, artifact };
+      return { ok: true, artifact, derived: this.derivation.settleTask(transaction, artifact).derived };
     });
-    if (outcome.ok) {
-      this.events.publish([{ kind: 'saved', conversationId, artifact: outcome.artifact }]);
+    if (!outcome.ok) {
+      return outcome;
     }
-    return outcome;
+    this.events.publish([outcome.artifact, ...(outcome.derived ?? [])].map(artifact => ({ kind: 'saved', conversationId, artifact })));
+    return { ok: true, artifact: outcome.artifact };
   }
 
   private cleanSections(sections: ArtifactSections = {}): ArtifactSections {

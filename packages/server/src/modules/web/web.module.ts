@@ -9,6 +9,7 @@ import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
 import { PathsModule } from '../paths/paths.module.js';
 import { RemoteClientTransportAdapter } from '../remote/adapters/remote-client-transport.adapter.js';
 import { RemoteModule } from '../remote/remote.module.js';
+import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { CombinedClientTransportAdapter } from './adapters/combined-client-transport.adapter.js';
@@ -49,7 +50,7 @@ import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, WebStaticModule, WorkspaceModule],
+  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, StorageModule, WebStaticModule, WorkspaceModule],
   providers: [
     WsClientTransportAdapter,
     {

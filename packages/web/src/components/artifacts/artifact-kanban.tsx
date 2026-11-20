@@ -19,7 +19,7 @@ import { ArtifactStopWorkDialog } from './artifact-stop-work-dialog.js';
 import { ArtifactUnfreezeDialog } from './artifact-unfreeze-dialog.js';
 
 
-const COLUMNS: readonly ArtifactStatus[] = ['backlog', 'ready', 'in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing', 'done', 'blocked', 'frozen', 'cancelled'];
+const COLUMNS: readonly ArtifactStatus[] = ['backlog', 'ready', 'in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing', 'tested', 'done', 'blocked', 'frozen', 'cancelled'];
 const DRAG_TYPE = 'application/x-artifact-id';
 
 /**

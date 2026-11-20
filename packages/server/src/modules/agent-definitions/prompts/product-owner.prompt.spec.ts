@@ -1,14 +1,18 @@
 import { describe, expect, it } from '@rstest/core';
 
 import { PRODUCT_OWNER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
-import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
-import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
+import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
+import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { PRODUCT_OWNER_SYSTEM_PROMPT, PRODUCT_OWNER_TURN_REMINDER } from './product-owner.prompt.js';
-import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { buildProductOwnerReentryNote, buildProductOwnerSystemPrompt } from './product-owner.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
+import { USER_QUESTIONS_BRIEF } from './user-questions.prompt.js';
 
+
+const PRODUCT_OWNER_SYSTEM_PROMPT = buildProductOwnerSystemPrompt('tags');
+const PRODUCT_OWNER_REENTRY_NOTE = buildProductOwnerReentryNote('tags');
 
 describe('product-owner.prompt', () => {
   it('should extract the intent from a non-technical user without solving or estimating it', () => {
@@ -35,10 +39,14 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('The single exception is a technical choice that changes the behavior the end user sees');
   });
 
-  it('should block on invented rules, documentation conflicts, and divergences between system and documentation', () => {
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Never invent a business rule');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Conflict with existing documentation');
+  it('should ask on invented rules, documentation conflicts and divergences between system and documentation', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('**No invented business rule.**');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('**Conflict with existing documentation.**');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('record it in `pending_decisions` as a divergence to fix');
+  });
+
+  it('should keep the board and the files apart', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('**Read-only on files.** Everything you write goes to the board through artifact requests');
   });
 
   it('should keep open questions as a last resort and check the board before writing to it', () => {
@@ -47,25 +55,56 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('### Before Writing to the Board');
   });
 
-  it('should consolidate the intent as a feature and its tasks on the board, not as a file', () => {
+  it('should consolidate the intent as a feature and its tasks on the board', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('The initiative becomes one feature in the project it concerns, and the feature is broken into tasks');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('- `acceptance_criteria`: observable behavior');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Set `business_refinement="done"`');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Everything you write goes to the board through artifact requests');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the ids of the artifacts you created or changed');
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS));
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(buildArtifactProtocolReminder(PRODUCT_OWNER_ARTIFACT_ACCESS));
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).not.toContain('intent.md');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS, 'tags'));
   });
 
-  it('should include the shared orientation, boundaries, question, and final response instructions', () => {
+  it('should include the shared orientation, boundaries, question and final response instructions', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
-    expect(PRODUCT_OWNER_TURN_REMINDER).toContain('<final_response>...</final_response>');
+  });
+
+  describe('re-entry note', () => {
+    it('should send the product owner back to its role guide', () => {
+      expect(PRODUCT_OWNER_REENTRY_NOTE.startsWith('[RE-ENTRY]')).toBe(true);
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('a session you started as the Product Owner Agent');
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain(`<skill_read name="${SKILL_NAMES.roleGuide}"/>`);
+    });
+
+    it('should carry the interview rule, the technical boundary and the deliverable', () => {
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('every question is a `<question>` tag');
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('recorded in `pending_decisions`, neither asked nor decided');
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('`business_refinement="done"`');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildProductOwnerSystemPrompt('tools');
+    const note = buildProductOwnerReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### Hunt for What Was Not Said');
+      expect(prompt).toContain('### Before Writing to the Board');
+      expect(prompt).toContain(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS, 'tools'));
+      expect(prompt).toContain(USER_QUESTIONS_BRIEF);
+    });
+
+    it('should write to the board through its tools, creating the feature before its tasks', () => {
+      expect(prompt).toContain('Everything you write goes to the board through its tools.');
+      expect(prompt).toContain('Create the feature before its tasks: a creation returns the new id, for the `parent` and `depends_on` of the next ones.');
+      expect(prompt).not.toContain('artifact requests');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should keep the interview rules in the re-entry note and name the tools', () => {
+      expect(note).toContain('every question is a `<question>` tag');
+      expect(note).toContain('the tools of the `arc` MCP server');
+    });
   });
 });

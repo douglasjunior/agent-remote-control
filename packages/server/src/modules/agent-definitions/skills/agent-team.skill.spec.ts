@@ -13,6 +13,7 @@ const WORKSPACE_DIR = '/home/user/workspaces';
 const gitOps: AgentDefinition = {
   role: 'GIT_OPS',
   name: 'Git Ops Agent',
+  summary: 'Administers repositories.',
   description: 'Adds repositories to the workspace.',
   buildSystemPrompt: () => 'git',
   delegation: { project: 'optional', sessionMode: 'overridable' },
@@ -59,6 +60,35 @@ describe('agent-team skill', () => {
     );
     expect(contentFor({ delegation: { readOnly: true } })).toContain('- Read-only, so it may work alongside an agent that modifies the same project.');
     expect(contentFor({ delegation: {}, defaultSessionMode: 'new' })).toContain('- Always runs in "new" session mode, so never set the session attribute.');
+  });
+
+  describe('session mode', () => {
+    const sessionLine = (overrides: Partial<AgentDefinition>) =>
+      AGENT_TEAM_SKILL.buildContent(skillContext({ team: [{ ...gitOps, ...overrides }] })).split('\n').find(line => /session/.test(line) && line.startsWith('- '));
+
+    it('should keep one session per task for an agent that always works on one, whether or not the mode is overridable', () => {
+      const line = '- Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.';
+
+      expect(sessionLine({ delegation: { artifact: 'required' } })).toBe(line);
+      expect(sessionLine({ delegation: { artifact: 'required', sessionMode: 'overridable' } })).toBe(line);
+    });
+
+    it('should keep one session per artifact and let the mode be set without one when the session is overridable', () => {
+      expect(sessionLine({ delegation: { artifact: 'optional', sessionMode: 'overridable' }, defaultSessionMode: 'new' })).toBe(
+        '- Keeps one session per artifact it is delegated; without an artifact it runs in "new" session mode unless you set session="new" or session="resume".',
+      );
+    });
+
+    it('should keep one session per artifact and fix the mode without one when the session is not overridable', () => {
+      expect(sessionLine({ delegation: { artifact: 'optional' } })).toBe(
+        '- Keeps one session per artifact it is delegated; without an artifact it always runs in "resume" session mode, so never set the session attribute.',
+      );
+    });
+
+    it('should state the mode alone for an agent that takes no artifact', () => {
+      expect(sessionLine({ delegation: { sessionMode: 'overridable' } })).toBe('- Runs in "resume" session mode unless you set session="new" or session="resume".');
+      expect(sessionLine({ delegation: {} })).toBe('- Always runs in "resume" session mode, so never set the session attribute.');
+    });
   });
 
   it('should put discovery before technical planning and keep requirement interviews with the agents', () => {

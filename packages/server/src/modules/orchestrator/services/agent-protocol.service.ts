@@ -80,7 +80,7 @@ export class AgentProtocolService {
     if (!written.includes(FINAL_RESPONSE_OPEN)) {
       return [];
     }
-    const { prose } = this.splitEnvelopes(written);
+    const prose = this.narration(written);
     const codeSpans = findCodeSpans(prose);
     const names = new Set<string>();
     for (const tag of prose.matchAll(new RegExp(OPENING_TAG.source, OPENING_TAG.flags))) {
@@ -89,6 +89,11 @@ export class AgentProtocolService {
       }
     }
     return [...names];
+  }
+
+  /** What the agent wrote outside its `<final_response>` envelopes. */
+  narration(written: string): string {
+    return this.splitEnvelopes(written).prose;
   }
 
   /**

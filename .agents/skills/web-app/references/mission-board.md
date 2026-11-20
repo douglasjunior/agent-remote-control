@@ -26,7 +26,7 @@ Each conversation has its own board of features and tasks (the `artifact.ts` con
 - A feature card shows the progress of its tasks as one bar split by status (done over total, cancelled tasks left out, the breakdown in its accessible name and tooltip) and is moved like a task card, frozen rules included.
 - A held card's border takes the holder's agent color. Rows and cards show the id, the feature, the project, a "Waiting on" chip for dependencies not done, the pull request count and the holder's `AgentMark` in the working state.
 - Filters: text (id or title), project, type (list only; the kanban switch plays that part) and hide done/cancelled, which apply to whichever type the kanban shows.
-- Statuses follow the protocol order, In testing (the QA agent's turn, toned `--agent-qa`) between Approved and Done; the sections too, Test report after Review findings.
+- Statuses follow the protocol order, In testing (the QA agent's turn, toned `--agent-qa`) and Tested (passed and waiting for the merge, toned `--good`) between Approved and Done; the sections too, Test report after Review findings.
 
 ## Creating
 

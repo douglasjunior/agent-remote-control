@@ -6,6 +6,8 @@ import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { buildStoppedWorkPrompt } from '../prompts/stopped-work.prompt.js';
+import { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
+import { AgentToolsConfigService } from '../services/agent-tools-config.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -43,7 +45,7 @@ describe('StopArtifactWorkUseCase', () => {
       conversationId: CONVERSATION,
       initial: [buildArtifact({ id: 'T-1', status: 'in_progress' })],
     }));
-    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), 60_000);
+    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), new AgentToolSessionsService(new AgentToolsConfigService()), 60_000);
     stops = [];
     useCase = new StopArtifactWorkUseCase(artifacts, runtime);
     useCase.onModuleInit();

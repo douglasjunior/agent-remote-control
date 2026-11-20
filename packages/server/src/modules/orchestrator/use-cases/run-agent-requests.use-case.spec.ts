@@ -1,4 +1,5 @@
-import { describe, expect, it } from '@rstest/core';
+import { Logger } from '@nestjs/common';
+import { describe, expect, it, rs } from '@rstest/core';
 
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import { ARTIFACT_AT, buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
@@ -39,13 +40,91 @@ const as = (role: string, extra: Partial<AgentRequester> = {}): AgentRequester =
 const update = (id: string, changes: Partial<Extract<AgentRequest, { kind: 'update' }>> = {}): AgentRequest => ({ kind: 'update', id, sections: [], pullRequests: [], ...changes });
 
 describe('RunAgentRequestsUseCase', () => {
+  describe('resolve', () => {
+    const resolve = (useCase: RunAgentRequestsUseCase, response: string, runAgent: (results: string) => Promise<string>) =>
+      useCase.resolve(response, runAgent, as('CEO'), () => false, () => undefined);
+
+    it('should carry out the updates and comments that go with an answer and keep the answer, without prompting the agent again', async () => {
+      const { useCase, artifacts } = setup();
+      const runAgent = rs.fn(async () => 'Never.');
+
+      const resolved = await resolve(useCase, 'Noted on the board.\n<artifact_comment id="T-3">Seen.</artifact_comment>\n<artifact_update id="T-3" status="in_progress"/>', runAgent);
+
+      expect(runAgent).not.toHaveBeenCalled();
+      expect(resolved.response).toBe('Noted on the board.');
+      expect(resolved.requestResults).toContain('<request_result request="update" id="T-3" status="ok">');
+      expect(await artifacts.service.get(CONVERSATION, 'T-3')).toMatchObject({ status: 'in_progress' });
+    });
+
+    it.each([
+      [
+        'a read',
+        'Let me look.\n<artifact_list/>',
+        'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'a read next to a creation',
+        'Let me look.\n<artifact_create type="task" title="Login" project="shop"/>\n<artifact_list/>',
+        'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'a creation next to the text of an answer',
+        'I will hand it to the developer.\n<artifact_create type="task" title="Login" project="shop"/>\n<artifact_comment id="T-3">Seen.</artifact_comment>',
+        'Your last response created artifacts, whose ids are in these results, so it was not taken as your final answer. Go on with your work with those ids, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'a failed write',
+        'Done.\n<artifact_update id="T-9" status="done"/>',
+        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'an invalid request next to a read',
+        'Done.\n<artifact_read/>\n<artifact_list/>',
+        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'only writes',
+        '<artifact_comment id="T-3">Seen.</artifact_comment>',
+        'Your last response had only requests, so it was not taken as your final answer. Go on with your work, then write your whole final answer, opened the way your instructions say.',
+      ],
+    ])('should prompt the agent again with the results after a response with %s', async (_name, response, note) => {
+      const { useCase } = setup();
+      const runAgent = rs.fn(async (_results: string) => 'Final answer.');
+
+      const resolved = await resolve(useCase, response, runAgent);
+
+      expect(resolved).toEqual({ response: 'Final answer.' });
+      expect(runAgent).toHaveBeenCalledTimes(1);
+      expect(runAgent.mock.calls[0]![0]).toMatch(/^<request_results>\n[\s\S]*<\/request_results>\n/);
+      expect(runAgent.mock.calls[0]![0].endsWith(`\n${note}`)).toBe(true);
+    });
+  });
+
+  it('should log why each failed request failed', async () => {
+    const { useCase } = setup();
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+
+    await useCase.execute([
+      { kind: 'invalid', tag: '<artifact_read>', reason: 'Name the artifact.' },
+      { kind: 'list' },
+      update('T-9', { status: 'done' }),
+    ], as('CEO'));
+    const messages = warn.mock.calls.map(([message]) => message);
+    warn.mockRestore();
+
+    expect(messages).toEqual([
+      '[Agent Request Failed] Role=CEO, Request=invalid, Reason="Name the artifact. (in <artifact_read>)"',
+      '[Agent Request Failed] Role=CEO, Request=update, Id=T-9, Reason="Unknown artifact "T-9"."',
+    ]);
+  });
+
   it('should answer every request in order, inside one results block, sending the agent to its skills when one failed', async () => {
     const { useCase } = setup();
 
-    const results = await useCase.execute([
+    const results = (await useCase.execute([
       { kind: 'invalid', tag: '<artifact_read>', reason: 'Name the artifact.' },
       { kind: 'list' },
-    ], as('CEO'));
+    ], as('CEO'))).text;
 
     expect(results).toBe([
       '<request_results>',
@@ -58,14 +137,14 @@ describe('RunAgentRequestsUseCase', () => {
       '</request_results>',
       'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).',
     ].join('\n'));
-    expect(await useCase.execute([{ kind: 'list' }], as('CEO'))).not.toContain('Some requests failed');
+    expect((await useCase.execute([{ kind: 'list' }], as('CEO'))).text).not.toContain('Some requests failed');
   });
 
   describe('list and read', () => {
     it('should list only tasks for an agent that works on tasks, with the filters of the request', async () => {
       const { useCase } = setup();
 
-      const results = await useCase.execute([{ kind: 'list', types: ['feature'], statuses: 'all', parent: 'F-1', project: 'shop' }], as('DEVELOPER'));
+      const results = (await useCase.execute([{ kind: 'list', types: ['feature'], statuses: 'all', parent: 'F-1', project: 'shop' }], as('DEVELOPER'))).text;
 
       expect(results).toContain('- T-1 [task]');
       expect(results).toContain('- T-2 [task]');
@@ -75,11 +154,11 @@ describe('RunAgentRequestsUseCase', () => {
     it('should list the roots with parent none and resolve a ref of the same response', async () => {
       const { useCase } = setup();
 
-      const results = await useCase.execute([
+      const results = (await useCase.execute([
         { kind: 'create', ref: 'web', type: 'feature', title: 'Web', project: 'web', sections: [] },
         { kind: 'list', parent: null },
         { kind: 'list', parent: 'web' },
-      ], as('PRODUCT_OWNER'));
+      ], as('PRODUCT_OWNER'))).text;
 
       expect(results).toContain('<request_result request="create" id="F-2" ref="web" status="ok">\nCreated feature F-2 "Web" in project web, status backlog.');
       expect(results).toContain('- F-2 [feature] "Web"');
@@ -89,9 +168,9 @@ describe('RunAgentRequestsUseCase', () => {
     it('should read several artifacts, a feature in full only for an agent that manages the board', async () => {
       const { useCase } = setup();
 
-      const owner = await useCase.execute([{ kind: 'read', ids: ['F-1'], tree: true }], as('PRODUCT_OWNER'));
-      const ceo = await useCase.execute([{ kind: 'read', ids: ['F-1', 'T-3'], tree: false }], as('CEO'));
-      const ceoTree = await useCase.execute([{ kind: 'read', ids: ['F-1'], tree: true }], as('CEO'));
+      const owner = (await useCase.execute([{ kind: 'read', ids: ['F-1'], tree: true }], as('PRODUCT_OWNER'))).text;
+      const ceo = (await useCase.execute([{ kind: 'read', ids: ['F-1', 'T-3'], tree: false }], as('CEO'))).text;
+      const ceoTree = (await useCase.execute([{ kind: 'read', ids: ['F-1'], tree: true }], as('CEO'))).text;
 
       expect(owner).toContain('# F-1 · Checkout');
       expect(owner).toContain('---\n\n# T-1 · API');
@@ -106,7 +185,7 @@ describe('RunAgentRequestsUseCase', () => {
     ] as const)('should refuse to read %j as %s', async (request, role, reason) => {
       const { useCase } = setup();
 
-      expect(await useCase.execute([request], as(role))).toContain(`status="error">\n${reason}`);
+      expect((await useCase.execute([request], as(role))).text).toContain(`status="error">\n${reason}`);
     });
   });
 
@@ -134,7 +213,18 @@ describe('RunAgentRequestsUseCase', () => {
     ] as const)('should refuse to create %j as %s', async (request, role, reason) => {
       const { useCase } = setup();
 
-      expect(await useCase.execute([request], as(role))).toContain(`status="error">\n${reason}`);
+      expect((await useCase.execute([request], as(role))).text).toContain(`status="error">\n${reason}`);
+    });
+
+    it('should let an agent that creates artifacts write their overview, a section its role does not update', async () => {
+      const { useCase, artifacts } = setup();
+
+      const created = (await useCase.execute([{ kind: 'create', type: 'task', title: 'Cache', project: 'shop', sections: [{ section: 'overview', content: 'Cache the catalog.', mode: 'replace' }] }], as('TECH_LEAD'))).text;
+      const updated = (await useCase.execute([update('T-4', { sections: [{ section: 'overview', content: 'x', mode: 'replace' }] })], as('TECH_LEAD'))).text;
+
+      expect(created).toContain('<request_result request="create" id="T-4" status="ok">');
+      expect(await artifacts.service.get(CONVERSATION, 'T-4')).toMatchObject({ sections: { overview: 'Cache the catalog.' } });
+      expect(updated).toContain('status="error">\nYou cannot write the sections overview.');
     });
 
     it('should refuse refinement states from an agent that cannot set them, keeping the ref in the result', async () => {
@@ -143,7 +233,7 @@ describe('RunAgentRequestsUseCase', () => {
       registry.registerDefinition({ ...registry.getDefinition('PRODUCT_OWNER')!, artifacts: { scope: 'tree', create: true, sections: [], fields: [] } });
       const restricted = new RunAgentRequestsUseCase(artifacts.service, registry, new ArtifactPromptFormatterService(), new StubAgentSkillsPort(), new AgentRequestParserService());
 
-      const results = await restricted.execute([{ kind: 'create', ref: 'r', type: 'task', title: 'X', project: 'shop', refinement: { business: 'done' }, sections: [] }], as('PRODUCT_OWNER'));
+      const results = (await restricted.execute([{ kind: 'create', ref: 'r', type: 'task', title: 'X', project: 'shop', refinement: { business: 'done' }, sections: [] }], as('PRODUCT_OWNER'))).text;
 
       expect(results).toContain('<request_result request="create" ref="r" status="error">\nYou cannot set the refinement states.');
     });
@@ -153,13 +243,13 @@ describe('RunAgentRequestsUseCase', () => {
     it('should let the agent holding a task write what its role writes', async () => {
       const { useCase, artifacts } = setup();
 
-      const results = await useCase.execute([
+      const results = (await useCase.execute([
         update('T-1', {
           branch: 'feat/t-1',
           note: 'Implemented',
           sections: [{ section: 'implementation_notes', content: 'Done.', mode: 'append' }],
         }),
-      ], as('DEVELOPER', { delegationId: 'dev-1', artifactId: 'T-1' }));
+      ], as('DEVELOPER', { delegationId: 'dev-1', artifactId: 'T-1' }))).text;
 
       expect(results).toContain('<request_result request="update" id="T-1" status="ok">\nUpdated T-1; its status is ready.');
       expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ branch: 'feat/t-1', sections: { implementation_notes: 'Done.' } });
@@ -211,14 +301,14 @@ describe('RunAgentRequestsUseCase', () => {
     ])('should refuse %s', async (_name, request, requester, reason) => {
       const { useCase } = setup();
 
-      expect(await useCase.execute([request], requester)).toContain(`status="error">\n${reason}`);
+      expect((await useCase.execute([request], requester)).text).toContain(`status="error">\n${reason}`);
     });
 
     it('should leave freezing to the server and unfreezing to the user', async () => {
       const { useCase, artifacts } = setup();
       artifacts.store.artifactsOf(CONVERSATION).set('T-9', buildArtifact({ id: 'T-9', status: 'frozen' }));
 
-      const results = await useCase.execute([update('T-3', { status: 'frozen' }), update('T-9', { status: 'ready' }), update('T-9', { title: 'Renamed' })], as('CEO'));
+      const results = (await useCase.execute([update('T-3', { status: 'frozen' }), update('T-9', { status: 'ready' }), update('T-9', { title: 'Renamed' })], as('CEO'))).text;
 
       expect(results).toContain('<request_result request="update" id="T-3" status="error">\nOnly the server freezes an artifact. Set blocked to hold it yourself.');
       expect(results).toContain('<request_result request="update" id="T-9" status="error">\nT-9 is frozen after too many delegations, and only the user takes it out.');
@@ -229,11 +319,11 @@ describe('RunAgentRequestsUseCase', () => {
     it('should comment on any artifact the agent reads', async () => {
       const { useCase, artifacts } = setup();
 
-      const results = await useCase.execute([
+      const results = (await useCase.execute([
         { kind: 'comment', id: 'T-1', text: 'APPROVED' },
         { kind: 'comment', id: 'F-1', text: 'No' },
         { kind: 'comment', id: 'T-9', text: 'No' },
-      ], as('CODE_REVIEWER'));
+      ], as('CODE_REVIEWER'))).text;
 
       expect(results).toContain('<request_result request="comment" id="T-1" status="ok">\nCommented on T-1; its status is ready.');
       expect(results).toContain('<request_result request="comment" id="F-1" status="error">\nF-1 is a feature; you work on tasks only.');
@@ -253,7 +343,7 @@ describe('RunAgentRequestsUseCase', () => {
       };
 
       const onSkill = rs.fn();
-      const results = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }], as('QA'), onSkill);
+      const results = (await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'api-testing'] }], as('QA'), onSkill)).text;
       await useCase.execute([{ kind: 'list' }], as('QA'), onSkill);
 
       expect(onSkill).toHaveBeenCalledTimes(1);
@@ -273,9 +363,9 @@ describe('RunAgentRequestsUseCase', () => {
       skills.skills = { QA: [{ name: 'playwright-web', description: 'Web.', content: 'Open the browser.' }] };
 
       const onSkill = rs.fn();
-      const unknown = await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'cypress'] }], as('QA'), onSkill);
+      const unknown = (await useCase.execute([{ kind: 'skill_read', names: ['playwright-web', 'cypress'] }], as('QA'), onSkill)).text;
       expect(onSkill).toHaveBeenCalledWith(expect.objectContaining({ status: 'failed', error: 'Unknown skill "cypress". Your skills are: playwright-web.' }));
-      const none = await useCase.execute([{ kind: 'skill_read', names: ['cypress'] }], as('CEO'));
+      const none = (await useCase.execute([{ kind: 'skill_read', names: ['cypress'] }], as('CEO'))).text;
 
       expect(unknown).toContain('<request_result request="skill_read" name="playwright-web,cypress" status="error">\nUnknown skill "cypress". Your skills are: playwright-web.');
       expect(none).toContain('Unknown skill "cypress". Your role has no skills.');
@@ -289,11 +379,11 @@ describe('RunAgentRequestsUseCase', () => {
         { name: 'electron-testing', description: 'Electron.', roles: ['QA', 'DEVELOPER'], builtIn: false },
       ];
 
-      const listed = await useCase.execute([{ kind: 'skill_list' }], as('CEO'));
+      const listed = (await useCase.execute([{ kind: 'skill_list' }], as('CEO'))).text;
       skills.listing = [];
-      const empty = await useCase.execute([{ kind: 'skill_list' }], as('CEO'));
+      const empty = (await useCase.execute([{ kind: 'skill_list' }], as('CEO'))).text;
       skills.writers = [];
-      const refused = await useCase.execute([{ kind: 'skill_list' }], as('QA'));
+      const refused = (await useCase.execute([{ kind: 'skill_list' }], as('QA'))).text;
 
       expect(listed).toContain('<request_result request="skill_list" status="ok">\n- api-testing (built-in; roles: QA): API.\n- electron-testing (user; roles: QA, DEVELOPER): Electron.\n</request_result>');
       expect(empty).toContain('There are no skills.');
@@ -305,11 +395,11 @@ describe('RunAgentRequestsUseCase', () => {
       const write = { kind: 'skill_write' as const, name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' };
 
       const onSkill = rs.fn();
-      const created = await useCase.execute([write], as('CEO'), onSkill);
+      const created = (await useCase.execute([write], as('CEO'), onSkill)).text;
       skills.writeResult = { ok: true, created: false };
-      const updated = await useCase.execute([write], as('CEO'), onSkill);
+      const updated = (await useCase.execute([write], as('CEO'), onSkill)).text;
       skills.writeResult = { ok: false, error: 'You cannot write skills.' };
-      const refused = await useCase.execute([write], as('QA'), onSkill);
+      const refused = (await useCase.execute([write], as('QA'), onSkill)).text;
 
       expect(onSkill.mock.calls.map(([activity]) => [activity.status, activity.created, activity.error])).toEqual([
         ['completed', true, undefined],
@@ -318,7 +408,7 @@ describe('RunAgentRequestsUseCase', () => {
       ]);
 
       expect(skills.written[0]).toEqual({ name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' });
-      expect(created).toContain('<request_result request="skill_write" name="electron-testing" status="ok">\nCreated skill "electron-testing" for QA. Agents of those roles see it in their skill catalog from their next session');
+      expect(created).toContain('<request_result request="skill_write" name="electron-testing" status="ok">\nCreated skill "electron-testing" for QA. Agents of those roles see it in their skill catalog from their next delegation');
       expect(updated).toContain('Updated skill "electron-testing" for QA.');
       expect(refused).toContain('<request_result request="skill_write" name="electron-testing" status="error">\nYou cannot write skills.');
     });

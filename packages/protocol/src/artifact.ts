@@ -16,6 +16,7 @@ export const ARTIFACT_STATUSES = [
   'changes_requested',
   'approved',
   'in_testing',
+  'tested',
   'done',
   'blocked',
   'frozen',

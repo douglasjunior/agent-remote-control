@@ -1,5 +1,5 @@
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
-import type { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
+import type { AgentSettingsChange, IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 
 
 export function buildStubSettings(
@@ -43,9 +43,15 @@ export class StubAgentSettingsStore implements IAgentSettingsStorePort {
       current.updatedAt > latest.updatedAt ? current : latest);
   }
 
-  async save(conversationId: string, settings: AgentSettings): Promise<void> {
-    this.saved.push(settings);
-    this.settings = settings;
-    this.byConversation.set(conversationId, settings);
+  async update(conversationId: string, change: AgentSettingsChange): Promise<AgentSettings | null> {
+    const own = await this.load(conversationId);
+    const updated = change(own, await this.loadMostRecent());
+    if (!updated) {
+      return own;
+    }
+    this.saved.push(updated);
+    this.settings = updated;
+    this.byConversation.set(conversationId, updated);
+    return updated;
   }
 }

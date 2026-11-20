@@ -10,7 +10,7 @@ const user = { kind: 'user', channel: 'web' } as const;
 
 function setup(initial = [buildArtifact({ id: 'F-1', type: 'feature', projectName: 'shop' })]) {
   const harness = createArtifactHarness(initial);
-  return { ...harness, useCase: new CreateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events) };
+  return { ...harness, useCase: new CreateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events, harness.derivation) };
 }
 
 describe('CreateArtifactUseCase', () => {
@@ -79,5 +79,32 @@ describe('CreateArtifactUseCase', () => {
     expect(await useCase.execute('c1', input, user)).toEqual({ ok: false, error });
     expect(published).toEqual([]);
     expect(store.artifactsOf().size).toBe(1);
+  });
+
+  it('should reopen a done feature when a task is created under it, recording why', async () => {
+    const { useCase, store, published } = setup([
+      buildArtifact({ id: 'F-1', type: 'feature', status: 'done', projectName: 'shop' }),
+      buildArtifact({ id: 'T-1', parentId: 'F-1', status: 'done' }),
+    ]);
+
+    const outcome = await useCase.execute('c1', { type: 'task', title: 'Follow-up', parentId: 'F-1' }, user);
+
+    expect(outcome).toMatchObject({ ok: true, artifact: { id: 'T-2', status: 'backlog' } });
+    expect(store.artifactsOf().get('F-1')).toMatchObject({
+      status: 'in_progress',
+      history: [{ kind: 'updated', actor: { kind: 'system' }, summary: 'In progress: work on its tasks is under way', changes: [{ field: 'status', from: 'done', to: 'in_progress' }] }],
+    });
+    expect(published).toEqual([
+      { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('T-2') },
+      { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('F-1') },
+    ]);
+  });
+
+  it('should leave the feature of a new task alone when nothing follows from it', async () => {
+    const { useCase, store } = setup();
+
+    await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', refinement: { business: 'done', technical: 'done' } }, user);
+
+    expect(store.artifactsOf().get('F-1')?.status).toBe('ready');
   });
 });

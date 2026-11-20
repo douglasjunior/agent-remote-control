@@ -2,11 +2,15 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
+import type { AgentUsage } from '../../agent/ports/agent.port.js';
+import { ARTIFACT_SECTION_TITLES } from '../../artifacts/constants/artifact-catalog.constant.js';
+import type { ArtifactStatus } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.util.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
+import type { OpenedAgentSession } from '../models/agent-session.model.js';
 import { PendingRequestResults } from '../models/pending-request-results.model.js';
 import { type DelegationOutcome, RunningDelegations, type StartedDelegation } from '../models/running-delegations.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
@@ -15,9 +19,12 @@ import type { AnswerDelivery, ValidatedDelegation } from '../models/validated-de
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { type AgentResultDetails, buildAgentResult } from '../prompts/agent-result.prompt.js';
 import { describeDelegation } from '../prompts/previous-turn.prompt.js';
-import { AgentRoundService } from '../services/agent-round.service.js';
+import { type AgentPrompt, type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
+import { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
+import { DelegationLimitsConfigService } from '../services/delegation-limits-config.service.js';
+import { DelegationStatusService } from '../services/delegation-status.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
@@ -53,6 +60,9 @@ export class RunDelegationUseCase {
     private readonly agentRound: AgentRoundService,
     private readonly agentQuestions: AnswerAgentQuestionsUseCase,
     private readonly runAgentRequests: RunAgentRequestsUseCase,
+    private readonly delegationStatus: DelegationStatusService,
+    private readonly limits: DelegationLimitsConfigService,
+    private readonly toolSessions: AgentToolSessionsService,
   ) {}
 
   /**
@@ -127,6 +137,7 @@ export class RunDelegationUseCase {
       this.replacedDelegations.add(existing);
       this.questionQueue.discard(conversationKey, delegateToRole, existing.projectName);
       await existing.turn.cancel();
+      this.toolSessions.close(existing.agentPort);
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);
       this.conversationRuntime.unregisterDelegation(conversationKey, existing);
@@ -167,7 +178,8 @@ export class RunDelegationUseCase {
     );
     request.onDelegation?.({ ...event, phase: 'started' });
 
-    const effectiveSessionMode = sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
+    // A task has a session of its own, so the session mode chooses only among the sessions of work without one.
+    const effectiveSessionMode = artifactId ? 'resume' : sessionMode ?? this.agentRegistry.getDefaultSessionMode(delegateToRole);
     let currentTaskSpec = taskSpec;
     const openWorkId = request.resumable ? event.delegationId : undefined;
 
@@ -222,19 +234,12 @@ export class RunDelegationUseCase {
     }
 
     let outcome = 'stopped';
+    const costs: AgentPromptCost[] = [];
+    let workingStatus: ArtifactStatus | undefined;
     try {
-      const runRound = (text: string, delivery?: AnswerDelivery) => this.agentRound.run({
-        agentPort: delegatePort,
-        cwd,
-        role: delegateToRole,
-        prompt: text,
-        request,
-        turn: delegationTurn,
-        session,
-        sessionMode: effectiveSessionMode,
-        projectName,
-        answerDelivery: delivery,
-      });
+      if (artifactId) {
+        workingStatus = await this.delegationStatus.start(request.conversationId, artifactId, delegateToRole);
+      }
       const requester: AgentRequester = {
         role: delegateToRole,
         roleName,
@@ -242,38 +247,62 @@ export class RunDelegationUseCase {
         delegationId,
         ...(artifactId ? { artifactId } : {}),
       };
-      const pending = new PendingRequestResults();
-      const runDelegate = async (text: string, delivery?: AnswerDelivery) => pending.keep(await this.runAgentRequests.resolve(
-        await runRound(pending.before(text), delivery),
-        results => runRound(results),
+      const runRound = (prompt: AgentPrompt, delivery?: AnswerDelivery) => this.agentRound.run({
+        agentPort: delegatePort,
+        cwd,
+        role: delegateToRole,
         requester,
+        prompt,
+        request,
+        turn: delegationTurn,
+        session,
+        sessionMode: effectiveSessionMode,
+        projectName,
+        artifactId,
+        answerDelivery: delivery,
+        onPrompt: cost => costs.push(cost),
+      });
+      const pending = new PendingRequestResults();
+      const resolveRequests = async (response: string) => pending.keep(await this.runAgentRequests.resolve(
+        response,
+        results => runRound(results),
+        { ...requester, agentInterface: this.agentRound.interfaceOf(delegatePort) },
         rest => this.questionParser.parse(rest).kind !== 'none',
         activity => request.onActivity?.(activity, requester.role),
       ));
-      const opening = firstPrompt ?? await this.withDelegatedArtifact(request.conversationId, artifactId, currentTaskSpec);
+      const opening = (opened: OpenedAgentSession) => this.openingPrompt(opened, request.conversationId, {
+        artifactId,
+        taskSpec: currentTaskSpec,
+        firstPrompt,
+      });
       const response = await this.agentQuestions.execute(
-        await runDelegate(opening, answerDelivery),
-        text => runDelegate(text),
-        this.agentQuestions.askerFor(delegateToRole, projectName),
+        await resolveRequests(await runRound(opening, answerDelivery)),
+        async text => resolveRequests(await runRound(pending.before(text))),
+        this.agentQuestions.askerFor(delegateToRole, projectName, artifactId),
         request,
         openWorkId,
       );
       const durationMs = Date.now() - startedAt;
+      const usage = this.totalUsage(costs);
+      const promptChars = costs.reduce((total, cost) => total + cost.promptChars, 0);
+      const tokens = usage ? `, InputTokens=${usage.inputTokens}, OutputTokens=${usage.outputTokens}, TotalTokens=${usage.totalTokens}` : '';
       this.logger.log(
-        `[Delegation Finished] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+        `[Delegation Finished] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}, Prompts=${costs.length}, PromptChars=${promptChars}${tokens}`,
       );
       request.onDelegation?.({
         ...event,
         phase: 'finished',
         response,
         agentInfo: await this.agentRound.buildAgentInfo(delegatePort, delegateToRole, request.conversationId),
-        usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
+        usage,
         durationMs,
       });
       outcome = 'finished';
-      return buildAgentResult(delegateToRole, projectName, response, {
+      const verdict = artifactId ? await this.delegationStatus.finish(request.conversationId, artifactId, delegateToRole, response, workingStatus) : undefined;
+      return buildAgentResult(delegateToRole, projectName, verdict?.closesStep ? this.receipt(response, delegateToRole, artifactId!) : response, {
         agentInfo,
         ...await this.heldArtifactDetails(request.conversationId, artifactId),
+        ...(verdict ? { verdict: verdict.verdict } : {}),
       });
     } catch (error) {
       // Closing a replaced agent's session can surface as any error, none of which is a failure of its task.
@@ -317,21 +346,80 @@ export class RunDelegationUseCase {
         await this.artifacts.release(request.conversationId, artifactId, delegationId, outcome).catch((error: unknown) => {
           this.logger.error(`[Artifact Release Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
         });
+        // A delegation the agent answered no prompt of may have shown its session nothing, so the earlier end of work stands.
+        if (costs.length > 0) {
+          await this.agentRound.recordWorkEnded(session, delegatePort, {
+            role: delegateToRole,
+            agentId: delegatePort.agentName,
+            projectName: projectName ?? null,
+            artifactId,
+          }).catch((error: unknown) => {
+            this.logger.error(`[Session Record Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
+          });
+        }
       }
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
+      this.toolSessions.close(delegatePort);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
   }
 
-  /** The agent starts from the content of the artifact it holds, read when it starts, so the specification only says what to do with it. */
-  private async withDelegatedArtifact(conversationId: string, artifactId: string | undefined, taskSpec: string): Promise<string> {
-    if (!artifactId) {
-      return taskSpec;
+  /** The usage of every prompt of a delegation added up, field by field; a field no prompt reported stays out. */
+  private totalUsage(costs: readonly AgentPromptCost[]): AgentUsage | undefined {
+    const usages = costs.flatMap(cost => (cost.usage ? [cost.usage] : []));
+    if (usages.length === 0) {
+      return undefined;
+    }
+    const sum = (field: keyof AgentUsage): number => usages.reduce((total, usage) => total + (usage[field] ?? 0), 0);
+    const optional = (field: 'thoughtTokens' | 'cachedReadTokens' | 'cachedWriteTokens') =>
+      (usages.some(usage => usage[field] !== undefined) ? { [field]: sum(field) } : {});
+    return {
+      totalTokens: sum('totalTokens'),
+      inputTokens: sum('inputTokens'),
+      outputTokens: sum('outputTokens'),
+      ...optional('thoughtTokens'),
+      ...optional('cachedReadTokens'),
+      ...optional('cachedWriteTokens'),
+    };
+  }
+
+  /**
+   * The agent starts from the artifact it holds, so the specification only says what to do with it. A session new to
+   * the task gets its whole content; one whose work on the task ended before gets what changed since. A session that
+   * carries on from where it stopped (a `firstPrompt`) was holding the task until then, so it gets the prompt alone. A
+   * feature always comes whole, since what changed in its tasks is not in its own history.
+   */
+  private async openingPrompt(
+    opened: OpenedAgentSession,
+    conversationId: string,
+    { artifactId, taskSpec, firstPrompt }: Pick<ValidatedDelegation, 'artifactId' | 'taskSpec' | 'firstPrompt'>,
+  ): Promise<string> {
+    const text = firstPrompt ?? taskSpec;
+    const newSession = opened.state === 'new';
+    if (!artifactId || (firstPrompt !== undefined && !newSession)) {
+      return text;
     }
     const all = await this.artifacts.list(conversationId, { statuses: 'all' });
     const artifact = all.find(candidate => candidate.id === artifactId)!;
-    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${this.artifactFormatter.detail(artifact, all)}\n[/DELEGATED_ARTIFACT]\n\n${taskSpec}`;
+    const content = !newSession && opened.workEndedAt && artifact.type === 'task'
+      ? this.artifactFormatter.changesSince(artifact, all, opened.workEndedAt)
+      : this.artifactFormatter.detail(artifact, all);
+    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${content}\n[/DELEGATED_ARTIFACT]\n\n${text}`;
+  }
+
+  /**
+   * A verdict that closed a step comes with a report the agent wrote on its task, so past the limit the CEO gets its
+   * start and where the rest is. A verdict that keeps the task where it was carries what the CEO must act on, whole.
+   */
+  private receipt(response: string, role: string, artifactId: string): string {
+    const maxChars = this.limits.getMaxResultChars();
+    if (maxChars === 0 || response.length <= maxChars) {
+      return response;
+    }
+    const sections = this.agentRegistry.getArtifactAccess(role).sections.map(section => ARTIFACT_SECTION_TITLES[section]);
+    const where = sections.length > 0 ? `${artifactId}, in its ${sections.join(' or ')} section` : artifactId;
+    return `${response.slice(0, maxChars).trimEnd()}\n\n[The rest of this result, ${response.length - maxChars} characters, was left out. The full report is on ${where}.]`;
   }
 
   /** A new delegation of a role takes the place of whatever a restart left stopped for it. */

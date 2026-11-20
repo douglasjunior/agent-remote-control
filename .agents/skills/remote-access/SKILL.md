@@ -95,7 +95,9 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   since choosing it is trusting its operator; null unless HTTPS, or HTTP to `localhost`, `127.0.0.1` or `[::1]`),
   `signalingUrl(baseUrl)`, `identity()`, created once in `<DATA_DIR>/remote`
   (`0o700`): a self-signed ECDSA P-256 `certificate.pem` and `key.pem`, both `0o600`, whose fingerprint derives the
-  instance id, and `signChallenge(nonce)`. The link stays the same across restarts.
+  instance id, and `signChallenge(nonce)`. The pair is created under the key's lock (`storage` module), so hosts that
+  start together on one `DATA_DIR` create one, and again when either file is missing. The link stays the same across
+  restarts.
 - `ISignalingClientPort` → `WsSignalingClientAdapter`: answers each `host.challenge` with the registration the
   `register` option builds, reconnects with backoff from 1 s to 60 s, warns once while unreachable, drops a socket
   quiet for 70 s and stops for good on `4400`, `4403` or `4409`. A failing registration or signal handler is logged,

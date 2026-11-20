@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
+import { AgentToolsConfigService } from '../services/agent-tools-config.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
@@ -27,7 +29,7 @@ describe('CancelAgentTurnUseCase', () => {
   beforeEach(() => {
     agentPort = new StubAgentPort();
     const factory = new StubAgentPortFactory(() => agentPort);
-    runtime = new ConversationRuntimeService(factory, 60_000);
+    runtime = new ConversationRuntimeService(factory, new AgentToolSessionsService(new AgentToolsConfigService()), 60_000);
     questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
     turnRetry = new TurnRetryService();
     shellRunning = false;

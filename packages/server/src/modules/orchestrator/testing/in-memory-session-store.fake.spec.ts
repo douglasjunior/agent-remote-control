@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it } from '@rstest/core';
 
-import type { SessionContext } from '../models/session-context.model.js';
-
 import { InMemorySessionStoreFake } from './in-memory-session-store.fake.js';
 import { buildSessionContext } from './session-context.fixture.js';
 
@@ -14,52 +12,28 @@ describe('InMemorySessionStoreFake', () => {
   });
 
   it('should return null when session does not exist', async () => {
-    const result = await store.findSession('conv-1');
-    expect(result).toBeNull();
+    await expect(store.findSession('conv-1')).resolves.toBeNull();
   });
 
-  it('should save and find session by conversation id', async () => {
-    const session: SessionContext = buildSessionContext({
-      conversationId: 'conv-1',
-    });
+  it('should find a seeded session by conversation id only', async () => {
+    const session = buildSessionContext({ conversationId: 'conv-th-1' });
 
-    await store.saveSession(session);
-    const found = await store.findSession('conv-1');
+    store.seed(session);
 
-    expect(found).toEqual(session);
+    await expect(store.findSession('conv-th-1')).resolves.toEqual(session);
+    await expect(store.findSession('conv-1')).resolves.toBeNull();
   });
 
-  it('should save and find session with a thread conversation id', async () => {
-    const session: SessionContext = buildSessionContext({
-      conversationId: 'conv-th-1',
-    });
+  it('should apply an update to the stored session, or to an empty one', async () => {
+    const agentSessions = [{ role: 'CEO', agentId: 'stub', sessionId: 'acp-1', projectName: null, artifactId: null }];
 
-    await store.saveSession(session);
-    const found = await store.findSession('conv-th-1');
-
-    expect(found).toEqual(session);
+    await expect(store.updateSession('conv-1', session => ({ ...session, agentSessions }))).resolves.toEqual({ conversationId: 'conv-1', agentSessions });
+    await expect(store.updateSession('conv-1', session => ({ ...session, agentSessions: [...session.agentSessions, ...agentSessions] })))
+      .resolves.toEqual({ conversationId: 'conv-1', agentSessions: [...agentSessions, ...agentSessions] });
   });
 
-  it('should not match a different conversation id', async () => {
-    const session: SessionContext = buildSessionContext({
-      conversationId: 'conv-th-1',
-    });
-
-    await store.saveSession(session);
-
-    const foundWithoutThread = await store.findSession('conv-1');
-    const foundDifferentThread = await store.findSession('conv-th-2');
-
-    expect(foundWithoutThread).toBeNull();
-    expect(foundDifferentThread).toBeNull();
-  });
-
-  it('should replace the session saved again for the same conversation', async () => {
-    await store.saveSession(buildSessionContext());
-    const agentSessions = [{ role: 'CEO', agentId: 'stub', sessionId: 'acp-1', projectName: null }];
-
-    await store.saveSession(buildSessionContext({ agentSessions }));
-
-    expect((await store.findSession('conv-1'))?.agentSessions).toEqual(agentSessions);
+  it('should leave the session as it is when the update returns undefined', async () => {
+    await expect(store.updateSession('conv-1', () => undefined)).resolves.toEqual({ conversationId: 'conv-1', agentSessions: [] });
+    await expect(store.findSession('conv-1')).resolves.toBeNull();
   });
 });

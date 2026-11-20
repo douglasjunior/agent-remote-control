@@ -1,40 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { Inject, Injectable } from '@nestjs/common';
 import { join } from 'node:path';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { ILockedFilesPort, type LockedFile } from '../../storage/ports/locked-files.port.js';
 import type { IOpenWorkStorePort, OpenWorkByConversation } from '../ports/open-work-store.port.js';
 
 
 const OPEN_WORK_FILENAME = 'open-work.json';
 
+/** `DATA_DIR/open-work.json`: the work in progress of every conversation, by conversation id. */
 @Injectable()
 export class JsonOpenWorkStoreAdapter implements IOpenWorkStorePort {
-  private readonly logger = new Logger(JsonOpenWorkStoreAdapter.name);
-  private readonly dataDirectory: string;
-  private readonly filePath: string;
+  private readonly file: LockedFile<OpenWorkByConversation>;
 
-  constructor(dataDirectoryService: DataDirectoryService) {
-    this.dataDirectory = dataDirectoryService.resolve();
-    this.filePath = join(this.dataDirectory, OPEN_WORK_FILENAME);
+  constructor(dataDirectoryService: DataDirectoryService, @Inject(ILockedFilesPort) files: ILockedFilesPort) {
+    this.file = files.json<OpenWorkByConversation>(join(dataDirectoryService.resolve(), OPEN_WORK_FILENAME), {
+      parse: content => (content !== null && typeof content === 'object' && !Array.isArray(content) ? content as OpenWorkByConversation : {}),
+      empty: {},
+    });
   }
 
-  async load(): Promise<OpenWorkByConversation> {
-    try {
-      const parsed: unknown = JSON.parse(await readFile(this.filePath, 'utf-8'));
-      return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as OpenWorkByConversation : {};
-    } catch {
-      this.logger.debug(`open_work_read_skipped: ${this.filePath}`);
-      return {};
-    }
+  load(): Promise<OpenWorkByConversation> {
+    return this.file.read();
   }
 
-  /** Renames a complete file into place, because the process may die at any moment of a write. */
-  async save(work: OpenWorkByConversation): Promise<void> {
-    await mkdir(this.dataDirectory, { recursive: true });
-    const temporary = `${this.filePath}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(work, null, 2), 'utf-8');
-    await rename(temporary, this.filePath);
+  async update(change: (work: OpenWorkByConversation) => OpenWorkByConversation): Promise<void> {
+    await this.file.update(change);
   }
 }

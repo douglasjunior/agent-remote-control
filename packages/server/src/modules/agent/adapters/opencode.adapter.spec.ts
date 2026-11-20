@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import {
   acpHarness,
   acpSdkMockModule,
+  advertiseHttpMcp,
   createProcessRunnerMock,
+  expectHttpMcpServerAttached,
   resetAcpHarness,
   streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
@@ -30,6 +32,12 @@ function spawnCall(spawn: ReturnType<typeof createProcessRunnerMock>['spawn']) {
 }
 
 describe('OpenCodeAdapter', () => {
+  it('should attach an HTTP MCP server to new and loaded sessions when the CLI advertises it', async () => {
+    advertiseHttpMcp();
+
+    await expectHttpMcpServerAttached(buildAdapter().adapter);
+  });
+
   beforeEach(() => {
     resetAcpHarness();
   });
