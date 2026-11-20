@@ -8,7 +8,7 @@ while no agents are known) and keeps the list of the last `squads`.
 
 - From 768 px the list and the squad sit side by side; below, the route shows one of them and the squad links back to
   the list ("All squads").
-- There is no header link. The settings page links to it (a "Squads" card under its header) and so does the
+- There is no header link. The settings page links to it (a "Squads" card in its Squads tab) and so does the
   conversation settings sheet ("Manage squads"). Both carry `returnTo` in the router state (`squadsState`), the links
   within the page keep it, and the X ("Close squads") returns there, or to `/` for a page opened from its address.
 

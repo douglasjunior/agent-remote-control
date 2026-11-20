@@ -19,12 +19,13 @@ const SETTINGS: SettingView[] = [
 const withSetting = (key: string, changes: Partial<SettingView>): SettingView[] =>
   SETTINGS.map(view => (view.key === key ? { ...view, ...changes } as SettingView : view));
 
-function openSettings(settings = SETTINGS) {
-  const app = renderApp('/settings');
+function openSettings(settings = SETTINGS, tab?: string) {
+  const app = renderApp(tab ? `/settings?tab=${tab}` : '/settings');
   act(() => app.connection.emitEvent({ type: 'settings', settings }));
   return app;
 }
 
+const openTab = (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(screen.getByRole('tab', { name: new RegExp(`^${name}`) }));
 const field = (label: string) => screen.getByRole('group', { name: label });
 const lastSent = (connection: ReturnType<typeof renderApp>['connection']) => connection.sent.at(-1);
 
@@ -33,22 +34,106 @@ afterEach(() => {
 });
 
 describe('SettingsPage', () => {
-  it('should ask for the settings once connected and show them by section, with where each value comes from', () => {
+  it('should ask for the settings once connected and show them by tab and section, with where each value comes from', async () => {
+    const user = userEvent.setup();
     const { connection } = renderApp('/settings');
 
     expect(connection.sent).toContainEqual({ type: 'settings.get' });
     expect(screen.getByRole('status')).toHaveTextContent('Loading settings…');
     act(() => connection.emitEvent({ type: 'settings', settings: SETTINGS }));
 
-    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['General', 'Discord', 'Speech-to-text']);
+    expect(screen.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['General', 'Discord', 'Agents', 'Squads', 'Advanced']);
+    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['General']);
     expect(within(field('Language')).getByText('Default')).toBeInTheDocument();
     expect(within(field('Language')).queryByText('USER_LANGUAGE')).not.toBeInTheDocument();
+
+    await openTab(user, 'Discord');
     expect(within(field('Server ID')).getByText('Environment')).toBeInTheDocument();
     expect(within(field('Server ID')).getByText('DISCORD_GUILD_ID')).toBeInTheDocument();
+
+    await openTab(user, 'Advanced');
+    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Sessions and logs', 'Speech-to-text']);
     expect(within(field('Question timeout')).getByText('Saved')).toBeInTheDocument();
     expect(within(field('Question timeout')).getByText('milliseconds · 5m')).toBeInTheDocument();
     expect(within(field('Log retention')).getByText('days')).toBeInTheDocument();
     expect(within(field('Provider')).getByText('Applies when the server restarts.')).toBeInTheDocument();
+  });
+
+  it('should keep the open tab in the address, so a reload or a link opens it', async () => {
+    const user = userEvent.setup();
+    const { router } = openSettings();
+
+    await openTab(user, 'Advanced');
+    expect(router.state.location.search).toBe('?tab=advanced');
+    expect(screen.getByRole('tab', { name: 'Advanced' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByRole('group', { name: 'Language' })).not.toBeInTheDocument();
+
+    await openTab(user, 'General');
+    expect(router.state.location.search).toBe('');
+    expect(field('Language')).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/settings');
+  });
+
+  it('should open the tab named in the address, and the first one when the address names none it knows', async () => {
+    const { router } = openSettings(SETTINGS, 'discord');
+    expect(screen.getByRole('tab', { name: 'Discord' })).toHaveAttribute('aria-selected', 'true');
+    expect(field('Server ID')).toBeInTheDocument();
+
+    await act(() => router.navigate('/settings?tab=nowhere'));
+
+    expect(screen.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('should still close to the page it was opened from after the tab changes', async () => {
+    const user = userEvent.setup();
+    const { router } = openConversation();
+
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    await openTab(user, 'Advanced');
+    await user.click(screen.getByRole('button', { name: 'Close settings' }));
+
+    expect(router.state.location.pathname).toBe('/c/c1');
+  });
+
+  it('should link to the squads from their tab and come back to it', async () => {
+    const user = userEvent.setup();
+    const { router, connection } = openSettings(SETTINGS, 'squads');
+
+    await user.click(screen.getByRole('link', { name: /Squads/ }));
+    expect(router.state.location.pathname).toBe('/squads');
+    act(() => connection.emitEvent({ type: 'squads', squads: [] }));
+    await user.click(screen.getByRole('button', { name: 'Close squads' }));
+
+    expect(router.state.location.pathname + router.state.location.search).toBe('/settings?tab=squads');
+  });
+
+  it('should keep the changes of every tab, mark the tabs that hold one and tell an invalid value apart', async () => {
+    const user = userEvent.setup();
+    const { connection } = openSettings();
+    const tab = (name: string) => screen.getByRole('tab', { name: new RegExp(`^${name}`) });
+
+    await user.click(tab('Discord'));
+    await user.click(within(field('Discord bot')).getByRole('switch'));
+    await openTab(user, 'Advanced');
+    await user.type(within(field('Question timeout')).getByRole('textbox'), 'x');
+    await user.type(within(field('Log retention')).getByRole('textbox'), '2');
+
+    expect(tab('Discord')).toHaveAccessibleName('Discord (has unsaved changes)');
+    expect(tab('Advanced')).toHaveAccessibleName('Advanced (has an invalid value)');
+    expect(tab('General')).toHaveAccessibleName('General');
+    expect(screen.getByText('3 unsaved changes')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+
+    await user.type(within(field('Question timeout')).getByRole('textbox'), '{Backspace}');
+    await openTab(user, 'Discord');
+    expect(within(field('Discord bot')).getByText('Unsaved')).toBeInTheDocument();
+    expect(tab('Advanced')).toHaveAccessibleName('Advanced (has unsaved changes)');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { DISCORD_ENABLED: false, LOG_RETENTION_DAYS: 142 } });
+    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('LOG_RETENTION_DAYS', { source: 'saved', value: 142 }) }));
+    expect(await screen.findByText('Settings saved')).toBeInTheDocument();
+    expect(tab('Discord')).toHaveAccessibleName('Discord');
   });
 
   it('should show a setting only its variable sets read-only, with a tooltip that names the variable', async () => {
@@ -59,7 +144,7 @@ describe('SettingsPage', () => {
       { key: 'STT_FFMPEG_BIN', envOnly: true, group: 'speech', apply: 'live', source: 'default', kind: 'text', value: 'ffmpeg', defaultValue: 'ffmpeg' },
       { key: 'FUTURE_LIMIT', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'integer', value: 7, defaultValue: 1 },
       { key: 'FUTURE_TOKEN', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'secret', value: { set: true } },
-    ]);
+    ], 'advanced');
 
     const shell = field('Shell commands');
     expect(within(shell).getByText('Enabled')).toBeInTheDocument();
@@ -86,7 +171,7 @@ describe('SettingsPage', () => {
 
   it('should check a field as it is typed and save every change together, for every open page', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'advanced');
     const timeout = within(field('Question timeout')).getByRole('textbox');
 
     await user.clear(timeout);
@@ -98,6 +183,7 @@ describe('SettingsPage', () => {
     await user.clear(timeout);
     await user.type(timeout, '0');
     expect(within(field('Question timeout')).getByText('milliseconds · off')).toBeInTheDocument();
+    await openTab(user, 'Discord');
     await user.click(within(field('Discord bot')).getByRole('switch'));
     expect(screen.getByText('2 unsaved changes')).toBeInTheDocument();
     expect(within(field('Discord bot')).getByText('Unsaved')).toBeInTheDocument();
@@ -108,7 +194,8 @@ describe('SettingsPage', () => {
     act(() => connection.emitEvent({ type: 'settings', settings: withSetting('QUESTION_TIMEOUT_MS', { value: 0 }) }));
 
     expect(await screen.findByText('Settings saved')).toBeInTheDocument();
-    expect(timeout).toHaveValue('0');
+    await openTab(user, 'Advanced');
+    expect(within(field('Question timeout')).getByRole('textbox')).toHaveValue('0');
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
   });
 
@@ -130,12 +217,12 @@ describe('SettingsPage', () => {
 
   it('should discard the changes, and reset a saved value to its variable or default', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'advanced');
     await user.type(within(field('Log retention')).getByRole('textbox'), '0');
 
     await user.click(screen.getByRole('button', { name: 'Discard' }));
     expect(within(field('Log retention')).getByRole('textbox')).toHaveValue('14');
-    expect(within(field('Language')).queryByRole('button', { name: 'Reset to default' })).not.toBeInTheDocument();
+    expect(within(field('Log retention')).queryByRole('button', { name: 'Reset to default' })).not.toBeInTheDocument();
 
     await user.click(within(field('Question timeout')).getByRole('button', { name: 'Reset to default' }));
 
@@ -144,7 +231,7 @@ describe('SettingsPage', () => {
 
   it('should take a new secret without ever showing the saved one, and clear it', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'discord');
     const token = () => field('Bot token');
     expect(within(token()).getByText('Not set')).toBeInTheDocument();
     expect(within(token()).queryByRole('button', { name: 'Clear' })).not.toBeInTheDocument();
@@ -174,7 +261,7 @@ describe('SettingsPage', () => {
 
   it('should tell to restart the server once a setting that applies on restart is saved', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'advanced');
 
     await user.click(within(field('Provider')).getByRole('combobox', { name: 'Provider' }));
     await user.click(await screen.findByRole('option', { name: 'none' }));
@@ -186,7 +273,7 @@ describe('SettingsPage', () => {
 
   it('should test the Discord token typed in the form with the server of the form, before saving', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'discord');
     await user.click(within(field('Bot token')).getByRole('button', { name: 'Set' }));
     await user.type(within(field('Bot token')).getByLabelText('Bot token'), 'typed-token');
     await user.clear(within(field('Server ID')).getByRole('textbox'));
@@ -202,7 +289,7 @@ describe('SettingsPage', () => {
 
   it('should test the saved token with the saved server, and show why a test failed', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings();
+    const { connection } = openSettings(SETTINGS, 'discord');
 
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
     expect(lastSent(connection)).toEqual({ type: 'settings.discord.test', guildId: '12345678901234567' });
@@ -217,7 +304,7 @@ describe('SettingsPage', () => {
 
   it('should send no server to test when the settings hold none it knows', async () => {
     const user = userEvent.setup();
-    const { connection } = openSettings(SETTINGS.filter(view => view.key !== 'DISCORD_GUILD_ID'));
+    const { connection } = openSettings(SETTINGS.filter(view => view.key !== 'DISCORD_GUILD_ID'), 'discord');
 
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
 
@@ -225,7 +312,7 @@ describe('SettingsPage', () => {
   });
 
   it('should show a setting and a section this page does not know by their keys', () => {
-    openSettings([{ key: 'NEW_SETTING', group: 'future', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: '', defaultValue: '' }]);
+    openSettings([{ key: 'NEW_SETTING', group: 'future', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: '', defaultValue: '' }], 'advanced');
 
     expect(screen.getByRole('heading', { name: 'future' })).toBeInTheDocument();
     expect(field('NEW_SETTING')).toBeInTheDocument();

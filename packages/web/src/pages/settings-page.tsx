@@ -1,21 +1,36 @@
 import type { SettingView } from '@agent-remote-control/protocol/settings';
 import { ChevronRight, RotateCw, Users, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { IconButton } from '../components/icon-button.js';
 import { DiscordConnectionTest, type DiscordTestState } from '../components/server-settings/discord-connection-test.js';
 import { checkDraft, isChanged, type SettingDraft } from '../components/server-settings/setting-drafts.js';
 import { SettingField } from '../components/server-settings/setting-field.js';
-import { GROUP_TITLES, settingText } from '../components/server-settings/setting-texts.js';
+import { groupTitle, settingText } from '../components/server-settings/setting-texts.js';
 import type { SettingsState } from '../components/server-settings/settings-paths.js';
+import {
+  DEFAULT_SETTINGS_TAB,
+  isSettingsTab,
+  SETTINGS_TAB_PARAM,
+  SETTINGS_TABS,
+  type SettingsTabId,
+  tabOf,
+} from '../components/server-settings/settings-tabs.js';
 import { squadsPath, squadsState } from '../components/squads/squad-paths.js';
 import { Button } from '../components/ui/button.js';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs.js';
 import { useConnection } from '../connection/connection-context.js';
 
 
 type Drafts = Readonly<Record<string, SettingDraft>>;
+type TabMark = 'invalid' | 'unsaved';
+
+const TAB_MARKS: Readonly<Record<TabMark, { readonly label: string; readonly dot: string }>> = {
+  invalid: { label: 'has an invalid value', dot: 'bg-destructive' },
+  unsaved: { label: 'has unsaved changes', dot: 'bg-attention' },
+};
 
 /** The sections in the order their first setting comes from the server. */
 function groupsOf(views: readonly SettingView[]): [string, SettingView[]][] {
@@ -31,13 +46,16 @@ function without(drafts: Drafts, keys: readonly string[]): Drafts {
 }
 
 /**
- * The settings of the server, by section: each field shows where its value comes from, a change is saved with the
+ * The settings of the server, by tab and section, the tab in the `tab` query parameter: each field shows where its value comes from, a change is saved with the
  * others and reaches every open settings page, and a setting that applies on restart says so.
  */
 export function SettingsPage() {
   const { connection, status } = useConnection();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get(SETTINGS_TAB_PARAM);
+  const tab = isSettingsTab(requestedTab) ? requestedTab : DEFAULT_SETTINGS_TAB;
   const close = () => void navigate((location.state as SettingsState | null)?.returnTo ?? '/');
   const [views, setViews] = useState<readonly SettingView[] | null>(null);
   const [drafts, setDrafts] = useState<Drafts>({});
@@ -82,6 +100,25 @@ export function SettingsPage() {
   const changes = useMemo(() => (views ?? []).filter(view => isChanged(view, drafts[view.key])), [views, drafts]);
   const checks = useMemo(() => new Map(changes.map(view => [view.key, checkDraft(view, drafts[view.key]!)])), [changes, drafts]);
   const invalid = [...checks.values()].some(check => !check.ok);
+  const marks = useMemo(() => {
+    const result = new Map<SettingsTabId, TabMark>();
+    for (const view of changes) {
+      const mark: TabMark = checks.get(view.key)!.ok ? 'unsaved' : 'invalid';
+      const current = result.get(tabOf(view));
+      result.set(tabOf(view), current === 'invalid' ? current : mark);
+    }
+    return result;
+  }, [changes, checks]);
+
+  const selectTab = (value: unknown) => {
+    const next = new URLSearchParams(searchParams);
+    if (value === DEFAULT_SETTINGS_TAB) {
+      next.delete(SETTINGS_TAB_PARAM);
+    } else {
+      next.set(SETTINGS_TAB_PARAM, String(value));
+    }
+    setSearchParams(next, { replace: true, state: location.state });
+  };
 
   const send = (keys: readonly string[], command: Parameters<typeof connection.send>[0]) => {
     pending.current = keys;
@@ -118,6 +155,51 @@ export function SettingsPage() {
     });
   };
 
+  const squadsLink = (
+    <Link
+      to={squadsPath()}
+      state={squadsState(location)}
+      className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10 transition-colors outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Users aria-hidden className="size-4" /></span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-sm font-medium">Squads</span>
+        <span className="text-xs text-muted-foreground">The agent, model and effort of every role, saved once and applied to any conversation.</span>
+      </span>
+      <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+    </Link>
+  );
+
+  const renderSettings = (id: SettingsTabId) => {
+    if (views === null) {
+      return <p role="status" className="text-sm text-muted-foreground">Loading settings…</p>;
+    }
+    return groupsOf(views.filter(view => tabOf(view) === id)).map(([group, members]) => (
+      <section key={group} aria-labelledby={`settings-group-${group}`} className="flex flex-col gap-2">
+        <h3 id={`settings-group-${group}`} className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+          {groupTitle(id, group)}
+        </h3>
+        <div className="divide-y rounded-xl bg-card ring-1 ring-foreground/10">
+          {members.map((view) => {
+            const check = checks.get(view.key);
+            return (
+              <SettingField
+                key={view.kind === 'secret' ? `${view.key}:${saves}` : view.key}
+                view={view}
+                draft={drafts[view.key]}
+                error={check && !check.ok ? check.error : undefined}
+                disabled={saving}
+                onDraft={value => draft(view.key, value)}
+                onReset={() => reset(view.key)}
+              />
+            );
+          })}
+          {group === 'discord' && <DiscordConnectionTest state={discordTest} onTest={testDiscord} />}
+        </div>
+      </section>
+    ));
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -134,19 +216,6 @@ export function SettingsPage() {
             </IconButton>
           </header>
 
-          <Link
-            to={squadsPath()}
-            state={squadsState(location)}
-            className="flex items-center gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10 transition-colors outline-none hover:bg-muted/60 focus-visible:ring-[3px] focus-visible:ring-ring/50"
-          >
-            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground"><Users aria-hidden className="size-4" /></span>
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span className="text-sm font-medium">Squads</span>
-              <span className="text-xs text-muted-foreground">The agent, model and effort of every role, saved once and applied to any conversation.</span>
-            </span>
-            <ChevronRight aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-          </Link>
-
           {restartKeys.length > 0 && (
             <p role="status" className="flex items-start gap-2 rounded-xl border border-attention bg-[color-mix(in_oklab,var(--attention)_9%,var(--card))] px-3 py-2.5 text-sm">
               <RotateCw aria-hidden className="mt-0.5 size-4 shrink-0" />
@@ -154,32 +223,32 @@ export function SettingsPage() {
             </p>
           )}
 
-          {views === null
-            ? <p role="status" className="text-sm text-muted-foreground">Loading settings…</p>
-            : groupsOf(views).map(([group, members]) => (
-              <section key={group} aria-labelledby={`settings-group-${group}`} className="flex flex-col gap-2">
-                <h3 id={`settings-group-${group}`} className="px-1 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
-                  {GROUP_TITLES[group] ?? group}
-                </h3>
-                <div className="divide-y rounded-xl bg-card ring-1 ring-foreground/10">
-                  {members.map((view) => {
-                    const check = checks.get(view.key);
-                    return (
-                      <SettingField
-                        key={view.kind === 'secret' ? `${view.key}:${saves}` : view.key}
-                        view={view}
-                        draft={drafts[view.key]}
-                        error={check && !check.ok ? check.error : undefined}
-                        disabled={saving}
-                        onDraft={value => draft(view.key, value)}
-                        onReset={() => reset(view.key)}
-                      />
-                    );
-                  })}
-                  {group === 'discord' && <DiscordConnectionTest state={discordTest} onTest={testDiscord} />}
-                </div>
-              </section>
+          <Tabs value={tab} onValueChange={selectTab}>
+            <div className="-mx-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+              <TabsList aria-label="Settings sections" className="w-max">
+                {SETTINGS_TABS.map(({ id, label }) => {
+                  const mark = marks.get(id);
+                  return (
+                    <TabsTrigger key={id} value={id} className="px-3">
+                      {label}
+                      {mark && (
+                        <>
+                          {' '}
+                          <span aria-hidden className={`size-1.5 rounded-full ${TAB_MARKS[mark].dot}`} />
+                          <span className="sr-only">{`(${TAB_MARKS[mark].label})`}</span>
+                        </>
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
+            {SETTINGS_TABS.map(({ id }) => (
+              <TabsContent key={id} value={id} className="flex flex-col gap-6 pt-2">
+                {id === 'squads' ? squadsLink : renderSettings(id)}
+              </TabsContent>
             ))}
+          </Tabs>
         </div>
       </div>
       {(changes.length > 0 || failure) && (

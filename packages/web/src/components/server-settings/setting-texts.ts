@@ -1,3 +1,6 @@
+import type { SettingsTabId } from './settings-tabs.js';
+
+
 /** How a setting reads on the settings page; `unit` adds a hint beside its number. */
 export type SettingText = {
   readonly label: string;
@@ -15,6 +18,11 @@ export const GROUP_TITLES: Readonly<Record<string, string>> = {
   turns: 'Turns and delegations',
   speech: 'Speech-to-text',
 };
+
+/** The `general` group of the server holds the language and the session and log options, which sit in two tabs. */
+export function groupTitle(tab: SettingsTabId, group: string): string {
+  return tab === 'advanced' && group === 'general' ? 'Sessions and logs' : GROUP_TITLES[group] ?? group;
+}
 
 export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   USER_LANGUAGE: {

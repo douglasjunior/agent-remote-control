@@ -8,9 +8,26 @@ pickers of the conversation settings sheet and the squad editor, which are anoth
 
 - The header link (a `Settings` gear icon link with a tooltip, beside the Skills link) carries `returnTo` in the router
   state (`settingsState`), and the X ("Close settings") returns there, or to `/` for a page opened from its address.
-- Under the header, a "Squads" card links to `/squads` with `returnTo` (see [squads-page.md](squads-page.md)).
-- One centered column (`max-w-3xl`), one `section` per group in the order its first setting arrives, titled from
-  `GROUP_TITLES`; a group or a key the page does not know shows by its name, so a newer server still renders.
+- Under the header, a tab list (`Tabs`, `components/ui/tabs.tsx`) splits the page; the open tab is the `tab` query
+  parameter (`/settings?tab=advanced`; the default `general` leaves the address bare, an unknown value opens the default), set
+  with a replacing navigation that keeps the router state, so a reload or a link opens the same tab and Close still
+  returns to `returnTo`. The tab list scrolls horizontally on a phone (`overflow-x-auto` around a `w-max` list).
+  `settings-tabs.ts` places each setting: `tabOf` reads `KEY_TABS` (`USER_LANGUAGE`), then `GROUP_TABS` (`discord`,
+  `agents`), and sends anything else, including a group a newer server adds, to `advanced`.
+  - **General**: the language.
+  - **Discord**: the bot, its token and server, and "Test connection".
+  - **Agents**: agent login and its two timeouts.
+  - **Squads**: the "Squads" card linking to `/squads` with `returnTo` (the path and query, so closing the squads
+    page comes back to this tab; see [squads-page.md](squads-page.md)).
+  - **Advanced**: allowed origins, remote access, session idle timeout, question timeout and log retention (the
+    "Sessions and logs" section), shell commands, turn retry delays and delegation limits, speech-to-text.
+- Drafts, the save bar and the restart notice live above the tabs, so a change survives a tab switch and counts in
+  "N unsaved changes". A tab holding an unsaved draft shows a dot (`bg-attention`), one holding an invalid draft a
+  destructive dot, each with a screen-reader suffix in the tab name ("Discord (has unsaved changes)", "(has an invalid
+  value)"). An inactive tab is not mounted; the loading status shows inside each tab until the first `settings`.
+- One centered column (`max-w-3xl`), one `section` per group of the tab in the order its first setting arrives, titled
+  from `groupTitle` (`GROUP_TITLES`; the `general` group reads "Sessions and logs" in Advanced); a group or a key the
+  page does not know shows by its name, so a newer server still renders.
 - Each `SettingField` is a `group` named by its label (`SETTING_TEXTS`): the label, a source badge (`Saved`,
   `Environment`, `Default`), `Unsaved` while changed, the variable name in mono (none for the language), the
   description, and for an `apply: 'restart'` setting "Applies when the server restarts.". The control sits beside the

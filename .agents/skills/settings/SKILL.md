@@ -27,7 +27,7 @@ Every module that reads a setting imports `SettingsModule`.
 - `SETTINGS_CATALOG` (`constants/settings-catalog.constant.ts`) completes each key with `env`, `defaultValue`, `kind`
   (`boolean`, `integer`, `text`, `choice` with `options`, `secret`), `group` (the section of the settings page:
   `general`, `discord`, `web`, `remote`, `agents`, `shell`, `turns`, `speech`), `apply` and, for some, `envOnly`. Its
-  order is the page's.
+  order is the page's within a tab; the web app picks the tab of each setting from its key or group.
 - `apply: 'restart'` marks a value the server reads only as it starts: `STT_PROVIDER`, because `SpeechToTextModule`
   picks its adapter in a factory. Every other setting is `live`.
 - `envOnly: true` marks a setting only its environment variable sets, because it widens what the server exposes or
@@ -37,7 +37,8 @@ Every module that reads a setting imports `SettingsModule`.
   `WORKSPACE_DIR`, `WEB_ENABLED`, `WEB_STATIC_DIR`, `WEB_ACCESS_TOKEN`, and the CLIs' own variables (`CURSOR_*`,
   `CODEX_*`, `PATH`).
 - A new setting is an entry in `SETTING_SCHEMAS` and in `SETTINGS_CATALOG`, a reader through `IRuntimeSettingsPort`,
-  its label and description on the web settings page, and a row in the README and `.env.example`.
+  its label and description on the web settings page (it opens in the Advanced tab unless `settings-tabs.ts` places it
+  elsewhere), and a row in the README and `.env.example`.
 
 ## Resolution
 

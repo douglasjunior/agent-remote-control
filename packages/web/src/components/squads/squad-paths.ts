@@ -22,7 +22,7 @@ export function squadsPath(id?: string): string {
 /** The state of a link into the squads page: a link from another page remembers it, one within the page keeps where to return. */
 export function squadsState(location: Location): SquadsState | null {
   if (!location.pathname.startsWith(SQUADS_PATH)) {
-    return { returnTo: location.pathname };
+    return { returnTo: location.pathname + location.search };
   }
   const returnTo = (location.state as SquadsState | null)?.returnTo;
   return returnTo ? { returnTo } : null;

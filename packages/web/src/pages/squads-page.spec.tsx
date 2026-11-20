@@ -259,7 +259,7 @@ describe('SquadsPage', () => {
   });
 
   it('should be reached from the settings page and close back to it', async () => {
-    const app = openSquads('/settings');
+    const app = openSquads('/settings?tab=squads');
     const { user, router } = app;
 
     await user.click(screen.getByRole('link', { name: /Squads/ }));
@@ -269,7 +269,7 @@ describe('SquadsPage', () => {
     await user.click(within(pane()).getByRole('link', { name: 'All squads' }));
     await user.click(screen.getByRole('button', { name: 'Close squads' }));
 
-    expect(router.state.location.pathname).toBe('/settings');
+    expect(router.state.location.pathname + router.state.location.search).toBe('/settings?tab=squads');
   });
 
   it('should close to the start when it was opened from its address', async () => {
