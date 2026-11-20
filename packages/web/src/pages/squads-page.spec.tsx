@@ -89,14 +89,8 @@ describe('SquadsPage', () => {
     await user.click(within(pane()).getByRole('switch', { name: 'Default for new conversations' }));
     expect(create()).toBeDisabled();
 
-    await user.click(within(pane()).getByRole('button', { name: 'Add Developer' }));
-    expect(within(pane()).getByText('Pick the agent, model and effort of every role in the squad.')).toBeInTheDocument();
-    await pick(user, roleRow('Developer'), 'Agent', 'Codex');
-    emit(app, { type: 'models.list', agentId: 'codex', models: [{ id: 'gpt', name: 'GPT' }] });
-    await pick(user, roleRow('Developer'), 'Model', 'GPT');
-    emit(app, { type: 'efforts.list', agentId: 'codex', modelId: 'gpt', efforts: [{ id: 'high', name: 'High' }] });
-    await pick(user, roleRow('Developer'), 'Effort', 'High');
     await user.click(within(pane()).getByRole('button', { name: 'Add QA' }));
+    expect(within(pane()).getByText('Pick the agent, model and effort of every role in the squad.')).toBeInTheDocument();
     await pick(user, roleRow('QA'), 'Agent', 'Claude Code');
     emit(app, { type: 'models.list', agentId: 'claude', models: [] });
     await user.click(create());
@@ -106,13 +100,35 @@ describe('SquadsPage', () => {
       name: 'Backend team',
       description: 'APIs',
       isDefault: true,
-      profiles: { DEVELOPER: { agentId: 'codex', modelId: 'gpt', effortId: 'high' }, QA: { agentId: 'claude' } },
+      profiles: { QA: { agentId: 'claude' } },
     });
     expect(within(pane()).getByRole('button', { name: 'Saving…' })).toBeDisabled();
 
     emit(app, { type: 'squads', squads: [squad({ id: 'other', name: 'Someone else' })] });
     expect(await screen.findByText('Backend team saved')).toBeInTheDocument();
     expect(router.state.location.pathname).toBe('/squads/new');
+  });
+
+  it('should save the agent, model and effort picked for a role, once each list arrives', async () => {
+    const app = openSquads('/squads/new');
+    const { user, connection } = app;
+    emit(app, { type: 'squads', squads: [] });
+
+    await user.type(within(pane()).getByRole('textbox', { name: 'Name' }), 'Backend');
+    await user.click(within(pane()).getByRole('button', { name: 'Add Developer' }));
+    await pick(user, roleRow('Developer'), 'Agent', 'Codex');
+    emit(app, { type: 'models.list', agentId: 'codex', models: [{ id: 'gpt', name: 'GPT' }] });
+    await pick(user, roleRow('Developer'), 'Model', 'GPT');
+    emit(app, { type: 'efforts.list', agentId: 'codex', modelId: 'gpt', efforts: [{ id: 'high', name: 'High' }] });
+    await pick(user, roleRow('Developer'), 'Effort', 'High');
+    await user.click(within(pane()).getByRole('button', { name: 'Create squad' }));
+
+    expect(connection.sent.at(-1)).toEqual({
+      type: 'squads.save',
+      name: 'Backend',
+      isDefault: false,
+      profiles: { DEVELOPER: { agentId: 'codex', modelId: 'gpt', effortId: 'high' } },
+    });
   });
 
   it('should open a squad it created once the list holds it, without the draft it started from', async () => {

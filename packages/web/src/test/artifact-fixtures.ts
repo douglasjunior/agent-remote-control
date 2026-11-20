@@ -54,7 +54,7 @@ export function showDetail(app: AppHarness, artifact: ArtifactDetail): void {
 type Command = ClientCommand['type'];
 
 /** The last command of `type` the app sent. */
-export function lastSent<T extends Command>(app: AppHarness, type: T): Extract<ClientCommand, { type: T }> {
+export function lastSent<T extends Command>(app: Pick<AppHarness, 'connection'>, type: T): Extract<ClientCommand, { type: T }> {
   const command = app.connection.sent.filter(sent => sent.type === type).at(-1);
   if (!command) {
     throw new Error(`No ${type} was sent`);
@@ -64,7 +64,7 @@ export function lastSent<T extends Command>(app: AppHarness, type: T): Extract<C
 
 /** Answers the last mutation of `type` the app sent. */
 export async function answer(
-  app: AppHarness,
+  app: Pick<AppHarness, 'connection'>,
   type: 'artifact.create' | 'artifact.update' | 'artifact.comment' | 'artifact.delete',
   result: { ok: true; id: string } | { ok: false; error: string },
 ): Promise<void> {
