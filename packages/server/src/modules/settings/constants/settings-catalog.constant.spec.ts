@@ -21,4 +21,14 @@ describe('SETTINGS_CATALOG', () => {
     expect(SETTING_KEYS.filter(key => SETTINGS_CATALOG[key].apply === 'restart')).toEqual(['STT_PROVIDER']);
     expect(SETTINGS_CATALOG.STT_PROVIDER.options).toEqual(['whisper-cpp', 'none']);
   });
+
+  it('should leave only the environment to set what widens exposure or names a program to run', () => {
+    expect(SETTING_KEYS.filter(key => SETTINGS_CATALOG[key].envOnly)).toEqual([
+      'WEB_ALLOWED_ORIGINS',
+      'REMOTE_URL',
+      'SHELL_COMMAND_ENABLED',
+      'STT_WHISPER_BIN',
+      'STT_FFMPEG_BIN',
+    ]);
+  });
 });

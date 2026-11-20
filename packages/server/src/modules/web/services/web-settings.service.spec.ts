@@ -31,7 +31,7 @@ describe('WebSettingsService', () => {
     const event = await settings.service.settings();
 
     expect(event.type).toBe('settings');
-    expect(event.settings[0]).toEqual({ key: 'USER_LANGUAGE', group: 'general', apply: 'live', source: 'default', kind: 'text', value: 'English', defaultValue: 'English' });
+    expect(event.settings[0]).toEqual({ key: 'USER_LANGUAGE', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: 'English', defaultValue: 'English' });
     expect(event.settings[1]?.key).toBe('DISCORD_ENABLED');
     configuration.language = 'Spanish';
     expect(await view('USER_LANGUAGE')).toMatchObject({ source: 'saved', value: 'Spanish' });

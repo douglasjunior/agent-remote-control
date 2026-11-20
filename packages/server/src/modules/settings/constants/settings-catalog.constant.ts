@@ -10,8 +10,9 @@ function define<Key extends SettingKey>(key: Key, details: Details<Key>): Settin
 }
 
 /**
- * Every setting the web interface changes while the server runs, in the order the settings page shows them. Each one
- * overrides the environment variable named by `env`. Boot-only infrastructure (`PORT`, `DATA_DIR`, `WORKSPACE_DIR`,
+ * Every setting the settings page shows, in the order it shows them. Each one overrides the environment variable named
+ * by `env`, except those marked `envOnly`: they widen what the server exposes or which programs it runs, so only the
+ * environment sets them and the page shows their value. Boot-only infrastructure (`PORT`, `DATA_DIR`, `WORKSPACE_DIR`,
  * `WEB_ENABLED`, `WEB_STATIC_DIR`, `WEB_ACCESS_TOKEN`) stays out: it decides how the server starts and where it keeps
  * the very database the settings live in.
  */
@@ -19,16 +20,16 @@ export const SETTINGS_CATALOG: { readonly [Key in SettingKey]: SettingDefinition
   DISCORD_ENABLED: define('DISCORD_ENABLED', { kind: 'boolean', group: 'discord', apply: 'live', defaultValue: true }),
   DISCORD_BOT_TOKEN: define('DISCORD_BOT_TOKEN', { kind: 'secret', group: 'discord', apply: 'live', defaultValue: '' }),
   DISCORD_GUILD_ID: define('DISCORD_GUILD_ID', { kind: 'text', group: 'discord', apply: 'live', defaultValue: '' }),
-  WEB_ALLOWED_ORIGINS: define('WEB_ALLOWED_ORIGINS', { kind: 'text', group: 'web', apply: 'live', defaultValue: '' }),
+  WEB_ALLOWED_ORIGINS: define('WEB_ALLOWED_ORIGINS', { envOnly: true, kind: 'text', group: 'web', apply: 'live', defaultValue: '' }),
   REMOTE_ENABLED: define('REMOTE_ENABLED', { kind: 'boolean', group: 'remote', apply: 'live', defaultValue: false }),
-  REMOTE_URL: define('REMOTE_URL', { kind: 'text', group: 'remote', apply: 'live', defaultValue: '' }),
+  REMOTE_URL: define('REMOTE_URL', { envOnly: true, kind: 'text', group: 'remote', apply: 'live', defaultValue: '' }),
   SESSION_IDLE_TIMEOUT_MS: define('SESSION_IDLE_TIMEOUT_MS', { kind: 'integer', group: 'general', apply: 'live', defaultValue: 1_800_000 }),
   QUESTION_TIMEOUT_MS: define('QUESTION_TIMEOUT_MS', { kind: 'integer', group: 'general', apply: 'live', defaultValue: 300_000 }),
   LOG_RETENTION_DAYS: define('LOG_RETENTION_DAYS', { kind: 'integer', group: 'general', apply: 'live', defaultValue: 14 }),
   AGENT_AUTH_ENABLED: define('AGENT_AUTH_ENABLED', { kind: 'boolean', group: 'agents', apply: 'live', defaultValue: true }),
   AGENT_AUTH_LOGIN_TIMEOUT_MS: define('AGENT_AUTH_LOGIN_TIMEOUT_MS', { kind: 'integer', group: 'agents', apply: 'live', defaultValue: 900_000 }),
   AGENT_AUTH_STATUS_TIMEOUT_MS: define('AGENT_AUTH_STATUS_TIMEOUT_MS', { kind: 'integer', group: 'agents', apply: 'live', defaultValue: 10_000 }),
-  SHELL_COMMAND_ENABLED: define('SHELL_COMMAND_ENABLED', { kind: 'boolean', group: 'shell', apply: 'live', defaultValue: false }),
+  SHELL_COMMAND_ENABLED: define('SHELL_COMMAND_ENABLED', { envOnly: true, kind: 'boolean', group: 'shell', apply: 'live', defaultValue: false }),
   SHELL_COMMAND_TIMEOUT_MS: define('SHELL_COMMAND_TIMEOUT_MS', { kind: 'integer', group: 'shell', apply: 'live', defaultValue: 60_000 }),
   SHELL_COMMAND_MAX_OUTPUT_CHARS: define('SHELL_COMMAND_MAX_OUTPUT_CHARS', { kind: 'integer', group: 'shell', apply: 'live', defaultValue: 8_000 }),
   TURN_RETRY_BASE_DELAY_MS: define('TURN_RETRY_BASE_DELAY_MS', { kind: 'integer', group: 'turns', apply: 'live', defaultValue: 15_000 }),
@@ -50,8 +51,8 @@ export const SETTINGS_CATALOG: { readonly [Key in SettingKey]: SettingDefinition
   STT_LANGUAGE: define('STT_LANGUAGE', { kind: 'text', group: 'speech', apply: 'live', defaultValue: 'auto' }),
   STT_THREADS: define('STT_THREADS', { kind: 'integer', group: 'speech', apply: 'live', defaultValue: 0 }),
   STT_TIMEOUT_MS: define('STT_TIMEOUT_MS', { kind: 'integer', group: 'speech', apply: 'live', defaultValue: 300_000 }),
-  STT_WHISPER_BIN: define('STT_WHISPER_BIN', { kind: 'text', group: 'speech', apply: 'live', defaultValue: 'whisper-cli' }),
-  STT_FFMPEG_BIN: define('STT_FFMPEG_BIN', { kind: 'text', group: 'speech', apply: 'live', defaultValue: 'ffmpeg' }),
+  STT_WHISPER_BIN: define('STT_WHISPER_BIN', { envOnly: true, kind: 'text', group: 'speech', apply: 'live', defaultValue: 'whisper-cli' }),
+  STT_FFMPEG_BIN: define('STT_FFMPEG_BIN', { envOnly: true, kind: 'text', group: 'speech', apply: 'live', defaultValue: 'ffmpeg' }),
 };
 
 export const SETTING_KEYS = Object.keys(SETTINGS_CATALOG) as SettingKey[];

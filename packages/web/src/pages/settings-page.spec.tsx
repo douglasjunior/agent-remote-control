@@ -7,13 +7,13 @@ import { openConversation, renderApp } from '../test/render-app.js';
 
 
 const SETTINGS: SettingView[] = [
-  { key: 'USER_LANGUAGE', group: 'general', apply: 'live', source: 'default', kind: 'text', value: 'English', defaultValue: 'English' },
-  { key: 'DISCORD_ENABLED', group: 'discord', apply: 'live', source: 'default', kind: 'boolean', value: true, defaultValue: true },
-  { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', source: 'default', kind: 'secret', value: { set: false } },
-  { key: 'DISCORD_GUILD_ID', group: 'discord', apply: 'live', source: 'env', kind: 'text', value: '12345678901234567', defaultValue: '' },
-  { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', source: 'saved', kind: 'integer', value: 300_000, defaultValue: 300_000 },
-  { key: 'LOG_RETENTION_DAYS', group: 'general', apply: 'live', source: 'default', kind: 'integer', value: 14, defaultValue: 14 },
-  { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
+  { key: 'USER_LANGUAGE', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: 'English', defaultValue: 'English' },
+  { key: 'DISCORD_ENABLED', group: 'discord', apply: 'live', envOnly: false, source: 'default', kind: 'boolean', value: true, defaultValue: true },
+  { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', envOnly: false, source: 'default', kind: 'secret', value: { set: false } },
+  { key: 'DISCORD_GUILD_ID', group: 'discord', apply: 'live', envOnly: false, source: 'env', kind: 'text', value: '12345678901234567', defaultValue: '' },
+  { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', envOnly: false, source: 'saved', kind: 'integer', value: 300_000, defaultValue: 300_000 },
+  { key: 'LOG_RETENTION_DAYS', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'integer', value: 14, defaultValue: 14 },
+  { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', envOnly: false, source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
 ];
 
 const withSetting = (key: string, changes: Partial<SettingView>): SettingView[] =>
@@ -49,6 +49,39 @@ describe('SettingsPage', () => {
     expect(within(field('Question timeout')).getByText('milliseconds · 5m')).toBeInTheDocument();
     expect(within(field('Log retention')).getByText('days')).toBeInTheDocument();
     expect(within(field('Provider')).getByText('Applies when the server restarts.')).toBeInTheDocument();
+  });
+
+  it('should show a setting only its variable sets read-only, with a tooltip that names the variable', async () => {
+    const user = userEvent.setup();
+    const { connection } = openSettings([
+      { key: 'SHELL_COMMAND_ENABLED', env: 'SHELL_COMMAND_ENABLED', envOnly: true, group: 'shell', apply: 'live', source: 'env', kind: 'boolean', value: true, defaultValue: false },
+      { key: 'REMOTE_URL', env: 'REMOTE_URL', envOnly: true, group: 'remote', apply: 'live', source: 'default', kind: 'text', value: '', defaultValue: '' },
+      { key: 'STT_FFMPEG_BIN', envOnly: true, group: 'speech', apply: 'live', source: 'default', kind: 'text', value: 'ffmpeg', defaultValue: 'ffmpeg' },
+      { key: 'FUTURE_LIMIT', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'integer', value: 7, defaultValue: 1 },
+      { key: 'FUTURE_TOKEN', envOnly: true, group: 'future', apply: 'live', source: 'env', kind: 'secret', value: { set: true } },
+    ]);
+
+    const shell = field('Shell commands');
+    expect(within(shell).getByText('Enabled')).toBeInTheDocument();
+    expect(within(shell).getByText('Environment')).toBeInTheDocument();
+    expect(within(shell).queryByRole('switch')).not.toBeInTheDocument();
+    expect(within(shell).queryByRole('button', { name: 'Reset to default' })).not.toBeInTheDocument();
+    expect(within(field('Signaling server')).getByText('Not set')).toBeInTheDocument();
+    expect(within(field('Signaling server')).queryByRole('textbox')).not.toBeInTheDocument();
+    expect(within(field('ffmpeg executable')).getByText('ffmpeg')).toBeInTheDocument();
+    expect(within(field('FUTURE_LIMIT')).getByText('7')).toBeInTheDocument();
+    expect(within(field('FUTURE_TOKEN')).getByText('Set')).toBeInTheDocument();
+
+    const hint = within(shell).getByRole('button', { name: 'Where this value is set' });
+    while (document.activeElement !== hint) {
+      await user.tab();
+    }
+    expect(await screen.findByText(
+      content => content.startsWith('This value can only be set with the environment variable'),
+      { selector: '[data-slot="tooltip-content"]' },
+    )).toHaveTextContent('This value can only be set with the environment variable SHELL_COMMAND_ENABLED.');
+    expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
+    expect(connection.sent).not.toContainEqual(expect.objectContaining({ type: 'settings.set' }));
   });
 
   it('should check a field as it is typed and save every change together, for every open page', async () => {
@@ -192,7 +225,7 @@ describe('SettingsPage', () => {
   });
 
   it('should show a setting and a section this page does not know by their keys', () => {
-    openSettings([{ key: 'NEW_SETTING', group: 'future', apply: 'live', source: 'default', kind: 'text', value: '', defaultValue: '' }]);
+    openSettings([{ key: 'NEW_SETTING', group: 'future', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: '', defaultValue: '' }]);
 
     expect(screen.getByRole('heading', { name: 'future' })).toBeInTheDocument();
     expect(field('NEW_SETTING')).toBeInTheDocument();

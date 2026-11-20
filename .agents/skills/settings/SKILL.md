@@ -26,9 +26,13 @@ Every module that reads a setting imports `SettingsModule`.
   fields with it, so both show the same messages.
 - `SETTINGS_CATALOG` (`constants/settings-catalog.constant.ts`) completes each key with `env`, `defaultValue`, `kind`
   (`boolean`, `integer`, `text`, `choice` with `options`, `secret`), `group` (the section of the settings page:
-  `general`, `discord`, `web`, `remote`, `agents`, `shell`, `turns`, `speech`) and `apply`. Its order is the page's.
+  `general`, `discord`, `web`, `remote`, `agents`, `shell`, `turns`, `speech`), `apply` and, for some, `envOnly`. Its
+  order is the page's.
 - `apply: 'restart'` marks a value the server reads only as it starts: `STT_PROVIDER`, because `SpeechToTextModule`
   picks its adapter in a factory. Every other setting is `live`.
+- `envOnly: true` marks a setting only its environment variable sets, because it widens what the server exposes or
+  names a program to run: `SHELL_COMMAND_ENABLED`, `REMOTE_URL`, `WEB_ALLOWED_ORIGINS`, `STT_WHISPER_BIN` and
+  `STT_FFMPEG_BIN`. `REMOTE_ENABLED` stays editable.
 - Boot-only infrastructure stays out: `PORT`, `NODE_ENV`, `DATA_DIR` (it holds the database the settings live in),
   `WORKSPACE_DIR`, `WEB_ENABLED`, `WEB_STATIC_DIR`, `WEB_ACCESS_TOKEN`, and the CLIs' own variables (`CURSOR_*`,
   `CODEX_*`, `PATH`).
@@ -41,7 +45,8 @@ Every module that reads a setting imports `SettingsModule`.
 `env` or `default`).
 
 - A saved value wins, then the environment variable, then the default. A saved value the schema rejects is logged once
-  (`setting_invalid`) and skipped.
+  (`setting_invalid`) and skipped. An `envOnly` setting skips the saved values, so one already saved has no effect:
+  the variable, then the default.
 - A variable set to an empty text is a value for a `text` or `secret` (an empty `DISCORD_BOT_TOKEN` keeps the bot off);
   for the other kinds it reads as unset. Booleans read `true`/`false` in any case, integers digits only, choices in
   lower case. A variable that does not parse is logged once with its value, a secret's never, and skipped.
@@ -59,7 +64,8 @@ Every module that reads a setting imports `SettingsModule`.
 - `ChangeSettingsUseCase.execute({ values?, reset? })` checks every key against the catalog and every value against its
   schema, and saves the parsed values (`reset` removes saved values, so the variable or the default applies again) whole
   or not at all; it answers `{ ok: true }` or `{ ok: false, error }` (`Unknown setting: X`, `X: <schema message>`,
-  `X cannot be changed and reset at once`). It logs `[Settings Changed]` with the keys, never the values.
+  `X cannot be changed and reset at once`, `X can only be set with its environment variable` for an `envOnly` key,
+  whether changed or reset). It logs `[Settings Changed]` with the keys, never the values.
 - `ISettingsStorePort` (`SqliteSettingsStoreAdapter`, table `setting`: key, value as JSON, `updated_at`): `load()` and
   `save(values, removed)`, one transaction that resolves to every saved setting.
 - `ISettingsChangeNotifierPort`: `onChange(listener)` returns the unsubscribe function; `notify(keys)` calls each
@@ -67,7 +73,7 @@ Every module that reads a setting imports `SettingsModule`.
   is logged (`settings_listener_failed`) and the others still run. `DiscordClientService` restarts the bot on its
   connection settings and registers the slash commands again on the shell and agent login flags;
   `RemoteClientTransportAdapter` restarts remote access on `REMOTE_ENABLED` and `REMOTE_URL`.
-- `GetSettingsUseCase` lists every setting with its value, source, default, kind, group and `apply`; a secret shows
+- `GetSettingsUseCase` lists every setting with its value, source, default, kind, group, `apply`, `env` and `envOnly`; a secret shows
   only `{ set: boolean }`, so no channel can leak it.
 - The web channel serves both through its `settings.*` commands and adds the user language, which lives with the
   preferences and has no environment variable.
@@ -92,4 +98,5 @@ replace a variable set empty. A variable already in the environment, empty inclu
 - [ ] The key is in `SETTING_SCHEMAS` and `SETTINGS_CATALOG` with its default accepted by its schema.
 - [ ] It is read through `IRuntimeSettingsPort` where it is used; `apply` says `restart` only when it cannot apply live.
 - [ ] A module that holds state built from a setting listens to `ISettingsChangeNotifierPort` and unsubscribes on destroy.
+- [ ] A setting that widens what the server exposes or names a program to run is `envOnly`.
 - [ ] Secrets have `kind: 'secret'` and never reach a log or an event.

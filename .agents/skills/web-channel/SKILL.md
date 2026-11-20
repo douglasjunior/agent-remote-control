@@ -37,8 +37,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 ## Origin check
 
 - The upgrade is accepted when the `Origin` host equals the request `Host`, or when the origin is listed
-  in the `WEB_ALLOWED_ORIGINS` setting (comma-separated, compared without a trailing slash), read on every upgrade, so
-  a change saved from the settings page applies to the next connection.
+  in the `WEB_ALLOWED_ORIGINS` setting (comma-separated, compared without a trailing slash, set only by its environment
+  variable), read on every upgrade.
 - A missing or malformed `Origin` is rejected. Rejection answers `403` and destroys the socket.
 - When the web app reaches the server directly (no proxy), its origin goes in `WEB_ALLOWED_ORIGINS`.
 
@@ -146,5 +146,5 @@ a proxy in front of both makes the upgrade same-origin.
 ## Environment
 
 `WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`, remote access included), `WEB_ACCESS_TOKEN`,
-`WEB_ALLOWED_ORIGINS` (a setting the settings page changes live), `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`WEB_ALLOWED_ORIGINS` (a setting only its variable sets, shown read-only on the settings page), `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
 `AGENT_AUTH_STATUS_TIMEOUT_MS`.

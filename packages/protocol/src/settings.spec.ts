@@ -41,7 +41,7 @@ describe('settings', () => {
   });
 
   it('should show a secret only as whether it holds a value', () => {
-    const secret = { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', source: 'saved', kind: 'secret' };
+    const secret = { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', envOnly: false, source: 'saved', kind: 'secret' };
 
     expect(settingViewSchema.parse({ ...secret, value: { set: true } })).toEqual({ ...secret, value: { set: true } });
     expect(settingViewSchema.safeParse({ ...secret, value: 'token' }).success).toBe(false);

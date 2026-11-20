@@ -3,7 +3,7 @@ import type { SettingView } from '@agent-remote-control/protocol/settings';
 import { checkDraft, initialDraft, isChanged } from './setting-drafts.js';
 
 
-const base = { group: 'general', apply: 'live', source: 'default' } as const;
+const base = { group: 'general', apply: 'live', envOnly: false, source: 'default' } as const;
 const integer: SettingView = { ...base, key: 'QUESTION_TIMEOUT_MS', kind: 'integer', value: 300_000, defaultValue: 300_000 };
 const secret: SettingView = { ...base, key: 'DISCORD_BOT_TOKEN', kind: 'secret', value: { set: true } };
 const unknown: SettingView = { ...base, key: 'NEW_SETTING', kind: 'text', value: 'a', defaultValue: 'a' };

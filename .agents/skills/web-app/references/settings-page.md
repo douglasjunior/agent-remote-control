@@ -15,6 +15,10 @@ pickers of the conversation settings sheet and the squad editor, which are anoth
   `Environment`, `Default`), `Unsaved` while changed, the variable name in mono (none for the language), the
   description, and for an `apply: 'restart'` setting "Applies when the server restarts.". The control sits beside the
   text from `sm` and below it on a phone.
+- A setting with `envOnly` shows its value read-only (`Enabled`/`Disabled`, the text or `Not set`) in an `output`,
+  with its source badge, no input and no reset. A `CircleHelp` button ("Where this value is set", reachable by keyboard)
+  beside the label opens the tooltip "This value can only be set with the environment variable <NAME>." (`view.env`,
+  the key when absent).
 - Controls by kind: `Switch` (boolean), `Input` with `inputMode="numeric"` and a unit hint (milliseconds with the
   duration, `off` for 0, days, characters) for an integer, `Input` for text, `ChoiceSelect` for a choice.
 - A secret is write-only: `Set` or `Not set`, then "Set"/"Replace" opens a password field ("Cancel" closes it) and

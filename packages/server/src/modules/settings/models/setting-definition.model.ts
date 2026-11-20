@@ -12,6 +12,8 @@ export type SettingDefinition<Key extends SettingKey = SettingKey> = {
   readonly key: Key;
   /** The environment variable the saved value overrides. */
   readonly env: string;
+  /** The environment variable is the only way to set it: a saved value is ignored and a change is refused. */
+  readonly envOnly?: boolean;
   readonly schema: z.ZodType<SettingValues[Key], unknown>;
   readonly defaultValue: SettingValues[Key];
   readonly kind: SettingKind;

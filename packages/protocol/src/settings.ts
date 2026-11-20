@@ -82,6 +82,10 @@ const settingBase = {
   group: z.string(),
   apply: settingApplySchema,
   source: settingSourceSchema,
+  /** The environment variable of the setting; absent when it has none, like the user language. */
+  env: z.string().optional(),
+  /** `true` when only the environment variable sets it: the page shows the value and takes no change. */
+  envOnly: z.boolean(),
 };
 
 /** A setting as the server shows it; a secret says only whether it holds a value, never the value. */

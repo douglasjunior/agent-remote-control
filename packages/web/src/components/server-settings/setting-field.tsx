@@ -1,5 +1,5 @@
 import { USER_LANGUAGE_KEY, type SettingSource, type SettingView } from '@agent-remote-control/protocol/settings';
-import { RotateCw } from 'lucide-react';
+import { CircleHelp, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 
 import { formatDuration } from '../../lib/format.js';
@@ -8,6 +8,7 @@ import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 import { Input } from '../ui/input.js';
 import { Switch } from '../ui/switch.js';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.js';
 
 import { initialDraft, isChanged, type SettingDraft } from './setting-drafts.js';
 import { settingText, type SettingText } from './setting-texts.js';
@@ -30,7 +31,10 @@ type FieldProps = {
   readonly onReset: () => void;
 };
 
-/** One setting: its value, where the value comes from, how it applies and the message of a value that does not check. */
+/**
+ * One setting: its value, where the value comes from, how it applies and the message of a value that does not check. A
+ * setting only its environment variable sets shows its value read-only, without a change or a reset.
+ */
 export function SettingField({ view, draft, error, disabled, onDraft, onReset }: FieldProps) {
   const text = settingText(view.key);
   const id = `setting-${view.key}`;
@@ -42,6 +46,7 @@ export function SettingField({ view, draft, error, disabled, onDraft, onReset }:
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-1.5">
           <label id={labelId} htmlFor={id} className="text-sm font-medium">{text.label}</label>
+          {view.envOnly && <EnvOnlyHint name={view.env ?? view.key} />}
           <Badge variant={SOURCES[view.source].variant}>{SOURCES[view.source].label}</Badge>
           {isChanged(view, draft) && <Badge variant="outline" className="border-attention text-foreground">Unsaved</Badge>}
         </div>
@@ -55,15 +60,57 @@ export function SettingField({ view, draft, error, disabled, onDraft, onReset }:
         )}
       </div>
       <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-72 sm:shrink-0">
-        <FieldControl id={id} labelId={labelId} describedBy={describedBy} view={view} text={text} draft={draft} invalid={Boolean(error)} disabled={disabled} onDraft={onDraft} />
+        {view.envOnly
+          ? <ReadOnlyValue id={id} describedBy={describedBy} view={view} />
+          : <FieldControl id={id} labelId={labelId} describedBy={describedBy} view={view} text={text} draft={draft} invalid={Boolean(error)} disabled={disabled} onDraft={onDraft} />}
         {error && <p id={`${id}-error`} role="alert" className="text-xs text-destructive">{error}</p>}
-        {view.source === 'saved' && (
+        {view.source === 'saved' && !view.envOnly && (
           <Button variant="link" size="sm" className="h-auto self-end p-0 text-xs" disabled={disabled} onClick={onReset}>
             Reset to default
           </Button>
         )}
       </div>
     </div>
+  );
+}
+
+/** The question mark beside the label of a setting that only its environment variable sets; the tooltip names the variable. */
+function EnvOnlyHint({ name }: { readonly name: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<button type="button" aria-label="Where this value is set" className="rounded-full text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50" />}
+      >
+        <CircleHelp aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>
+        This value can only be set with the environment variable
+        {' '}
+        <code className="font-mono">{name}</code>
+        .
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function readOnlyText(view: SettingView): string {
+  switch (view.kind) {
+    case 'boolean':
+      return view.value ? 'Enabled' : 'Disabled';
+    case 'secret':
+      return view.value.set ? 'Set' : 'Not set';
+    case 'integer':
+      return String(view.value);
+    default:
+      return view.value === '' ? 'Not set' : view.value;
+  }
+}
+
+function ReadOnlyValue({ id, describedBy, view }: { readonly id: string; readonly describedBy: string; readonly view: SettingView }) {
+  return (
+    <output id={id} aria-describedby={describedBy} className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm break-all">
+      {readOnlyText(view)}
+    </output>
   );
 }
 

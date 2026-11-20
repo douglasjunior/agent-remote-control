@@ -15,9 +15,9 @@ export class GetSettingsUseCase {
   }
 
   private view(key: SettingKey): SettingView {
-    const { group, apply, kind, defaultValue, options } = SETTINGS_CATALOG[key];
+    const { group, apply, kind, defaultValue, options, env, envOnly = false } = SETTINGS_CATALOG[key];
     const { value, source } = this.settings.resolve(key);
-    const base = { key, group, apply, source };
+    const base = { key, group, apply, source, env, envOnly };
     switch (kind) {
       case 'secret':
         return { ...base, kind, value: { set: value !== '' } };

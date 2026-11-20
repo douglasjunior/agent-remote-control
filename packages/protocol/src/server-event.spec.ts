@@ -47,11 +47,12 @@ describe('parseServerEvent', () => {
     {
       type: 'settings',
       settings: [
-        { key: 'USER_LANGUAGE', group: 'general', apply: 'live', source: 'default', kind: 'text', value: 'English', defaultValue: 'English' },
-        { key: 'DISCORD_ENABLED', group: 'discord', apply: 'live', source: 'env', kind: 'boolean', value: false, defaultValue: true },
-        { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', source: 'saved', kind: 'secret', value: { set: true } },
-        { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', source: 'saved', kind: 'integer', value: 0, defaultValue: 300_000 },
-        { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
+        { key: 'USER_LANGUAGE', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: 'English', defaultValue: 'English' },
+        { key: 'DISCORD_ENABLED', group: 'discord', apply: 'live', envOnly: false, source: 'env', kind: 'boolean', value: false, defaultValue: true },
+        { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', envOnly: false, source: 'saved', kind: 'secret', value: { set: true } },
+        { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', envOnly: false, source: 'saved', kind: 'integer', value: 0, defaultValue: 300_000 },
+        { key: 'SHELL_COMMAND_ENABLED', env: 'SHELL_COMMAND_ENABLED', group: 'shell', apply: 'live', envOnly: true, source: 'env', kind: 'boolean', value: true, defaultValue: false },
+        { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', envOnly: false, source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
       ],
     },
     { type: 'settings.discord.test.result', ok: true, botName: 'arc-bot', guildName: 'Home' },

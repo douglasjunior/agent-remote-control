@@ -12,7 +12,8 @@ const BOOLEANS: ReadonlyMap<string, boolean> = new Map([['true', true], ['false'
 
 /**
  * Resolves each setting from the saved values it holds, which `SettingsModule` loads before any provider reads them
- * and every change replaces, then from `process.env`, then from the catalog default. A variable set to an empty text is
+ * and every change replaces, then from `process.env`, then from the catalog default. A setting that is `envOnly` skips
+ * the saved values. A variable set to an empty text is
  * a value for a text or a secret, which is how an empty `DISCORD_BOT_TOKEN` turns the bot off; for any other kind it
  * reads as unset. A value that does not parse is logged once and skipped.
  */
@@ -28,7 +29,7 @@ export class RuntimeSettingsService implements IRuntimeSettingsPort {
 
   resolve<Key extends SettingKey>(key: Key): ResolvedSetting<Key> {
     const definition: SettingDefinition<Key> = SETTINGS_CATALOG[key];
-    if (key in this.saved) {
+    if (!definition.envOnly && key in this.saved) {
       const saved = definition.schema.safeParse(this.saved[key]);
       if (saved.success) {
         return { value: saved.data, source: 'saved' };

@@ -35,6 +35,10 @@ export class ChangeSettingsUseCase {
     if (unknown !== undefined) {
       return { ok: false, error: `Unknown setting: ${unknown}` };
     }
+    const envOnly = [...Object.keys(values), ...reset].find(key => SETTINGS_CATALOG[key as SettingKey].envOnly);
+    if (envOnly !== undefined) {
+      return { ok: false, error: `${envOnly} can only be set with its environment variable` };
+    }
     const both = reset.find(key => key in values);
     if (both !== undefined) {
       return { ok: false, error: `${both} cannot be changed and reset at once` };

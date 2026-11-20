@@ -124,7 +124,7 @@ server {
 
 ## 🛰️ Remote access
 
-Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and `REMOTE_URL`, or turn it on from the settings page of the web interface, and the server prints a link:
+Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_URL` in the environment and `REMOTE_ENABLED=true`, or turn `REMOTE_ENABLED` on from the settings page of the web interface, and the server prints a link:
 
 ```text
 Remote access link: <REMOTE_URL>/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
@@ -302,7 +302,7 @@ Copy the example file to `.env` at the project root and configure your credentia
 cp .env.example .env
 ```
 
-The variables marked **Web** in the last column are also changed from the **settings page** of the web interface (the gear icon in the header), live, without editing `.env`: a value saved there takes precedence over the variable, which takes precedence over the default, and "Reset to default" brings the variable or the default back. A variable set to an empty value counts as set: `DISCORD_BOT_TOKEN=` in the environment keeps the bot off whatever `.env` says. `STT_PROVIDER` applies when the server restarts; every other one applies at once.
+The variables marked **Yes** in the last column are also changed from the **settings page** of the web interface (the gear icon in the header), live, without editing `.env`: a value saved there takes precedence over the variable, which takes precedence over the default, and "Reset to default" brings the variable or the default back. Those marked **Read-only** widen what the server exposes or name a program it runs, so only their environment variable sets them: the page shows their value and where it comes from, and a saved value has no effect. A variable set to an empty value counts as set: `DISCORD_BOT_TOKEN=` in the environment keeps the bot off whatever `.env` says. `STT_PROVIDER` applies when the server restarts; every other one applies at once.
 
 | Variable | Description | Where to Get It in Discord | Default | Web |
 |---|---|---|---|---|
@@ -324,7 +324,7 @@ The variables marked **Web** in the last column are also changed from the **sett
 | `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` | Yes |
 | `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` | Yes |
 | `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` | Yes |
-| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` | Yes |
+| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` | Read-only |
 | `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` | Yes |
 | `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` | Yes |
 | `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` | Yes (on restart) |
@@ -333,10 +333,10 @@ The variables marked **Web** in the last column are also changed from the **sett
 | `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` | Yes |
 | `STT_THREADS` | CPU threads used by the transcription; `0` uses every CPU | Local machine configuration | `0` | Yes |
 | `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) | Yes |
-| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` | Yes |
+| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` | Read-only |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` | No |
-| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* | `WEB_ALLOWED_ORIGINS` only |
-| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* | Yes |
+| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* | `WEB_ALLOWED_ORIGINS`: Read-only |
+| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* | `REMOTE_ENABLED`: Yes; `REMOTE_URL`: Read-only |
 
 ## 🐳 Docker
 

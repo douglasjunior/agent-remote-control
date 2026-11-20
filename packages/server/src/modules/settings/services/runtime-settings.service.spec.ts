@@ -33,6 +33,17 @@ describe('RuntimeSettingsService', () => {
     expect(settings.get('QUESTION_TIMEOUT_MS')).toBe(0);
   });
 
+  it.each(['SHELL_COMMAND_ENABLED', 'REMOTE_URL', 'WEB_ALLOWED_ORIGINS', 'STT_WHISPER_BIN', 'STT_FFMPEG_BIN'] as const)('should ignore a value saved for %s, which only its variable sets', (key) => {
+    settings.replaceSaved({ SHELL_COMMAND_ENABLED: true, REMOTE_URL: 'https://arc.example.com', WEB_ALLOWED_ORIGINS: 'https://a.example.com', STT_WHISPER_BIN: '/bin/saved', STT_FFMPEG_BIN: '/bin/saved' });
+    rs.stubEnv(key, undefined);
+
+    expect(settings.resolve(key)).toMatchObject({ source: 'default' });
+
+    rs.stubEnv('SHELL_COMMAND_ENABLED', 'false');
+    expect(settings.resolve('SHELL_COMMAND_ENABLED')).toEqual({ value: false, source: 'env' });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
   it('should read an empty variable as a value for a text or a secret, and as unset for any other kind', () => {
     rs.stubEnv('DISCORD_BOT_TOKEN', '');
     rs.stubEnv('REMOTE_URL', '');

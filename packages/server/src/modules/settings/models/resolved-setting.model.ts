@@ -7,5 +7,5 @@ export type ResolvedSetting<Key extends SettingKey = SettingKey> = {
   readonly source: SettingSource;
 };
 
-/** The values saved from the web interface, by key, as stored; a value the catalog no longer accepts is ignored. */
+/** The values saved from the web interface, by key, as stored. Resolution skips a value its schema rejects and every value of an `envOnly` setting. */
 export type SavedSettings = Readonly<Record<string, unknown>>;

@@ -62,9 +62,11 @@ describe('ChangeSettingsUseCase', () => {
   it.each([
     [{ values: { PORT: 3000 } }, 'Unknown setting: PORT'],
     [{ reset: ['toString'] }, 'Unknown setting: toString'],
+    [{ values: { SHELL_COMMAND_ENABLED: true } }, 'SHELL_COMMAND_ENABLED can only be set with its environment variable'],
+    [{ reset: ['REMOTE_URL'] }, 'REMOTE_URL can only be set with its environment variable'],
     [{ values: { QUESTION_TIMEOUT_MS: 5 }, reset: ['QUESTION_TIMEOUT_MS'] }, 'QUESTION_TIMEOUT_MS cannot be changed and reset at once'],
     [{ values: { QUESTION_TIMEOUT_MS: -1 } }, 'QUESTION_TIMEOUT_MS: Use 0 or more'],
-    [{ values: { REMOTE_URL: 'http://arc.example.com' } }, 'REMOTE_URL: Use the HTTPS URL of a signaling server (HTTP only for localhost)'],
+    [{ values: { DISCORD_GUILD_ID: 'abc' } }, 'DISCORD_GUILD_ID: A server ID is a number of 17 to 20 digits'],
   ])('should refuse %j whole, saving nothing', async (change: SettingsChange, error) => {
     await expect(useCase.execute({ ...change, values: { LOG_RETENTION_DAYS: 7, ...change.values } })).resolves.toEqual({ ok: false, error });
 

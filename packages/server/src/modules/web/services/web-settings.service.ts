@@ -82,6 +82,7 @@ export class WebSettingsService {
       key: USER_LANGUAGE_KEY,
       group: 'general',
       apply: 'live',
+      envOnly: false,
       source: stored ? 'saved' : 'default',
       kind: 'text',
       value: stored ?? DEFAULT_LANGUAGE,
