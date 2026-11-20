@@ -23,126 +23,18 @@ type MessageState = {
   isThought: boolean;
 };
 
-export type ParsedToolCallFields = {
+type ParsedToolCallFields = {
   readonly toolCallId: string;
   readonly title?: string;
   readonly status?: AgentToolStatus;
   readonly content?: readonly ToolCallContent[] | null;
 };
 
-export type ParsedAgentMessageChunk = {
+type ParsedAgentMessageChunk = {
   readonly text: string;
   readonly messageId?: string;
   readonly isThought?: boolean;
 };
-
-export function extractToolCallFields(
-  update: SessionNotification,
-): ParsedToolCallFields | null {
-  const { update: payload } = update;
-
-  if (
-    payload.sessionUpdate !== 'tool_call'
-    && payload.sessionUpdate !== 'tool_call_update'
-  ) {
-    return null;
-  }
-
-  return {
-    toolCallId: payload.toolCallId,
-    title: payload.title ?? undefined,
-    status: payload.status ?? undefined,
-    content: payload.content,
-  };
-}
-
-export function extractAgentTextChunk(
-  update: SessionNotification,
-): ParsedAgentMessageChunk | null {
-  const { update: payload } = update;
-
-  if (
-    payload.sessionUpdate !== 'agent_message_chunk'
-    && payload.sessionUpdate !== 'agent_thought_chunk'
-  ) {
-    return null;
-  }
-
-  if (payload.content.type !== 'text') {
-    return null;
-  }
-
-  return {
-    text: payload.content.text,
-    messageId: payload.messageId ?? undefined,
-    isThought: payload.sessionUpdate === 'agent_thought_chunk',
-  };
-}
-
-function meaningfulLines(text: string): string[] {
-  const lines: string[] = [];
-
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-
-    if (line.length === 0 || CODE_FENCE_PATTERN.test(line)) {
-      continue;
-    }
-
-    if (lines.length >= MAX_SUMMARY_LINES) {
-      lines.push(SUMMARY_TRUNCATION_MARKER);
-      break;
-    }
-
-    lines.push(line);
-  }
-
-  return lines;
-}
-
-export function extractToolDetails(
-  content: readonly ToolCallContent[] | null | undefined,
-): string | undefined {
-  if (!content) {
-    return undefined;
-  }
-
-  const parts: string[] = [];
-  for (const item of content) {
-    if (item.type !== 'content' || item.content.type !== 'text') {
-      continue;
-    }
-
-    const text = item.content.text.trim();
-    if (text.length > 0) {
-      parts.push(text);
-    }
-  }
-
-  return parts.length > 0 ? parts.join('\n') : undefined;
-}
-
-export function extractToolResultSummary(
-  content: readonly ToolCallContent[] | null | undefined,
-): string | undefined {
-  if (!content) {
-    return undefined;
-  }
-
-  for (const item of content) {
-    if (item.type !== 'content' || item.content.type !== 'text') {
-      continue;
-    }
-
-    const lines = meaningfulLines(item.content.text);
-
-    if (lines.length > 0) {
-      return lines.join('\n');
-    }
-  }
-
-  return undefined;
-}
 
 export class AgentStreamDemux {
   private readonly messages = new Map<string, MessageState>();
@@ -161,7 +53,7 @@ export class AgentStreamDemux {
   }
 
   handle(update: SessionNotification): void {
-    const chunk = extractAgentTextChunk(update);
+    const chunk = this.extractAgentTextChunk(update);
 
     if (chunk) {
       const id = this.resolveMessageId(chunk);
@@ -170,7 +62,7 @@ export class AgentStreamDemux {
       return;
     }
 
-    const toolFields = extractToolCallFields(update);
+    const toolFields = this.extractToolCallFields(update);
 
     if (!toolFields) {
       return;
@@ -295,9 +187,9 @@ export class AgentStreamDemux {
   private dispatchTool(toolFields: ParsedToolCallFields): void {
     const previous = this.toolState.get(toolFields.toolCallId);
     const details =
-      extractToolDetails(toolFields.content) ?? previous?.details;
+      this.extractToolDetails(toolFields.content) ?? previous?.details;
     const result =
-      extractToolResultSummary(toolFields.content) ?? previous?.result;
+      this.extractToolResultSummary(toolFields.content) ?? previous?.result;
     const merged: ToolActivity = {
       kind: 'tool',
       toolCallId: toolFields.toolCallId,
@@ -309,5 +201,113 @@ export class AgentStreamDemux {
 
     this.toolState.set(toolFields.toolCallId, merged);
     this.emit(merged);
+  }
+
+  private extractToolCallFields(
+    update: SessionNotification,
+  ): ParsedToolCallFields | null {
+    const { update: payload } = update;
+
+    if (
+      payload.sessionUpdate !== 'tool_call'
+      && payload.sessionUpdate !== 'tool_call_update'
+    ) {
+      return null;
+    }
+
+    return {
+      toolCallId: payload.toolCallId,
+      title: payload.title ?? undefined,
+      status: payload.status ?? undefined,
+      content: payload.content,
+    };
+  }
+
+  private extractAgentTextChunk(
+    update: SessionNotification,
+  ): ParsedAgentMessageChunk | null {
+    const { update: payload } = update;
+
+    if (
+      payload.sessionUpdate !== 'agent_message_chunk'
+      && payload.sessionUpdate !== 'agent_thought_chunk'
+    ) {
+      return null;
+    }
+
+    if (payload.content.type !== 'text') {
+      return null;
+    }
+
+    return {
+      text: payload.content.text,
+      messageId: payload.messageId ?? undefined,
+      isThought: payload.sessionUpdate === 'agent_thought_chunk',
+    };
+  }
+
+  private meaningfulLines(text: string): string[] {
+    const lines: string[] = [];
+
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim();
+
+      if (line.length === 0 || CODE_FENCE_PATTERN.test(line)) {
+        continue;
+      }
+
+      if (lines.length >= MAX_SUMMARY_LINES) {
+        lines.push(SUMMARY_TRUNCATION_MARKER);
+        break;
+      }
+
+      lines.push(line);
+    }
+
+    return lines;
+  }
+
+  private extractToolDetails(
+    content: readonly ToolCallContent[] | null | undefined,
+  ): string | undefined {
+    if (!content) {
+      return undefined;
+    }
+
+    const parts: string[] = [];
+    for (const item of content) {
+      if (item.type !== 'content' || item.content.type !== 'text') {
+        continue;
+      }
+
+      const text = item.content.text.trim();
+      if (text.length > 0) {
+        parts.push(text);
+      }
+    }
+
+    return parts.length > 0 ? parts.join('\n') : undefined;
+  }
+
+  private extractToolResultSummary(
+    content: readonly ToolCallContent[] | null | undefined,
+  ): string | undefined {
+    if (!content) {
+      return undefined;
+    }
+
+    for (const item of content) {
+      if (item.type !== 'content' || item.content.type !== 'text') {
+        continue;
+      }
+
+      const lines = this.meaningfulLines(item.content.text);
+
+      if (lines.length > 0) {
+        return lines.join('\n');
+      }
+    }
+
+    return undefined;
   }
 }
