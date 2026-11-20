@@ -98,7 +98,8 @@ describe('delegation-protocol skill', () => {
     });
 
     it('should treat a result that opened with a verdict as a receipt, the report being on the task', () => {
-      expect(skill).toContain('A result that opened with a verdict is a short receipt');
+      expect(skill).toContain('A result whose verdict moved its task on is a short receipt');
+      expect(skill).toContain('A verdict that keeps the task where it was (more work to do, a block) comes whole');
       expect(skill).toContain('the report is on the task');
     });
 
@@ -134,11 +135,13 @@ describe('delegation-protocol skill', () => {
     });
 
     it('should route the tasks of a board check or answer what each one waits for', () => {
-      expect(skill).toContain('`[BOARD_CHECK]` arrives when you were about to end a turn with tasks in the middle of the flow');
+      expect(skill).toContain('`[BOARD_CHECK]` arrives when you were about to end a turn leaving tasks it delegated in the middle of the flow');
+      expect(skill).toContain('Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.');
     });
 
     it('should explain that delegating to a running role replaces its task', () => {
       expect(skill).toContain('Delegating to a role that is already working replaces its task with the new specification');
+      expect(skill).toContain('Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.');
     });
   });
 

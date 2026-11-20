@@ -21,11 +21,11 @@ import { type CodeSpan, findCodeSpans, isInCode, parseTagAttributes, readTagBody
 
 /**
  * `rest` is the response without its requests, which still carries whatever else the agent wrote; `raw` is the text of
- * the requests as the agent wrote them, one after the other.
+ * each request as the agent wrote it, in order.
  */
 export type ParsedAgentRequests =
   | { readonly kind: 'none' }
-  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string; readonly raw: string };
+  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string; readonly raw: readonly string[] };
 
 const REQUEST_TAG = /<(\/?)(artifact_list|artifact_read|artifact_create|artifact_update|artifact_comment|skill_read|skill_list|skill_write)\b([^>]*)>/gi;
 const CHILD_TAG = /<(\/?)(section|pull_request)\b([^>]*)>/gi;
@@ -92,7 +92,7 @@ export class AgentRequestParserService {
     rest += response.slice(cursor);
     return requests.length === 0
       ? { kind: 'none' }
-      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim(), raw: raw.join('\n') };
+      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim(), raw };
   }
 
   private toRequest(name: string, rawTag: string, attributes: TagAttributes, content: string): AgentRequest {

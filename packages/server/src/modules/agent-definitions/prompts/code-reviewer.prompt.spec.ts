@@ -74,6 +74,7 @@ describe('code-reviewer.prompt', () => {
     it('should replace the review findings of the task in the same response as the answer', () => {
       expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('<artifact_update id="T-3"><section name="review_findings">Markdown</section></artifact_update>');
       expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('starting with the verdict on a line of its own');
+      expect(CODE_REVIEWER_SYSTEM_PROMPT).toMatch(/starting with the verdict on a line of its own, written exactly as shown (here|above), in English whatever the language of the rest/);
     });
 
     it('should publish the findings on the pull request through the review-publishing skill', () => {
@@ -103,7 +104,7 @@ describe('code-reviewer.prompt', () => {
     it('should carry the read-only rule, the findings record and the verdict words', () => {
       expect(CODE_REVIEWER_REENTRY_NOTE).toContain('without running the project and without changing any file');
       expect(CODE_REVIEWER_REENTRY_NOTE).toContain('Replace the `review_findings` section');
-      expect(CODE_REVIEWER_REENTRY_NOTE).toContain('APPROVED or CHANGES_REQUESTED');
+      expect(CODE_REVIEWER_REENTRY_NOTE).toContain('written exactly as shown, in English: APPROVED or CHANGES_REQUESTED');
     });
   });
 });

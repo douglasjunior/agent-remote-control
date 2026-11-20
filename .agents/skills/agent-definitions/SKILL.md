@@ -66,7 +66,7 @@ export type AgentRole =
 - `description`: the full entry of the agent in the `agent-team` skill's catalog: what it does, what it expects and what it answers, so that it says when to delegate to the agent;
 - `buildSystemPrompt(team)`: builds the agent's prompt. Receives `team`, the other registered definitions, so that the CEO can list them. Executor agents ignore the parameter;
 - `defaultModel`: optional default language model associated with the persona;
-- `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`, default `'resume'`); a delegation with an artifact always runs in the role's session for that task, so a role with `artifact: 'required'` declares neither this nor `sessionMode`;
+- `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`); the registry falls back to `'resume'`, so a definition declares it only for `'new'`, and none of the initial ones does. A delegation with an artifact always runs in the role's session for that task, so a role with `artifact: 'required'` declares neither this nor `sessionMode`;
 - `delegation`: the `DelegationContract` of `orchestrator/ports/agent-registry.port.ts`, declaring which `<delegate>` attributes the agent accepts and how a delegation moves the task. A new parameter is added there:
   - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder;
   - `sessionMode`: `'overridable'`; when absent, the mode of a delegation without an artifact is fixed to `defaultSessionMode` and passing the `session` attribute there is rejected (with an artifact, `session` is accepted and ignored);
@@ -84,15 +84,15 @@ export type AgentRole =
 
 ### Status flow and verdicts
 
-`statusFlow` has `from` (the statuses a task may be in when delegated to the role), `start` (the status the task takes when the agent starts) and `verdicts` (the status each verdict word leaves it in). The verdict is the first word of the agent's final answer; the CEO prompt's routing is generated from these declarations.
+`statusFlow` has `from` (the statuses a task may be in when delegated to the role), `start` (the status the task takes when the agent starts, one of `from`) and `verdicts` (the status each verdict word leaves it in). The verdict is the first word of the agent's final answer, written in English exactly as the prompt shows it whatever the user's language, since the server matches the English keys of `verdicts`; the CEO prompt's routing is generated from these declarations.
 
 | Role | `from` | `start` | Verdicts |
 |---|---|---|---|
 | `DEVELOPER` | `ready`, `in_progress`, `changes_requested` | `in_progress` | `DONE` → `in_review`, `INCOMPLETE` → `in_progress` |
 | `CODE_REVIEWER` | `in_review` | none | `APPROVED` → `approved`, `CHANGES_REQUESTED` → `changes_requested` |
-| `QA` | `approved`, `in_testing` | `in_testing` | `PASSED` → `in_testing`, `FAILED` → `changes_requested`, `BLOCKED` → `in_testing` |
+| `QA` | `approved`, `in_testing` | `in_testing` | `PASSED` → `tested`, `FAILED` → `changes_requested`, `BLOCKED` → `in_testing` |
 
-An executor with a verdict opens its final answer with the word on a line of its own, followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`), written by an artifact request in the same final response as the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
+A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`), written by an artifact request in the same final response as the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
 
 ## Where an instruction lives
 
@@ -115,7 +115,7 @@ the agent needs it:
 
 Every agent writes its deliverable to the board of the conversation, never to a document. From the role's `ArtifactAccess`:
 
-- `buildArtifactProtocolBrief(access)` (`prompts/artifact-protocol.prompt.ts`) writes the board in brief for the system prompt of every executor: what it holds, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), when the requests are carried out, what it writes, its scope, and the `board-requests` skill for everything else. Requests that write go in the same final response as the final answer; a response that reads gets its results first, and the final answer comes after them. A role that creates writes the `overview` of what it creates, even when `overview` is not among its sections.
+- `buildArtifactProtocolBrief(access)` (`prompts/artifact-protocol.prompt.ts`) writes the board in brief for the system prompt of every executor: what it holds, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), when the requests are carried out, what it writes, its scope, and the `board-requests` skill for everything else. Updates and comments go in the same final response as the final answer; a response that reads or creates gets its results first (a creation's id is something the agent must read), and the final answer comes whole after them. A role that creates writes the `overview` of what it creates, even when `overview` is not among its sections.
 - `buildBoardRequestsBody(access)` (`skills/board-requests.skill.ts`) writes the full protocol, which only skills deliver: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment) and its rules. A `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. The `board-requests` skill gives it to every executor role, and the CEO's `artifact-board` skill adds it after the routing.
 - The `status` attribute of an update reminds the writer that the server sets the status a delegation or a verdict leaves, so a status is set only for a decision.
 

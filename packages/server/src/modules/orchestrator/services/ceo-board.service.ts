@@ -20,13 +20,17 @@ export class CeoBoardService {
   }
 
   /**
-   * Tasks in the middle of the flow that no agent holds and that `answer` does not name: nobody would move them on
-   * once the turn ends. A task the answer names is one the CEO already accounted for to the user.
+   * Of the tasks `delegatedIds` names, the ones in the middle of the flow that no agent holds and that `answer` does
+   * not name: nobody would move them on once the turn ends. Only the work of this turn counts, since a task parked in
+   * an earlier one waits on purpose, and a task the answer names is one the CEO already accounted for to the user.
    */
-  async findStranded(conversationId: string, answer: string): Promise<readonly BoardCheckTask[]> {
+  async findStranded(conversationId: string, answer: string, delegatedIds: ReadonlySet<string>): Promise<readonly BoardCheckTask[]> {
+    if (delegatedIds.size === 0) {
+      return [];
+    }
     const tasks = await this.artifacts.list(conversationId, { types: ['task'], statuses: 'all' });
     return tasks
-      .filter(task => ACTIVE_TASK_STATUSES.includes(task.status) && !task.assignee && !this.names(answer, task.id))
+      .filter(task => delegatedIds.has(task.id) && ACTIVE_TASK_STATUSES.includes(task.status) && !task.assignee && !this.names(answer, task.id))
       .map(({ id, title, status }) => ({ id, title, status }));
   }
 

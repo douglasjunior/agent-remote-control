@@ -15,10 +15,10 @@ export function buildCeoLanguagePrompt(language: string): string {
   ].join('\n');
 }
 
-/** The agent's final response and questions reach the user unchanged. */
+/** The agent's final response and questions reach the user unchanged, while the server reads its tags and verdict word as written. */
 export function buildAgentLanguagePrompt(language: string): string {
   return [
     '[USER_LANGUAGE]',
-    `Your final response and your questions are shown to the user as you write them: write them in ${language}. Code, commits and project files follow the project's own conventions.`,
+    `Your final response and your questions are shown to the user as you write them: write them in ${language}. Protocol tags, and the verdict word that opens a final answer, are written exactly as your instructions show them, in English, whatever the language of the rest. Code, commits and project files follow the project's own conventions.`,
   ].join('\n');
 }

@@ -32,10 +32,14 @@ const FAILED_REQUESTS_NOTE = 'Some requests failed, for the reasons above. Befor
 type AgentRequestResults = { readonly text: string; readonly failed: boolean };
 
 const MAX_REQUEST_ROUNDS = 30;
-const FAILED_RESPONSE_NOTE = 'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.';
-const READ_RESPONSE_NOTE = 'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results; your final answer comes in a later response.';
-const REQUESTS_ONLY_NOTE = 'Your last response had only requests, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.';
-const WRITE_REQUESTS: readonly AgentRequest['kind'][] = ['create', 'update', 'comment', 'skill_write'];
+/** A final answer sent back is read again from scratch, so the agent writes it whole, verdict first when its role has one. */
+const WHOLE_ANSWER = 'then write your whole final answer again, opened the way your instructions say.';
+const FAILED_RESPONSE_NOTE = `Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work, ${WHOLE_ANSWER}`;
+const READ_RESPONSE_NOTE = `Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results, ${WHOLE_ANSWER}`;
+const CREATE_RESPONSE_NOTE = `Your last response created artifacts, whose ids are in these results, so it was not taken as your final answer. Go on with your work with those ids, ${WHOLE_ANSWER}`;
+const REQUESTS_ONLY_NOTE = 'Your last response had only requests, so it was not taken as your final answer. Go on with your work, then write your whole final answer, opened the way your instructions say.';
+/** Requests whose results the agent has no need to read, so they are carried out with the final answer they go with. */
+const ANSWER_REQUESTS: readonly AgentRequest['kind'][] = ['update', 'comment', 'skill_write'];
 
 /** The agent that creates an artifact says what it is, whatever sections its role writes afterwards. */
 const CREATOR_SECTION: ArtifactSection = 'overview';
@@ -65,8 +69,9 @@ export class RunAgentRequestsUseCase {
   /**
    * Carries out the requests of each response before anything else reads it, so the content an agent reads never passes
    * through the CEO. A response that also has an outcome (`hasOutcome`: a delegation or questions), or whose requests
-   * all wrote and succeeded next to the text of an answer, goes on without its requests, and the results wait for the
-   * agent's next prompt. Any other response gets the results right away, until a response carries no request.
+   * all succeeded and are of the kinds that go with an answer (`update`, `comment`, `skill_write`) next to its text, goes
+   * on without its requests, and the results wait for the agent's next prompt. Any other response gets the results right
+   * away, a creation among them since its id is something the agent must read, until a response carries no request.
    */
   async resolve(
     response: string,
@@ -82,22 +87,25 @@ export class RunAgentRequestsUseCase {
         return { response: current };
       }
       const results = await this.execute(parsed.requests, requester, onSkill);
-      const reads = parsed.requests.some(request => !WRITE_REQUESTS.includes(request.kind));
-      if (hasOutcome(parsed.rest) || (!reads && !results.failed && parsed.rest.length > 0)) {
+      const goesWithAnswer = parsed.requests.every(request => ANSWER_REQUESTS.includes(request.kind));
+      if (hasOutcome(parsed.rest) || (goesWithAnswer && !results.failed && parsed.rest.length > 0)) {
         return { response: parsed.rest, requestResults: results.text };
       }
-      current = await runAgent(`${results.text}\n${this.notAnAnswerNote(results.failed, reads)}`);
+      current = await runAgent(`${results.text}\n${this.notAnAnswerNote(parsed.requests, results.failed)}`);
     }
     this.logger.warn(`[Artifact Requests Exceeded] Role=${requester.role}, Rounds=${MAX_REQUEST_ROUNDS}`);
     return { response: current };
   }
 
-  /** An invalid request is a failure, so its note wins over that of a read. */
-  private notAnAnswerNote(failed: boolean, reads: boolean): string {
+  /** Why the response was not taken: a failure first, then a read, then a creation. */
+  private notAnAnswerNote(requests: readonly AgentRequest[], failed: boolean): string {
     if (failed) {
       return FAILED_RESPONSE_NOTE;
     }
-    return reads ? READ_RESPONSE_NOTE : REQUESTS_ONLY_NOTE;
+    if (requests.some(request => request.kind !== 'create' && !ANSWER_REQUESTS.includes(request.kind))) {
+      return READ_RESPONSE_NOTE;
+    }
+    return requests.some(request => request.kind === 'create') ? CREATE_RESPONSE_NOTE : REQUESTS_ONLY_NOTE;
   }
 
   /** `onSkill` hears each skill read or written, for the channel to show it. */

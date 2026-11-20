@@ -116,46 +116,56 @@ describe('DelegationStatusService', () => {
   });
 
   describe('start', () => {
-    it('should set the status the role starts in, by the system, with the reason', async () => {
+    it('should set the status the role starts in, by the system, with the reason, and work in it', async () => {
       const { status, task } = setup('ready');
 
-      await status.start('c1', 'T-1', 'DEVELOPER');
+      await expect(status.start('c1', 'T-1', 'DEVELOPER')).resolves.toBe('in_progress');
 
       const current = await task();
       const event = current.history.at(-1)!;
       expect(current.status).toBe('in_progress');
       expect(event.actor).toEqual({ kind: 'system' });
       expect(event.changes).toEqual([{ field: 'status', from: 'ready', to: 'in_progress' }]);
+      expect(JSON.stringify(event)).toContain('Delegated to Developer Agent');
     });
 
-    it('should record why the status changed in the history', async () => {
-      const { status, task } = setup('ready');
-
-      await status.start('c1', 'T-1', 'DEVELOPER');
-
-      expect(JSON.stringify((await task()).history.at(-1))).toContain('Delegated to Developer Agent');
-    });
-
-    it('should leave a task already in the starting status alone', async () => {
+    it('should work in the starting status without a change when the task is already in it', async () => {
       const { status, task } = setup('in_progress');
 
-      await status.start('c1', 'T-1', 'DEVELOPER');
+      await expect(status.start('c1', 'T-1', 'DEVELOPER')).resolves.toBe('in_progress');
 
       expect((await task()).history).toHaveLength(0);
     });
 
-    it('should leave the status alone for a role without a starting status', async () => {
+    it('should work in the status the task is in for a role without a starting status', async () => {
       const { status, task } = setup('in_review');
 
-      await status.start('c1', 'T-1', 'CODE_REVIEWER');
+      await expect(status.start('c1', 'T-1', 'CODE_REVIEWER')).resolves.toBe('in_review');
 
-      expect((await task()).status).toBe('in_review');
+      expect((await task()).history).toHaveLength(0);
     });
 
-    it('should leave the status alone for a role without a status flow', async () => {
+    it.each([
+      ['cancelled', 'DEVELOPER'],
+      ['in_review', 'DEVELOPER'],
+      ['done', 'CODE_REVIEWER'],
+    ] as const)('should leave a task that is %s alone and work in no status for %s', async (current, role) => {
+      const { status, task } = setup(current);
+      const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
+
+      await expect(status.start('c1', 'T-1', role)).resolves.toBeUndefined();
+      const messages = log.mock.calls.map(([message]) => message);
+      log.mockRestore();
+
+      expect((await task()).status).toBe(current);
+      expect((await task()).history).toHaveLength(0);
+      expect(messages).toContain(`[Delegation Status Kept] T-1 is ${current}, which ${role} does not take`);
+    });
+
+    it('should work in no status for a role without a status flow', async () => {
       const { status, task } = setup('ready');
 
-      await status.start('c1', 'T-1', 'GIT_OPS');
+      await expect(status.start('c1', 'T-1', 'GIT_OPS')).resolves.toBeUndefined();
 
       expect((await task()).status).toBe('ready');
     });
@@ -163,19 +173,19 @@ describe('DelegationStatusService', () => {
     it('should ignore an artifact that does not exist or is not a task', async () => {
       const { status, service } = setup('ready');
 
-      await status.start('c1', 'T-9', 'DEVELOPER');
-      await status.start('c1', 'F-1', 'DEVELOPER');
+      await expect(status.start('c1', 'T-9', 'DEVELOPER')).resolves.toBeUndefined();
+      await expect(status.start('c1', 'F-1', 'DEVELOPER')).resolves.toBeUndefined();
 
       expect((await service.get('c1', 'F-1'))!.status).toBe('in_progress');
       expect((await service.get('c1', 'F-1'))!.history).toHaveLength(0);
     });
 
-    it('should log a refused change and not throw', async () => {
+    it('should log a refused change, not throw, and work in the status the task stayed in', async () => {
       const { status, service } = setup('ready');
       rs.spyOn(service, 'update').mockResolvedValue({ ok: false, error: 'refused' });
       const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
-      await expect(status.start('c1', 'T-1', 'DEVELOPER')).resolves.toBeUndefined();
+      await expect(status.start('c1', 'T-1', 'DEVELOPER')).resolves.toBe('ready');
 
       expect(warn).toHaveBeenCalledWith('Could not set T-1 to in_progress: refused');
       warn.mockRestore();
@@ -183,10 +193,10 @@ describe('DelegationStatusService', () => {
   });
 
   describe('finish', () => {
-    it('should set the status of the verdict, by the system, and return the verdict', async () => {
+    it('should set the status of the verdict, by the system, and return the verdict that closed the step', async () => {
       const { status, task } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE\nPushed the branch.')).resolves.toBe('DONE');
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE\nPushed the branch.', 'in_progress')).resolves.toEqual({ verdict: 'DONE', closesStep: true });
 
       const current = await task();
       const event = current.history.at(-1)!;
@@ -213,7 +223,7 @@ describe('DelegationStatusService', () => {
     ])('should read the verdict of %j', async (response, expected) => {
       const { status } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', response)).resolves.toBe(expected);
+      expect((await status.finish('c1', 'T-1', 'DEVELOPER', response, 'in_progress'))?.verdict).toBe(expected);
     });
 
     it.each([
@@ -221,13 +231,14 @@ describe('DelegationStatusService', () => {
       'DONEISH',
       'Not DONE',
       'The work is DONE',
+      'CONCLUÍDO',
       'Pushed.\nPushed again.\nDONE',
       '',
       '   \n  ',
     ])('should find no verdict in %j and change nothing', async (response) => {
       const { status, task } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', response)).resolves.toBeUndefined();
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', response, 'in_progress')).resolves.toBeUndefined();
 
       expect((await task()).history).toHaveLength(0);
     });
@@ -235,58 +246,52 @@ describe('DelegationStatusService', () => {
     it('should match a verdict with an underscore in it', async () => {
       const { status, task } = setup('in_review');
 
-      await expect(status.finish('c1', 'T-1', 'CODE_REVIEWER', '**CHANGES_REQUESTED**\nFix the tests.')).resolves.toBe('CHANGES_REQUESTED');
+      await expect(status.finish('c1', 'T-1', 'CODE_REVIEWER', '**CHANGES_REQUESTED**\nFix the tests.', 'in_review')).resolves.toEqual({ verdict: 'CHANGES_REQUESTED', closesStep: true });
 
       expect((await task()).status).toBe('changes_requested');
     });
 
-    it('should return the verdict without a change when the task is already in its status', async () => {
+    it('should return a verdict that keeps the task in the status it worked in as not closing the step', async () => {
       const { status, task } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'INCOMPLETE')).resolves.toBe('INCOMPLETE');
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'INCOMPLETE', 'in_progress')).resolves.toEqual({ verdict: 'INCOMPLETE', closesStep: false });
 
       expect((await task()).history).toHaveLength(0);
     });
 
-    it('should leave a status the user set while the agent held the task, and return the verdict', async () => {
+    it.each([
+      ['the user', { kind: 'user', channel: 'web' }, 'cancelled'],
+      ['the CEO', { kind: 'agent', role: 'CEO', roleName: 'CEO' }, 'blocked'],
+    ] as const)('should leave a status %s set while the agent worked, and still return the verdict', async (_name, actor, moved) => {
       const { status, task, service } = setup('in_progress');
       await service.assign('c1', 'T-1', { role: 'DEVELOPER', roleName: 'Developer Agent', delegationId: 'd1' });
-      await service.update('c1', 'T-1', { status: 'cancelled' }, { kind: 'user', channel: 'web' });
+      await service.update('c1', 'T-1', { status: moved }, actor);
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE')).resolves.toBe('DONE');
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE', 'in_progress')).resolves.toEqual({ verdict: 'DONE', closesStep: true });
 
-      expect((await task()).status).toBe('cancelled');
+      expect((await task()).status).toBe(moved);
     });
 
-    it('should apply the verdict when the user set the status before the agent took the task', async () => {
-      rs.useFakeTimers();
-      rs.setSystemTime(Date.parse('2026-03-01T10:00:00.000Z'));
-      const { status, task, service } = setup('ready');
-      await service.update('c1', 'T-1', { status: 'in_progress' }, { kind: 'user', channel: 'web' });
-      rs.setSystemTime(Date.parse('2026-03-01T10:05:00.000Z'));
-      await service.assign('c1', 'T-1', { role: 'DEVELOPER', roleName: 'Developer Agent', delegationId: 'd1' });
+    it('should apply no verdict to a delegation that works in no status, and say it closed no step', async () => {
+      const { status, task } = setup('cancelled');
 
-      await status.finish('c1', 'T-1', 'DEVELOPER', 'DONE');
-      rs.useRealTimers();
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE', undefined)).resolves.toEqual({ verdict: 'DONE', closesStep: false });
 
-      expect((await task()).status).toBe('in_review');
+      expect((await task()).status).toBe('cancelled');
     });
 
     it('should find no verdict and change nothing for a role without a status flow', async () => {
       const { status, task } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-1', 'GIT_OPS', 'DONE')).resolves.toBeUndefined();
+      await expect(status.finish('c1', 'T-1', 'GIT_OPS', 'DONE', undefined)).resolves.toBeUndefined();
 
       expect((await task()).history).toHaveLength(0);
     });
 
-    it('should return the verdict for an artifact that does not exist or is not a task', async () => {
-      const { status, service } = setup('in_progress');
+    it('should return the verdict for an artifact that does not exist', async () => {
+      const { status } = setup('in_progress');
 
-      await expect(status.finish('c1', 'T-9', 'DEVELOPER', 'DONE')).resolves.toBe('DONE');
-      await expect(status.finish('c1', 'F-1', 'DEVELOPER', 'DONE')).resolves.toBe('DONE');
-
-      expect((await service.get('c1', 'F-1'))!.status).toBe('in_progress');
+      await expect(status.finish('c1', 'T-9', 'DEVELOPER', 'DONE', 'in_progress')).resolves.toEqual({ verdict: 'DONE', closesStep: true });
     });
 
     it('should log a refused change, not throw and still return the verdict', async () => {
@@ -294,7 +299,7 @@ describe('DelegationStatusService', () => {
       rs.spyOn(service, 'update').mockResolvedValue({ ok: false, error: 'refused' });
       const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
 
-      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE')).resolves.toBe('DONE');
+      await expect(status.finish('c1', 'T-1', 'DEVELOPER', 'DONE', 'in_progress')).resolves.toEqual({ verdict: 'DONE', closesStep: true });
 
       expect(warn).toHaveBeenCalledWith('Could not set T-1 to in_review: refused');
       warn.mockRestore();

@@ -8,6 +8,7 @@ export const ARTIFACT_STATUSES = [
   'changes_requested',
   'approved',
   'in_testing',
+  'tested',
   'done',
   'blocked',
   'frozen',
@@ -21,7 +22,7 @@ export const FROZEN_STATUS = 'frozen';
 export const CLOSED_ARTIFACT_STATUSES: readonly string[] = ['done', 'cancelled'];
 
 /** Statuses of a task somebody is working on, which keep its feature moving. */
-export const ACTIVE_TASK_STATUSES: readonly string[] = ['in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing'];
+export const ACTIVE_TASK_STATUSES: readonly string[] = ['in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing', 'tested'];
 
 /** Statuses that end the work on an artifact: a user who moves a held artifact to one of them stops the agent holding it. */
 export const WORK_ENDING_STATUSES: readonly string[] = ['done', 'blocked', 'cancelled'];

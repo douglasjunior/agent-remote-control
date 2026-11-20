@@ -118,10 +118,18 @@ export class DelegationValidatorService {
       return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
-    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars) {
+    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, role, artifactId)) {
       return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as an <artifact_comment> in the same response. Do not restate its sections.` };
     }
     return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
+  }
+
+  /**
+   * A delegation to a role already working on the same artifact steers that agent, which receives only the new text and
+   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply.
+   */
+  private redirects(conversationId: string, role: string, artifactId: string): boolean {
+    return this.conversationRuntime.findActiveDelegation(conversationId, role)?.artifactId === artifactId;
   }
 
   private async resolveDelegationFolder(

@@ -411,7 +411,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Go.</delegate>', 'Ok.'];
     delegateStubPort.mockResponses = ['<artifact_list/>', 'Done.'];
     delegateStubPort.getLastRoundUsage = rs.fn()
-      .mockResolvedValueOnce({ totalTokens: 40, inputTokens: 30, outputTokens: 10, cachedReadTokens: 5 })
+      .mockResolvedValueOnce({ totalTokens: 40, inputTokens: 30, outputTokens: 10, cachedReadTokens: 5, cachedWriteTokens: 7 })
       .mockResolvedValueOnce({ totalTokens: 20, inputTokens: 15, outputTokens: 5 });
     const events: DelegationEvent[] = [];
     const log = rs.spyOn(Logger.prototype, 'log');
@@ -422,10 +422,10 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     const promptChars = delegateStubPort.promptCalls.reduce((total, prompt) => total + prompt.length, 0);
     const finished = events.find(event => event.phase === 'finished');
-    expect(finished && 'usage' in finished ? finished.usage : undefined).toStrictEqual({ totalTokens: 60, inputTokens: 45, outputTokens: 15, cachedReadTokens: 5 });
-    expect(messages).toContainEqual(expect.stringMatching(new RegExp(`^\\[Delegation Finished\\] .*, Prompts=2, PromptChars=${promptChars}, InputTokens=45, OutputTokens=15$`)));
-    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=30, Output=10, CachedRead=5, Total=40');
-    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=15, Output=5, CachedRead=0, Total=20');
+    expect(finished && 'usage' in finished ? finished.usage : undefined).toStrictEqual({ totalTokens: 60, inputTokens: 45, outputTokens: 15, cachedReadTokens: 5, cachedWriteTokens: 7 });
+    expect(messages).toContainEqual(expect.stringMatching(new RegExp(`^\\[Delegation Finished\\] .*, Prompts=2, PromptChars=${promptChars}, InputTokens=45, OutputTokens=15, TotalTokens=60$`)));
+    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=30, Output=10, CachedRead=5, CachedWrite=7, Total=40');
+    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=15, Output=5, CachedRead=0, CachedWrite=0, Total=20');
     expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=new, SystemPrompt=yes, Chars=${delegateStubPort.promptCalls[0]!.length}`);
   });
 
@@ -4188,6 +4188,18 @@ describe('ExecuteAgentTurnUseCase', () => {
           expect(ceo.promptCalls[0]).toContain('artifact="T-1" verdict="DONE" artifact_status="in_review"');
         });
 
+        it('should leave alone a task that restored work finds in a status the role does not take', async () => {
+          const { ceo, developer, work } = await interruptedOnTask();
+          artifactStore.artifactsOf('conv-1').set('T-1', buildArtifact({ id: 'T-1', projectName: 'my-app', status: 'cancelled' }));
+          ceo.mockResponses = ['T-1 was cancelled.'];
+          developer.mockResponses = ['DONE'];
+
+          await useCase.resume(work.id, turnRequest());
+
+          expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ status: 'cancelled', history: [{ kind: 'assigned' }, { kind: 'released' }] });
+          expect(ceo.promptCalls[0]).toContain('artifact="T-1" verdict="DONE" artifact_status="cancelled"');
+        });
+
         it('should apply the verdict of an agent the answers were delivered to', async () => {
           const { ceo, developer, restoredWork } = await answeredOnTask();
           startedTask();
@@ -4273,16 +4285,50 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(onDraft).toHaveBeenCalledWith('');
     });
 
-    it('should deliver the answer of the CEO in the same round as the board writes that go with it', async () => {
-      stubAgentPort.mockResponses = ['Created the login task. <artifact_create type="task" title="Login" project="my-app"/>'];
+    it('should deliver the answer of the CEO in the same round as the updates and comments that go with it', async () => {
+      seed({ id: 'T-1', title: 'Login' });
+      stubAgentPort.mockResponses = ['Noted on the login task. <artifact_comment id="T-1">Use JWT.</artifact_comment>'];
       const onDraft = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
-      expect(result).toMatchObject({ status: 'completed', response: 'Created the login task.' });
+      expect(result).toMatchObject({ status: 'completed', response: 'Noted on the login task.' });
       expect(stubAgentPort.promptCalls).toHaveLength(1);
       expect(onDraft).not.toHaveBeenCalledWith('');
-      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ title: 'Login', history: [{ actor: { kind: 'agent', role: 'CEO' } }] });
+      expect((await artifacts.get('conv-1', 'T-1'))?.history).toMatchObject([{ kind: 'commented', actor: { kind: 'agent', role: 'CEO' } }]);
+    });
+
+    it('should hand the CEO the id of what it created before taking an answer, so it can still delegate it', async () => {
+      stubAgentPort.mockResponses = [
+        'I will hand it to the developer. <artifact_create type="task" title="Login" project="my-app" business_refinement="skipped" technical_refinement="skipped"/>',
+        '<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>',
+        'T-1 is built.',
+      ];
+      delegateStubPort.mockResponses = ['Built.'];
+      const onDraft = rs.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'T-1 is built.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('<request_result request="create" id="T-1" status="ok">');
+      expect(stubAgentPort.promptCalls[1]).toContain('Your last response created artifacts, whose ids are in these results, so it was not taken as your final answer.');
+      expect(onDraft).toHaveBeenCalledWith('');
+      expect(delegateStubPort.promptCalls[0]).toContain('[DELEGATED_ARTIFACT]\nYou hold T-1');
+    });
+
+    it('should hand a delegate the id of what it created before taking its final answer', async () => {
+      seed({ id: 'F-1', type: 'feature', title: 'Checkout' });
+      stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Break F-1 into tasks.</delegate>', 'Planned.'];
+      delegateStubPort.mockResponses = [
+        'Created the task. <artifact_create type="task" title="Login" parent="F-1"/>',
+        'Created T-1 under F-1.',
+      ];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls[1]).toContain('<request_result request="create" id="T-1" status="ok">');
+      expect(delegateStubPort.promptCalls[1]).toContain('then write your whole final answer again, opened the way your instructions say.');
+      expect(stubAgentPort.promptCalls[1]).toContain('>\nCreated T-1 under F-1.\n</agent_result>');
     });
 
     it('should run the requests that go with a delegation and hand their results over with the agent results', async () => {
@@ -4365,6 +4411,18 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.promptCalls).toHaveLength(1);
       expect(stubAgentPort.promptCalls[1]).toContain('>\nBuilt.\n</agent_result>');
       expect((await artifacts.get('conv-1', 'T-1'))?.history).toContainEqual(expect.objectContaining({ kind: 'commented', text: 'Built it.' }));
+    });
+
+    it('should carry out once a request written both outside and inside the final response', async () => {
+      seed({ id: 'T-1' });
+      const comment = '<artifact_comment id="T-1">Noted.</artifact_comment>';
+      stubAgentPort.mockResponses = [`${comment}\n<artifact_update id="T-1" title="Login"/>\n<final_response>Done.\n${comment}</final_response>`];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+      expect((await artifacts.get('conv-1', 'T-1'))?.history.filter(event => event.kind === 'commented')).toHaveLength(1);
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ title: 'Login' });
     });
 
     it('should repair a delegate that wrote other protocol tags outside its final response, without touching the draft of the CEO', async () => {
@@ -4515,7 +4573,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           developerSession('dev-project', null),
           developerSession('dev-t1', 'T-1'),
           { role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null, artifactId: null },
-          developerSession('session-1', 'T-2'),
+          { ...developerSession('session-1', 'T-2'), workEndedAt: expect.any(String) },
         ]);
       });
 
@@ -4547,8 +4605,9 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'tl-project' }]);
       });
 
-      it('should give a resumed session only what changed on the task since the role released it, after the re-entry note', async () => {
+      it('should give a resumed session only what changed on the task since its work on it ended, after the re-entry note', async () => {
         agentRegistry.getReentryNote.mockReturnValue('[RE-ENTRY] note');
+        await sessionStore.saveSession(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
         seed({
           id: 'T-1',
           title: 'Login',
@@ -4572,6 +4631,96 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(prompt).not.toContain('Use JWT.');
       });
 
+      it('should tell a session what changed since its own work ended, the work of the role on another coding agent included', async () => {
+        const developer = { kind: 'agent', role: 'DEVELOPER', roleName: 'DEVELOPER' } as const;
+        await sessionStore.saveSession(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
+        seed({
+          id: 'T-1',
+          sections: { technical_solution: 'Use JWT.', implementation_notes: 'Built on the other agent.' },
+          history: [
+            { id: 'h1', at: '2026-01-01T00:00:00.000Z', actor: developer, kind: 'released', summary: 'DEVELOPER released it: finished' },
+            { id: 'h2', at: '2026-01-01T01:00:00.000Z', actor: developer, kind: 'updated', summary: 'Updated', changes: [{ field: 'section:implementation_notes', to: 'replaced' }] },
+            { id: 'h3', at: '2026-01-01T01:30:00.000Z', actor: developer, kind: 'released', summary: 'DEVELOPER released it: finished' },
+          ],
+        });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'dev-t1' }]);
+        expect(delegateStubPort.promptCalls[0]).toContain('## Implementation notes\nBuilt on the other agent.\n[/DELEGATED_ARTIFACT]');
+        expect(delegateStubPort.promptCalls[0]).not.toContain('Use JWT.');
+      });
+
+      it('should give the whole task to a resumed session that records no end of its work', async () => {
+        seed({ id: 'T-1', sections: { technical_solution: 'Use JWT.' } });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'dev-t1' }]);
+        expect(delegateStubPort.promptCalls[0]).toContain('## Technical solution\nUse JWT.\n[/DELEGATED_ARTIFACT]');
+      });
+
+      it('should give a feature whole to a resumed session, since what changed in its tasks is not in its own history', async () => {
+        await sessionStore.saveSession(buildSessionContext({
+          agentSessions: [{ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-f1', projectName: 'my-app', artifactId: 'F-1', workEndedAt: '2026-01-01T00:00:00.000Z' }],
+        }));
+        seed({
+          id: 'F-1',
+          type: 'feature',
+          title: 'Checkout',
+          sections: { overview: 'Sell online.' },
+          history: [{ id: 'h1', at: '2026-01-01T00:00:00.000Z', actor: { kind: 'agent', role: 'TECH_LEAD', roleName: 'TECH_LEAD' }, kind: 'released', summary: 'TECH_LEAD released it: finished' }],
+        }, { id: 'T-1', title: 'Login', parentId: 'F-1' });
+        stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Plan F-1 again.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Planned.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'tl-f1' }]);
+        expect(delegateStubPort.promptCalls[0]).toContain('- Type: feature');
+        expect(delegateStubPort.promptCalls[0]).toContain('## Overview\nSell online.');
+      });
+
+      it('should record no end of work for a delegation that never reached a session', async () => {
+        seed({ id: 'T-2' });
+        delegateStubPort.errorToThrowOnConnect = new Error('agent missing');
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-2">Implement T-2.</delegate>', 'Done.'];
+
+        await useCase.execute(turnRequest());
+
+        expect((await storedAgentSessions())?.filter(binding => binding.workEndedAt)).toEqual([]);
+      });
+
+      it('should leave alone a binding another session of the task took while the agent worked', async () => {
+        seed({ id: 'T-1' });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
+        whileDelegateWorks(() => sessionStore.saveSession(buildSessionContext({ agentSessions: [developerSession('dev-t1-elsewhere', 'T-1')] })), 'Fixed.');
+
+        await useCase.execute(turnRequest());
+
+        expect(await storedAgentSessions()).toContainEqual(developerSession('dev-t1-elsewhere', 'T-1'));
+      });
+
+      it('should log a session that fails to record the end of its work, without failing the delegation', async () => {
+        seed({ id: 'T-1' });
+        const save = sessionStore.saveSession.bind(sessionStore);
+        sessionStore.saveSession = async session => (session.agentSessions.some(binding => binding.workEndedAt) ? Promise.reject(new Error('disk full')) : save(session));
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+        const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+        const result = await useCase.execute(turnRequest());
+        const messages = error.mock.calls.map(([message]) => message);
+        error.mockRestore();
+
+        expect(result.status).toBe('completed');
+        expect(messages).toContain('[Session Record Failed] T-1: disk full');
+      });
+
       it('should give the whole task to a session created because the stored one failed to load', async () => {
         delegateStubPort.loadSessionResult = false;
         seed({
@@ -4585,7 +4734,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         await useCase.execute(turnRequest());
 
         expect(delegateStubPort.promptCalls[0]).toContain('## Technical solution\nUse JWT.\n[/DELEGATED_ARTIFACT]\n\nFix it.');
-        expect(await storedAgentSessions()).toContainEqual(developerSession('session-1', 'T-1'));
+        expect(await storedAgentSessions()).toContainEqual({ ...developerSession('session-1', 'T-1'), workEndedAt: expect.any(String) });
       });
 
       it('should resume the reviewer\'s own review session on its second review of the same task', async () => {
@@ -4651,6 +4800,33 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(stubAgentPort.promptCalls[1]).toContain(
           'The specification of T-1 has 23 characters, and the limit with an artifact is 20. The agent receives T-1 in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as an <artifact_comment> in the same response. Do not restate its sections.',
         );
+      });
+
+      it('should accept any length to redirect the agent of the role already working on that artifact', async () => {
+        const steer = rs.fn().mockResolvedValue(true);
+        delegateStubPort.supportsSteering = true;
+        runtime.registerDelegation('conv-1', {
+          delegationId: 'd-1',
+          role: 'DEVELOPER',
+          roleName: 'DEVELOPER',
+          agentInfo: { roleName: 'DEVELOPER', agentName: 'stub' },
+          projectName: 'my-app',
+          artifactId: 'T-1',
+          summary: 'Building',
+          taskSpec: 'Implement T-1.',
+          cwd: '/mock/workspace/my-app',
+          startedAt: Date.now(),
+          agentPort: delegateStubPort,
+          turn: { cancel: rs.fn() } as any,
+          steer,
+          stop: rs.fn(),
+        });
+        stubAgentPort.mockResponses = delegateWith('Stop the refactor and keep the old login API, as the user asked.');
+
+        const result = await useCase.execute(turnRequest());
+
+        expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
+        expect(steer).toHaveBeenCalledWith('Stop the refactor and keep the old login API, as the user asked.');
       });
 
       it.each([
@@ -4753,6 +4929,29 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(stubAgentPort.promptCalls[1]).toContain('artifact="T-1" verdict="DONE" artifact_status="approved" artifact_status_by="user"');
       });
 
+      it('should keep a status the CEO set while the agent worked, telling the CEO the verdict', async () => {
+        seed({ id: 'T-1', status: 'in_progress' });
+        stubAgentPort.mockResponses = [develop, 'Done.'];
+        whileDelegateWorks(() => artifacts.update('conv-1', 'T-1', { status: 'blocked' }, { kind: 'agent', role: 'CEO', roleName: 'CEO' }), 'DONE');
+
+        await useCase.execute(turnRequest());
+
+        expect(await statusOf()).toBe('blocked');
+        expect(stubAgentPort.promptCalls[1]).toContain('artifact="T-1" verdict="DONE" artifact_status="blocked" agent="stub"');
+      });
+
+      it('should apply the verdict of the whole final answer an agent writes again once its answer was sent back', async () => {
+        seed({ id: 'T-1', status: 'ready' });
+        stubAgentPort.mockResponses = [develop, 'Done.'];
+        delegateStubPort.mockResponses = ['DONE\n<artifact_read id="T-1"/>', 'DONE\nBuilt on feat/t-1.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls[1]).toContain('Go on with your work with these results, then write your whole final answer again, opened the way your instructions say.');
+        expect(await statusOf()).toBe('in_review');
+        expect(stubAgentPort.promptCalls[1]).toContain('verdict="DONE" artifact_status="in_review"');
+      });
+
       it('should leave the status as the start set it when the answer opens with no verdict', async () => {
         seed({ id: 'T-1', status: 'ready' });
         stubAgentPort.mockResponses = [develop, 'Done.'];
@@ -4809,6 +5008,15 @@ describe('ExecuteAgentTurnUseCase', () => {
 
           expect(stubAgentPort.promptCalls[1]).toContain(`effort="default">\nDONE\nChanged the login form. C\n\n[The rest of this result, ${report.length - 30} characters, was left out. The full report is on T-1, in its Implementation notes section.]\n</agent_result>`);
           expect(onDelegation).toHaveBeenCalledWith(expect.objectContaining({ phase: 'finished', response: report }));
+        });
+
+        it('should reach the CEO whole with a verdict that keeps the task where it was, which carries what the CEO must act on', async () => {
+          const incomplete = `INCOMPLETE\n${'Choose between a cookie and a header for the token. '.repeat(3).trim()}`;
+          delegateStubPort.mockResponses = [incomplete];
+
+          await useCase.execute(turnRequest());
+
+          expect(stubAgentPort.promptCalls[1]).toContain(`verdict="INCOMPLETE" artifact_status="in_progress" agent="stub" model="default" effort="default">\n${incomplete}\n</agent_result>`);
         });
 
         it('should point to the task alone for a role that writes no section', async () => {
@@ -4901,6 +5109,19 @@ describe('ExecuteAgentTurnUseCase', () => {
           expect(messages).toContain('[Board Check] Conversation=conv-1, Tasks=T-1');
         });
 
+        it('should ask for a complete answer, attachments included, and deliver the one that ends the turn', async () => {
+          developed();
+          fileSystem.readableFiles.add('/mock/workspace/my-app/report.pdf');
+          const attachment = '<attachment path="/mock/workspace/my-app/report.pdf">Report</attachment>';
+          stubAgentPort.mockResponses = [develop, `All done.\n${attachment}`, `T-1 waits for your review.\n${attachment}`];
+
+          const result = await useCase.execute(turnRequest());
+
+          expect(stubAgentPort.promptCalls[2]).toContain('Your answer was not delivered');
+          expect(stubAgentPort.promptCalls[2]).toContain('write it complete, with every <attachment> you were sending.');
+          expect(result).toMatchObject({ status: 'completed', response: 'T-1 waits for your review.', attachments: ['/mock/workspace/my-app/report.pdf'] });
+        });
+
         it('should hand the CEO the results of the board writes of the answer along with the check', async () => {
           developed();
           stubAgentPort.mockResponses = [develop, 'All done. <artifact_comment id="T-1">Built.</artifact_comment>', 'Nothing else to do.'];
@@ -4927,6 +5148,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           ['an answer that names each task in the middle of the flow', () => undefined],
           ['an answer that leaves out a task an agent holds', () => seed({ id: 'T-2', status: 'in_testing', assignee: { role: 'QA', roleName: 'QA', delegationId: 'd', since: '2026-01-01T00:00:00.000Z' } })],
           ['an answer that leaves out a task waiting outside the flow', () => seed({ id: 'T-2', status: 'blocked' })],
+          ['an answer that leaves out a task parked mid-flow in an earlier turn', () => seed({ id: 'T-2', status: 'approved' })],
         ])('should deliver %s', async (_name, arrange) => {
           developed();
           arrange();

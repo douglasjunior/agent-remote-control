@@ -38,6 +38,15 @@ describe('artifact-board skill', () => {
       expect(skill).toContain('keeps a feature in step with its tasks');
     });
 
+    it('should keep a task ready only while no refinement is pending, and park a refined task with blocked', () => {
+      expect(skill).toContain('keeps a task `ready` exactly while neither refinement is pending (a `ready` task whose refinement is set back to `pending` returns to the `backlog`)');
+      expect(skill).toContain('It is also how a refined task is parked, since `backlog` and `ready` follow its refinements.');
+    });
+
+    it('should say that a tested task waits for the merge', () => {
+      expect(skill).toContain('- A task that passed its test is `tested`: it waits for the merge, and `done` once merged or left for the user.');
+    });
+
     it('should skip a step the user does not want by setting the status that step would have left', () => {
       expect(skill).toContain('<artifact_update id="T-3" status="approved" note="the user waived the review"/>');
     });

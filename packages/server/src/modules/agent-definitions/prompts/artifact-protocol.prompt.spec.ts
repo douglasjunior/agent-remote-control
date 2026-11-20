@@ -26,11 +26,17 @@ describe('artifact-protocol.prompt', () => {
     expect(brief).toContain('`<artifact_comment id="T-1">text</artifact_comment>`');
   });
 
-  it('should explain that writing requests ride with the final answer and reading ones get their results first', () => {
+  it('should explain that updates and comments ride with the final answer and reading ones get their results first', () => {
     const brief = buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS);
 
-    expect(brief).toContain('Requests that write go in the same final response as your final answer');
-    expect(brief).toContain('A response that reads gets `<request_results>` back first');
+    expect(brief).toContain('- Updates and comments go in the same final response as your final answer: they are carried out and the answer is delivered with them.');
+    expect(brief).toContain('A response that reads gets `<request_results>` back first and is not your final answer: write that whole in a later response.');
+  });
+
+  it('should tell an agent that creates artifacts that a creation gets its results first, with the new ids', () => {
+    expect(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS)).toContain(
+      'A response that reads or creates gets `<request_results>` back first, with the id of each artifact created, and is not your final answer: write that whole in a later response.',
+    );
   });
 
   describe('scope', () => {

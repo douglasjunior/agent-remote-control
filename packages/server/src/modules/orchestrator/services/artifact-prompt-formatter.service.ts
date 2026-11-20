@@ -60,24 +60,27 @@ export class ArtifactPromptFormatterService {
   }
 
   /**
-   * The facts of the artifact and only the sections changed and the comments added since `role` last released it, for
-   * an agent coming back to it; `undefined` when the role never released it, which leaves nothing to compare with.
+   * The facts of the artifact and only the sections changed and the comments added from `since` on, for a session that
+   * worked on it until then. Events at that very moment count, so a change is never left out.
    */
-  changesSinceRelease(artifact: Artifact, role: string): string | undefined {
-    const released = artifact.history.findLastIndex(event => event.kind === 'released' && event.actor.kind === 'agent' && event.actor.role === role);
-    if (released === -1) {
-      return undefined;
-    }
-    const since = artifact.history.slice(released + 1);
-    const changedSections = new Set(since.flatMap(event => (event.changes ?? []).map(change => change.field)));
+  changesSince(artifact: Artifact, all: readonly Artifact[], since: string): string {
+    const recent = artifact.history.filter(event => event.at >= since);
+    const changedSections = new Set(recent.flatMap(event => (event.changes ?? []).map(change => change.field)));
     const sections = ARTIFACT_SECTIONS
       .filter(section => changedSections.has(`section:${section}`))
       .map(section => this.renderSection(artifact, section));
-    const comments = this.renderComments(since);
+    const comments = this.renderComments(recent);
     const changed = sections.length > 0 || comments !== undefined;
     return [
       `# ${artifact.id} · ${artifact.title}`,
-      [this.statusFact(artifact), this.holderFact(artifact), this.branchFact(artifact), this.pullRequestsFact(artifact)].join('\n'),
+      [
+        this.statusFact(artifact),
+        this.dependenciesFact(artifact, all),
+        this.refinementFact(artifact),
+        this.holderFact(artifact),
+        this.branchFact(artifact),
+        this.pullRequestsFact(artifact),
+      ].join('\n'),
       changed
         ? `Below are only the sections changed and the comments added since you last worked on ${artifact.id}; everything else on it is unchanged.`
         : `Nothing on ${artifact.id} besides the facts above changed since you last worked on it.`,
@@ -94,9 +97,9 @@ export class ArtifactPromptFormatterService {
       this.statusFact(artifact),
       `- Project: ${artifact.projectName}`,
       `- Parent: ${this.ancestry(artifact, all)}`,
-      `- Depends on: ${this.references(artifact.dependsOn.map(id => this.find(all, id) ?? id))}`,
+      this.dependenciesFact(artifact, all),
       `- Blocks: ${this.references(blocks)}`,
-      `- Refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`,
+      this.refinementFact(artifact),
       this.holderFact(artifact),
       this.branchFact(artifact),
       this.pullRequestsFact(artifact),
@@ -127,6 +130,14 @@ export class ArtifactPromptFormatterService {
 
   private statusFact(artifact: Artifact): string {
     return `- Status: ${artifact.status}${lastStatusChange(artifact)?.event.actor.kind === 'user' ? ', set by the user' : ''}`;
+  }
+
+  private dependenciesFact(artifact: Artifact, all: readonly Artifact[]): string {
+    return `- Depends on: ${this.references(artifact.dependsOn.map(id => this.find(all, id) ?? id))}`;
+  }
+
+  private refinementFact(artifact: Artifact): string {
+    return `- Refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`;
   }
 
   private holderFact(artifact: Artifact): string {

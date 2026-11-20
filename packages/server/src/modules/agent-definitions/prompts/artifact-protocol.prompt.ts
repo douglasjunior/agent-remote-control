@@ -24,7 +24,7 @@ export function buildArtifactProtocolBrief(access: ArtifactAccess): string {
     ...(writes ? [`- \`<artifact_update id="T-1"${updateExample}>${updateChildren}</artifact_update>\` changes an artifact.`] : []),
     ...(access.create ? ['- `<artifact_create type="task" title="..." project="my-app"><section name="overview">Markdown</section></artifact_create>` creates one.'] : []),
     '- `<artifact_comment id="T-1">text</artifact_comment>` comments on one.',
-    '- Requests that write go in the same final response as your final answer: they are carried out and the answer is delivered. A response that reads gets `<request_results>` back first, and your final answer comes after them.',
+    `- Updates and comments go in the same final response as your final answer: they are carried out and the answer is delivered with them. A response that ${access.create ? 'reads or creates' : 'reads'} gets \`<request_results>\` back first${access.create ? ', with the id of each artifact created,' : ''} and is not your final answer: write that whole in a later response.`,
     access.sections.length > 0
       ? `- Sections you write: ${access.sections.map(section => `\`${section}\``).join(', ')}${access.create && !access.sections.includes('overview') ? ', and the `overview` of an artifact you create' : ''}.${access.fields.length > 0 ? ` Fields you change: ${access.fields.join(', ')}.` : ''}`
       : `- You write no section${access.fields.length > 0 ? `; fields you change: ${access.fields.join(', ')}` : ''}. Record what the next agent must know as a comment.`,

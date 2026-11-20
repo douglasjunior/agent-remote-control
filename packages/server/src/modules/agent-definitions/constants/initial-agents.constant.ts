@@ -40,7 +40,6 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'Repository administration. Adds a repository to the workspace by cloning or initializing it, and keeps the mapping from repository URL to project folder, so it also answers whether a repository is already in the workspace and under which folder. Syncs and integrates branches against a remote (fetch, pull, merge, rebase), merges pull requests, configures remotes, sets up SSH keys, and runs the operations that can destroy work (force push, deleting remote refs, discarding commits) on an instruction that names the operation and its target. It does not write code, run project scripts, or push and open the pull request of a task: the agent that implements does that for its own task. Delegate to it without a project folder to add or locate a repository, stating the full repository URL and the transport the user asked for, if any; it answers with the project folder it used, which is the folder the follow-up work belongs to. Delegate to it with a project folder for remote operations on a repository already there, or with a task to merge its pull request, which it updates on the task.',
     buildSystemPrompt: () => GIT_OPS_SYSTEM_PROMPT,
-    defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', artifact: 'optional' },
     artifacts: GIT_OPS_ARTIFACT_ACCESS,
     reentryNote: GIT_OPS_REENTRY_NOTE,
@@ -52,7 +51,6 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'Product discovery before any technical planning: requirements, business rules, exploration of ideas and features, flows, usability, and acceptance criteria. Delegate to it whenever a request is about what to build or why rather than how, or is too vague to plan, before the Tech Lead. It interviews the user directly, round after round, until no loose end is left, and consolidates the intent on the board: a feature broken into tasks, or the task it was given, with their business sections (overview, user stories, rules, flows, acceptance criteria, test cases) and business refinement done. It answers with the ids it created or changed plus the technical decisions it left for the technical team. Delegate to it with the artifact to refine, or with a project folder for a new initiative; it reads the code and documentation of that project for context.',
     buildSystemPrompt: () => PRODUCT_OWNER_SYSTEM_PROMPT,
-    defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional', asksUser: true, refines: 'business' },
     artifacts: PRODUCT_OWNER_ARTIFACT_ACCESS,
     reentryNote: PRODUCT_OWNER_REENTRY_NOTE,
@@ -64,7 +62,6 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'Senior technical lead and software architect for technical planning, architecture analysis, investigations, trade-off evaluations, impact assessment, and task decomposition before implementation. Aligns on critical technical decisions with the user and refines the board technically: the technical solution of each task (affected files, steps, tests, verification) and the split of large work into dependent tasks, answering with the ids it created or changed plus a summary. Delegate to it with the task or feature to refine, or with a project folder for an investigation.',
     buildSystemPrompt: () => TECH_LEAD_SYSTEM_PROMPT,
-    defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional', asksUser: true, refines: 'technical' },
     artifacts: TECH_LEAD_ARTIFACT_ACCESS,
     reentryNote: TECH_LEAD_REENTRY_NOTE,
@@ -122,7 +119,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
       statusFlow: {
         from: ['approved', 'in_testing'],
         start: 'in_testing',
-        verdicts: { PASSED: 'in_testing', FAILED: 'changes_requested', BLOCKED: 'in_testing' },
+        verdicts: { PASSED: 'tested', FAILED: 'changes_requested', BLOCKED: 'in_testing' },
       },
     },
     artifacts: QA_ARTIFACT_ACCESS,
@@ -135,7 +132,6 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     description:
       'IT support and system administration for the machine the agents run on, Windows, Linux or macOS: installing programs, SDKs and runtimes, operating system settings, environment variables, and fixing the environment, such as starting Docker or another service a project needs. It investigates the environment first, read-only, then asks the user to approve a plain-language plan and changes nothing before the approval. Never delegate to it on your own: suggest it to the user with a question and delegate only when the user agrees or asks for it explicitly. Delegate to it without a project folder for work on the machine, or with one for an environment problem of that project.',
     buildSystemPrompt: () => IT_SUPPORT_SYSTEM_PROMPT,
-    defaultSessionMode: 'resume',
     delegation: { project: 'optional', sessionMode: 'overridable', asksUser: true, userInitiatedOnly: true },
     artifacts: IT_SUPPORT_ARTIFACT_ACCESS,
     reentryNote: IT_SUPPORT_REENTRY_NOTE,

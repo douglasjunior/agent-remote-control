@@ -129,7 +129,12 @@ describe('ArtifactRulesService', () => {
     ['a backlog task owing nothing', { status: 'backlog', refinement: { business: 'done', technical: 'skipped' } }, 'ready'],
     ['a backlog task owing the business refinement', { status: 'backlog', refinement: { business: 'pending', technical: 'done' } }, undefined],
     ['a backlog task owing the technical refinement', { status: 'backlog', refinement: { business: 'done', technical: 'pending' } }, undefined],
+    ['a ready task owing the business refinement', { status: 'ready', refinement: { business: 'pending', technical: 'done' } }, 'backlog'],
+    ['a ready task owing the technical refinement', { status: 'ready', refinement: { business: 'skipped', technical: 'pending' } }, 'backlog'],
+    ['a ready task owing nothing', { status: 'ready', refinement: { business: 'done', technical: 'skipped' } }, undefined],
     ['a task in another status', { status: 'blocked', refinement: { business: 'done', technical: 'done' } }, undefined],
+    ['a parked task owing a refinement', { status: 'blocked', refinement: { business: 'pending', technical: 'done' } }, undefined],
+    ['a ready feature owing a refinement', { type: 'feature', status: 'ready', refinement: { business: 'pending', technical: 'done' } }, undefined],
     ['a backlog feature owing nothing', { type: 'feature', status: 'backlog', refinement: { business: 'done', technical: 'done' } }, undefined],
   ] as const)('should derive the status of %s', (_name, overrides, expected) => {
     expect(rules.derivedTaskStatus(buildArtifact({ id: 'T-1', ...overrides }))).toBe(expected);

@@ -26,6 +26,11 @@ describe('response-protocol skill', () => {
     expect(skill).toContain('## Questions to the User\nThe `asking-the-user` skill has the guide: read it before asking.');
   });
 
+  it('should let an answer carry updates and comments, and send a creation back with its id before the answer', () => {
+    expect(skill).toContain('a response that reads the board or creates an artifact gets them right away, with the id of each artifact created, and is not taken as your answer');
+    expect(skill).toContain('an answer to the user may carry updates and comments, such as the status that closes a task.');
+  });
+
   it('should cover every pending request and report each agent result', () => {
     expect(skill).toContain('the final answer covers each pending request');
     expect(skill).toContain('each `<agent_result>` is reported even when a newer message moved the conversation on');

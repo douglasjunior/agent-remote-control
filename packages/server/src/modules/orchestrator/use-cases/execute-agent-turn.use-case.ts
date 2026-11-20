@@ -232,15 +232,17 @@ export class ExecuteAgentTurnUseCase {
     const resumedRoot = resumed?.work.root ? resumed : undefined;
     const ceoWorkId = request.resumable ? resumedRoot?.work.id ?? randomUUID() : undefined;
     let ceoAnswerDelivery = resumedRoot && this.answerDeliveryOf(resumedRoot);
-    let delegated = false;
+    /** The tasks this turn started delegations for, restored work included: the ones the board check looks at. */
+    const delegatedArtifacts = new Set<string>();
     let boardChecked = false;
 
     try {
       if (resumed && !resumed.work.root) {
         session = await this.agentRound.resolveSession(request);
         observers.onSessionResolved(session);
-        running.add(this.runDelegation.start(session, [await this.toResumedDelegation(resumed, request)], request, resumed.work.round, conversationKey, running));
-        delegated = true;
+        const restored = await this.toResumedDelegation(resumed, request);
+        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey, running));
+        this.trackArtifacts(delegatedArtifacts, [restored]);
         await this.openWork.discardInterruptedRoots(request.conversationId);
         const results = await running.nextResults();
         if (results === undefined) {
@@ -303,7 +305,7 @@ export class ExecuteAgentTurnUseCase {
         }
 
         if (decision.kind === 'reply' && running.isEmpty) {
-          const stranded = delegated && !boardChecked ? await this.ceoBoard.findStranded(request.conversationId, decision.message) : [];
+          const stranded = boardChecked ? [] : await this.ceoBoard.findStranded(request.conversationId, decision.message, delegatedArtifacts);
           if (stranded.length === 0) {
             return await finish('completed', decision.message, undefined, decision.attachments);
           }
@@ -323,7 +325,7 @@ export class ExecuteAgentTurnUseCase {
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
           running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey, running));
-          delegated = true;
+          this.trackArtifacts(delegatedArtifacts, decision.delegations);
         }
         if (decision.message) {
           request.onInterimMessage?.(decision.message);
@@ -339,6 +341,14 @@ export class ExecuteAgentTurnUseCase {
       await this.runDelegation.stopRunning(running, conversationKey);
       if (ceoWorkId) {
         await this.openWork.close(request.conversationId, ceoWorkId);
+      }
+    }
+  }
+
+  private trackArtifacts(tracked: Set<string>, delegations: readonly ValidatedDelegation[]): void {
+    for (const { artifactId } of delegations) {
+      if (artifactId) {
+        tracked.add(artifactId);
       }
     }
   }

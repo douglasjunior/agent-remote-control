@@ -26,4 +26,10 @@ describe('user language prompts', () => {
   it('should ask agents to answer the user in the language', () => {
     expect(buildAgentLanguagePrompt('Spanish')).toContain('write them in Spanish');
   });
+
+  it('should keep the protocol tags and the verdict word of agents in English, as their instructions show them', () => {
+    expect(buildAgentLanguagePrompt('Brazilian Portuguese')).toContain(
+      'Protocol tags, and the verdict word that opens a final answer, are written exactly as your instructions show them, in English, whatever the language of the rest.',
+    );
+  });
 });

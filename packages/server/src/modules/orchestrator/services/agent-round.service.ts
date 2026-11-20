@@ -4,7 +4,7 @@ import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js'
 import type { AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
-import type { AgentSession, AgentSessionState } from '../models/agent-session.model.js';
+import type { AgentSession, OpenedAgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
@@ -32,8 +32,11 @@ import { AgentRequestParserService } from './agent-request-parser.service.js';
 import { OpenWorkService } from './open-work.service.js';
 
 
-/** A prompt that depends on whether the agent's session was resumed, built once the round knows it. */
-export type AgentPrompt = string | ((sessionState: AgentSessionState) => Promise<string>);
+/** A prompt that depends on the session the agent reached, built once the round knows it. */
+export type AgentPrompt = string | ((session: OpenedAgentSession) => Promise<string>);
+
+/** What identifies the session of a role, agent, project and artifact. */
+type AgentSessionKey = Pick<AgentSession, 'role' | 'agentId' | 'projectName' | 'artifactId'>;
 
 export type AgentRoundInput = {
   readonly agentPort: IAgentPort;
@@ -112,20 +115,21 @@ export class AgentRoundService {
       await agentPort.connect();
       turn.throwIfCancelled();
 
-      const sessionState = agentPort.currentSessionId
-        ? 'live'
+      const opened: OpenedAgentSession = agentPort.currentSessionId
+        ? { state: 'live' }
         : await this.openSession(agentPort, workspacePath, session, sessionMode, {
           role,
           agentId: agentPort.agentName,
           projectName: projectName ?? null,
           artifactId: artifactId ?? null,
         });
+      const sessionState = opened.state;
       const systemPromptPending = sessionState === 'new' || (isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role));
       const fullPrompt = [
         systemPromptPending ? await this.buildSystemPrompt(role) : '',
         sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role) : '',
         sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
-        typeof prompt === 'string' ? prompt : await prompt(sessionState),
+        typeof prompt === 'string' ? prompt : await prompt(opened),
         await this.buildLanguagePrompt(role, request.agentRole),
       ].filter(Boolean).join('\n\n');
 
@@ -148,8 +152,7 @@ export class AgentRoundService {
       let strayRequests = '';
       if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
         this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
-        const parsed = this.requestParser.parse(this.agentProtocol.narration(written.all));
-        strayRequests = parsed.kind === 'requests' ? parsed.raw : '';
+        strayRequests = this.strayRequests(written.all, this.agentProtocol.finalResponse(written.last));
       } else if (stray.length > 0) {
         this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
         if (role === request.agentRole) {
@@ -168,6 +171,20 @@ export class AgentRoundService {
     }
   }
 
+  /**
+   * The requests written outside the final response, as written, leaving out each one the final response also
+   * carries: an agent that writes a request in both places means it once.
+   */
+  private strayRequests(written: string, finalResponse: string): string {
+    const rawOf = (text: string): readonly string[] => {
+      const parsed = this.requestParser.parse(text);
+      return parsed.kind === 'requests' ? parsed.raw : [];
+    };
+    const normalize = (request: string) => request.replace(/\s+/g, ' ').trim();
+    const inside = new Set(rawOf(finalResponse).map(normalize));
+    return rawOf(this.agentProtocol.narration(written)).filter(request => !inside.has(normalize(request))).join('\n');
+  }
+
   private isRequestTag(tag: string): boolean {
     return tag.startsWith('artifact_') || tag.startsWith('skill_');
   }
@@ -178,22 +195,41 @@ export class AgentRoundService {
     workspacePath: string,
     session: SessionContext,
     sessionMode: 'resume' | 'new',
-    key: Omit<AgentSession, 'sessionId'>,
-  ): Promise<Exclude<AgentSessionState, 'live'>> {
+    key: AgentSessionKey,
+  ): Promise<OpenedAgentSession> {
     const latest = await this.findLatestSession(session);
-    const storedSessionId = sessionMode === 'new'
+    const stored = sessionMode === 'new'
       ? undefined
-      : latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key))?.sessionId;
-    const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
+      : latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key));
+    const resumed = await this.resumeAgentSession(agentPort, workspacePath, stored?.sessionId);
     if (!resumed) {
       await this.workspacePort.ensureDirectory(workspacePath);
       await agentPort.createSession(workspacePath);
     }
     const { currentSessionId } = agentPort;
-    if (currentSessionId && currentSessionId !== storedSessionId) {
+    if (currentSessionId && currentSessionId !== stored?.sessionId) {
       await this.bindAgentSession(latest, { ...key, sessionId: currentSessionId });
     }
-    return resumed ? 'resumed' : 'new';
+    if (!resumed) {
+      return { state: 'new' };
+    }
+    return stored?.workEndedAt ? { state: 'resumed', workEndedAt: stored.workEndedAt } : { state: 'resumed' };
+  }
+
+  /**
+   * Records on the session the port holds that its work on the artifact of `key` ended now, so the delegation that
+   * resumes it next is told what changed since. A port without a session, or whose session another one replaced in
+   * the store for the key, records nothing.
+   */
+  async recordWorkEnded(session: SessionContext, agentPort: IAgentPort, key: AgentSessionKey): Promise<void> {
+    const sessionId = agentPort.currentSessionId;
+    if (!sessionId) {
+      return;
+    }
+    await this.updateBinding(session, (latest) => {
+      const binding = latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key) && agentSession.sessionId === sessionId);
+      return binding && { ...binding, workEndedAt: new Date().toISOString() };
+    });
   }
 
   /** `last` is the agent's final message, falling back to everything it wrote; `all` is everything it wrote. */
@@ -209,7 +245,7 @@ export class AgentRoundService {
     }
     const usage = await agentPort.getLastRoundUsage().catch(() => undefined);
     if (usage) {
-      this.logger.log(`[Agent Usage] Role=${role}, Input=${usage.inputTokens}, Output=${usage.outputTokens}, CachedRead=${usage.cachedReadTokens ?? 0}, Total=${usage.totalTokens}`);
+      this.logger.log(`[Agent Usage] Role=${role}, Input=${usage.inputTokens}, Output=${usage.outputTokens}, CachedRead=${usage.cachedReadTokens ?? 0}, CachedWrite=${usage.cachedWriteTokens ?? 0}, Total=${usage.totalTokens}`);
     }
     onPrompt?.({ promptChars: prompt.length, responseChars: all.length, ...(usage ? { usage } : {}) });
     return { last: agentPort.lastAgentMessage || all, all };
@@ -234,21 +270,32 @@ export class AgentRoundService {
     return await this.sessionStore.findSession(session.conversationId) ?? session;
   }
 
-  /** Parallel delegations bind their sessions concurrently, so each binding re-reads the stored session in sequence. */
   private async bindAgentSession(session: SessionContext, binding: AgentSession): Promise<void> {
-    const bound = this.sessionBindings.then(async () => {
+    await this.updateBinding(session, () => binding);
+  }
+
+  /**
+   * Parallel delegations change their bindings concurrently, so each change re-reads the stored session in sequence.
+   * `change` returns the binding that takes the place of the one with its key, or nothing to leave them as they are.
+   */
+  private async updateBinding(session: SessionContext, change: (latest: SessionContext) => AgentSession | undefined): Promise<void> {
+    const updated = this.sessionBindings.then(async () => {
       const latest = await this.findLatestSession(session);
+      const binding = change(latest);
+      if (!binding) {
+        return;
+      }
       const others = latest.agentSessions.filter(agentSession => !this.isSameAgentSession(agentSession, binding));
       await this.sessionStore.saveSession({
         ...latest,
         agentSessions: [...others, binding],
       });
     });
-    this.sessionBindings = bound.catch(() => undefined);
-    await bound;
+    this.sessionBindings = updated.catch(() => undefined);
+    await updated;
   }
 
-  private isSameAgentSession(agentSession: AgentSession, target: Omit<AgentSession, 'sessionId'>): boolean {
+  private isSameAgentSession(agentSession: AgentSession, target: AgentSessionKey): boolean {
     return agentSession.role === target.role
       && agentSession.agentId === target.agentId
       && agentSession.projectName === target.projectName

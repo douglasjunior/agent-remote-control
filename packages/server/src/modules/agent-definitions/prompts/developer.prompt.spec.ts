@@ -73,8 +73,13 @@ describe('developer.prompt', () => {
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('<artifact_update id="T-3" branch="feat/t-3-login-api"><section name="implementation_notes">Markdown</section><pull_request url="https://..." title="T-3: Login API" state="open"/></artifact_update>');
     });
 
+    it('should keep the verdict DONE when only the pull request cannot be opened', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('A pull request that cannot be opened (no hosting provider, no tooling for it) does not make the work incomplete');
+    });
+
     it('should start the answer with DONE or INCOMPLETE on a line of its own', () => {
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('starting with the verdict on a line of its own');
+      expect(DEVELOPER_SYSTEM_PROMPT).toMatch(/starting with the verdict on a line of its own, written exactly as shown (here|above), in English whatever the language of the rest/);
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('`DONE`: everything the task asks is committed, pushed when there is a remote, and its checks passed.');
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('`INCOMPLETE`: anything else.');
     });
@@ -101,7 +106,7 @@ describe('developer.prompt', () => {
     it('should carry the checks, the push and the record with the verdict words', () => {
       expect(DEVELOPER_REENTRY_NOTE).toContain('run the project\'s checks and wait for them, then push and update its pull request');
       expect(DEVELOPER_REENTRY_NOTE).toContain('Record the branch, the pull request and the implementation notes on the task');
-      expect(DEVELOPER_REENTRY_NOTE).toContain('DONE or INCOMPLETE');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
     });
   });
 });

@@ -10,4 +10,4 @@
 - Boundaries: only the task it received, and environment work only, never the project's code. It has no CWD boundary (its work is outside the project folder by nature), no board brief and no project orientation;
 - **Re-entry note**: investigate read-only first and change nothing until the user approves the plan, asked in plain language with `<question>` (an approval covers that plan only); stay inside the approved plan, back up a file before editing it, never delete the user's data or expose a secret.
 
-Contract: `project: 'optional'`, `sessionMode: 'overridable'`, `asksUser`, `userInitiatedOnly`, `defaultSessionMode: 'resume'`; a writer (not `readOnly`); no `artifact` and no `statusFlow`; artifact access `task` with no sections and no fields (it does not use the board). Skills: `asking-the-user`, `role-guide`.
+Contract: `project: 'optional'`, `sessionMode: 'overridable'`, `asksUser`, `userInitiatedOnly`; a writer (not `readOnly`); no `artifact` and no `statusFlow`; artifact access `task` with no sections and no fields (it does not use the board). Skills: `asking-the-user`, `role-guide`.

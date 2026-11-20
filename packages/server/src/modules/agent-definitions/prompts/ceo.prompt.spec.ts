@@ -204,6 +204,7 @@ describe('ceo.prompt', () => {
 
     it('should merge into the default branch only with the user\'s go-ahead', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('Merging into a repository\'s default branch needs the user\'s go-ahead');
+      expect(CEO_SYSTEM_PROMPT).toContain('the agent that merges acts only on a specification that says the user approved it');
     });
 
     it('should give the artifact requests the CEO uses', () => {
@@ -216,8 +217,18 @@ describe('ceo.prompt', () => {
   });
 
   describe('status routing', () => {
-    it('should always say that a task becomes ready by itself once no refinement is pending', () => {
-      expect(buildCeoSystemPrompt([])).toContain('- A task becomes `ready` by itself once no refinement is pending, and a feature follows its tasks.');
+    it('should always say that the server keeps a task ready exactly while no refinement is pending', () => {
+      expect(buildCeoSystemPrompt([])).toContain('  - The server keeps a task `ready` exactly while no refinement is pending, moving it between `backlog` and `ready`, and a feature follows its tasks.');
+    });
+
+    it('should say that a tested task, or an approved one with nothing to run, is ready to merge', () => {
+      expect(buildCeoSystemPrompt([])).toContain('- A `tested` task, or an `approved` one with nothing to run, is ready to merge.');
+    });
+
+    it('should say that a response that creates gets its results back before it delegates or answers', () => {
+      expect(buildCeoSystemPrompt([])).toContain(
+        'A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user.',
+      );
     });
 
     it('should route a pending refinement to the agent that settles it', () => {
@@ -249,8 +260,8 @@ describe('ceo.prompt', () => {
     it('should list the refinements before the flows', () => {
       const prompt = buildCeoSystemPrompt([developer, planner]);
 
-      expect(prompt.indexOf('delegate PLANNER, which settles it')).toBeLessThan(prompt.indexOf('A task becomes `ready` by itself'));
-      expect(prompt.indexOf('A task becomes `ready` by itself')).toBeLessThan(prompt.indexOf('delegate DEVELOPER'));
+      expect(prompt.indexOf('delegate PLANNER, which settles it')).toBeLessThan(prompt.indexOf('The server keeps a task `ready`'));
+      expect(prompt.indexOf('The server keeps a task `ready`')).toBeLessThan(prompt.indexOf('delegate DEVELOPER'));
     });
   });
 });

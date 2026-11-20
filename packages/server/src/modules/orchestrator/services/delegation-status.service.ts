@@ -2,9 +2,14 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import type { Artifact, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
-import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.util.js';
 import { type DelegationStatusFlow, IAgentRegistryPort } from '../ports/agent-registry.port.js';
 
+
+/** The verdict that opened an agent's final answer, as the flow writes it, and whether it moved the task on. */
+export type DelegationVerdict = {
+  readonly verdict: string;
+  readonly closesStep: boolean;
+};
 
 const SYSTEM_ACTOR = { kind: 'system' } as const;
 const LEADING_DECORATION = /^[\s#*_`>]+/;
@@ -36,43 +41,65 @@ export class DelegationStatusService {
     return `${base} That status waits for another step: delegate that step first. When the user does not want it, skip it by setting the status to ${flow.from[0]}, which ${role} takes.`;
   }
 
-  /** Sets the status the role starts a task in, when it has one and the task is not in it. */
-  async start(conversationId: string, artifactId: string, role: string): Promise<void> {
-    const start = this.flowOf(role)?.start;
-    const artifact = start ? await this.artifacts.get(conversationId, artifactId) : undefined;
-    if (!start || artifact?.type !== 'task' || artifact.status === start) {
-      return;
+  /**
+   * Moves the task to the status the role starts in, only from a status the role takes, and returns the status the
+   * delegation works in: `undefined` when the role takes no status flow, the artifact is not a task, or the task sits
+   * in a status the role does not take (restored work skips the validator, and the task may have moved meanwhile).
+   */
+  async start(conversationId: string, artifactId: string, role: string): Promise<ArtifactStatus | undefined> {
+    const flow = this.flowOf(role);
+    const artifact = flow ? await this.artifacts.get(conversationId, artifactId) : undefined;
+    if (!flow || artifact?.type !== 'task') {
+      return undefined;
     }
-    await this.setStatus(conversationId, artifactId, start, `Delegated to ${this.agentRegistry.getDisplayName(role)}`);
+    if (!flow.from.includes(artifact.status)) {
+      this.logger.log(`[Delegation Status Kept] ${artifactId} is ${artifact.status}, which ${role} does not take`);
+      return undefined;
+    }
+    if (!flow.start || artifact.status === flow.start) {
+      return artifact.status;
+    }
+    const started = await this.setStatus(conversationId, artifactId, flow.start, `Delegated to ${this.agentRegistry.getDisplayName(role)}`);
+    return started ? flow.start : artifact.status;
   }
 
   /**
-   * Applies the status of the verdict that opens `response` and returns the verdict as the flow writes it; `undefined`
-   * when the response has none, which changes nothing. A status the user set while the agent held the task stands.
+   * Reads the verdict that opens `response` and applies its status while the task is still in `workingStatus`, the
+   * status `start` returned: a status someone else set while the agent worked stands. `undefined` when the response
+   * opens with no verdict, which changes nothing. `closesStep` is whether the verdict moves the task out of the status
+   * the delegation worked in; a verdict that keeps it there (more work, a block) does not.
    */
-  async finish(conversationId: string, artifactId: string, role: string, response: string): Promise<string | undefined> {
+  async finish(
+    conversationId: string,
+    artifactId: string,
+    role: string,
+    response: string,
+    workingStatus: ArtifactStatus | undefined,
+  ): Promise<DelegationVerdict | undefined> {
     const flow = this.flowOf(role);
     const verdict = flow ? this.findVerdict(flow, response) : undefined;
     if (!flow || !verdict) {
       return undefined;
     }
-    const artifact = await this.artifacts.get(conversationId, artifactId);
     const target = flow.verdicts[verdict]!;
-    if (artifact?.type === 'task' && artifact.status !== target && !statusSetByUserWhileHeld(artifact)) {
+    const closesStep = workingStatus !== undefined && target !== workingStatus;
+    const artifact = await this.artifacts.get(conversationId, artifactId);
+    if (closesStep && artifact?.status === workingStatus) {
       await this.setStatus(conversationId, artifactId, target, `${this.agentRegistry.getDisplayName(role)} answered ${verdict}`);
     }
-    return verdict;
+    return { verdict, closesStep };
   }
 
   private flowOf(role: string): DelegationStatusFlow | undefined {
     return this.agentRegistry.getDelegationContract(role).statusFlow;
   }
 
-  private async setStatus(conversationId: string, artifactId: string, status: ArtifactStatus, note: string): Promise<void> {
+  private async setStatus(conversationId: string, artifactId: string, status: ArtifactStatus, note: string): Promise<boolean> {
     const outcome = await this.artifacts.update(conversationId, artifactId, { status, note }, SYSTEM_ACTOR);
     if (!outcome.ok) {
       this.logger.warn(`Could not set ${artifactId} to ${status}: ${outcome.error}`);
     }
+    return outcome.ok;
   }
 
   /** Each refinement the task still owes, with the roles that settle it. */

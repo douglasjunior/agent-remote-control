@@ -44,7 +44,7 @@ describe('RunAgentRequestsUseCase', () => {
     const resolve = (useCase: RunAgentRequestsUseCase, response: string, runAgent: (results: string) => Promise<string>) =>
       useCase.resolve(response, runAgent, as('CEO'), () => false, () => undefined);
 
-    it('should carry out the writes that go with an answer and keep the answer, without prompting the agent again', async () => {
+    it('should carry out the updates and comments that go with an answer and keep the answer, without prompting the agent again', async () => {
       const { useCase, artifacts } = setup();
       const runAgent = rs.fn(async () => 'Never.');
 
@@ -60,22 +60,32 @@ describe('RunAgentRequestsUseCase', () => {
       [
         'a read',
         'Let me look.\n<artifact_list/>',
-        'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results; your final answer comes in a later response.',
+        'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'a read next to a creation',
+        'Let me look.\n<artifact_create type="task" title="Login" project="shop"/>\n<artifact_list/>',
+        'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results, then write your whole final answer again, opened the way your instructions say.',
+      ],
+      [
+        'a creation next to the text of an answer',
+        'I will hand it to the developer.\n<artifact_create type="task" title="Login" project="shop"/>\n<artifact_comment id="T-3">Seen.</artifact_comment>',
+        'Your last response created artifacts, whose ids are in these results, so it was not taken as your final answer. Go on with your work with those ids, then write your whole final answer again, opened the way your instructions say.',
       ],
       [
         'a failed write',
         'Done.\n<artifact_update id="T-9" status="done"/>',
-        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.',
+        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work, then write your whole final answer again, opened the way your instructions say.',
       ],
       [
         'an invalid request next to a read',
         'Done.\n<artifact_read/>\n<artifact_list/>',
-        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.',
+        'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work, then write your whole final answer again, opened the way your instructions say.',
       ],
       [
         'only writes',
         '<artifact_comment id="T-3">Seen.</artifact_comment>',
-        'Your last response had only requests, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.',
+        'Your last response had only requests, so it was not taken as your final answer. Go on with your work, then write your whole final answer, opened the way your instructions say.',
       ],
     ])('should prompt the agent again with the results after a response with %s', async (_name, response, note) => {
       const { useCase } = setup();

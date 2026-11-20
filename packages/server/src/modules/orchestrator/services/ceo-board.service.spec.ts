@@ -32,6 +32,8 @@ describe('CeoBoardService', () => {
   describe('findStranded', () => {
     const held = { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: ARTIFACT_AT };
 
+    const everyTask = new Set(['T-1', 'T-2', 'T-3', 'T-4', 'T-5', 'T-6', 'T-7', 'T-10']);
+
     it('should find the tasks in the middle of the flow that nobody holds', async () => {
       const board = setup([
         buildArtifact({ id: 'F-1', type: 'feature', status: 'in_progress' }),
@@ -41,12 +43,24 @@ describe('CeoBoardService', () => {
         buildArtifact({ id: 'T-4', status: 'blocked' }),
         buildArtifact({ id: 'T-5', status: 'done' }),
         buildArtifact({ id: 'T-6', title: 'Cart', status: 'changes_requested' }),
+        buildArtifact({ id: 'T-7', title: 'Pay', status: 'tested' }),
       ]);
 
-      expect(await board.findStranded('c1', 'All done.')).toEqual([
+      expect(await board.findStranded('c1', 'All done.', everyTask)).toEqual([
         { id: 'T-1', title: 'Login', status: 'in_review' },
         { id: 'T-6', title: 'Cart', status: 'changes_requested' },
+        { id: 'T-7', title: 'Pay', status: 'tested' },
       ]);
+    });
+
+    it('should look only at the tasks the turn delegated, leaving a task parked in an earlier turn alone', async () => {
+      const board = setup([
+        buildArtifact({ id: 'T-1', title: 'Login', status: 'in_review' }),
+        buildArtifact({ id: 'T-2', title: 'Parked', status: 'approved' }),
+      ]);
+
+      expect(await board.findStranded('c1', 'All done.', new Set(['T-1']))).toEqual([{ id: 'T-1', title: 'Login', status: 'in_review' }]);
+      expect(await board.findStranded('c1', 'All done.', new Set())).toEqual([]);
     });
 
     it('should leave out the tasks the answer names, as whole ids', async () => {
@@ -55,8 +69,8 @@ describe('CeoBoardService', () => {
         buildArtifact({ id: 'T-10', status: 'in_progress' }),
       ]);
 
-      expect(await board.findStranded('c1', 'T-10 waits for your merge.')).toEqual([{ id: 'T-1', title: 'Artifact T-1', status: 'in_testing' }]);
-      expect(await board.findStranded('c1', 't-1 and T-10 wait for you.')).toEqual([]);
+      expect(await board.findStranded('c1', 'T-10 waits for your merge.', everyTask)).toEqual([{ id: 'T-1', title: 'Artifact T-1', status: 'in_testing' }]);
+      expect(await board.findStranded('c1', 't-1 and T-10 wait for you.', everyTask)).toEqual([]);
     });
   });
 });

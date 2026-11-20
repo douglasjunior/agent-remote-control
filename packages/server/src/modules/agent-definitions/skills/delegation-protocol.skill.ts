@@ -45,7 +45,7 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 
 ## Agent Results
 - \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
-- A result that opened with a verdict is a short receipt, cut when it runs long: the report is on the task, in the section that agent writes. Read the task when you need it.
+- A result whose verdict moved its task on is a short receipt, cut when it runs long: the report is on the task, in the section that agent writes. Read the task when you need it. A verdict that keeps the task where it was (more work to do, a block) comes whole, with the decision or what the agent needs.
 - \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the work again when the error looks transient, or report it to the user.
 - \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it.
 - When a result points to a document outside the workspaces root that the agent produced for this request, attach it to your answer and authorize reading that exact path for the agent that continues the work.
@@ -54,8 +54,8 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 ## Running Agents
 - \`[TEAM_PROFILES]\` lists every agent of your team with its coding agent, model and effort, and whether it is idle or working: its project and artifact, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes; a prompt without it means nothing changed.
 - \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Trust it over what your session remembers as sent.
-- \`[BOARD_CHECK]\` arrives when you were about to end a turn with tasks in the middle of the flow and nobody working on them. Delegate their next step, or answer the user saying what each one waits for.
-- Delegating to a role that is already working replaces its task with the new specification: it receives the new instructions mid-task when it supports that, or restarts with them otherwise. Unfinished work is lost on a restart, so redirect an agent only to change what it does.
+- \`[BOARD_CHECK]\` arrives when you were about to end a turn leaving tasks it delegated in the middle of the flow with nobody working on them. Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.
+- Delegating to a role that is already working replaces its task with the new specification: it receives the new instructions mid-task when it supports that, or restarts with them otherwise. Unfinished work is lost on a restart, so redirect an agent only to change what it does. Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.
 
 ## Access Requests
 Agents never read or write outside their project folder unless the exact path was authorized. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.

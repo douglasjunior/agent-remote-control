@@ -42,7 +42,8 @@ describe('board-requests skill', () => {
       expect(instructions).toContain('A feature groups the tasks of one initiative');
       expect(instructions).toContain('- `technical_solution`: Technical solution');
       expect(instructions).toContain('When the response also asks the user questions, it goes on as usual and the results open your next prompt.');
-      expect(instructions).toContain('A response that reads (list, read), or whose request failed, gets the results right away and is not taken as your final answer');
+      expect(instructions).toContain('Updates and comments ride with your final answer: they are carried out and the answer is delivered, unless one of them fails.');
+      expect(instructions).toContain('A response that reads (list, read) or creates, or whose request failed, gets the results right away, with the id of each artifact created, and is not taken as your final answer: give it whole in a later response.');
     });
 
     it('should give an agent that works on tasks only the task grammar it may use', () => {
@@ -85,7 +86,7 @@ describe('board-requests skill', () => {
 
       expect(instructions).toContain('Meanwhile you change only its status and refinement states; comment instead.');
       expect(instructions).toContain('When the response also delegates or asks the user questions, it goes on as usual');
-      expect(instructions).toContain('status="backlog|ready|in_progress|in_review|changes_requested|approved|in_testing|done|blocked|cancelled" (the server sets the status a delegation or a verdict leaves, so set one only for a decision; `frozen` is set by the server');
+      expect(instructions).toContain('status="backlog|ready|in_progress|in_review|changes_requested|approved|in_testing|tested|done|blocked|cancelled" (the server sets the status a delegation or a verdict leaves, so set one only for a decision; `frozen` is set by the server');
     });
 
     it('should leave the children out of the update of an agent that writes fields only', () => {

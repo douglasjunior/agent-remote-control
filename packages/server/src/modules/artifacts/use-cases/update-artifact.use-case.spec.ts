@@ -234,7 +234,30 @@ describe('UpdateArtifactUseCase derived statuses', () => {
     expect(store.artifactsOf().get('T-5')?.history.map(event => event.summary)).toEqual(['Status ready → backlog', 'Ready: no refinement is pending']);
   });
 
-  it('should not touch a task that is not in the backlog', async () => {
+  it('should send a ready task back to the backlog when a refinement is set back to pending, recording why', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-5', { refinement: { technical: 'pending' } }, ceo);
+
+    const task = store.artifactsOf().get('T-5')!;
+    expect(task.status).toBe('backlog');
+    expect(task.history[1]).toMatchObject({
+      kind: 'updated',
+      actor: { kind: 'system' },
+      summary: 'Back to the backlog: a refinement is pending',
+      changes: [{ field: 'status', from: 'ready', to: 'backlog' }],
+    });
+  });
+
+  it('should send a task set to ready while it owes a refinement back to the backlog', async () => {
+    const { useCase, store } = setupBoard();
+
+    await useCase.execute('c1', 'T-1', { status: 'ready' }, ceo);
+
+    expect(statusOf(store, 'T-1')).toBe('backlog');
+  });
+
+  it('should leave alone a task parked out of the backlog and ready, whatever it owes', async () => {
     const { useCase, store } = setupBoard();
 
     await useCase.execute('c1', 'T-4', { refinement: { business: 'done' } }, ceo);

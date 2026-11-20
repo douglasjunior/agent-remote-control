@@ -107,9 +107,19 @@ export class ArtifactRulesService {
     return refinement.business === 'pending' || refinement.technical === 'pending';
   }
 
-  /** A task in the `backlog` that owes no refinement is `ready`. */
+  /**
+   * A task is `ready` exactly when no refinement is pending: a `backlog` task that owes none becomes `ready`, and a
+   * `ready` one that owes one goes back to the `backlog`. A refined task is parked with `blocked`, which is left alone.
+   */
   derivedTaskStatus(task: Artifact): ArtifactStatus | undefined {
-    return task.type === 'task' && task.status === 'backlog' && !this.owesRefinement(task.refinement) ? 'ready' : undefined;
+    if (task.type !== 'task') {
+      return undefined;
+    }
+    const owes = this.owesRefinement(task.refinement);
+    if (task.status === 'backlog' && !owes) {
+      return 'ready';
+    }
+    return task.status === 'ready' && owes ? 'backlog' : undefined;
   }
 
   /**

@@ -8,6 +8,7 @@ import { ArtifactRulesService } from './artifact-rules.service.js';
 
 
 const SUMMARIES: Partial<Record<ArtifactStatus, string>> = {
+  backlog: 'Back to the backlog: a refinement is pending',
   ready: 'Ready: no refinement is pending',
   in_progress: 'In progress: work on its tasks is under way',
   done: 'Done: every task is done or cancelled',
@@ -25,7 +26,7 @@ export class ArtifactDerivationService {
   ) {}
 
   /**
-   * Settles a task just saved: its own readiness and the status that follows its tasks, for its feature and for the
+   * Settles a task just saved: its own readiness, either way, and the status that follows its tasks, for its feature and for the
    * feature it left. `artifact` is the task as it ends up, `derived` the features that changed.
    */
   settleTask(

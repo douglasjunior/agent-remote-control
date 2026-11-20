@@ -14,6 +14,7 @@ export const STATUS_LABELS: Readonly<Record<ArtifactStatus, string>> = {
   changes_requested: 'Changes requested',
   approved: 'Approved',
   in_testing: 'In testing',
+  tested: 'Tested',
   done: 'Done',
   blocked: 'Blocked',
   frozen: 'Frozen',
@@ -29,6 +30,7 @@ export const STATUS_TONES: Readonly<Record<ArtifactStatus, string>> = {
   changes_requested: 'var(--attention)',
   approved: 'var(--good)',
   in_testing: 'var(--agent-qa)',
+  tested: 'var(--good)',
   done: 'var(--good)',
   blocked: 'var(--destructive)',
   frozen: 'var(--frozen)',
@@ -36,7 +38,7 @@ export const STATUS_TONES: Readonly<Record<ArtifactStatus, string>> = {
 };
 
 /** Where the user can send a frozen task back to: every open status. */
-export const UNFREEZE_STATUSES: readonly ArtifactStatus[] = ['backlog', 'ready', 'in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing', 'blocked'];
+export const UNFREEZE_STATUSES: readonly ArtifactStatus[] = ['backlog', 'ready', 'in_progress', 'in_review', 'changes_requested', 'approved', 'in_testing', 'tested', 'blocked'];
 
 export const SECTION_LABELS: Readonly<Record<ArtifactSection, string>> = {
   overview: 'Overview',

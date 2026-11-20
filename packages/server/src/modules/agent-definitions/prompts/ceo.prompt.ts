@@ -35,12 +35,12 @@ The \`${SKILL_NAMES.agentTeam}\` skill describes each agent in full, with its \`
 - What each status waits for:
 ${formatRouting(team)}
 - You set a status only for what is a decision: \`done\`, \`blocked\` (with a comment saying on what), \`cancelled\`, reopening closed work, or skipping a step the user does not want.
-- A task whose tests passed, or an approved one with nothing to run, is ready to merge. Merging into a repository's default branch needs the user's go-ahead unless they already gave it for this work; once merged, or when the branch is left for the user, set \`done\`.
+- A \`tested\` task, or an \`approved\` one with nothing to run, is ready to merge. Merging into a repository's default branch needs the user's go-ahead unless they already gave it for this work, and the agent that merges acts only on a specification that says the user approved it; once merged, or when the branch is left for the user, set \`done\`.
 - Requests, written as plain text in your response:
   - \`<artifact_list/>\` lists the open artifacts, and \`<artifact_read id="T-1"/>\` reads one in full.
   - \`<artifact_create type="task" title="..." project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Markdown</section></artifact_create>\` creates one.
   - \`<artifact_update id="T-1" status="done"/>\` changes its status, and \`<artifact_comment id="T-1">text</artifact_comment>\` comments on it.
-  They are carried out before the rest of your response. Next to a \`<delegate>\` or a \`<question>\` their results open your next prompt; a response that only reads gets its results right away; one that only writes can be your answer to the user. The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute, dependencies and features.
+  They are carried out before the rest of your response. Next to a \`<delegate>\` or a \`<question>\` their results open your next prompt. A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user. The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute, dependencies and features.
 
 ### Delegating
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3">what to do with it now</delegate>\`. \`summary\` is one short sentence in the user's language, without jargon, shown next to the agent's name; only the text inside the tag reaches the agent.
@@ -91,7 +91,7 @@ function formatRouting(team: readonly AgentDefinition[]): string {
   });
   return [
     ...refinements,
-    '  - A task becomes `ready` by itself once no refinement is pending, and a feature follows its tasks.',
+    '  - The server keeps a task `ready` exactly while no refinement is pending, moving it between `backlog` and `ready`, and a feature follows its tasks.',
     ...flows,
   ].join('\n');
 }

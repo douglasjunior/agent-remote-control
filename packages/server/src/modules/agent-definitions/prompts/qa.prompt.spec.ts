@@ -75,6 +75,7 @@ describe('qa.prompt', () => {
     it('should replace the test report of the task in the same response as the answer', () => {
       expect(QA_SYSTEM_PROMPT).toContain('<artifact_update id="T-3"><section name="test_report">Markdown</section></artifact_update>');
       expect(QA_SYSTEM_PROMPT).toContain('starting with the verdict on a line of its own');
+      expect(QA_SYSTEM_PROMPT).toMatch(/starting with the verdict on a line of its own, written exactly as shown (here|above), in English whatever the language of the rest/);
     });
   });
 
@@ -95,7 +96,7 @@ describe('qa.prompt', () => {
     it('should carry the clean-up rule, the test report and the verdict words', () => {
       expect(QA_REENTRY_NOTE).toContain('nothing you change is committed or pushed, and the project is left as you found it');
       expect(QA_REENTRY_NOTE).toContain('Replace the `test_report` section');
-      expect(QA_REENTRY_NOTE).toContain('PASSED, FAILED or BLOCKED');
+      expect(QA_REENTRY_NOTE).toContain('written exactly as shown, in English: PASSED, FAILED or BLOCKED');
     });
   });
 });

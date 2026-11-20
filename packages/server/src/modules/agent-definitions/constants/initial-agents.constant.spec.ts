@@ -88,6 +88,10 @@ describe('initial-agents.constant', () => {
       }
     });
 
+    it('should declare a default session mode only where it differs from resuming, which the registry falls back to', () => {
+      expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.defaultSessionMode === 'resume')).toEqual([]);
+    });
+
     it('should review read-only the work of a task that has some', () => {
       expect(definitionOf('CODE_REVIEWER').delegation).toMatchObject({
         project: 'required',
@@ -106,7 +110,6 @@ describe('initial-agents.constant', () => {
       const owner = definitionOf('PRODUCT_OWNER');
 
       expect(owner.delegation).toMatchObject({ project: 'optional', sessionMode: 'overridable', readOnly: true, artifact: 'optional', asksUser: true });
-      expect(owner.defaultSessionMode).toBe('resume');
       expect(owner.description).toContain('before the Tech Lead');
       expect(owner.description).toContain('interviews the user directly');
     });
@@ -204,9 +207,13 @@ describe('initial-agents.constant', () => {
       expect(flowOf('DEVELOPER').from).toContain(flowOf('DEVELOPER').verdicts.INCOMPLETE);
     });
 
-    it('should leave the task with QA to go on after a pass or a block, until the CEO sets the next status', () => {
+    it('should leave the task with QA to go on after a block', () => {
       expect(flowOf('QA').from).toContain(flowOf('QA').verdicts.BLOCKED);
-      expect(flowOf('QA').from).toContain(flowOf('QA').verdicts.PASSED);
+    });
+
+    it('should move a passed task to a status of its own, out of the one QA takes, for the merge', () => {
+      expect(flowOf('QA').verdicts.PASSED).toBe('tested');
+      expect(flowOf('QA').from).not.toContain('tested');
     });
   });
 

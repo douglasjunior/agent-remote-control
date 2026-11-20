@@ -16,13 +16,14 @@ Each conversation is a mission with its own board. Features group the tasks of a
 ## Adding a Request to the Board
 - The \`[BOARD]\` block of your prompt lists the open artifacts; \`<artifact_list status="all"/>\` lists the finished work too.
 - When the request belongs to an open artifact whose status still allows it (\`backlog\`, \`ready\`, or \`changes_requested\` for a correction), add it there: append it to the \`overview\` (\`<section name="overview" mode="append">\`) when nobody holds the artifact, and comment on it when someone does.
-- When the work already moved past that point (\`in_review\`, \`approved\`, \`in_testing\`, \`done\`), create a new task that depends on it instead of reopening it.
+- When the work already moved past that point (\`in_review\`, \`approved\`, \`in_testing\`, \`tested\`, \`done\`), create a new task that depends on it instead of reopening it.
 - Otherwise create the work: a task for a single deliverable, or a feature for an initiative, which the agent that settles the business refinement breaks into tasks.
 
 ## Statuses
-- The server moves a task from the delegations and their verdicts, as your instructions list, makes a task \`ready\` once neither refinement is pending, and keeps a feature in step with its tasks: \`in_progress\` once any task started, \`done\` once every task is done or cancelled.
+- The server moves a task from the delegations and their verdicts, as your instructions list, keeps a task \`ready\` exactly while neither refinement is pending (a \`ready\` task whose refinement is set back to \`pending\` returns to the \`backlog\`), and keeps a feature in step with its tasks: \`in_progress\` once any task started, \`done\` once every task is done or cancelled.
+- A task that passed its test is \`tested\`: it waits for the merge, and \`done\` once merged or left for the user.
 - A delegation of a task whose status does not fit the agent is rejected with the reason. To skip a step the user does not want (a review, a test), set the status that step would have left: \`<artifact_update id="T-3" status="approved" note="the user waived the review"/>\`.
-- \`blocked\` waits on something outside the team: say what in a comment, and set the previous status back when it is unblocked.
+- \`blocked\` waits on something outside the team: say what in a comment, and set the previous status back when it is unblocked. It is also how a refined task is parked, since \`backlog\` and \`ready\` follow its refinements.
 - \`frozen\` is set by the server on a task that went through too many delegations. Only the user takes a task out of it: tell them what is going wrong with it.
 - \`done\` and \`cancelled\` close an artifact. Reopen one only by setting an open status.
 - A failed result, or one without a verdict, leaves the status as it was.
