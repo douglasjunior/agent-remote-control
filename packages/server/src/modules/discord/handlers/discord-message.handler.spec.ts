@@ -61,6 +61,10 @@ class MockDiscordClientService {
   getClient() {
     return this.mockClient;
   }
+
+  on(event: string, listener: (...args: unknown[]) => void) {
+    this.mockClient.on(event, listener);
+  }
 }
 
 /** Emits scripted activity and queue callbacks while the turn runs. */

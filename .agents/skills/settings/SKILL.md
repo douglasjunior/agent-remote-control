@@ -52,7 +52,7 @@ Every module that reads a setting imports `SettingsModule`.
   use: the config services (`QuestionTimeoutConfigService`, `TurnRetryConfigService`, `DelegationLimitsConfigService`,
   `ShellCommandConfigService`, `AgentAuthConfigService`, `ArtifactLimitsConfigService`), `WhisperCppAdapter`,
   `ConversationRuntimeService` (each idle period), `WsClientTransportAdapter` (each upgrade), `FileConsoleLoggerAdapter`
-  (each new day's file) and `RemoteIdentityService`. Never read `process.env` for a catalog key.
+  (each new day's file), `RemoteIdentityService` and `DiscordClientService`. Never read `process.env` for a catalog key.
 
 ## Changes
 
@@ -64,7 +64,9 @@ Every module that reads a setting imports `SettingsModule`.
   `save(values, removed)`, one transaction that resolves to every saved setting.
 - `ISettingsChangeNotifierPort`: `onChange(listener)` returns the unsubscribe function; `notify(keys)` calls each
   listener with the keys whose resolved value changed, after the change is in memory. A listener that throws or rejects
-  is logged (`settings_listener_failed`) and the others still run.
+  is logged (`settings_listener_failed`) and the others still run. `DiscordClientService` restarts the bot on its
+  connection settings and registers the slash commands again on the shell and agent login flags;
+  `RemoteClientTransportAdapter` restarts remote access on `REMOTE_ENABLED` and `REMOTE_URL`.
 - `GetSettingsUseCase` lists every setting with its value, source, default, kind, group and `apply`; a secret shows
   only `{ set: boolean }`, so no channel can leak it.
 

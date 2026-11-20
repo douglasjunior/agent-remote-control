@@ -10,6 +10,8 @@ import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import type { AgentQuotaReport } from '../../orchestrator/models/agent-quota-report.model.js';
 import { StubAgentTurnPort } from '../../orchestrator/testing/stub-agent-turn.port.js';
 import { StubUserQuestionPort } from '../../orchestrator/testing/stub-user-question.port.js';
+import { SettingsChangeNotifierService } from '../../settings/services/settings-change-notifier.service.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { DiscordActivityFormatter } from '../formatters/discord-activity.formatter.js';
 import type { StartAgentAuthSelectionResult, StartAgentConfigSelectionResult } from '../models/agent-config-outcome.model.js';
 import { DiscordClientService } from '../services/discord-client.service.js';
@@ -193,7 +195,7 @@ describe('DiscordInteractionHandler', () => {
       cancelled: false,
     };
     agentTurn.quotaReports = [{ agent: { id: 'agy', name: 'Antigravity' }, status: 'unsupported' }];
-    clientService = new DiscordClientService(agentTurn, new StubAgentAuthPort(), mockClient);
+    clientService = new DiscordClientService(agentTurn, new StubAgentAuthPort(), new StubRuntimeSettings(), new SettingsChangeNotifierService(), () => mockClient);
     handler = new DiscordInteractionHandler(
       clientService,
       agentTurn,
