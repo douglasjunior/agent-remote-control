@@ -346,14 +346,17 @@ export class RunDelegationUseCase {
         await this.artifacts.release(request.conversationId, artifactId, delegationId, outcome).catch((error: unknown) => {
           this.logger.error(`[Artifact Release Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
         });
-        await this.agentRound.recordWorkEnded(session, delegatePort, {
-          role: delegateToRole,
-          agentId: delegatePort.agentName,
-          projectName: projectName ?? null,
-          artifactId,
-        }).catch((error: unknown) => {
-          this.logger.error(`[Session Record Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
-        });
+        // A delegation the agent answered no prompt of may have shown its session nothing, so the earlier end of work stands.
+        if (costs.length > 0) {
+          await this.agentRound.recordWorkEnded(session, delegatePort, {
+            role: delegateToRole,
+            agentId: delegatePort.agentName,
+            projectName: projectName ?? null,
+            artifactId,
+          }).catch((error: unknown) => {
+            this.logger.error(`[Session Record Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
+          });
+        }
       }
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
       this.toolSessions.close(delegatePort);

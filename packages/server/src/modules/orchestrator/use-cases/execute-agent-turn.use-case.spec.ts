@@ -4364,15 +4364,26 @@ describe('ExecuteAgentTurnUseCase', () => {
         seedTask();
       });
 
-      /** A delegate on T-1 stopped mid-round by a restart, with the task back on the board of the new process. */
-      const interruptedOnTask = async () => {
+      /**
+       * A delegate on T-1 stopped mid-round by a restart, with the task back on the board of the new process. `atWork`
+       * is whether the agent had shown itself at work on the prompt by then.
+       */
+      const interruptedOnTask = async (atWork = true) => {
         stubAgentPort.mockResponses = [taskDelegation];
         delegateStubPort.prompt = async function* () {
+          if (atWork) {
+            delegateStubPort.emitActivity({ kind: 'tool', toolCallId: 'tool-1', title: 'Read', status: 'in_progress' });
+          }
           await new Promise(() => undefined);
           yield* [];
         };
         void useCase.execute(turnRequest({ resumable: true }));
         await rs.waitFor(() => expect(records().some(work => work.role === 'DEVELOPER')).toBe(true));
+        await rs.waitFor(async () => {
+          const binding = (await sessionStore.findSession('conv-1'))?.agentSessions.find(agentSession => agentSession.role === 'DEVELOPER');
+          expect(binding).toMatchObject({ sessionId: 'session-1' });
+          expect(binding?.unanswered).toBe(atWork ? undefined : true);
+        });
         const { ceo, developer } = await restart();
         seedTask();
         ceo.mockResponses = ['All done.'];
@@ -4405,6 +4416,17 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(developer.loadSessionCalls).toEqual([taskSession]);
         expect(developer.promptCalls[0]).toContain('[RESUMED_WORK]');
         expect(developer.promptCalls[0]).not.toContain('[DELEGATED_ARTIFACT]');
+      });
+
+      it('should bring the system prompt and the task again to restored work whose session showed no sign of its prompt', async () => {
+        const { developer, work } = await interruptedOnTask(false);
+
+        await useCase.resume(work.id, turnRequest());
+
+        expect(developer.loadSessionCalls).toEqual([taskSession]);
+        expect(developer.promptCalls[0]).toMatch(/^Mock system prompt\.\n\n\[DELEGATED_ARTIFACT\]/);
+        expect(developer.promptCalls[0]).toContain('## Technical solution\nUse JWT.');
+        expect(developer.promptCalls[0]).toContain('[RESUMED_WORK]');
       });
 
       it('should give the whole task to restored work whose session is lost', async () => {
@@ -4968,6 +4990,91 @@ describe('ExecuteAgentTurnUseCase', () => {
         await useCase.execute(turnRequest());
 
         expect((await storedAgentSessions())?.filter(binding => binding.workEndedAt)).toEqual([]);
+      });
+
+      it('should bring the system prompt and the whole task again to a session that answered no prompt', async () => {
+        agentRegistry.getReentryNote.mockReturnValue('[RE-ENTRY] note');
+        seed({ id: 'T-2', sections: { technical_solution: 'Use JWT.' } });
+        const delegation = '<delegate role="DEVELOPER" summary="Building" artifact="T-2">Implement T-2.</delegate>';
+        stubAgentPort.mockResponses = [delegation, 'Failed.'];
+        delegateStubPort.errorToThrowOnPrompt = new Error('usage limit');
+
+        await useCase.execute(turnRequest());
+
+        expect(await storedAgentSessions()).toContainEqual({ ...developerSession('session-1', 'T-2'), unanswered: true });
+
+        delegateStubPort.errorToThrowOnPrompt = null;
+        stubAgentPort.mockResponses = [delegation, 'Done.'];
+        delegateStubPort.mockResponses = ['Built.'];
+
+        await useCase.execute(turnRequest());
+
+        const prompt = delegateStubPort.promptCalls.at(-1);
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'session-1' }]);
+        expect(prompt).toMatch(/^Mock system prompt\.\n\n\[DELEGATED_ARTIFACT\]/);
+        expect(prompt).toContain('## Technical solution\nUse JWT.\n[/DELEGATED_ARTIFACT]\n\nImplement T-2.');
+        expect(prompt).not.toContain('[RE-ENTRY]');
+        expect(await storedAgentSessions()).toContainEqual({ ...developerSession('session-1', 'T-2'), workEndedAt: expect.any(String) });
+      });
+
+      it('should keep the earlier end of work of a session whose delegation the agent did not answer', async () => {
+        sessionStore.seed(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' }] }));
+        seed({ id: 'T-1', status: 'changes_requested' });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Fixing" artifact="T-1">Fix it.</delegate>', 'Failed.'];
+        delegateStubPort.errorToThrowOnPrompt = new Error('usage limit');
+
+        await useCase.execute(turnRequest());
+
+        expect(await storedAgentSessions()).toContainEqual({ ...developerSession('dev-t1', 'T-1'), workEndedAt: '2026-01-01T00:00:00.000Z' });
+      });
+
+      it('should leave alone the binding another session of the task took before the agent first answered', async () => {
+        seed({ id: 'T-2' });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-2">Implement T-2.</delegate>', 'Done.'];
+        whileDelegateWorks(async () => sessionStore.seed(buildSessionContext({ agentSessions: [{ ...developerSession('dev-t2-elsewhere', 'T-2'), unanswered: true }] })), 'Built.');
+
+        await useCase.execute(turnRequest());
+
+        expect(await storedAgentSessions()).toContainEqual({ ...developerSession('dev-t2-elsewhere', 'T-2'), unanswered: true });
+      });
+
+      it('should log a session that fails to record its first answer, without failing the delegation', async () => {
+        seed({ id: 'T-2' });
+        const update = sessionStore.updateSession.bind(sessionStore);
+        sessionStore.updateSession = async (conversationId, change) => update(conversationId, (session) => {
+          const updated = change(session);
+          if (session.agentSessions.some(binding => binding.unanswered && binding.role === 'DEVELOPER') && !updated?.agentSessions.some(binding => binding.unanswered)) {
+            throw new Error('disk full');
+          }
+          return updated;
+        });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-2">Implement T-2.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Built.'];
+        const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+
+        const result = await useCase.execute(turnRequest());
+        const messages = error.mock.calls.map(([message]) => message);
+        error.mockRestore();
+
+        expect(result.status).toBe('completed');
+        expect(messages).toContain('[Session Record Failed] Role=DEVELOPER: disk full');
+      });
+
+      it('should bring the system prompt again to the live session of a CEO that answered no prompt', async () => {
+        stubAgentPort.errorToThrowOnPrompt = new Error('usage limit');
+
+        await useCase.execute(turnRequest());
+
+        expect(await storedAgentSessions()).toContainEqual({ role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null, artifactId: null, unanswered: true });
+
+        stubAgentPort.errorToThrowOnPrompt = null;
+        stubAgentPort.mockResponses = ['Done.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.createSessionCalls).toHaveLength(1);
+        expect(stubAgentPort.promptCalls.at(-1)).toMatch(/^Mock system prompt\./);
+        expect(await storedAgentSessions()).toContainEqual({ role: 'CEO', agentId: 'stub', sessionId: 'session-1', projectName: null, artifactId: null });
       });
 
       it('should leave alone a binding another session of the task took while the agent worked', async () => {

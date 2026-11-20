@@ -75,6 +75,8 @@ export type AgentPromptCost = {
 @Injectable()
 export class AgentRoundService {
   private readonly logger = new Logger(AgentRoundService.name);
+  /** The ports whose session is still marked `unanswered` on its binding. */
+  private readonly unanswered = new WeakSet<IAgentPort>();
 
   constructor(
     @Inject(IAgentPortFactory) private readonly agentPortFactory: IAgentPortFactory,
@@ -125,16 +127,13 @@ export class AgentRoundService {
       turn.throwIfCancelled();
 
       const toolSession: AgentToolSession = { requester, onSkill: activity => request.onActivity?.(activity, requester.role) };
-      let opened: OpenedAgentSession = { state: 'live' };
+      const key: AgentSessionKey = { role, agentId: agentPort.agentName, projectName: projectName ?? null, artifactId: artifactId ?? null };
+      let opened: OpenedAgentSession;
       if (agentPort.currentSessionId) {
         this.toolSessions.update(agentPort, toolSession);
+        opened = { state: this.unanswered.has(agentPort) ? 'new' : 'live' };
       } else {
-        opened = await this.openSession(agentPort, workspacePath, session, sessionMode, {
-          role,
-          agentId: agentPort.agentName,
-          projectName: projectName ?? null,
-          artifactId: artifactId ?? null,
-        }, this.toolSessions.open(agentPort, toolSession));
+        opened = await this.openSession(agentPort, workspacePath, session, sessionMode, key, this.toolSessions.open(agentPort, toolSession));
       }
       const sessionState = opened.state;
       const agentInterface = this.interfaceOf(agentPort);
@@ -155,7 +154,21 @@ export class AgentRoundService {
         // Only the CEO talks to the user, so the answers other agents write stay out of the draft.
         ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(this.agentProtocol.visibleReply(answer)) }),
       });
-      unsubscribeActivity = agentPort.onActivity(activity => stream.read(activity));
+      let answerRecorded: Promise<void> | undefined;
+      const hearAnswer = (): void => {
+        if (this.unanswered.delete(agentPort)) {
+          answerRecorded = this.recordAnswered(session, agentPort, key).catch((error: unknown) => {
+            this.logger.error(`[Session Record Failed] Role=${role}: ${error instanceof Error ? error.message : String(error)}`);
+          });
+        }
+      };
+      unsubscribeActivity = agentPort.onActivity((activity) => {
+        // Recorded at the first sign, so a restart in the middle of the prompt finds a session that knows its work.
+        if (activity.kind === 'thought' || activity.kind === 'tool') {
+          hearAnswer();
+        }
+        stream.read(activity);
+      });
 
       turn.throwIfCancelled();
       if (answerDelivery) {
@@ -163,6 +176,8 @@ export class AgentRoundService {
       }
       this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, Interface=${agentInterface}, SystemPrompt=${systemPromptPending ? 'yes' : 'no'}, Chars=${fullPrompt.length}`);
       let written = await this.promptAgent(agentPort, fullPrompt, role, onPrompt);
+      hearAnswer();
+      await answerRecorded;
       const stray = this.agentProtocol.strayTags(written.all);
       let strayRequests = '';
       if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
@@ -204,7 +219,11 @@ export class AgentRoundService {
     return tag.startsWith('artifact_') || tag.startsWith('skill_');
   }
 
-  /** Loads the stored session of the key, or creates one in its place, both with `mcpServers`, and stores the id the port ends up with. */
+  /**
+   * Loads the stored session of the key, or creates one in its place, both with `mcpServers`, and stores the id the port
+   * ends up with. The session is stored before its first prompt, which a restart may interrupt, so its binding stays
+   * marked `unanswered` until the agent shows itself at work on one.
+   */
   private async openSession(
     agentPort: IAgentPort,
     workspacePath: string,
@@ -222,14 +241,29 @@ export class AgentRoundService {
       await this.workspacePort.ensureDirectory(workspacePath);
       await agentPort.createSession(workspacePath, { mcpServers });
     }
+    const unanswered = !resumed || stored?.unanswered === true;
     const { currentSessionId } = agentPort;
     if (currentSessionId && currentSessionId !== stored?.sessionId) {
-      await this.bindAgentSession(latest, { ...key, sessionId: currentSessionId });
+      await this.bindAgentSession(latest, { ...key, sessionId: currentSessionId, ...(unanswered && { unanswered }) });
     }
-    if (!resumed) {
+    if (unanswered) {
+      this.unanswered.add(agentPort);
       return { state: 'new' };
     }
     return stored?.workEndedAt ? { state: 'resumed', workEndedAt: stored.workEndedAt } : { state: 'resumed' };
+  }
+
+  /** Takes the `unanswered` mark off the binding of the session the port holds, unless another session replaced it in the store. */
+  private async recordAnswered(session: SessionContext, agentPort: IAgentPort, key: AgentSessionKey): Promise<void> {
+    const sessionId = agentPort.currentSessionId;
+    await this.updateBinding(session, (latest) => {
+      const binding = latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key) && agentSession.sessionId === sessionId);
+      if (!binding) {
+        return undefined;
+      }
+      const { unanswered, ...answered } = binding;
+      return unanswered ? answered : undefined;
+    });
   }
 
   /**
@@ -239,9 +273,6 @@ export class AgentRoundService {
    */
   async recordWorkEnded(session: SessionContext, agentPort: IAgentPort, key: AgentSessionKey): Promise<void> {
     const sessionId = agentPort.currentSessionId;
-    if (!sessionId) {
-      return;
-    }
     await this.updateBinding(session, (latest) => {
       const binding = latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key) && agentSession.sessionId === sessionId);
       return binding && { ...binding, workEndedAt: new Date().toISOString() };
