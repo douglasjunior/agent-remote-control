@@ -6,6 +6,7 @@ import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.m
 import { JsonArtifactsImporterAdapter } from '../artifacts/adapters/json-artifacts-importer.adapter.js';
 import { JsonAgentSettingsImporterAdapter } from '../orchestrator/adapters/json-agent-settings-importer.adapter.js';
 import { JsonPreferencesImporterAdapter } from '../orchestrator/adapters/json-preferences-importer.adapter.js';
+import { JsonSessionsImporterAdapter } from '../orchestrator/adapters/json-sessions-importer.adapter.js';
 import { PathsModule } from '../paths/paths.module.js';
 import { DataDirectoryService } from '../paths/services/data-directory.service.js';
 import { StorageModule } from '../storage/storage.module.js';
@@ -25,6 +26,7 @@ const LEGACY_JSON_IMPORTERS = [
   JsonPreferencesImporterAdapter,
   JsonAgentSettingsImporterAdapter,
   JsonArtifactsImporterAdapter,
+  JsonSessionsImporterAdapter,
 ];
 
 @Module({

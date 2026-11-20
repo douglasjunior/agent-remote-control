@@ -12,9 +12,9 @@ import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { JsonOpenWorkStoreAdapter } from './adapters/json-open-work-store.adapter.js';
-import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
 import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
+import { SqliteSessionStoreAdapter } from './adapters/sqlite-session-store.adapter.js';
 import { SqliteSquadStoreAdapter } from './adapters/sqlite-squad-store.adapter.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
@@ -91,7 +91,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
   providers: [
     {
       provide: ISessionStorePort,
-      useClass: JsonSessionStoreAdapter,
+      useClass: SqliteSessionStoreAdapter,
     },
     {
       provide: IAgentSettingsStorePort,

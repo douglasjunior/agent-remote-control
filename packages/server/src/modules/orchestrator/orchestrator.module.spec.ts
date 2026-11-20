@@ -4,9 +4,9 @@ import { describe, expect, it } from '@rstest/core';
 import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
-import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
 import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
+import { SqliteSessionStoreAdapter } from './adapters/sqlite-session-store.adapter.js';
 import { SqliteSquadStoreAdapter } from './adapters/sqlite-squad-store.adapter.js';
 import { OrchestratorModule } from './orchestrator.module.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
@@ -31,7 +31,7 @@ describe('OrchestratorModule', () => {
       imports: [OrchestratorModule],
     }).compile();
 
-    expect(module.get(ISessionStorePort)).toBeInstanceOf(JsonSessionStoreAdapter);
+    expect(module.get(ISessionStorePort)).toBeInstanceOf(SqliteSessionStoreAdapter);
     expect(module.get(IAgentSettingsStorePort)).toBeInstanceOf(SqliteAgentSettingsStoreAdapter);
     expect(module.get(ISquadStorePort)).toBeInstanceOf(SqliteSquadStoreAdapter);
     expect(module.get(IPreferencesStorePort)).toBeInstanceOf(SqlitePreferencesStoreAdapter);
