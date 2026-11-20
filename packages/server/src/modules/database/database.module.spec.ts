@@ -8,6 +8,7 @@ import { createTestingModule } from '../../../test/testing-module.js';
 
 import { DATABASE_MIGRATIONS } from './constants/database-schema.constant.js';
 import { DatabaseModule } from './database.module.js';
+import { SqliteTransactionService } from './services/sqlite-transaction.service.js';
 import { createInMemoryDataSource } from './testing/in-memory-data-source.js';
 
 
@@ -45,6 +46,7 @@ describe('DatabaseModule', () => {
     expect(existsSync(join(dataDir, 'arc.sqlite'))).toBe(true);
     expect(await dataSource.query('PRAGMA journal_mode')).toEqual([{ journal_mode: 'wal' }]);
     expect(await dataSource.query('SELECT "name" FROM "migrations" ORDER BY "id"')).toEqual(DATABASE_MIGRATIONS.map(migration => ({ name: migration.name })));
+    expect(module.get(SqliteTransactionService).run(statements => statements.get('PRAGMA journal_mode'))).toEqual({ journal_mode: 'wal' });
     await module.close();
   });
 

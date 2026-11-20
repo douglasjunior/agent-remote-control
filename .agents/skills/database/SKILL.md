@@ -3,8 +3,9 @@ name: database
 description: >
   SQLite persistence in DATA_DIR/arc.sqlite with TypeORM and better-sqlite3: the database module, versioned migrations
   run on boot, entities owned by the module whose data they hold, store adapters that implement their ports with
-  atomic statements, the legacy JSON importers that move the JSON stores of earlier versions into the database once,
-  and specs over an in-memory database. Use when adding a table, entity, migration, SQLite store or legacy importer.
+  atomic statements or the synchronous read-change-write transactions of SqliteTransactionService, the legacy JSON
+  importers that move the JSON stores of earlier versions into the database once, and specs over an in-memory
+  database. Use when adding a table, entity, migration, SQLite store, transaction or legacy importer.
 ---
 
 # Database
@@ -57,10 +58,30 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
 - A store adapter implements the port of its module unchanged, is named `Sqlite<Name>Adapter`, injects `DataSource`
   and takes repositories with `getRepository`.
 - A change that must be atomic is one statement (`INSERT … ON CONFLICT … DO UPDATE … RETURNING`,
-  `INSERT … SELECT … WHERE`), so no other call of this process nor another process interleaves with it.
-- A transaction opened while another is open on the shared connection nests as a savepoint inside it, and any query
-  made meanwhile joins it. Changes made while the server serves requests are therefore single statements; a
-  transaction runs only where nothing else uses the database, as the legacy import does on boot.
+  `INSERT … SELECT … WHERE`), or several run by `SqliteTransactionService` (below), so no other call of this process
+  nor another process interleaves with it.
+- Never open a TypeORM transaction (`dataSource.transaction`, a query runner) while the server serves requests. Its
+  queries are asynchronous on the shared connection, so a transaction opened while another is open nests as a savepoint
+  inside it and any query made meanwhile joins it. Only the legacy import runs one, on boot, before anything else uses
+  the database.
+
+## Transactions (`SqliteTransactionService`)
+
+`DatabaseModule` exports `SqliteTransactionService`. `run(work)` runs `work(statements)` in one better-sqlite3
+transaction on the connection TypeORM holds, commits and returns its result, or rolls back and rethrows when it throws.
+
+- `work` is synchronous, like the `change` callbacks of the store ports (`update(change)`, `transaction(id, work)`):
+  better-sqlite3 executes each statement on the spot, so no other query of this process reaches the connection until
+  `work` returns, and a TypeORM query issued meanwhile runs after the commit. A `work` that returns a promise is refused
+  and rolled back.
+- The transaction begins `IMMEDIATE`: it takes SQLite's write lock before its first read, so another process on the
+  same file waits for it (busy timeout 5 s) instead of writing between that read and the write.
+- `statements` offers `get<T>(sql, ...params)` (first row or `undefined`), `all<T>(sql, ...params)` and
+  `run(sql, ...params)` (rows changed), with `?` placeholders and the raw column names; statements are prepared once and
+  reused.
+- A store adapter calls it inside an `async` method, so a throw reaches its caller as a rejection, and keeps the read,
+  the call to `change` and the write in the same `work`. `change` must not await, as the storage skill requires.
+- A read with no write after it is a plain TypeORM query.
 - A row read back is validated with the protocol schema of its document; one that does not parse is left out and
   logged.
 - An adapter keeps the failure behaviour its port documents (the prompt history logs a failed append and leaves the
@@ -120,7 +141,8 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
 - [ ] Entity in the owner module, listed in `DATABASE_ENTITIES`; migration appended to `DATABASE_MIGRATIONS` with a
       working `down`.
 - [ ] The schema builder finds nothing pending over the migrated database.
-- [ ] Request-time changes are single statements; no transaction outside the boot import.
+- [ ] Request-time changes are single statements or one `SqliteTransactionService.run`; no TypeORM transaction
+      outside the boot import.
 - [ ] The importer reads through `LegacyJsonFilesService`, keeps its released `name` and is listed in
       `LEGACY_JSON_IMPORTERS`.
 - [ ] Specs run over `createInMemoryDataSource()` and temporary directories, with no `rs.mock` of the database.
