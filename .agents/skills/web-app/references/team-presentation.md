@@ -11,7 +11,7 @@
 
 `deriveTeam(entries, running)` (`conversations/team-state.ts`) turns the entries into one `TeamMember` per role for the current turn plus the delegations still open from earlier turns:
 
-- A `user_message` drops the closed delegations, because the CEO accepts new messages while delegates keep running; open ones stay `working` while a turn runs and keep counting their steps, other agents count only the current turn.
+- A `user_message` that started a turn (no `delivery`) drops the closed delegations; open ones stay `working` while a turn runs and keep counting their steps, other agents count only the current turn. A message that joined the running turn (one with a `delivery`) ends nothing.
 - A `steered` entry gives the open delegation of the same `delegationId` its new `summary`.
 - A `finished`, `failed` or `cancelled` entry closes the delegation with the same `delegationId`; a cancelled agent is `idle` and its handoff row reads "Stopped", whatever turn runs later. A delegation still open when no turn runs counts as stopped.
 - The members are `working`, `waiting` (the asker of the `openQuestion`, by `askerRole`, whatever entries follow it), `done`, `failed` or `idle`, with the CEO's `summary`, project, start time, duration, step count and last action.
@@ -24,7 +24,7 @@
 - The CEO reads "Coordinating the squad" and looks active while delegates work, "Thinking" when it works itself. Selecting a station reveals only its static `responsibility`.
 - The header carries the live tally (`squadStatus`), which also names the Squad link of a narrow window, and the "Agent settings" `IconButton` that opens the settings sheet (`onSettings`). The panel scrolls only when the window is shorter than the roster, and resets with each new user message.
 - The spine is a neutral line through the lens centers (`useSquadSpine`, positioned from measured lenses) and implies no order. `useSquadMotion` sends light pulses on short-lived elements animated with the Web Animations API: CEO to a working station on an interval, a bigger one when it starts and one back when it ends; each pulse removes itself on finish. Nothing runs under `prefers-reduced-motion` or without `Element.animate`.
-- The delivery moment (`useDelivery`) counts a turn seen running here that delegated and ended with a completed answer; the panel then plays its flare and bloom once (`data-delivered`). A conversation opened with its turn already over never plays it.
+- The delivery moment (`useDelivery`) counts each new completed answer that arrives after a turn was seen running here and closes a turn that delegated (the entries after the answer before it), whether the conversation then goes idle or a message that waited starts the next turn; the panel then plays its flare and bloom once (`data-delivered`). A conversation opened with its turn already over never plays it.
 
 ## Focus
 
@@ -39,7 +39,7 @@ Selecting a station or clicking an agent name in the feed sets the focus in `Con
 
 ## Recap and presence
 
-- The answer that closes a turn that delegated carries "N agents · duration" in its footer (`TeamRecap` from `groupEntries`).
+- The answer that closes a turn that delegated carries "N agents · duration" in its footer (`TeamRecap` from `groupEntries`). Each response closes its turn; a turn starts at a message without a `delivery` or, for a message that waited, at the response before it, and a message that joined the running turn stays in it.
 - `usePresence` sets the tab title, tints the page light with the active agent's color and, when the browser already granted permission, notifies a question while the tab is hidden.
 - `AmbientGlow` is the light that follows the pointer (`usePointerGlow`: eased `requestAnimationFrame`, off for touch screens and reduced motion).
 - An empty conversation shows `TeamIntro`, whose cards fill the composer (`Composer.initialText`).

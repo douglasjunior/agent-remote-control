@@ -6,6 +6,7 @@ import { Events, type Message, type ThreadChannel } from 'discord.js';
 import { createTestingModule } from '../../../../test/testing-module.js';
 import type { AgentActivity } from '../../agent/ports/agent.port.js';
 import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
+import type { UserMessageDelivery } from '../../orchestrator/models/conversation-turn.model.js';
 import type { TurnAttachment } from '../../orchestrator/models/turn-attachment.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
@@ -70,7 +71,8 @@ class MockDiscordClientService {
 /** Emits scripted activity and queue callbacks while the turn runs. */
 class ScriptedAgentTurnPort extends StubAgentTurnPort {
   public activitiesToEmit: AgentActivity[] = [];
-  public queued = false;
+  /** Reported through `onDelivery`, in order, before the activity. */
+  public deliveries: UserMessageDelivery[] = [];
   /** Reported through `onTranscription` before the activity, as the orchestrator does. */
   public transcription?: TurnTranscription;
 
@@ -81,9 +83,7 @@ class ScriptedAgentTurnPort extends StubAgentTurnPort {
       if (this.transcription) {
         request.onTranscription?.(this.transcription);
       }
-      if (this.queued) {
-        request.onQueued?.();
-      }
+      this.deliveries.forEach(delivery => request.onDelivery?.(delivery));
       for (const activity of this.activitiesToEmit) {
         request.onActivity?.(activity, 'CEO');
       }
@@ -394,7 +394,7 @@ describe('DiscordMessageHandler', () => {
   });
 
   it('should tell the user when the message is waiting for the previous turn', async () => {
-    agentTurn.queued = true;
+    agentTurn.deliveries = ['queued'];
     const progressMessage = { edit: rs.fn().mockResolvedValue(undefined) };
     const mockThread = {
       id: 'thread-1',
@@ -415,12 +415,12 @@ describe('DiscordMessageHandler', () => {
     await handler.handleMessage(message);
 
     expect(progressMessage.edit).toHaveBeenCalledWith(
-      '⏳ *Waiting for the previous task in this conversation to finish...*',
+      '⏳ *The CEO is in the middle of a prompt: it reads this message with its next one.*',
     );
   });
 
   it('should ignore failures when showing the queued notice', async () => {
-    agentTurn.queued = true;
+    agentTurn.deliveries = ['queued'];
     agentTurn.activitiesToEmit = [];
     const progressMessage = { edit: rs.fn().mockRejectedValue(new Error('gone')) };
     const mockThread = {
@@ -1811,8 +1811,12 @@ describe('DiscordMessageHandler', () => {
       expect(send).toHaveBeenLastCalledWith(`${text}\n${footer}`);
     });
 
-    it('should send only the steering notice without footer when the message joined a running turn', async () => {
+    it.each([
+      ['steered into the prompt running', ['steered'], '📨 *Message sent to the running agent. The reply will come with the current task\'s response.*'],
+      ['read with a later prompt', ['queued', 'delivered'], '📨 *Message delivered to the CEO with the running task. The reply will come with its response.*'],
+    ] as const)('should send only a notice without footer when the message joined a running turn, %s', async (_label, deliveries, notice) => {
       const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
+      agentTurn.deliveries = [...deliveries];
       agentTurn.turnResult = {
         response: '',
         status: 'steered',
@@ -1821,11 +1825,19 @@ describe('DiscordMessageHandler', () => {
 
       await handler.handleMessage(threadMessage(send));
 
-      expect(send).toHaveBeenLastCalledWith(
-        '📨 *Message sent to the running agent. The reply will come with the current task\'s response.*',
-      );
+      expect(send).toHaveBeenLastCalledWith(notice);
       const sent = send.mock.calls.map(call => call[0] as string);
       expect(sent.some(text => text.includes(footer))).toBe(false);
+    });
+
+    it('should say the message was cancelled when a stop drops it before the CEO read it', async () => {
+      const send = rs.fn().mockResolvedValue({ edit: rs.fn().mockResolvedValue(undefined) });
+      agentTurn.deliveries = ['queued', 'cancelled'];
+      agentTurn.turnResult = { response: '', status: 'cancelled' };
+
+      await handler.handleMessage(threadMessage(send));
+
+      expect(send).toHaveBeenLastCalledWith('⚠️ *Message cancelled before the CEO read it.*');
     });
   });
 

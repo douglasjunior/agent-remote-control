@@ -18,6 +18,12 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     type: z.literal('user_message'),
     text: z.string(),
     attachments: z.array(attachmentSchema).optional(),
+    /**
+     * How a message sent while a turn ran reached the CEO: `queued` while it waits for the CEO's next prompt, then
+     * `steered` into the prompt running, `delivered` with a later prompt, or `cancelled` by a stop before the CEO read
+     * it. Absent for a message that started a turn of its own.
+     */
+    delivery: z.enum(['queued', 'steered', 'delivered', 'cancelled']).optional(),
   }),
   z.object({
     ...entryBase,
@@ -113,7 +119,7 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
   z.object({
     ...entryBase,
     type: z.literal('agent_response'),
-    status: z.enum(['completed', 'cancelled', 'failed', 'steered']),
+    status: z.enum(['completed', 'cancelled', 'failed']),
     response: z.string(),
     errorMessage: z.string().optional(),
     agentInfo: agentInfoSchema.optional(),

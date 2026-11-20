@@ -215,10 +215,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
     this.openQuestions.set(conversationId, open);
   }
 
-  /** A steered prompt is absorbed by the running turn, whose response is still being written. */
   private deliversResponse(entry: ConversationEntry): boolean {
-    return entry.type === 'interim'
-      || (entry.type === 'question' && !entry.closed)
-      || (entry.type === 'agent_response' && entry.status !== 'steered');
+    return entry.type === 'interim' || entry.type === 'agent_response' || (entry.type === 'question' && !entry.closed);
   }
 }

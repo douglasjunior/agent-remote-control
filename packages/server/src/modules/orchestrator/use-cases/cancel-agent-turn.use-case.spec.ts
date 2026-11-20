@@ -46,10 +46,11 @@ describe('CancelAgentTurnUseCase', () => {
     const started = new Promise<void>((resolve) => {
       markStarted = resolve;
     });
-    const done = runtime.run('conv-th-1', 'stub', () => new Promise<void>((resolve) => {
+    const { turn } = runtime.admit('conv-th-1');
+    const done = runtime.runOnCeo('conv-th-1', turn, 'stub', () => new Promise<void>((resolve) => {
       finish = resolve;
       markStarted();
-    }));
+    })).finally(() => runtime.endTurn('conv-th-1', turn));
     return { started, finish: () => finish(), done };
   };
 

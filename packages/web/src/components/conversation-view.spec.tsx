@@ -432,6 +432,25 @@ describe('ConversationView', () => {
       expect(screen.queryByRole('status')).not.toBeInTheDocument();
     });
 
+    it('should keep showing the agents at work after a message steered into the running turn', () => {
+      const { connection } = openConversation({ entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'Hi' }] });
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+      act(() => connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'u2', at: AT, type: 'user_message', text: 'Also this', delivery: 'steered' }, position: 1 }));
+
+      expect(screen.getByRole('status')).toHaveTextContent('CEO is thinking…');
+    });
+
+    it('should hide the agents at work on the response that ends the turn, and show them again for the turn that follows', () => {
+      const { connection } = openConversation({ entries: [{ id: 'u1', at: AT, type: 'user_message', text: 'Hi' }] });
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'running' }));
+      act(() => connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: { id: 'r1', at: AT, type: 'agent_response', status: 'completed', response: 'Done.' }, position: 1 }));
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+      act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state: 'queued' }));
+
+      expect(screen.getByRole('status')).toHaveTextContent('CEO is thinking…');
+    });
+
     it('should not show the agents at work while a question waits for the user', () => {
       const { connection } = openConversation({
         entries: [{ id: 'q1', at: AT, type: 'question', askerRole: 'CEO', askerRoleName: 'CEO', text: 'Which?', options: ['A'], number: 1, total: 1, closed: false }],

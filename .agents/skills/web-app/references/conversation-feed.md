@@ -4,7 +4,7 @@
 
 | Entry | Rendering |
 |---|---|
-| `user_message` | Right-aligned bubble; its attachments render as read-only chips in the bubble |
+| `user_message` | Right-aligned bubble; its attachments render as read-only chips in the bubble. A message sent while a turn ran carries a discreet chip under the bubble for its `delivery` (`data-delivery`, with a title explaining it): "Queued", "Steered", "Delivered" or "Cancelled" (struck through), updated in place as the server changes it |
 | `agent_response` | Agent mark and clickable colored name, Markdown, and a footer `roleName · agentName · modelName · effortName`; `failed` shows `errorMessage`; `cancelled` shows a muted label |
 | `interim` | Muted markdown under the CEO's mark and name |
 | `delegation` | One handoff row per delegation (`started` joined with its `steered` entries and its `finished` or `failed` entry by `delegationId`, never by round and role, which repeat across turns): agent mark, the CEO's `summary` as the title (the latest `steered` one's when there is one), the agent's name below, the live time or the duration; delegations of the same round that follow each other with no other entry between them stack as one squad. A chevron opens the CEO's `prompt` (a tinted block that scrolls past 240 px; empty entries from older histories show nothing), then each new instruction the CEO sent while the agent worked (the same block, labeled "New instruction"), then the agent's steps, then its response or error |
@@ -33,4 +33,4 @@
 
 - The response being written arrives as `conversation.draft` events (`ConversationView.draft`, set by the reducer and by `conversation.history`) and shows as streaming Markdown (`isAnimating`) after the last entry, where the delivered response replaces it. While a draft shows, the grouped steps do not read "Working…".
 - While a turn runs, the feed shows `WorkingIndicator` (three dots and a shimmering "Working…", still under `prefers-reduced-motion`) from the first moment until a step, the draft or a question takes its place; a running `ActivityGroup` carries the same dots and label. The keyframes live in `index.css`.
-- The "Working…" indicator stays hidden only while the last entry is itself the open question.
+- The "Working…" indicator stays hidden while the last entry is itself the open question or an open retry, and while it is the response that ended the turn: `ConversationView.stateAfter` (the last entry held when the state was last set) tells a response published before its turn's state changed from one followed by a new state, the next turn of a message that waited. A message steered into the running turn keeps it shown.

@@ -152,6 +152,13 @@ describe('deriveTeam', () => {
       expect(stateOf(team, 'QA')).toMatchObject({ state: 'working', steps: 1, doing: 'Reading a skill' });
     });
 
+    it('should keep a closed delegation at a message that joined the running turn', () => {
+      const joined: ConversationEntry = { ...next, delivery: 'delivered' };
+      const team = deriveTeam([user, delegation('started', 'DEVELOPER'), delegation('finished', 'DEVELOPER', { durationMs: 5 }), joined], true);
+
+      expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 5 });
+    });
+
     it('should drop a closed delegation at a new user message', () => {
       const step: ConversationEntry = { id: 's', at, type: 'tool', role: 'DEVELOPER', title: 'Read file', status: 'completed' };
       const team = deriveTeam([user, delegation('started', 'DEVELOPER'), step, delegation('finished', 'DEVELOPER'), next], true);

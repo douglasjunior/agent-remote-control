@@ -163,7 +163,7 @@ describe('WebConversationEventsService', () => {
       ['a thought', { id: 't', at: entry.at, type: 'thought', role: 'CEO', text: 'x' }],
       ['a delegation', { id: 'd', at: entry.at, type: 'delegation', phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Doing the work' }],
       ['a notice', { id: 'n', at: entry.at, type: 'notice', level: 'info', text: 'x' }],
-      ['a steered prompt', { id: 'r', at: entry.at, type: 'agent_response', status: 'steered', response: '' }],
+      ['a message joining the turn', { id: 'u', at: entry.at, type: 'user_message', text: 'also', delivery: 'steered' }],
     ])('should survive %s', async (_name, other) => {
       const { events, store } = createWebHarness();
       store.seed('web-1');

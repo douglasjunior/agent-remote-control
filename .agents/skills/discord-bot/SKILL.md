@@ -101,9 +101,9 @@ To keep channels clean and concurrent conversations strictly isolated:
    - `threadId`: the ID of the thread itself, absent in DMs;
    - `userId`: the identifier of the message author;
    - `agentRole`: invariably `'CEO'` for triage and initial orchestration.
-5. **Queue and steering**: a message sent while the conversation has a turn in progress is queued by the orchestrator;
-   the handler shows the waiting notice on `onQueued`, and a turn that ends with `status: 'steered'` gets the steering
-   notice instead of a response.
+5. **Messages during a turn**: a message sent while the conversation has a turn in progress joins that turn in the
+   orchestrator; the handler follows `onDelivery`, shows the waiting notice while it is `queued`, and a result with
+   `status: 'steered'` (or a message cancelled before the CEO read it) gets a notice instead of a response.
 
 ## Input Resolution and Selection
 

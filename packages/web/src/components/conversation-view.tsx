@@ -233,6 +233,7 @@ export function ConversationView({ conversationId, pane = { kind: 'chat' }, init
                 team={team}
                 draft={view.draft}
                 running={running}
+                stateAfter={view.stateAfter}
                 focus={focus}
                 onFocus={toggleFocus}
                 onHover={setHovered}

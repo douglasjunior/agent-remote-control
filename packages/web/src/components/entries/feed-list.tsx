@@ -87,7 +87,7 @@ export interface FeedHandle {
 
 const FOCUSABLE = 'button, input';
 
-export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft, running, focus, onFocus, onHover, onAnswer, onRetryNow, onStopRetrying }: {
+export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft, running, stateAfter, focus, onFocus, onHover, onAnswer, onRetryNow, onStopRetrying }: {
   readonly ref?: Ref<FeedHandle>;
   readonly entries: readonly ConversationEntry[];
   /** Absent for a feed whose history starts with its first entry. */
@@ -95,6 +95,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
   readonly team: readonly TeamMember[];
   readonly draft: string;
   readonly running: boolean;
+  /** The last entry held when the state was last set: a response after it ended the turn the state still reports. */
+  readonly stateAfter?: string;
   readonly focus: string | null;
   readonly onFocus: (role: string) => void;
   readonly onHover: (role: string | null) => void;
@@ -119,7 +121,8 @@ export function FeedList({ ref, entries, earlier = NOTHING_EARLIER, team, draft,
   const openIndex = items.findIndex(item => item.kind === 'entry' && item.entry.id === openQuestionId);
   const lastIsOpenQuestion = open !== undefined && last?.id === open.id;
   const lastIsOpenRetry = last?.type === 'retry' && !last.closed;
-  const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && !lastIsOpenQuestion && !lastIsOpenRetry && last?.type !== 'agent_response';
+  const lastEndedTurn = last?.type === 'agent_response' && last.id !== stateAfter;
+  const working = running && draft === '' && items.at(-1)?.kind !== 'activity' && !lastIsOpenQuestion && !lastIsOpenRetry && !lastEndedTurn;
   const questionOutOfView = open !== undefined && range !== null
     && (openIndex + firstItemIndex < range.startIndex || openIndex + firstItemIndex > range.endIndex);
 

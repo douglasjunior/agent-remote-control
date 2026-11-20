@@ -94,30 +94,12 @@ function toHandoff(
   };
 }
 
-/** The CEO may answer more than once in a turn (a progress note, then the result); only the last completed answer closes the turn. */
-function lastAnswerOfEachTurn(entries: readonly ConversationEntry[]): ReadonlySet<string> {
-  const answers = new Set<string>();
-  let current: string | undefined;
-  for (const entry of entries) {
-    if (entry.type === 'user_message' && current) {
-      answers.add(current);
-      current = undefined;
-    } else if (entry.type === 'agent_response' && entry.status === 'completed') {
-      current = entry.id;
-    }
-  }
-  if (current) {
-    answers.add(current);
-  }
-  return answers;
-}
-
 /**
  * Collapses consecutive thought, tool and skill entries of one agent into one activity item (the steps of a delegated agent
  * go inside its handoff), and each delegation (its start and its
- * end) into one handoff; handoffs that start together form a squad. The answer that closes a turn that delegated carries a
- * recap of the team's work. Removed thoughts are dropped, and so are steered responses, which have no text: another
- * turn answers for them.
+ * end) into one handoff; handoffs that start together form a squad. A conversation runs one turn at a time, started by
+ * a message without a `delivery` or, for a message that waited, by the end of the turn before; its response closes it,
+ * and a completed one that delegated carries a recap of the team's work. Removed thoughts are dropped.
  */
 export function groupEntries(entries: readonly ConversationEntry[]): readonly EntryItem[] {
   const closings = new Map<string, DelegationEntry>();
@@ -130,18 +112,17 @@ export function groupEntries(entries: readonly ConversationEntry[]): readonly En
     }
   }
 
-  const recapped = lastAnswerOfEachTurn(entries);
   const delegateSteps = stepsByDelegation(entries);
   const delegatedStepIds = new Set([...delegateSteps.values()].flat().map(step => step.id));
   const items: EntryItem[] = [];
   let turnHandoffs: Handoff[] = [];
   let turnStartedAt = 0;
   for (const entry of entries) {
-    if ((entry.type === 'thought' && entry.removed) || (entry.type === 'agent_response' && entry.status === 'steered')) {
+    if (entry.type === 'thought' && entry.removed) {
       continue;
     }
     const last = items.at(-1);
-    if (entry.type === 'user_message') {
+    if (entry.type === 'user_message' && entry.delivery === undefined) {
       turnHandoffs = [];
       turnStartedAt = Date.parse(entry.at);
     }
@@ -166,10 +147,14 @@ export function groupEntries(entries: readonly ConversationEntry[]): readonly En
         items.push({ kind: 'squad', id: `squad:${handoff.id}`, handoffs: [handoff] });
       }
     } else {
-      const recap = recapped.has(entry.id) && turnHandoffs.length > 0
+      const recap = entry.type === 'agent_response' && entry.status === 'completed' && turnHandoffs.length > 0
         ? { recap: { agents: new Set(turnHandoffs.map(handoff => handoff.role)).size, totalMs: Math.max(0, Date.parse(entry.at) - turnStartedAt) } }
         : {};
       items.push({ kind: 'entry', entry, ...recap });
+      if (entry.type === 'agent_response') {
+        turnHandoffs = [];
+        turnStartedAt = Date.parse(entry.at);
+      }
     }
   }
   return items;

@@ -3,6 +3,7 @@ import type { ConversationEntry } from '@agent-remote-control/protocol/conversat
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
+import type { UserMessageDelivery } from '../../orchestrator/models/conversation-turn.model.js';
 import type { QuestionTimedOut } from '../../orchestrator/models/question-event.model.js';
 import type { TurnRequest } from '../../orchestrator/models/turn-request.model.js';
 import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
@@ -10,7 +11,7 @@ import { IAgentTurnPort } from '../../orchestrator/ports/agent-turn.port.js';
 import { IUserQuestionPort } from '../../orchestrator/ports/user-question.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 
-import { ConversationEntryService } from './conversation-entry.service.js';
+import { ConversationEntryService, type UserMessageEntry } from './conversation-entry.service.js';
 import { WebConversationEventsService } from './web-conversation-events.service.js';
 
 
@@ -18,7 +19,7 @@ type TurnState = Exclude<ConversationState, 'idle'>;
 
 export type TurnCallbacks = Pick<
   TurnRequest,
-  'onActivity' | 'onDraft' | 'onDelegation' | 'onInterimMessage' | 'onQuestion' | 'onRetry' | 'onTranscription' | 'onQueued'
+  'onActivity' | 'onDraft' | 'onDelegation' | 'onInterimMessage' | 'onQuestion' | 'onRetry' | 'onTranscription' | 'onDelivery'
 >;
 
 /**
@@ -38,8 +39,18 @@ export class WebConversationTurnsService {
     private readonly entries: ConversationEntryService,
   ) {}
 
-  /** Turns what the agents report into entries, ending with the result of the turn. */
-  async run(conversationId: string, turnId: string, execute: (callbacks: TurnCallbacks) => Promise<TurnResult>): Promise<void> {
+  /**
+   * Turns what the agents report into entries, ending with the result of the turn. The `message` that started it shows
+   * how it reached the CEO; one that joined a running turn, or was cancelled before the CEO read it, gets no response
+   * of its own.
+   */
+  async run(
+    conversationId: string,
+    turnId: string,
+    execute: (callbacks: TurnCallbacks) => Promise<TurnResult>,
+    message?: UserMessageEntry,
+  ): Promise<void> {
+    let delivery: UserMessageDelivery | undefined;
     const markRunning = (): void => this.markRunning(conversationId, turnId);
     const publish = (entry: ConversationEntry): void => {
       markRunning();
@@ -80,10 +91,19 @@ export class WebConversationTurnsService {
         warnings.forEach(warning => publish(this.entries.notice('warning', warning)));
         transcripts.forEach(({ name, text }) => publish(this.entries.notice('info', `🎙️ ${name}: ${text}`)));
       },
-      onQueued: () => this.markQueued(conversationId, turnId),
+      onDelivery: (next) => {
+        delivery = next;
+        this.mark(conversationId, turnId, next === 'queued' ? 'queued' : 'running');
+        if (message) {
+          void this.events.publishEntry(conversationId, { ...message, delivery: next });
+        }
+      },
     });
 
-    await this.events.publishEntry(conversationId, this.entries.agentResponse(result));
+    const { status } = result;
+    if (status !== 'steered' && delivery !== 'cancelled') {
+      await this.events.publishEntry(conversationId, this.entries.agentResponse({ ...result, status }));
+    }
     this.end(conversationId, turnId);
     this.publishInterrupted(conversationId);
   }

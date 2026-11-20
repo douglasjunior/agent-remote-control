@@ -11,6 +11,14 @@ import { QuestionCard, type QuestionAnswer } from './question-card.js';
 import { RetryCard } from './retry-card.js';
 
 
+/** How a message sent while a turn ran reached the CEO, with what each state means. */
+const DELIVERY_CHIPS = {
+  queued: { label: 'Queued', title: 'The CEO reads this message with its next prompt.' },
+  steered: { label: 'Steered', title: 'Sent into the CEO\'s prompt while it was working.' },
+  delivered: { label: 'Delivered', title: 'The CEO read this message with the running turn.' },
+  cancelled: { label: 'Cancelled', title: 'Stopped before the CEO read it.' },
+} as const;
+
 const NOTICE_STYLES = {
   info: 'text-muted-foreground',
   warning: 'text-amber-600',
@@ -51,14 +59,25 @@ function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded
   switch (entry.type) {
     case 'user_message':
       return (
-        <div className="ml-auto flex w-fit max-w-[82%] flex-col gap-1 rounded-[18px_18px_5px_18px] bg-primary px-[15px] py-2.5 text-sm [overflow-wrap:anywhere] text-primary-foreground">
-          {entry.text !== '' && <p className="whitespace-pre-wrap">{entry.text}</p>}
-          {entry.attachments && (
-            <ul aria-label="Attachments" className="flex flex-wrap gap-1">
-              {entry.attachments.map(attachment => (
-                <AttachmentChip key={attachment.path} name={attachment.name} className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
-              ))}
-            </ul>
+        <div className="ml-auto flex w-fit max-w-[82%] flex-col items-end gap-1">
+          <div className="flex w-fit max-w-full flex-col gap-1 rounded-[18px_18px_5px_18px] bg-primary px-[15px] py-2.5 text-sm [overflow-wrap:anywhere] text-primary-foreground">
+            {entry.text !== '' && <p className="whitespace-pre-wrap">{entry.text}</p>}
+            {entry.attachments && (
+              <ul aria-label="Attachments" className="flex flex-wrap gap-1">
+                {entry.attachments.map(attachment => (
+                  <AttachmentChip key={attachment.path} name={attachment.name} className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
+                ))}
+              </ul>
+            )}
+          </div>
+          {entry.delivery && (
+            <span
+              data-delivery={entry.delivery}
+              title={DELIVERY_CHIPS[entry.delivery].title}
+              className={cn('rounded-full border px-2 py-px text-[11px] text-muted-foreground', entry.delivery === 'cancelled' && 'line-through')}
+            >
+              {DELIVERY_CHIPS[entry.delivery].label}
+            </span>
           )}
         </div>
       );

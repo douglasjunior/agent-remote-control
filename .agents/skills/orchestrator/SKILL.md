@@ -33,7 +33,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 
 | Class | Responsibility |
 |---|---|
-| `ExecuteAgentTurnUseCase` | The CEO turn: steering a running CEO, its rounds and repairs, its questions, resumed work, the board check before its answer and the `TurnResult` |
+| `ExecuteAgentTurnUseCase` | The CEO turn: one per conversation at a time, with the inbox of messages that join it (steered into the CEO's prompt running or read with its next one), its rounds and repairs, its questions, resumed work, the board check before its answer and the `TurnResult` |
 | `RunDelegationUseCase` | The delegated agents: start, reach an agent already at work as the CEO chose (see "Agents Already at Work"), run its follow-ups in the same session, hold the artifact and move its status, stop, record on the session binding when its work ended, and the `<agent_result>` of each, cut to a receipt when its verdict closed the step and it runs long |
 | `AnswerAgentQuestionsUseCase` | An agent's questions to the user and the answers back, with one repair for invalid or forbidden questions; an answer the timeout assumed is commented on the asker's artifact |
 | `RunAgentRequestsUseCase` | Board and skill requests: `execute` runs one response's requests, `resolve` repeats until a response has none or carries them with its outcome, or with its answer when they only update or comment, and `executeOne` runs a single request for a tool call with the same checks and result |
@@ -49,18 +49,18 @@ Each class owns one part of a turn; channels reach them only through the public 
 | `*ConfigService` | `QuestionTimeoutConfigService`, `TurnRetryConfigService`, `DelegationLimitsConfigService` and `ShellCommandConfigService` read their settings from `IRuntimeSettingsPort` on every call, never from `process.env`, so a value saved from the web applies to the next use |
 | `SteeringSupportService` | Whether each coding agent takes text into a running prompt, recorded by `AgentRoundService` at every `connect()`, so the CEO and the validator know it before delegating |
 | `TeamProfilesService`, `CeoBoardService` | The `[TEAM_PROFILES]` and `[BOARD]` blocks of the CEO prompt; `CeoBoardService.findStranded` also finds, among the tasks the turn delegated, those it would leave mid-flow |
-| `ConversationRuntimeService` | Live state per conversation: the CEO port and its queue, active turns and delegations, pending CEO notices and agent receipts; closes the tool session of every port it disposes of |
+| `ConversationRuntimeService` | Live state per conversation: the CEO port, its one `ConversationTurn` with its inbox and the turns waiting to resume work, active delegations, pending CEO notices and agent receipts; closes the tool session of every port it disposes of |
 | `AgentToolSessionsService`, `AgentToolCatalogService`, `AgentToolRequestService`, `AgentToolsConfigService` | The live tool sessions and their credentials, the tools and instructions of a role, tool arguments read as requests, and `AGENT_MCP_ENABLED` |
 | `AgentProtocolService`, `DelegationDetectorService`, `QuestionParserService`, `AgentRequestParserService` | Reading agent output: the final response envelope, delegations, questions and requests |
 | `prompts/*.prompt.ts` | Every text the orchestrator writes into a prompt (results, answers, attachments, repairs, notices, language, skills) |
 
 ## A Turn in Short
 
-1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text, and a message that reaches a CEO already working steers it instead of starting a turn.
-2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round only), pending notices, attachments and the language block.
+1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text. A conversation runs one turn at a time: a message that finds one running joins it (see "Messages During a Turn") instead of starting another.
+2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round, and a round carrying a user message), pending notices, attachments, the messages of the inbox and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
 4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again. A delegation to a role already at work goes to that agent (see "Agents Already at Work").
-5. The turn ends with the CEO's answer once no delegation runs, or as failed, cancelled or steered; delegations still running are stopped. An answer that leaves tasks the turn delegated mid-flow with nobody on them and unnamed is not delivered: the CEO goes back once with `[BOARD_CHECK]` and owes a complete answer, attachments included.
+5. The turn ends with the CEO's answer once no delegation runs, or as failed or cancelled; delegations still running are stopped, and a message still in the inbox starts the next turn. An answer that leaves tasks the turn delegated mid-flow with nobody on them and unnamed is not delivered: the CEO goes back once with `[BOARD_CHECK]` and owes a complete answer, attachments included.
 
 Read [references/turn-execution.md](references/turn-execution.md) before changing any of these steps; it covers the directory hierarchy, the tag protocol, the CEO rounds, delegations and each agent round in detail.
 
@@ -107,9 +107,32 @@ own record. `on_busy` (`wait` or `interrupt`, `DelegationResult.onBusy`) says wh
   the open work), emit a `steered` delegation event, and leave a receipt; so does queueing a follow-up or a delegation
   that waits. A receipt is an `<agent_result status="steered|queued|interrupted">` (`prompts/agent-receipt.prompt.ts`)
   held by `ConversationRuntimeService` until the CEO's next prompt, a round or a steered user message, so it never costs
-  a round of its own; a turn whose only delegations joined another agent's run ends as `steered`.
+  a round of its own; a round whose delegations all joined other runs leaves the CEO waiting on those runs, and with
+  nothing left to wait for its next prompt carries just the receipts.
 - One decision per role at a time: `RunDelegationUseCase` decides what an arriving delegation does, and starts one,
   under a lock per conversation and role, so two never start side by side.
+
+### Messages During a Turn
+
+A conversation runs one turn at a time (`ConversationRuntimeService.admit`); a message that finds one running joins its
+inbox (`ConversationTurn`) and its `executeTurn` resolves once it reached the CEO (`status: 'steered'`), was cancelled, or
+starts the next turn:
+
+- **CEO in the middle of a prompt**: with the CEO's agent taking steering (`acceptsSteering`), the inbox is steered into
+  the running prompt in one `sendSteeringPrompt` (`[TEAM_PROFILES]`, `[BOARD]`, receipts, a `[USER_MESSAGE]` block per
+  message from `prompts/user-message.prompt.ts`, the language block), one steering at a time. Otherwise, or when it does
+  not land, the message waits (`onDelivery('queued')`) and every next CEO prompt of the turn (a round, request results,
+  answers, a repair) carries the inbox as `[USER_MESSAGE]` blocks (`delivered`).
+- **CEO idle, waiting for its delegates**: the message wakes it (`RunningDelegations.nextResults(turn.arrival())`) and
+  is read at once in a round of the same turn, with the results finished so far; a reply then is an interim message.
+- **Turn ending**: a message still waiting when the turn ends starts the next turn as its prompt, with the other waiting
+  messages read in its first prompt (`delivered`); a turn resuming interrupted work (`resumeWork`, `deliverAnswers`)
+  waits for the running one too (`acquire`).
+- **Part of the turn's input**: a prompt that carried a user message, read or steered, validates with
+  `userInitiated=true`; a prompt that failed is retried with the messages steered into it; the root's open work keeps
+  every message that joined in its `updates`, so a resume after a restart presents them; and a turn that failed or was
+  cancelled tells the next one, in its `[PREVIOUS_TURN]` notice, the messages it had read.
+- Pending questions and retries keep their own handling in each channel (answers, `retryNow`).
 
 ### Agent Tools over MCP
 
@@ -173,8 +196,8 @@ since the language goes into every prompt.
 ### Turn Cancellation (`CancelAgentTurnUseCase`)
 
 The `execute(conversationId: string): Promise<boolean>` method empties the conversation's question queue
-(`cancel`), stops a running shell command, closes the open work, triggers `ConversationRuntimeService.cancel(conversationId)` and returns whether there was a turn in
-progress or a pending question, including in a turn that has not yet saved the session. The resulting
+(`cancel`), stops a running shell command, closes the open work, triggers `ConversationRuntimeService.cancel(conversationId)`, which also cancels the messages
+waiting in the turn's inbox, and returns whether there was a turn in progress or a pending question, including in a turn that has not yet saved the session. The resulting
 `PromptCancelledError`, coming from the agent or from the rejected wait, interrupts the delegation
 loop, and the conversation returns to the default state.
 
@@ -192,7 +215,7 @@ loop, and the conversation returns to the default state.
 
 ## A Failed Prompt Waits to Be Retried
 
-A prompt to the CEO that throws, or a response that stays `invalid` after its repair, does not end the turn: `RetryCeoRoundUseCase` shows the failure and waits, the way a question waits, inside the same `runOnCeo` and `ActiveTurn`, then sends the failed prompt again. The unit of retry is the prompt, never the round: every prompt `runCeoTurn` sends (the round prompt, the answers of the user, the results of agent requests, a repair) is wrapped by `execute`, so a retry repeats exactly that text and the answers and results already exchanged stay delivered. A response that stays invalid is handled by `pause`, which waits and returns the `RetryNote`; the repair prompt is then sent again with the note and the repair budget restarts. The wait is `TurnRetryService.wait`: a `Countdown` (`models/countdown.model.ts`, shared with the question queue) whose end retries, ended earlier by `retryNow` (the user's message goes into the retry prompt, after `ExecuteAgentTurnUseCase.prepareRetryMessage` transcribes its audio like any message, so `onTranscription` fires), by `stopRetrying` (the failure stands: the error is thrown, or the invalid response is the result, so the turn fails as it would have) or by `cancel` (`CancelAgentTurnUseCase` rejects it with `PromptCancelledError`, so the turn is cancelled). A cancellation is never retried.
+A prompt to the CEO that throws, or a response that stays `invalid` after its repair, does not end the turn: `RetryCeoRoundUseCase` shows the failure and waits, the way a question waits, inside the same `runOnCeo` and `ActiveTurn`, then sends the failed prompt again. The unit of retry is the prompt, never the round: every prompt `runCeoTurn` sends (the round prompt, the answers of the user, the results of agent requests, a repair) is wrapped by `execute`, so a retry repeats exactly that text, plus the user messages the inbox gave it or that were steered into it, and the answers and results already exchanged stay delivered. A response that stays invalid is handled by `pause`, which waits and returns the `RetryNote`; the repair prompt is then sent again with the note and the repair budget restarts. The wait is `TurnRetryService.wait`: a `Countdown` (`models/countdown.model.ts`, shared with the question queue) whose end retries, ended earlier by `retryNow` (the user's message goes into the retry prompt, after `ExecuteAgentTurnUseCase.prepareRetryMessage` transcribes its audio like any message, so `onTranscription` fires), by `stopRetrying` (the failure stands: the error is thrown, or the invalid response is the result, so the turn fails as it would have) or by `cancel` (`CancelAgentTurnUseCase` rejects it with `PromptCancelledError`, so the turn is cancelled). A cancellation is never retried.
 
 - **Schedule**: `nextRetryDelay` (`utils/retry-delay.util.ts`) doubles the wait from `TURN_RETRY_BASE_DELAY_MS` (15 s) up to `TURN_RETRY_MAX_DELAY_MS` (2 h), and cuts the last wait to what is left of `TURN_RETRY_MAX_TOTAL_MS` (5 h) counted from the first failure, ending the retries when what is left is shorter than the base wait; `0` in any of them disables the retries. Each `RetryBudget` (`models/retry-budget.model.ts`) holds the attempts and the first failure of one stretch of failures: `execute` opens one per prompt, so a prompt that succeeds ends the failure and the next one starts again from the base, and `runCeoTurn` keeps one for the pauses of invalid responses.
 - **Events**: `TurnRequest.onRetry` gets `scheduled` (`RetryPrompt`: `roleName`, `errorMessage`, `attempt`, `timeout`) and `ended` (`elapsed`, `requested`, `stopped` or `cancelled`). A channel renders them and sends `retryNow` and `stopRetrying`; it runs no turn.
@@ -207,7 +230,7 @@ A prompt to the CEO that throws, or a response that stays `invalid` after its re
 - **Cleanup of reactive resources**: every callback registered in `onActivity` must be disconnected in a `finally` block.
 - **One ACP session per conversation, role, agent, project and task**: obtain `IAgentPort` instances exclusively through `IAgentPortFactory`, always with the turn's `agentId`. Each conversation's CEO agent lives in `ConversationRuntimeService`, and each delegation uses a disposable instance that resumes the role's ACP session for its task, or for its project when it has no artifact.
 - **Session holds only data**: `SessionContext` stores only serializable data. Live agents, queue and active turn stay in `ConversationRuntimeService`, because the store is persisted to disk.
-- **Concurrency control and CEO mutual exclusion**: every turn registers its lifecycle in `ConversationRuntimeService.beginTurn(conversationKey)`, and interactions with the CEO go through `ConversationRuntimeService.runOnCeo(conversationKey, work)`. The CEO is released while delegates run in the background, keeping strict queuing of simultaneous calls on the same CEO port to avoid parallel calls to `prompt()`.
+- **One turn per conversation**: every turn is admitted by `ConversationRuntimeService.admit` (or `acquire`, to resume work) and ended with `endTurn`, and interactions with the CEO go through `runOnCeo(conversationKey, turn, agentId, work)`, so `prompt()` is never called twice at once on the CEO port; a message that arrives meanwhile joins the running turn.
 - **Cancellable delegation**: every running agent must be registered with `turn.activate(agentPort)`, and `turn.throwIfCancelled()` must precede `connect` and `prompt`.
 - **Round limit**: keep `MAX_DELEGATION_ROUNDS` to prevent infinite loops between the CEO and delegated agents.
 - **Do not leak exceptions from execute()**: `ExecuteAgentTurnUseCase.execute()` must return `TurnResult` with `status: 'failed'` or `status: 'cancelled'`, never throw uncontrolled errors to the presentation layer.

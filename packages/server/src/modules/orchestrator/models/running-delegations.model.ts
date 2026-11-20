@@ -39,16 +39,17 @@ export class RunningDelegations {
   }
 
   /**
-   * Waits for at least one result and returns every result finished so far; a cancellation is thrown. Returns
-   * `undefined` when nothing is left to wait for, because every agent still running was replaced or took the work into
-   * a run another turn waits for.
+   * Waits for at least one result, or for `wake`, and returns every result finished so far; a cancellation is thrown.
+   * Returns an empty text when woken before any result, or when nothing is left to wait for, because every agent
+   * still running was replaced or took the work into another run.
    */
-  async nextResults(): Promise<string | undefined> {
-    while (this.finished.length === 0) {
-      if (this.pending.size === 0) {
-        return undefined;
-      }
-      await Promise.race(this.pending.keys());
+  async nextResults(wake?: Promise<void>): Promise<string> {
+    let woken = false;
+    const woke = wake?.then(() => {
+      woken = true;
+    });
+    while (this.finished.length === 0 && !woken && this.pending.size > 0) {
+      await Promise.race([...this.pending.keys(), ...(woke ? [woke] : [])]);
     }
     const batch = this.finished;
     this.finished = [];

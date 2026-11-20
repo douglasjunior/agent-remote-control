@@ -93,8 +93,9 @@ the records the conversation holds in memory at that moment over the other conve
 rewrites only the conversations whose records changed, in one `SqliteTransactionService.run`. A failed write is logged,
 and the next change of the conversation writes its records again. A conversation left without records has no rows.
 Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `artifactId?`, `summary`,
-`taskSpec` (the task as first delegated), `updates?` (every instruction the delegation received after it: steered, kept,
-interrupting or a follow-up, with `summary` following the last one), `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
+`taskSpec` (the task as first delegated, or the root's prompt), `updates?` (every instruction the delegation received after it: steered, kept,
+interrupting or a follow-up, with `summary` following the last one; for the root, every user message that joined its turn,
+steered, read or still waiting, after those it resumed with), `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
 never written. A resumed record keeps its questions until the prompt with the answers is sent: a restart before that asks
 the last question again, and from then on the agent has the answers and counts as working. The record is closed when that work
 ends, however it ends, and `CancelAgentTurnUseCase` closes every record of the conversation.

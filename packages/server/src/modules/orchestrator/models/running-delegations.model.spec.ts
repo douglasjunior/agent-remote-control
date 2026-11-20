@@ -116,14 +116,14 @@ describe('RunningDelegations', () => {
       expect(handedOver).toBe('planned');
     });
 
-    it('should resolve to undefined and be empty when the only delegation was replaced', async () => {
+    it('should resolve to an empty text and be empty when the only delegation was replaced', async () => {
       const running = new RunningDelegations();
       const developer = deferred();
       running.add([started(developer)]);
 
       developer.settle(replaced);
 
-      await expect(running.nextResults()).resolves.toBeUndefined();
+      await expect(running.nextResults()).resolves.toBe('');
       expect(running.isEmpty).toBe(true);
     });
 
@@ -142,6 +142,30 @@ describe('RunningDelegations', () => {
 
       await expect(running.nextResults()).resolves.toBe('planned');
       expect(running.isEmpty).toBe(true);
+    });
+  });
+
+  describe('woken before a result', () => {
+    it('should stop waiting with an empty text, keeping the delegations pending', async () => {
+      const running = new RunningDelegations();
+      const developer = deferred();
+      running.add([started(developer)]);
+
+      await expect(running.nextResults(Promise.resolve())).resolves.toBe('');
+      expect(running.isEmpty).toBe(false);
+
+      developer.settle(result('built'));
+      await expect(running.nextResults(new Promise(() => undefined))).resolves.toBe('built');
+    });
+
+    it('should hand over the results already finished when woken', async () => {
+      const running = new RunningDelegations();
+      const developer = deferred();
+      running.add([started(developer)]);
+      developer.settle(result('built'));
+      await running.settled();
+
+      await expect(running.nextResults(Promise.resolve())).resolves.toBe('built');
     });
   });
 

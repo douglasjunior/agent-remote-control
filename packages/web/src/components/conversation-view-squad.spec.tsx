@@ -219,8 +219,9 @@ describe('ConversationView squad', () => {
   it('should play the delivery moment when a running turn that delegated ends with its answer', () => {
     const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
     setState(connection, 'running');
-    act(() => connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: answer, position: 2 }));
     expect(squad()).not.toHaveAttribute('data-delivered');
+    act(() => connection.emitEvent({ type: 'conversation.entry', conversationId: 'c1', entry: answer, position: 2 }));
+    expect(squad()).toHaveAttribute('data-delivered', 'true');
 
     setState(connection, 'idle');
     expect(squad()).toHaveAttribute('data-delivered', 'true');

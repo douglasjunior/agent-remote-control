@@ -72,7 +72,9 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   archived conversation still opens and takes messages.
 - Every command carrying a `conversationId` for an unknown conversation answers an `error` event before reaching a use case.
 - `message.send` returns immediately while the turn streams: `SendConversationMessageUseCase` never rejects,
-  records the `user_message` and runs the turn as the CEO only when the conversation is configured.
+  records the `user_message` and runs the turn as the CEO only when the conversation is configured. A message sent
+  while a turn runs joins it in the orchestrator: its `user_message` shows how it reached the CEO (`delivery`) and it
+  gets no `agent_response` of its own.
 - Turn callbacks become entries with stable ids (`thought:<turnId>:<role>:<id>`, `tool:<turnId>:<role>:<toolCallId>`,
   `delegation:<delegationId>:<phase>`, `delegation:<delegationId>:steered:<uuid>` for each new instruction) so the store and the client upsert by id. `ConversationEntryService` builds
   every entry and owns the clock and the random ids.

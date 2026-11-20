@@ -78,6 +78,23 @@ describe('FeedList', () => {
     return screen.getByTestId('message-viewport');
   }
 
+  it.each([
+    ['queued', 'Queued'],
+    ['steered', 'Steered'],
+    ['delivered', 'Delivered'],
+    ['cancelled', 'Cancelled'],
+  ] as const)('should show on a message that it was %s', (delivery, label) => {
+    renderFeed([{ id: 'a', at: AT, type: 'user_message', text: 'hello', delivery }]);
+
+    expect(screen.getByText(label)).toHaveAttribute('data-delivery', delivery);
+  });
+
+  it('should show no delivery on a message that started its turn', () => {
+    renderFeed([userEntry('a', 'hello')]);
+
+    expect(document.querySelector('[data-delivery]')).toBeNull();
+  });
+
   it('should render the entries and the streaming draft', () => {
     renderFeed([userEntry('a', 'hello')], 'streaming answer');
 

@@ -5,17 +5,18 @@ import { randomUUID } from 'node:crypto';
 
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
-import type { TurnResult } from '../../orchestrator/models/turn-result.model.js';
+import type { TurnResult, TurnStatus } from '../../orchestrator/models/turn-result.model.js';
 import type { RetryPrompt } from '../../orchestrator/models/turn-retry.model.js';
 import type { QuestionAsker, QuestionPrompt, QuestionSubmission } from '../../orchestrator/models/user-question.model.js';
 
 
 type NoticeLevel = Extract<ConversationEntry, { type: 'notice' }>['level'];
+export type UserMessageEntry = Extract<ConversationEntry, { type: 'user_message' }>;
 
 /** Builds the entries a conversation records; it owns the clock and the random ids, so the same inputs make different entries. */
 @Injectable()
 export class ConversationEntryService {
-  userMessage(text: string, attachments: readonly Attachment[] = []): ConversationEntry {
+  userMessage(text: string, attachments: readonly Attachment[] = []): UserMessageEntry {
     return {
       id: randomUUID(),
       ...this.stamp(),
@@ -150,7 +151,8 @@ export class ConversationEntryService {
     };
   }
 
-  agentResponse(result: TurnResult): ConversationEntry {
+  /** A message that joined a running turn has no response of its own: that turn's response answers it. */
+  agentResponse(result: TurnResult & { readonly status: Exclude<TurnStatus, 'steered'> }): ConversationEntry {
     return {
       id: randomUUID(),
       ...this.stamp(),

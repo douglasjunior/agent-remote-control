@@ -31,6 +31,7 @@ import {
   buildCeoLanguagePrompt,
   buildLanguageDetectionPrompt,
 } from '../prompts/user-language.prompt.js';
+import { buildUserMessagePrompt } from '../prompts/user-message.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
 import { AgentRoundService } from '../services/agent-round.service.js';
@@ -1097,7 +1098,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(delegateStubPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}${emptyBoard}b`)]);
   });
 
-  it('should queue a second message of the same thread until the current turn finishes', async () => {
+  it('should start the next turn with a message that waited for a turn ending with its answer', async () => {
     let releaseFirst: () => void = () => undefined;
     const firstStarted = new Promise<void>((started) => {
       stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
@@ -1111,12 +1112,12 @@ describe('ExecuteAgentTurnUseCase', () => {
         yield textChunk(`reply to ${text}`);
       };
     });
-    const onQueued = rs.fn();
+    const onDelivery = rs.fn();
 
     const first = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'one' }));
     await firstStarted;
-    const second = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'two', onQueued }));
-    await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+    const second = useCase.execute(turnRequest({ conversationId: 'conv-th-1', prompt: 'two', onDelivery }));
+    await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
 
     expect(stubAgentPort.promptCalls).toHaveLength(1);
 
@@ -1124,10 +1125,11 @@ describe('ExecuteAgentTurnUseCase', () => {
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
     expect(firstResult.response).toBe(`reply to ${toCeo(`Mock system prompt.\n\n${idleTeam}${emptyBoard}one`)}`);
-    expect(secondResult.response).toBe(`reply to ${toCeo(`${idleTeam}${emptyBoard}two`)}`);
+    expect(secondResult).toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}${emptyBoard}two`)}` });
+    expect(onDelivery.mock.calls).toEqual([['queued'], ['delivered']]);
   });
 
-  it('should create a single session when two messages start a new conversation at once', async () => {
+  it('should read a message that arrives before the first prompt with it, in a single session', async () => {
     let releaseFirst: () => void = () => undefined;
     const firstStarted = new Promise<void>((started) => {
       stubAgentPort.prompt = async function* (this: StubAgentPort, text: string) {
@@ -1142,13 +1144,17 @@ describe('ExecuteAgentTurnUseCase', () => {
       };
     });
 
+    const onDelivery = rs.fn();
     const first = useCase.execute(turnRequest({ prompt: 'one' }));
-    const second = useCase.execute(turnRequest({ prompt: 'two' }));
+    const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
     await firstStarted;
     releaseFirst();
-    await Promise.all([first, second]);
+    const [, secondResult] = await Promise.all([first, second]);
 
-    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}${emptyBoard}one`), toCeo(`${idleTeam}${emptyBoard}two`)]);
+    expect(stubAgentPort.promptCalls).toEqual([toCeo(`Mock system prompt.\n\n${idleTeam}${emptyBoard}one\n\n${buildUserMessagePrompt('two')}`)]);
+    expect(stubAgentPort.createSessionCalls).toHaveLength(1);
+    expect(secondResult).toMatchObject({ status: 'steered', response: '' });
+    expect(onDelivery.mock.calls).toEqual([['queued'], ['delivered']]);
   });
 
   it('should return failed when the session cannot be saved', async () => {
@@ -2211,7 +2217,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest());
 
-      expect(result.status).toBe('steered');
+      expect(result).toMatchObject({ status: 'completed', response: 'Ok.' });
       expect(activePort.steeringPrompts).toEqual([expect.stringContaining('Change course.')]);
       expect(cancel).not.toHaveBeenCalled();
       expect(activePort.closeSessionCalls).toBe(0);
@@ -2510,11 +2516,11 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should inject a message that arrives while the CEO is running into the running round', async () => {
       stubAgentPort.supportsSteering = true;
       const gate = await holdFirstPrompt();
-      const onQueued = rs.fn();
+      const onDelivery = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
-      const second = await useCase.execute(turnRequest({ prompt: 'two', onQueued }));
+      const second = await useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
 
       expect(second).toEqual({
         response: '',
@@ -2524,7 +2530,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       expect(stubAgentPort.steeringPrompts[0]).toMatch(new RegExp(`^${escapeRegExp(`${idleTeam}${emptyBoard}`)}\\n\\[USER_MESSAGE\\]\\n[\\s\\S]*\\n\\ntwo\\n\\n\\[USER_LANGUAGE\\]`));
       expect(stubAgentPort.promptCalls).toHaveLength(1);
-      expect(onQueued).not.toHaveBeenCalled();
+      expect(onDelivery.mock.calls).toEqual([['steered']]);
 
       gate.release();
       const firstResult = await first;
@@ -2563,25 +2569,6 @@ describe('ExecuteAgentTurnUseCase', () => {
       await first;
     });
 
-    it('should steer the running turn when the conversation has no stored session', async () => {
-      stubAgentPort.supportsSteering = true;
-      let release: () => void = () => undefined;
-      const conversationKey = 'conv-1';
-      const running = runtime.run(conversationKey, 'stub', () => new Promise<void>((resolve) => {
-        release = resolve;
-      }));
-      await rs.waitFor(() => expect(runtime.getCeoPort(conversationKey)).toBe(stubAgentPort));
-
-      const result = await useCase.execute(turnRequest({ prompt: 'two' }));
-
-      expect(result).toMatchObject({ status: 'steered' });
-      expect(stubAgentPort.steeringPrompts).toHaveLength(1);
-      expect(stubAgentPort.steeringPrompts[0]).toContain('two');
-
-      release();
-      await running;
-    });
-
     it('should list the running agents in the message injected into the running CEO round', async () => {
       stubAgentPort.supportsSteering = true;
       runtime.registerDelegation('conv-1', {
@@ -2618,12 +2605,12 @@ describe('ExecuteAgentTurnUseCase', () => {
       stubAgentPort.supportsSteering = true;
       stubAgentPort.steeringResult = 'not_running';
       const gate = await holdFirstPrompt();
-      const onQueued = rs.fn();
+      const onDelivery = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
-      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
 
       expect(stubAgentPort.steeringPrompts).toHaveLength(1);
       expect(stubAgentPort.steeringPrompts[0]).toContain('two');
@@ -2638,12 +2625,12 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     it('should queue the message when the agent does not support steering', async () => {
       const gate = await holdFirstPrompt();
-      const onQueued = rs.fn();
+      const onDelivery = rs.fn();
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
-      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
 
       expect(stubAgentPort.steeringPrompts).toEqual([]);
 
@@ -2656,15 +2643,15 @@ describe('ExecuteAgentTurnUseCase', () => {
     it('should queue the message when the configured agent differs from the running CEO agent', async () => {
       stubAgentPort.supportsSteering = true;
       const gate = await holdFirstPrompt();
-      const onQueued = rs.fn();
+      const onDelivery = rs.fn();
       delegateStubPort.agentName = 'other';
       delegateStubPort.mockResponses = ['other agent reply'];
 
       const first = useCase.execute(turnRequest({ prompt: 'one' }));
       await gate.firstStarted;
       settingsStore.settings = buildStubSettings({ CEO: buildStubProfile('other', { agentName: 'Other' }) });
-      const second = useCase.execute(turnRequest({ prompt: 'two', onQueued }));
-      await rs.waitFor(() => expect(onQueued).toHaveBeenCalledTimes(1));
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
 
       expect(stubAgentPort.steeringPrompts).toEqual([]);
 
@@ -2673,6 +2660,281 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       expect(secondResult).toMatchObject({ status: 'completed', response: 'other agent reply' });
       expect(stubAgentPort.promptCalls).toHaveLength(1);
+    });
+  });
+
+  describe('user messages during a turn', () => {
+    /** A CEO whose every prompt waits for `respond` or `fail`, and whose cancel fails the prompt waiting, as an agent does. */
+    const scriptedCeoOn = (port: StubAgentPort, supportsSteering = false) => {
+      port.supportsSteering = supportsSteering;
+      let current: { resolve: (text: string) => void; reject: (error: Error) => void } | undefined;
+      port.prompt = async function* (this: StubAgentPort, text: string) {
+        this.promptCalls.push(text);
+        const reply = await new Promise<string>((resolve, reject) => {
+          current = { resolve, reject };
+        });
+        this.lastAgentMessage = reply;
+        yield textChunk(reply);
+      };
+      port.cancel = async () => {
+        port.cancelCalls++;
+        current?.reject(new PromptCancelledError());
+      };
+      const waitForPrompt = (prompt: number) => rs.waitFor(() => expect(port.promptCalls).toHaveLength(prompt));
+      return {
+        waitForPrompt,
+        respond: async (text: string, prompt: number) => {
+          await waitForPrompt(prompt);
+          current!.resolve(text);
+        },
+        fail: async (error: Error, prompt: number) => {
+          await waitForPrompt(prompt);
+          current!.reject(error);
+        },
+      };
+    };
+    const scriptedCeo = (supportsSteering = false) => scriptedCeoOn(stubAgentPort, supportsSteering);
+    const onlyOnUserDecision = { project: 'optional', userInitiatedOnly: true } as const;
+
+    it('should read a message that waited with the next prompt of the running turn', async () => {
+      const ceo = scriptedCeo();
+      delegateStubPort.mockResponses = ['Built.'];
+      const onDelivery = rs.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await ceo.waitForPrompt(1);
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
+      await ceo.respond('<delegate role="DEVELOPER" summary="Building" project="my-app">Build.</delegate>', 1);
+
+      await expect(second).resolves.toMatchObject({ status: 'steered', response: '', agentInfo: { roleName: 'CEO', agentName: 'stub' } });
+      expect(onDelivery.mock.calls).toEqual([['queued'], ['delivered']]);
+      await ceo.waitForPrompt(2);
+      expect(stubAgentPort.promptCalls[1]).toContain(`${emptyBoard}${buildUserMessagePrompt('two')}`);
+      await ceo.respond('Noted, still building.', 2);
+      await ceo.respond('Done.', 3);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
+      expect(stubAgentPort.promptCalls[2]).toContain('Built.');
+      expect(stubAgentPort.createSessionCalls).toHaveLength(1);
+    });
+
+    it('should wake the CEO waiting for its delegates with a message, in the same turn', async () => {
+      const ceo = scriptedCeo();
+      let finishDelegate: (text: string) => void = () => undefined;
+      delegateStubPort.prompt = async function* (this: StubAgentPort, text: string) {
+        this.promptCalls.push(text);
+        yield textChunk(await new Promise<string>((resolve) => {
+          finishDelegate = resolve;
+        }));
+      };
+      const onInterimMessage = rs.fn();
+      const onDelivery = rs.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one', onInterimMessage }));
+      await ceo.respond('<delegate role="DEVELOPER" summary="Building" project="my-app">Build.</delegate>', 1);
+      await rs.waitFor(() => expect(delegateStubPort.promptCalls).toHaveLength(1));
+
+      const second = useCase.execute(turnRequest({ prompt: 'How is it going?', onDelivery }));
+      await ceo.waitForPrompt(2);
+      await expect(second).resolves.toMatchObject({ status: 'steered' });
+      expect(onDelivery.mock.calls).toEqual([['delivered']]);
+      expect(stubAgentPort.promptCalls[1]).toContain('Status: working');
+      expect(stubAgentPort.promptCalls[1]).toContain(`${emptyBoard}${buildUserMessagePrompt('How is it going?')}`);
+      expect(stubAgentPort.promptCalls[1]).not.toContain('<agent_result');
+      await ceo.respond('Still building.', 2);
+      await rs.waitFor(() => expect(onInterimMessage).toHaveBeenCalledWith('Still building.'));
+
+      finishDelegate('Built.');
+      await ceo.respond('Done.', 3);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
+      expect(stubAgentPort.promptCalls[2]).toContain('Built.');
+      expect(stubAgentPort.createSessionCalls).toHaveLength(1);
+    });
+
+    it('should accept a delegation only the user may start in the round a message woke', async () => {
+      agentRegistry.getDelegationContract.mockImplementation((role: string) => (role === 'TECH_LEAD' ? onlyOnUserDecision : { project: 'optional' }) as DelegationContract);
+      const ceo = scriptedCeo();
+      let finishDelegate: (text: string) => void = () => undefined;
+      delegateStubPort.prompt = async function* (this: StubAgentPort, text: string) {
+        this.promptCalls.push(text);
+        yield textChunk(this.promptCalls.length === 1
+          ? await new Promise<string>((resolve) => {
+            finishDelegate = resolve;
+          })
+          : 'Docker installed.');
+      };
+
+      const first = useCase.execute(turnRequest({ prompt: 'Build it' }));
+      await ceo.respond('<delegate role="DEVELOPER" summary="Building" project="my-app">Build.</delegate>', 1);
+      await rs.waitFor(() => expect(delegateStubPort.promptCalls).toHaveLength(1));
+      await useCase.execute(turnRequest({ prompt: 'Yes, have Docker installed.' }));
+      await ceo.respond('<delegate role="TECH_LEAD" summary="Installing Docker">Install Docker.</delegate>', 2);
+      finishDelegate('Built.');
+      await ceo.waitForPrompt(3);
+      await ceo.respond('Waiting for both.', 3);
+      await rs.waitFor(() => expect(stubAgentPort.promptCalls.length).toBeGreaterThanOrEqual(4));
+      await ceo.respond('Done.', 4);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed' });
+      expect(stubAgentPort.promptCalls.join('\n')).not.toContain('[DELEGATION_ERROR]');
+      expect(delegateStubPort.promptCalls[1]).toContain('Install Docker.');
+    });
+
+    it('should accept a delegation only the user may start when a message steered into a later round asked for it', async () => {
+      agentRegistry.getDelegationContract.mockImplementation((role: string) => (role === 'TECH_LEAD' ? onlyOnUserDecision : { project: 'optional' }) as DelegationContract);
+      const ceo = scriptedCeo(true);
+      delegateStubPort.mockResponses = ['Built.', 'Docker installed.'];
+
+      const first = useCase.execute(turnRequest({ prompt: 'Build it' }));
+      await ceo.respond('<delegate role="DEVELOPER" summary="Building" project="my-app">Build.</delegate>', 1);
+      await ceo.waitForPrompt(2);
+      await expect(useCase.execute(turnRequest({ prompt: 'Yes, have Docker installed.' }))).resolves.toMatchObject({ status: 'steered' });
+      expect(stubAgentPort.steeringPrompts[0]).toContain(buildUserMessagePrompt('Yes, have Docker installed.'));
+      await ceo.respond('<delegate role="TECH_LEAD" summary="Installing Docker">Install Docker.</delegate>', 2);
+      await ceo.respond('Installed.', 3);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Installed.' });
+      expect(stubAgentPort.promptCalls[2]).not.toContain('[DELEGATION_ERROR]');
+      expect(delegateStubPort.promptCalls[1]).toContain('Install Docker.');
+    });
+
+    it('should send a steered message again with the retry of the prompt it joined', async () => {
+      retryPolicy = { baseDelayMs: 60_000, maxDelayMs: 60_000, maxTotalMs: 600_000 };
+      const ceo = scriptedCeo(true);
+      const onRetry = (event: RetryEvent) => event.kind === 'scheduled' && queueMicrotask(() => turnRetry.retryNow('conv-1'));
+
+      const first = useCase.execute(turnRequest({ prompt: 'one', onRetry }));
+      await ceo.waitForPrompt(1);
+      await expect(useCase.execute(turnRequest({ prompt: 'two' }))).resolves.toMatchObject({ status: 'steered' });
+      await ceo.fail(new Error('connection lost'), 1);
+      await ceo.respond('Recovered.', 2);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Recovered.' });
+      expect(stubAgentPort.promptCalls[1]).toMatch(/^Mock system prompt\.\n\n\[RETRY\]/);
+      expect(stubAgentPort.promptCalls[1]).toContain(`one\n\n${buildUserMessagePrompt('two')}`);
+    });
+
+    it.each([
+      ['failed', (ceo: ReturnType<typeof scriptedCeo>) => ceo.fail(new Error('boom'), 1), 'Your previous turn failed: boom'],
+      [
+        'cancelled', async () => {
+          await runtime.cancel('conv-1');
+        }, 'Your previous turn was cancelled.',
+      ],
+    ])('should tell the next turn which messages a %s turn read', async (_status, end, notice) => {
+      const ceo = scriptedCeo(true);
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await ceo.waitForPrompt(1);
+      await useCase.execute(turnRequest({ prompt: 'two' }));
+      await end(ceo);
+      await first;
+      const next = useCase.execute(turnRequest({ prompt: 'three' }));
+      await ceo.respond('Ok.', 2);
+      await next;
+
+      expect(stubAgentPort.promptCalls[1]).toContain(`- ${notice} It had read these messages the user sent while it ran: "two".`);
+    });
+
+    it('should leave a message to the next turn when the prompt it was being steered into ends first', async () => {
+      const ceo = scriptedCeo(true);
+      const list = artifacts.list.bind(artifacts);
+      let release: () => void = () => undefined;
+      let reached: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => {
+        reached = resolve;
+      });
+      let calls = 0;
+      artifacts.list = async (...args: Parameters<typeof list>) => {
+        calls++;
+        if (calls === 2) {
+          reached();
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return list(...args);
+      };
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await ceo.waitForPrompt(1);
+      const second = useCase.execute(turnRequest({ prompt: 'two' }));
+      await held;
+      await ceo.respond('One done.', 1);
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'One done.' });
+      release();
+      await ceo.respond('Two done.', 2);
+
+      await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Two done.' });
+      expect(stubAgentPort.steeringPrompts).toEqual([]);
+    });
+
+    it('should cancel the messages waiting with the turn, and start none of them', async () => {
+      const ceo = scriptedCeo();
+      const deliveries: string[][] = [[], []];
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await ceo.waitForPrompt(1);
+      const waiting = ['two', 'three'].map((prompt, index) => useCase.execute(turnRequest({ prompt, onDelivery: delivery => deliveries[index]!.push(delivery) })));
+      await rs.waitFor(() => expect(deliveries).toEqual([['queued'], ['queued']]));
+
+      await runtime.cancel('conv-1');
+
+      await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+      await expect(Promise.all(waiting)).resolves.toEqual([{ response: '', status: 'cancelled' }, { response: '', status: 'cancelled' }]);
+      expect(deliveries).toEqual([['queued', 'cancelled'], ['queued', 'cancelled']]);
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+
+      const after = useCase.execute(turnRequest({ prompt: 'four' }));
+      await ceo.respond('Fresh start.', 2);
+      await expect(after).resolves.toMatchObject({ status: 'completed', response: 'Fresh start.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('Your previous turn was cancelled.');
+      expect(stubAgentPort.promptCalls[1]).not.toContain('two');
+    });
+
+    it('should keep the messages that joined a resumable turn with its open work, and resume with them after a restart', async () => {
+      const ceo = scriptedCeo(true);
+      void useCase.execute(turnRequest({ prompt: 'one', resumable: true }));
+      await ceo.waitForPrompt(1);
+      await useCase.execute(turnRequest({ prompt: 'two' }));
+      await rs.waitFor(() => expect(openWorkStore.saved['conv-1']?.[0]).toMatchObject({ root: true, taskSpec: 'one', updates: ['two'] }));
+
+      openWork.onModuleDestroy();
+      const restarted = new StubAgentPort();
+      restarted.mockResponses = ['Resumed.'];
+      wire(new StubAgentPortFactory(() => restarted));
+      await new RestoreOpenWorkUseCase(openWork, questionQueue).onModuleInit();
+      const [work] = openWork.continuable('conv-1');
+
+      const result = await useCase.resume(work!.id, turnRequest());
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Resumed.' });
+      expect(restarted.promptCalls[0]).toContain('[RESUMED_WORK]');
+      expect(restarted.promptCalls[0]).toContain('one\n\nInstructions you received after it, in order; each takes precedence over what it contradicts:\n- two');
+    });
+
+    it('should resume work once the running turn ends, or never when the user stops it', async () => {
+      const ceo = scriptedCeo();
+      void useCase.execute(turnRequest({ prompt: 'one', resumable: true }));
+      await ceo.waitForPrompt(1);
+      await rs.waitFor(() => expect(openWorkStore.saved['conv-1']).toHaveLength(1));
+      openWork.onModuleDestroy();
+      const restarted = new StubAgentPort();
+      wire(new StubAgentPortFactory(() => restarted));
+      await new RestoreOpenWorkUseCase(openWork, questionQueue).onModuleInit();
+      const [work] = openWork.continuable('conv-1');
+      const held = scriptedCeoOn(restarted);
+      const running = useCase.execute(turnRequest({ prompt: 'now' }));
+      await held.waitForPrompt(1);
+
+      const resumed = useCase.resume(work!.id, turnRequest());
+      await runtime.cancel('conv-1');
+
+      await expect(resumed).resolves.toEqual({ response: '', status: 'cancelled' });
+      await expect(running).resolves.toMatchObject({ status: 'cancelled' });
+      expect(restarted.promptCalls).toHaveLength(1);
     });
   });
 
@@ -3411,7 +3673,7 @@ describe('ExecuteAgentTurnUseCase', () => {
           expectOnlyTheReplacementReachedTheCeo(result, rebuilt);
         });
 
-        it('should end as steered, without a response, the turn whose agent another turn replaced', async () => {
+        it('should answer with the result of the agent a message of the user replaced in the running turn', async () => {
           const rebuilt = delegatePort('Rebuilt.');
           delegatePorts = [stuckDeveloper(new Error('Resumed session disposed')), rebuilt];
           stubAgentPort.mockResponses = [
@@ -3424,14 +3686,14 @@ describe('ExecuteAgentTurnUseCase', () => {
           await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
           const second = await useCase.execute(turnRequest({ prompt: 'Second' }));
 
-          await expect(first).resolves.toMatchObject({ status: 'steered', response: '' });
-          expect(second).toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(second).toMatchObject({ status: 'steered', response: '' });
+          await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
           expect(stubAgentPort.promptCalls[2]).toContain(rebuiltResult);
           expect(stubAgentPort.promptCalls.filter(prompt => prompt.includes('status="failed"'))).toEqual([]);
           expect(runtime.pendingCeoNotices('conv-1')).toEqual([]);
         });
 
-        it('should end as steered the resumed delegation another turn replaced', async () => {
+        it('should answer with the result of the agent that replaced a resumed delegation', async () => {
           const delegation = '<delegate role="DEVELOPER" project="my-app" summary="Build it">Build.</delegate>';
           stubAgentPort.mockResponses = [delegation];
           const beforeRestart = delegatePort('never');
@@ -3458,8 +3720,8 @@ describe('ExecuteAgentTurnUseCase', () => {
           await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')).toBeDefined());
           const second = await useCase.execute(turnRequest({ resumable: true }));
 
-          await expect(resumed).resolves.toMatchObject({ status: 'steered', response: '' });
-          expect(second).toMatchObject({ status: 'completed', response: 'Done.' });
+          expect(second).toMatchObject({ status: 'steered', response: '' });
+          await expect(resumed).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
           expect(rebuilt.promptCalls).toHaveLength(1);
           expect(ceo.promptCalls.filter(prompt => prompt.includes('status="failed"'))).toEqual([]);
         });
@@ -4253,6 +4515,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const steered = await useCase.execute(turnRequest({ prompt: 'More', resumable: true }));
 
       expect(steered.status).toBe('steered');
+      await rs.waitFor(() => expect(records().find(work => work.role === 'DEVELOPER')?.updates).toBeDefined());
       expect(records().find(work => work.role === 'DEVELOPER')).toMatchObject({ taskSpec: 'Build.', summary: 'Build more', updates: ['Build more.'] });
 
       const { ceo, developer } = await restart();
@@ -4314,6 +4577,11 @@ describe('ExecuteAgentTurnUseCase', () => {
     const delegate = (spec: string, attributes = '') => `<delegate role="DEVELOPER" summary="${spec}" project="my-app"${attributes}>${spec}</delegate>`;
     const resultOf = (body: string, attributes = '') => `<agent_result role="DEVELOPER" project="my-app" agent="dev" model="default" effort="default"${attributes}>\n${body}\n</agent_result>`;
     const steeredIds = (events: readonly DelegationEvent[]) => events.filter(event => event.phase === 'steered');
+    /** Sends a message while the turn runs and waits for the delegation the CEO answered it with to reach the agent at work. */
+    const sendDuringTurn = async (prompt: string) => {
+      await expect(useCase.execute(turnRequest({ prompt }))).resolves.toMatchObject({ status: 'steered' });
+      await rs.waitFor(() => expect(runtime.pendingAgentReceipts('conv-1').length).toBeGreaterThan(0));
+    };
     const onTask = (id: string, spec: string, attributes = '') => `<delegate role="DEVELOPER" summary="${spec}" artifact="${id}"${attributes}>${spec}</delegate>`;
     const withTasks = (...ids: string[]) => {
       agentRegistry.getDelegationContract.mockImplementation(() => ({ project: 'optional', artifact: 'optional', asksUser: true }) as DelegationContract);
@@ -4370,9 +4638,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const first = useCase.execute(turnRequest({ prompt: 'FIRST', onDelegation: event => events.push(event) }));
         await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
-        const second = await useCase.execute(turnRequest({ prompt: 'SECOND', onDelegation: event => events.push(event) }));
+        await sendDuringTurn('SECOND');
 
-        expect(second).toMatchObject({ status: 'steered', response: '' });
         expect(stubAgentPort.promptCalls[1]).toContain('Waiting for user: no, Steering: supported, Summary: "Build."');
         expect(developer.port.steeringPrompts).toEqual([expect.stringMatching(/^\[INSTRUCTION_UPDATE\]\n[\s\S]*\nNew instruction:\nAdd tests too\.\n\n[\s\S]*background[\s\S]*\n\[\/INSTRUCTION_UPDATE\]\n\n\[USER_LANGUAGE\]/)]);
         expect(steeredIds(events)).toEqual([expect.objectContaining({ delegationId: events[0]!.delegationId, summary: 'Add tests too.', taskSpec: 'Add tests too.' })]);
@@ -4393,7 +4660,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
         await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
-        await expect(useCase.execute(turnRequest({ prompt: 'SECOND' }))).resolves.toMatchObject({ status: 'steered' });
+        await sendDuringTurn('SECOND');
         await developer.respond('RESULT-ONE', 1);
         await developer.respond('RESULT-TWO', 2);
 
@@ -4413,7 +4680,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         const first = useCase.execute(turnRequest({ prompt: 'FIRST', onQuestion: rs.fn() }));
         await developer.respond('<question>Which database?</question>', 1);
         await rs.waitFor(() => expect(questionQueue.hasPending('conv-1')).toBe(true));
-        await useCase.execute(turnRequest({ prompt: 'SECOND' }));
+        await sendDuringTurn('SECOND');
         questionQueue.submit('conv-1', { kind: 'text', text: 'Postgres' });
         await developer.respond('RESULT-ONE', 2);
 
@@ -4432,7 +4699,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
         await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
-        await useCase.execute(turnRequest({ prompt: 'SECOND' }));
+        await sendDuringTurn('SECOND');
         await developer.respond('RESULT-ONE', 1);
         await first;
 
@@ -4505,8 +4772,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         await developer.respond('RESULT-ONE', 1);
         await developer.respond('RESULT-TWO', 2);
 
-        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Done two.' });
+        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done two.' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(developer.port.promptCalls[1]).toBe(toAgent('[FOLLOW_UP]\nYour previous final response was delivered. The CEO sends this next instruction on the same work, in this same session.\n\nAdd tests too.\n[/FOLLOW_UP]'));
         expect(developer.port.createSessionCalls).toHaveLength(1);
         expect(portFactory.createdAgentIds.filter(agentId => agentId === 'dev')).toHaveLength(1);
@@ -4558,13 +4825,13 @@ describe('ExecuteAgentTurnUseCase', () => {
         await developer.respond('RESULT-ONE', 1);
         await other.respond('RESULT-A', 1);
 
-        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Done a.' });
+        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done a.' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(other.port.createSessionCalls).toEqual(['/mock/workspace/project-a']);
         expect(stubAgentPort.promptCalls.join('\n')).toContain('The agent finishes its current work first; this delegation starts after it, and you get both results.');
       });
 
-      it('should take back the instruction of a turn that ends before it ran, leaving the agent at work', async () => {
+      it('should take back the instruction and stop the agent when the turn fails before the instruction ran', async () => {
         const developer = scriptedDelegate();
         leadPorts.push(Object.assign(new StubAgentPort(), { agentName: 'lead', mockResponses: ['RESULT-LEAD'] }));
         ceoAnswers([
@@ -4586,13 +4853,13 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
         await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
-        await expect(useCase.execute(turnRequest({ prompt: 'SECOND' }))).resolves.toMatchObject({ status: 'failed' });
-        expect(queuedWhileLeadWorked).toBe(1);
-        expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(0);
-        await developer.respond('RESULT-ONE', 1);
+        await expect(useCase.execute(turnRequest({ prompt: 'SECOND' }))).resolves.toMatchObject({ status: 'steered' });
 
-        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done one.' });
+        await expect(first).resolves.toMatchObject({ status: 'failed' });
+        expect(queuedWhileLeadWorked).toBe(1);
+        expect(developer.port.cancelCalls).toBe(1);
         expect(developer.port.promptCalls).toHaveLength(1);
+        expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
       });
 
       it('should stop the agent when the turn of its running instruction ends', async () => {
@@ -4618,8 +4885,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(1));
         await developer.respond('RESULT-ONE', 1);
 
-        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ status: 'failed' });
+        await expect(first).resolves.toMatchObject({ status: 'failed' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(developer.port.cancelCalls).toBe(1);
         expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
       });
@@ -4639,8 +4906,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(1));
         await developer.fail(new Error('agent crashed'), 1);
 
-        await expect(first).resolves.toMatchObject({ response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ response: 'Done two.' });
+        await expect(first).resolves.toMatchObject({ status: 'completed' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(stubAgentPort.promptCalls.join('\n')).toContain(resultOf('The agent\'s work ended (failed) before this instruction ran. Delegate it again if it still applies.', ' status="failed"'));
       });
 
@@ -4655,14 +4922,14 @@ describe('ExecuteAgentTurnUseCase', () => {
         await runtime.cancel('conv-1');
 
         await expect(first).resolves.toMatchObject({ status: 'cancelled' });
-        await expect(second).resolves.toMatchObject({ status: 'cancelled' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
       });
     });
 
     describe('waiting for an agent on other work', () => {
       const otherWork = '<delegate role="DEVELOPER" summary="Elsewhere" project="project-a" on_busy="wait">Fix project a.</delegate>';
 
-      it('should stop waiting when its turn ends, and never start', async () => {
+      it('should stop waiting when the turn fails, and never start', async () => {
         const developer = scriptedDelegate();
         const lead = Object.assign(new StubAgentPort(), { agentName: 'lead', mockResponses: ['RESULT-LEAD'] });
         leadPorts.push(lead);
@@ -4681,11 +4948,10 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
         await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
-        await expect(useCase.execute(turnRequest({ prompt: 'SECOND' }))).resolves.toMatchObject({ status: 'failed' });
-        expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(0);
-        await developer.respond('RESULT-ONE', 1);
+        await expect(useCase.execute(turnRequest({ prompt: 'SECOND' }))).resolves.toMatchObject({ status: 'steered' });
 
-        await expect(first).resolves.toMatchObject({ response: 'Done one.' });
+        await expect(first).resolves.toMatchObject({ status: 'failed' });
+        expect(developer.port.cancelCalls).toBe(1);
         expect(devPorts).toHaveLength(0);
         expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
       });
@@ -4701,7 +4967,21 @@ describe('ExecuteAgentTurnUseCase', () => {
         await runtime.cancel('conv-1');
 
         await expect(first).resolves.toMatchObject({ status: 'cancelled' });
-        await expect(second).resolves.toMatchObject({ status: 'cancelled' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
+      });
+
+      it('should be cancelled when the agent it waits for is', async () => {
+        const developer = scriptedDelegate();
+        ceoAnswers([['FIRST', delegate('Build.')], ['SECOND', otherWork]]);
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
+        await useCase.execute(turnRequest({ prompt: 'SECOND' }));
+        await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(1));
+        await developer.fail(new PromptCancelledError(), 1);
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        expect(devPorts).toHaveLength(0);
       });
     });
 
@@ -4818,7 +5098,7 @@ describe('ExecuteAgentTurnUseCase', () => {
         const validate = artifacts.get.bind(artifacts);
         artifacts.list = async () => [];
         artifacts.get = async (...args: Parameters<typeof validate>) => validate(...args);
-        await useCase.execute(turnRequest({ prompt: 'SECOND' }));
+        await sendDuringTurn('SECOND');
         await developer.respond('RESULT-ONE', 1);
         await first;
 
@@ -4841,8 +5121,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         const second = useCase.execute(turnRequest({ prompt: 'SECOND' }));
         await replacement.respond('RESULT-TWO', 1);
 
-        await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
-        await expect(first).resolves.toMatchObject({ status: 'steered', response: '' });
+        await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Done.' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         const order = (spy: typeof release | typeof assign, id: string) => spy.mock.invocationCallOrder[spy.mock.calls.findIndex(call => call[1] === id)]!;
         expect(order(release, 'T-1')).toBeLessThan(order(assign, 'T-2'));
         expect(stubAgentPort.promptCalls[2]).toContain('<agent_result role="DEVELOPER" project="my-app" artifact="T-1" artifact_status="ready" agent="dev" model="default" effort="default" status="interrupted">\nThis work stopped where it stood to start your new delegation. What the agent changed in the project stays as it left it.\n</agent_result>');
@@ -4867,8 +5147,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         board.release();
         await developer.respond('RESULT-TWO', 2);
 
-        await expect(first).resolves.toMatchObject({ response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ response: 'Done two.' });
+        await expect(first).resolves.toMatchObject({ response: 'Done two.' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(developer.port.steeringPrompts).toEqual([]);
         expect(developer.port.promptCalls[1]).toMatch(/^\[FOLLOW_UP\][\s\S]*Your artifact as it stands now:\n# T-1[\s\S]*\n\nAdd tests\.\n\[\/FOLLOW_UP\]/);
       });
@@ -4889,8 +5169,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         board.release();
         await developer.respond('RESULT-TWO', 2);
 
-        await expect(second).resolves.toMatchObject({ response: 'Done two.' });
-        await first;
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
+        await expect(first).resolves.toMatchObject({ response: 'Done two.' });
         expect(developer.port.cancelCalls).toBe(0);
         expect(developer.port.promptCalls[1]).toContain('[FOLLOW_UP]');
       });
@@ -4914,8 +5194,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         board.release();
         await developer.respond('RESULT-TWO', 2);
 
-        await expect(second).resolves.toMatchObject({ response: 'Done two.' });
-        await first;
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
+        await expect(first).resolves.toMatchObject({ response: 'Done two.' });
         expect(developer.port.promptCalls[1]).toContain('[FOLLOW_UP]');
       });
 
@@ -4936,8 +5216,8 @@ describe('ExecuteAgentTurnUseCase', () => {
         board.release();
         await next.respond('RESULT-TWO', 1);
 
-        await expect(first).resolves.toMatchObject({ response: 'Done one.' });
-        await expect(second).resolves.toMatchObject({ response: 'Done two.' });
+        await expect(first).resolves.toMatchObject({ response: 'Done two.' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
         expect(next.port.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'session-1' }]);
         expect(next.port.promptCalls[0]).toContain('Add tests.');
       });
@@ -5608,7 +5888,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         const result = await useCase.execute(turnRequest());
 
-        expect(result.status).toBe('steered');
+        expect(result).toMatchObject({ status: 'completed', response: 'Done.' });
         expect(delegateStubPort.steeringPrompts).toEqual([expect.stringContaining('Stop the refactor and keep the old login API, as the user asked.')]);
       });
 

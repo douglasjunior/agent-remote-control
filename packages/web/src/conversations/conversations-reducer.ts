@@ -16,6 +16,11 @@ export type ConversationView = {
   /** The response being written, shown after the entries until the entry that delivers it arrives. */
   readonly draft: string;
   readonly state: ConversationState;
+  /**
+   * The last entry held when the state was last set. A response after it was published before the state changed, so
+   * it ended the turn that the state still reports.
+   */
+  readonly stateAfter?: string;
   readonly interrupted: readonly InterruptedWork[];
   readonly loaded: boolean;
   readonly configured: boolean;
@@ -133,13 +138,17 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'conversation.updated':
       return { ...state, list: upsertSummary(state.list, event.conversation) };
     case 'conversation.history':
-      return updateView(state, event.conversationId, view => ({
-        ...withEntries(view, event.start, event.entries),
-        draft: event.draft ?? '',
-        state: event.state,
-        interrupted: event.interrupted ?? [],
-        loaded: true,
-      }));
+      return updateView(state, event.conversationId, (view) => {
+        const withPage = withEntries(view, event.start, event.entries);
+        return {
+          ...withPage,
+          draft: event.draft ?? '',
+          state: event.state,
+          stateAfter: withPage.entryIds.at(-1),
+          interrupted: event.interrupted ?? [],
+          loaded: true,
+        };
+      });
     case 'conversation.entries':
       return updateView(state, event.conversationId, view => withEarlierEntries(view, event.start, event.entries));
     case 'conversation.entry':
@@ -149,7 +158,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'conversation.interrupted':
       return updateView(state, event.conversationId, view => ({ ...view, interrupted: event.interrupted }));
     case 'conversation.state':
-      return updateView(state, event.conversationId, view => ({ ...view, state: event.state }));
+      return updateView(state, event.conversationId, view => ({ ...view, state: event.state, stateAfter: view.entryIds.at(-1) }));
     case 'agents.list':
       return { ...state, agents: event.agents };
     case 'profiles':

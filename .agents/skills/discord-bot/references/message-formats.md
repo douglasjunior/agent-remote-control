@@ -55,14 +55,16 @@ Every turn outcome with `TurnResult.agentInfo` gets the footer `formatAgentFoote
 
 - **Completed**: the text is the response; with no text, `✅ *Task completed with no response message.*`.
 - **Cancelled**: `⚠️ **Turn cancelled by the user.**`.
-- **Steered** (`status: 'steered'`):
-  `📨 *Message sent to the running agent. The reply will come with the current task's response.*`, with no footer and
-  no splitting.
+- **Joined** (`status: 'steered'`), with no footer and no splitting: steered into the CEO's prompt running (`onDelivery('steered')`),
+  `📨 *Message sent to the running agent. The reply will come with the current task's response.*`; read with a later
+  prompt of the running turn, `📨 *Message delivered to the CEO with the running task. The reply will come with its response.*`.
+- **Cancelled before the CEO read it** (`onDelivery('cancelled')`): `⚠️ *Message cancelled before the CEO read it.*`.
 - **Failure**: `❌ **Execution error**: <errorMessage>`.
 - **Exception while processing the message**: `❌ **An error occurred while processing your request:** <message>`,
   also split.
-- **Queued** (`onQueued`): the progress message shows
-  `⏳ *Waiting for the previous task in this conversation to finish...*`.
+- **Queued** (`onDelivery('queued')`): the progress message shows
+  `⏳ *The CEO is in the middle of a prompt: it reads this message with its next one.*`; a message that then starts the
+  next turn streams it like any other.
 
 ## Retry of a Failed Turn
 

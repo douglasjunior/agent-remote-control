@@ -29,14 +29,6 @@ describe('groupEntries', () => {
     expect(items.map(item => item.kind === 'activity' && item.steps.length)).toEqual([1, 2, 1]);
   });
 
-  it('should drop a steered response, keeping the activity around it together', () => {
-    const steered: ConversationEntry = { id: 's1', at, type: 'agent_response', status: 'steered', response: '' };
-
-    const items = groupEntries([user('u1'), steered, thought('t1'), steered, thought('t2')]);
-
-    expect(items.map(item => item.kind)).toEqual(['entry', 'activity']);
-    expect(items[1]).toMatchObject({ steps: [{ id: 't1' }, { id: 't2' }] });
-  });
 
   it('should drop removed thoughts', () => {
     const items = groupEntries([thought('t1', true), tool('x1')]);
@@ -174,12 +166,21 @@ describe('groupEntries', () => {
       expect(items[5]).toMatchObject({ recap: { agents: 2, totalMs: 723_000 } });
     });
 
-    it('should note the recap once, on the last answer, however many answers the turn gave', () => {
-      const answer = (id: string): ConversationEntry => ({ id, at, type: 'agent_response', status: 'completed', response: id });
-      const items = groupEntries([user('u'), delegation('started', 'DEVELOPER'), answer('progress'), delegation('finished', 'DEVELOPER'), answer('final')]);
+    it('should keep in its turn a message that joined it, and start the turn of a message that waited when the one before ends', () => {
+      const answer = (id: string, time: string): ConversationEntry => ({ id, at: time, type: 'agent_response', status: 'completed', response: id });
+      const items = groupEntries([
+        { ...user('u1'), at: '2026-01-01T00:00:00.000Z' },
+        delegation('started', 'DEVELOPER', 1),
+        { id: 'joined', at, type: 'user_message', text: 'joined', delivery: 'steered' },
+        { id: 'waited', at, type: 'user_message', text: 'waited', delivery: 'delivered' },
+        delegation('started', 'TECH_LEAD', 2),
+        answer('a1', '2026-01-01T00:01:00.000Z'),
+        delegation('started', 'CODE_REVIEWER', 1),
+        answer('a2', '2026-01-01T00:03:00.000Z'),
+      ]);
 
-      const recaps = items.flatMap(item => (item.kind === 'entry' && item.recap ? [item.entry.id] : []));
-      expect(recaps).toEqual(['final']);
+      const recaps = items.flatMap(item => (item.kind === 'entry' && item.recap ? [[item.entry.id, item.recap]] : []));
+      expect(recaps).toEqual([['a1', { agents: 2, totalMs: 60_000 }], ['a2', { agents: 1, totalMs: 120_000 }]]);
     });
 
     it('should note a recap on the last answer of every turn', () => {
