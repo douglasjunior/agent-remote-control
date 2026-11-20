@@ -15,6 +15,11 @@ const interim: ConversationEntry = { id: 'i1', at: AT, type: 'interim', text: 'B
 const squad = () => screen.getByRole('region', { name: 'Your squad', hidden: true });
 const setState = (connection: ReturnType<typeof openConversation>['connection'], state: 'running' | 'idle') => act(() => connection.emitEvent({ type: 'conversation.state', conversationId: 'c1', state }));
 const defaultMatchMedia = globalThis.matchMedia;
+const narrowWindow = () => rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
+const conversationNav = () => screen.getByRole('navigation', { name: 'Conversation' });
+const question: ConversationEntry = {
+  id: 'q1', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which branch?', options: ['main'], number: 1, total: 1, closed: false,
+};
 
 describe('ConversationView squad', () => {
   beforeEach(() => localStorage.clear());
@@ -28,21 +33,69 @@ describe('ConversationView squad', () => {
 
     expect(squad()).toBeInTheDocument();
     expect(within(squad()).getByRole('button', { name: 'Agent settings' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+    expect(within(conversationNav()).getAllByRole('link').map(link => link.textContent)).toEqual(['Chat', 'Tasks']);
   });
 
-  it('should turn chat and squad into two tabs on a narrow window, the Squad tab carrying the tally', async () => {
-    rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
+  it('should open the panel and land on the chat when the squad route is opened on a wide window', async () => {
     const user = userEvent.setup();
-    const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
-    setState(connection, 'running');
+    const { router } = openConversation();
+    await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
 
-    expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Squad · 1 working' })).toBeInTheDocument();
-    expect(squad()).not.toBeVisible();
+    await act(() => router.navigate('/c/c1/squad'));
 
-    await user.click(screen.getByRole('tab', { name: 'Squad · 1 working' }));
-    expect(squad()).toBeVisible();
+    expect(router.state.location.pathname).toBe('/c/c1');
+    expect(document.getElementById('squad-panel')).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Chat' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  describe('narrow window', () => {
+    it('should show chat, tasks and squad as one navigation, Squad carrying the tally', async () => {
+      narrowWindow();
+      const user = userEvent.setup();
+      const { connection, router } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it')] });
+      setState(connection, 'running');
+
+      expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+      expect(within(conversationNav()).getByRole('link', { name: 'Chat' })).toHaveAttribute('aria-current', 'page');
+      expect(squad()).not.toBeVisible();
+
+      await user.click(screen.getByRole('link', { name: 'Squad, 1 working' }));
+
+      expect(router.state.location.pathname).toBe('/c/c1/squad');
+      expect(screen.getByRole('link', { name: 'Squad, 1 working' })).toHaveAttribute('aria-current', 'page');
+      expect(screen.getByRole('link', { name: 'Chat' })).not.toHaveAttribute('aria-current');
+      expect(squad()).toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'Message', hidden: true })).not.toBeVisible();
+    });
+
+    it('should name a squad that needs the user, and say nothing of an idle one', async () => {
+      narrowWindow();
+      const { connection } = openConversation({ entries: [userEntry('u1')] });
+      expect(screen.getByRole('link', { name: 'Squad' })).toBeInTheDocument();
+
+      act(() => connection.emitEvent({
+        type: 'conversation.history',
+        conversationId: 'c1',
+        entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it'), question, userEntry('u2')],
+        start: 0,
+        state: 'running',
+      }));
+
+      expect(screen.getByRole('link', { name: 'Squad, needs your answer' })).toBeInTheDocument();
+    });
+
+    it('should show the board under the navigation, keeping the squad and the chat mounted', async () => {
+      narrowWindow();
+      const user = userEvent.setup();
+      const { router } = openConversation();
+
+      await user.click(screen.getByRole('link', { name: 'Tasks' }));
+
+      expect(router.state.location.pathname).toBe('/c/c1/tasks');
+      expect(screen.getByRole('heading', { name: 'Mission board' })).toBeInTheDocument();
+      expect(squad()).not.toBeVisible();
+      expect(screen.getByRole('textbox', { name: 'Message', hidden: true })).not.toBeVisible();
+    });
   });
 
   it('should continue an agent a restart stopped from its station', async () => {
@@ -61,9 +114,6 @@ describe('ConversationView squad', () => {
   });
 
   describe('waiting station', () => {
-    const question: ConversationEntry = {
-      id: 'q1', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which branch?', options: ['main'], number: 1, total: 1, closed: false,
-    };
     const entries = [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it'), question, userEntry('u2')];
 
     it('should take the reader to the open question and focus its first control, besides selecting the station', async () => {
@@ -88,20 +138,29 @@ describe('ConversationView squad', () => {
       expect(screen.getByRole('button', { name: 'main' })).not.toHaveFocus();
     });
 
-    it('should switch to the chat tab of a narrow window first', async () => {
-      rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
-      rs.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
-        callback(0);
-        return 0;
-      });
+    it('should switch from the squad of a narrow window to the chat first', async () => {
+      narrowWindow();
       const user = userEvent.setup();
-      const { connection } = openConversation({ entries });
+      const { connection, router } = openConversation({ entries });
       setState(connection, 'running');
-      await user.click(screen.getByRole('tab', { name: /Squad/ }));
+      await user.click(screen.getByRole('link', { name: /^Squad/ }));
 
       await user.click(within(squad()).getByRole('button', { name: /Developer/ }));
 
-      expect(screen.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
+      expect(router.state.location.pathname).toBe('/c/c1');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'main' })).toHaveFocus());
+    });
+
+    it('should leave the board of a wide window for the chat first', async () => {
+      const user = userEvent.setup();
+      const { connection, router } = openConversation({ entries });
+      setState(connection, 'running');
+      await act(() => router.navigate('/c/c1/tasks'));
+
+      await user.click(within(squad()).getByRole('button', { name: /Developer/ }));
+
+      expect(router.state.location.pathname).toBe('/c/c1');
+      await waitFor(() => expect(screen.getByRole('button', { name: 'main' })).toHaveFocus());
     });
   });
 
@@ -242,9 +301,6 @@ describe('ConversationView squad', () => {
 
     it('should flag a collapsed panel when an agent waits for the user', async () => {
       const user = userEvent.setup();
-      const question: ConversationEntry = {
-        id: 'q1', at: AT, type: 'question', askerRole: 'DEVELOPER', askerRoleName: 'Developer', text: 'Which branch?', options: ['main'], number: 1, total: 1, closed: false,
-      };
       const { connection } = openConversation({ entries: [userEntry('u1'), delegation('d1', 'DEVELOPER', 'Developer', 'Build it'), question, userEntry('u2')] });
       setState(connection, 'running');
       await user.click(screen.getByRole('button', { name: 'Hide squad panel' }));
@@ -266,8 +322,8 @@ describe('ConversationView squad', () => {
       expect(screen.getByRole('button', { name: 'Show squad panel (1 stopped)' })).toBeInTheDocument();
     });
 
-    it('should offer no toggle on narrow windows, where the tabs switch the panel', () => {
-      rs.stubGlobal('matchMedia', () => ({ matches: true, addEventListener: rs.fn(), removeEventListener: rs.fn() }));
+    it('should offer no toggle on narrow windows, where the navigation reaches the squad', () => {
+      narrowWindow();
       openConversation();
 
       expect(screen.queryByRole('button', { name: /squad panel/ })).not.toBeInTheDocument();

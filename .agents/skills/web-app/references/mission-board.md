@@ -4,10 +4,10 @@ Each conversation has its own board of features and tasks (the `artifact.ts` con
 
 ## Routes and panes
 
-- Routes: `/c/:conversationId` (chat), `/c/:conversationId/tasks` (board) and `/c/:conversationId/tasks/:artifactId` (one artifact), all rendered by `ConversationPage`, which hands `ConversationView` a `pane` (`chat`, `board` or `artifact`).
-- The board and the artifact replace the chat column only: the squad panel stays beside them, and the chat stays mounted and `hidden`, so the composer draft and the feed survive a visit to the board.
-- The chat header carries the `Chat | Tasks` switch (`NavLink`s, labels visible from `sm`), with the number of open tasks (not done or cancelled) on Tasks.
-- `artifactPath`/`boardPath` (`artifacts/artifact-paths.ts`) build every link.
+- Routes: `/c/:conversationId` (chat), `/c/:conversationId/tasks` (board), `/c/:conversationId/tasks/:artifactId` (one artifact) and `/c/:conversationId/squad` (the squad, see [team-presentation.md](team-presentation.md)), all rendered by `ConversationPage`, which hands `ConversationView` a `pane` (`chat`, `board`, `artifact` or `squad`).
+- The board and the artifact replace the chat column only: the squad panel of a wide window stays beside them, and the chat stays mounted and `hidden`, so the composer draft and the feed survive a visit to the board.
+- `ConversationNav` (`components/conversation-nav.tsx`) is the one navigation of a conversation: links with `aria-current="page"` on the current section, keyboard reachable with a visible focus ring, and the number of open tasks (not done or cancelled) on Tasks, read as "Tasks, N open". A wide window shows `Chat | Tasks` in the chat header; a narrow one spreads `Chat | Tasks | Squad` over the width under it.
+- `conversationPath`/`squadPath` (`conversations/conversation-paths.ts`) and `boardPath`/`artifactPath` (`artifacts/artifact-paths.ts`) build every link.
 - A delegation handoff row whose entry carries `artifactId` shows a chip linking to that artifact.
 
 ## State

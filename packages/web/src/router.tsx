@@ -11,6 +11,7 @@ export const routes = [
       { index: true, element: <ConversationPage /> },
       { path: 'c/:conversationId', element: <ConversationPage /> },
       { path: 'c/:conversationId/tasks', element: <ConversationPage /> },
+      { path: 'c/:conversationId/squad', element: <ConversationPage /> },
       { path: 'c/:conversationId/tasks/:artifactId', element: <ConversationPage /> },
       { path: 'skills', element: <SkillsPage /> },
       { path: 'skills/:skillName', element: <SkillsPage /> },

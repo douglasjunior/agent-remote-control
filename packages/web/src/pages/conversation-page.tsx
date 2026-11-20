@@ -10,6 +10,7 @@ import { useConversations } from '../conversations/conversations-context.js';
 export function ConversationPage() {
   const { conversationId, artifactId } = useParams();
   const onBoard = useMatch('/c/:conversationId/tasks/*') !== null;
+  const onSquad = useMatch('/c/:conversationId/squad') !== null;
   const { createConversation } = useConversations();
   const location = useLocation();
   const navigate = useNavigate();
@@ -36,6 +37,8 @@ export function ConversationPage() {
     );
   }
 
-  const pane = artifactId ? { kind: 'artifact', artifactId } as const : { kind: onBoard ? 'board' : 'chat' } as const;
+  const pane = artifactId
+    ? { kind: 'artifact', artifactId } as const
+    : { kind: onBoard ? 'board' : onSquad ? 'squad' : 'chat' } as const;
   return <ConversationView key={conversationId} conversationId={conversationId} pane={pane} initialPrompt={initialPrompt} />;
 }

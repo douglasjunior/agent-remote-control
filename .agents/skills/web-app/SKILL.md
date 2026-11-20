@@ -27,7 +27,7 @@ packages/web/src/
 ├── main.tsx                 # bootstrap: ConnectionProvider + RouterProvider
 ├── router.tsx               # route table (`routes`) and the browser router
 ├── connection/              # IServerConnection, ChannelServerConnection and its WebSocket and WebRTC transports, remote link, AccessTokenStore, context
-├── conversations/           # reducer, context, entry grouping, open question, team state, presence
+├── conversations/           # reducer, context, entry grouping, open question, team state, presence, conversation paths
 ├── artifacts/               # the mission board of each conversation: reducer, context, useBoard, tree helpers, labels, paths
 ├── theme/                   # ThemeProvider and useTheme (light, dark, system)
 ├── pages/                   # route-level screens
@@ -158,8 +158,8 @@ Each area below has a reference with its components, states and exact texts. Rea
 - **Conversation list**: rows ordered by recency, Rename and Archive through `conversation.rename`/`conversation.archive`, an "Archived (n)" group, in-place `TitleInput`. Read [references/conversation-list.md](references/conversation-list.md) when touching the list or renaming.
 - **Feed**: how each entry type renders, questions and the open question, the virtualized `FeedList` with stick-to-end and "Go to question", the streaming draft and the "Working…" indicator. Read [references/conversation-feed.md](references/conversation-feed.md) when touching `components/entries/`, question cards or feed scrolling.
 - **Composer**: disabled until `open` and `configured`, Stop sends `turn.cancel`, prompt history, `@` file mentions, chunked attachments, voice recording, and the answer input of the question card. Read [references/composer.md](references/composer.md) when touching `components/prompt-input/` or the composer.
-- **Mission board**: the `Chat | Tasks` routes, `ArtifactsProvider` and `useBoard`, the list and kanban views, the create dialog, the artifact detail and frozen tasks. Read [references/mission-board.md](references/mission-board.md) when touching `artifacts/` or `components/artifacts/`.
-- **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
+- **Mission board**: the conversation routes and `ConversationNav`, `ArtifactsProvider` and `useBoard`, the list and kanban views, the create dialog, the artifact detail and frozen tasks. Read [references/mission-board.md](references/mission-board.md) when touching `artifacts/` or `components/artifacts/`.
+- **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout, the squad route and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
 - **Agent usage**: the header meters, the usage popover and the `quota.get` refresh cadence. Read [references/agent-usage.md](references/agent-usage.md) when touching `components/usage/`.
 - **Agent logins**: the logins popover, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
 - **Skills page**: `/skills` routes, the list and detail, "Ask the CEO", deleting a custom skill and `startConversation(prompt)`. Read [references/skills-page.md](references/skills-page.md) when touching `components/skills/` or `SkillsPage`.

@@ -1,6 +1,9 @@
+import { conversationPath } from '../conversations/conversation-paths.js';
+
+
 /** The board of a conversation. */
 export function boardPath(conversationId: string): string {
-  return `/c/${conversationId}/tasks`;
+  return `${conversationPath(conversationId)}/tasks`;
 }
 
 export function artifactPath(conversationId: string, artifactId: string): string {
