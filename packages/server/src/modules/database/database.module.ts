@@ -1,0 +1,45 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { join } from 'node:path';
+
+import { PathsModule } from '../paths/paths.module.js';
+import { DataDirectoryService } from '../paths/services/data-directory.service.js';
+import { StorageModule } from '../storage/storage.module.js';
+import { JsonConversationsImporterAdapter } from '../web/adapters/json-conversations-importer.adapter.js';
+import { JsonPromptHistoryImporterAdapter } from '../web/adapters/json-prompt-history-importer.adapter.js';
+
+import { DATABASE_ENTITIES, DATABASE_MIGRATIONS } from './constants/database-schema.constant.js';
+import { ILegacyJsonImporterPort } from './ports/legacy-json-importer.port.js';
+import { LegacyJsonFilesService } from './services/legacy-json-files.service.js';
+import { LegacyJsonImportService } from './services/legacy-json-import.service.js';
+
+
+const LEGACY_JSON_IMPORTERS = [JsonConversationsImporterAdapter, JsonPromptHistoryImporterAdapter];
+
+@Module({
+  imports: [
+    PathsModule,
+    StorageModule,
+    TypeOrmModule.forRootAsync({
+      imports: [PathsModule],
+      inject: [DataDirectoryService],
+      useFactory: (dataDirectory: DataDirectoryService) => ({
+        type: 'better-sqlite3',
+        database: join(dataDirectory.resolve(), 'arc.sqlite'),
+        entities: DATABASE_ENTITIES,
+        migrations: DATABASE_MIGRATIONS,
+        migrationsRun: true,
+        synchronize: false,
+        enableWAL: true,
+      }),
+    }),
+  ],
+  providers: [
+    LegacyJsonFilesService,
+    ...LEGACY_JSON_IMPORTERS,
+    { provide: ILegacyJsonImporterPort, useFactory: (...importers: ILegacyJsonImporterPort[]) => importers, inject: LEGACY_JSON_IMPORTERS },
+    LegacyJsonImportService,
+  ],
+  exports: [TypeOrmModule],
+})
+export class DatabaseModule {}

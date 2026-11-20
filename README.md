@@ -303,7 +303,7 @@ cp .env.example .env
 | `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
 | `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
 | `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `preferences.json` with global preferences such as the user language, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills) | Local machine configuration | `./data` |
+| `DATA_DIR` | Directory for persisted data (`arc.sqlite`, the SQLite database with the web conversations and the prompt history, `sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `preferences.json` with global preferences such as the user language, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills). JSON files of earlier versions that moved to the database are imported on the first boot and kept in `legacy-json-backup/` | Local machine configuration | `./data` |
 | `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
 | `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
 | `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
@@ -355,7 +355,7 @@ Claude Code, Codex, Cursor and Antigravity keep their login in files, so mountin
 
 GitHub Copilot may keep its login in the system keychain of the host, which the container cannot read. When you log Copilot in from the web interface or `/agent-auth` on a machine without a keychain (the container and WSL, for instance), the login keeps the token in a plain file under `~/.copilot/` (readable only by its owner), because Copilot has nowhere else to store it. Use `COPILOT_GITHUB_TOKEN` instead if you do not want a token on disk. Pass a token instead: `COPILOT_GITHUB_TOKEN` for Copilot and `GH_TOKEN` for the `gh` and `git` of the agents, for example `-e COPILOT_GITHUB_TOKEN="$(gh auth token)"`. The variables are read when the container is created.
 
-The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
+The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (the database, sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
 
 <details>
 <summary><b><code>docker run</code></b></summary>
