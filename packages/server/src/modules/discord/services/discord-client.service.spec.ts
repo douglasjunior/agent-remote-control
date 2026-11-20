@@ -16,6 +16,7 @@ const COMMANDS = [
   { name: 'usage', description: 'Shows the current AI agent\'s usage limits' },
   { name: 'agent', description: 'Switches the AI agent (Antigravity, Claude Code...)' },
   { name: 'profiles', description: 'Configure agent, model and effort for each profile' },
+  { name: 'squad', description: 'Applies a squad of agent profiles to this conversation' },
   { name: 'language', description: 'Changes the language agents use to talk to you' },
   { name: 'agent-auth', description: 'Log in to an agent CLI', dmPermission: false },
 ];

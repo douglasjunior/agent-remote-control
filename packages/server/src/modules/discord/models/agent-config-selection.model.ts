@@ -12,7 +12,7 @@ export type SelectedValue = { readonly id: string; readonly name: string };
 
 export type AgentConfigSelection = {
   readonly conversationId: string;
-  readonly step: 'profile' | 'agent' | 'model' | 'effort';
+  readonly step: 'profile' | 'agent' | 'model' | 'effort' | 'squad';
   readonly options: readonly SelectionOption[];
   readonly selectedAgent?: SelectedValue;
   readonly selectedModel?: SelectedValue;

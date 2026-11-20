@@ -627,6 +627,23 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatProfilesClosed()).toBe('✅ **Profile configuration closed.**');
     });
 
+    it('should list the squads with the cancel instructions', () => {
+      expect(formatter.formatSelection({
+        conversationId: 'ch-1',
+        step: 'squad',
+        options: [{ index: 1, id: 's-1', label: 'Backend team', description: 'APIs (default)' }],
+      })).toBe([
+        '👥 **Choose the squad to apply** by replying with the option number, or 0 to cancel:',
+        '**1.** Backend team — APIs (default)',
+      ].join('\n'));
+    });
+
+    it('should confirm, refuse and close the squad selection', () => {
+      expect(formatter.formatSquadApplied('Backend team')).toBe('✅ **Squad applied**: Backend team\nUse /profiles to change a role.');
+      expect(formatter.formatSquadFailed('Unknown squad')).toBe('⚠️ **The squad could not be applied**: Unknown squad');
+      expect(formatter.formatSquadClosed()).toBe('✅ **Squad selection closed.**');
+    });
+
     it('should explain the valid range on an invalid answer', () => {
       expect(formatter.formatInvalidSelection(selection)).toMatch(
         /^⚠️ Invalid option\. Reply only with a number from 1 to 2\.\n\n🧠/,

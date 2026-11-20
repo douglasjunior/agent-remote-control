@@ -18,6 +18,9 @@ export type AgentConfigSelectionOutcome =
     readonly profile: AgentProfileSettings;
   }
   | { readonly kind: 'profiles_closed' }
+  | { readonly kind: 'squad_applied'; readonly squadName: string }
+  | { readonly kind: 'squad_failed'; readonly error: string }
+  | { readonly kind: 'squad_closed' }
   | {
     readonly kind: 'configured';
     readonly settings: AgentSettings;

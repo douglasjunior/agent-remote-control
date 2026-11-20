@@ -214,6 +214,18 @@ export class DiscordMessageHandler implements OnModuleInit {
         await targetChannel.send(this.activityFormatter.formatProfilesClosed());
         return;
       }
+      if (resolution.kind === 'squad_applied') {
+        await targetChannel.send(this.activityFormatter.formatSquadApplied(resolution.squadName));
+        return;
+      }
+      if (resolution.kind === 'squad_failed') {
+        await targetChannel.send(this.activityFormatter.formatSquadFailed(resolution.error));
+        return;
+      }
+      if (resolution.kind === 'squad_closed') {
+        await targetChannel.send(this.activityFormatter.formatSquadClosed());
+        return;
+      }
       if (resolution.configured) {
         await targetChannel.send(this.activityFormatter.formatConfigured(resolution.configured));
       }

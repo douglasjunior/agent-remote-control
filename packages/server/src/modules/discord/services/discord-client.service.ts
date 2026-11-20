@@ -186,6 +186,10 @@ export class DiscordClientService implements OnApplicationBootstrap, OnApplicati
           description: 'Configure agent, model and effort for each profile',
         },
         {
+          name: 'squad',
+          description: 'Applies a squad of agent profiles to this conversation',
+        },
+        {
           name: 'language',
           description: 'Changes the language agents use to talk to you',
         },

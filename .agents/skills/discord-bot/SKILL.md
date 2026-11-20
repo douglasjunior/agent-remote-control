@@ -2,7 +2,7 @@
 name: discord-bot
 description: >
   Discord bot as the primary input adapter for AI agents. Covers the slash commands (/agent,
-  /model, /profiles, /usage, /language, /agent-auth, /cancel, /shell), numbered selections and
+  /model, /profiles, /squad, /usage, /language, /agent-auth, /cancel, /shell), numbered selections and
   the agent login dialog, agent questions to the user, per-conversation threads, activity
   streaming, throttling, message splitting, and the client that restarts when the Discord
   settings change and tests a bot token. Use when working with Discord messages,
@@ -52,7 +52,7 @@ Management of the `discord.js` `Client` is centralized in `DiscordClientService`
   a destroyed gateway from reconnecting and keeps the caches of the previous bot. A restart destroys it and builds a new
   one. Handlers register their listeners once with `DiscordClientService.on(event, listener)`, which attaches them to
   every client, and read `getClient()` at each use instead of keeping the client.
-- **Slash command registration**: once logged in, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles` and `/language`, plus `/agent-auth` (`dmPermission: false`) only when `IAgentAuthPort.isEnabled()` is true, and `/shell` (string option `command`, `dmPermission: false`) only when `IAgentTurnPort.isShellCommandEnabled()` is true. With the `DISCORD_GUILD_ID` setting and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without it, or when the guild is not found, it registers only globally.
+- **Slash command registration**: once logged in, registers `/cancel`, `/model`, `/usage`, `/agent`, `/profiles`, `/squad` and `/language`, plus `/agent-auth` (`dmPermission: false`) only when `IAgentAuthPort.isEnabled()` is true, and `/shell` (string option `command`, `dmPermission: false`) only when `IAgentTurnPort.isShellCommandEnabled()` is true. With the `DISCORD_GUILD_ID` setting and the guild found, it registers only in the guild and clears the global commands (`application.commands.set([])`), because Discord would show each command twice. Without it, or when the guild is not found, it registers only globally.
 - **Tolerance to a missing token**: while the `DISCORD_BOT_TOKEN` setting is empty (an environment variable set empty
   counts), the service emits a warning via `Logger.warn` and does not throw. The application must start normally in CI
   environments and unit tests.
@@ -87,10 +87,10 @@ To keep channels clean and concurrent conversations strictly isolated:
      if the bot is mentioned in the message body, if there are agent questions awaiting
      an answer in the thread (`hasPendingQuestions`), if a failed turn waits to be retried (`hasPendingRetry`), if a language change waits for the next message in it
      (`DiscordConversationService.hasPendingLanguageChange`, opened by `/language`), if there is a configuration
-     selection open in it (`hasActiveConfigSelection`, awaited; opened by `/agent`, `/model` or `/profiles` in a thread
-     not owned by the bot) or if the agent login dialog waits for a pick or a pasted code in it
+     selection open in it (`hasActiveConfigSelection`, awaited; opened by `/agent`, `/model`, `/profiles` or `/squad` in a
+     thread not owned by the bot) or if the agent login dialog waits for a pick or a pasted code in it
      (`hasPendingAgentAuth`, opened by `/agent-auth`).
-   - Messages without a mention in a regular channel are always ignored. A `/agent`, `/model` or `/profiles` selection
+   - Messages without a mention in a regular channel are always ignored. A `/agent`, `/model`, `/profiles` or `/squad` selection
      in a regular channel happens in a bot thread, so no loose channel conversation is treated as an answer.
 3. **Thread creation**: on receiving a mention in a regular channel, the handler creates a new
    thread from the message (`message.startThread({ name, autoArchiveDuration: 60 })`).
@@ -115,8 +115,8 @@ dialog and the reading of typed numbers live in `modules/discord`, and the orche
 Before running the turn, the handler validates and downloads the attachments and calls `resolveInput` inside
 `DiscordTypingIndicator.during(channel, ...)`. A message is, in this order: the answer to the open question, the
 pending language, the code a running agent login waits for, the pick of an agent to log in, the answer to an open
-selection, or a prompt to run. A conversation without saved settings inherits the most recent ones; with none ever
-saved, the first message opens the `agent` selection and runs once it is configured. Selection state is per
+selection, or a prompt to run. A conversation without saved settings takes the default squad, else inherits the most
+recent settings; with neither, the first message opens the `agent` selection and runs once it is configured. Selection state is per
 conversation (channel + thread) and in memory
 ([references/input-resolution.md](references/input-resolution.md)).
 
@@ -223,7 +223,7 @@ anything inside fenced code blocks stay untouched.
 `DiscordInteractionHandler` intercepts the slash commands
 ([references/slash-commands.md](references/slash-commands.md)):
 
-- `/model`, `/agent`, `/profiles`, `/language` and `/agent-auth` open a dialog answered by message, in a new bot thread
+- `/model`, `/agent`, `/profiles`, `/squad`, `/language` and `/agent-auth` open a dialog answered by message, in a new bot thread
   from a guild channel or in the DM or thread itself, where pending questions block them.
 - The `/agent-auth` login posts its link and code only where the user answers, deletes the pasted code message, and
   never logs the link, the code or the pasted text.

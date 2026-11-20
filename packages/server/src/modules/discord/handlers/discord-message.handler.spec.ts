@@ -1965,6 +1965,19 @@ describe('DiscordMessageHandler', () => {
       }
     });
 
+    it.each([
+      [{ kind: 'squad_applied', squadName: 'Backend team' } as const, '✅ **Squad applied**: Backend team\nUse /profiles to change a role.'],
+      [{ kind: 'squad_failed', error: 'Unknown squad' } as const, '⚠️ **The squad could not be applied**: Unknown squad'],
+      [{ kind: 'squad_closed' } as const, '✅ **Squad selection closed.**'],
+    ])('should answer the squad selection outcome $kind', async (resolution, text) => {
+      const send = rs.fn().mockResolvedValue(undefined);
+      conversationService.resolution = resolution;
+
+      await handler.handleMessage(threadMessage(send, '1'));
+
+      expect(send).toHaveBeenCalledWith(text);
+    });
+
     it('should announce that the profile configuration closed on profiles_closed', async () => {
       const send = rs.fn().mockResolvedValue(undefined);
       conversationService.resolution = { kind: 'profiles_closed' };

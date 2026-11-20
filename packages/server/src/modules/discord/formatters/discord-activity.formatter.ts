@@ -364,6 +364,18 @@ export class DiscordActivityFormatter {
     return '✅ **Profile configuration closed.**';
   }
 
+  formatSquadApplied(squadName: string): string {
+    return `✅ **Squad applied**: ${squadName}\nUse /profiles to change a role.`;
+  }
+
+  formatSquadFailed(error: string): string {
+    return `⚠️ **The squad could not be applied**: ${error}`;
+  }
+
+  formatSquadClosed(): string {
+    return '✅ **Squad selection closed.**';
+  }
+
   private formatAgentAuthStatus(entry: AgentAuthMenuEntry): string {
     if (entry.status === 'authenticated') {
       return entry.detail ? `✅ logged in (${entry.detail})` : '✅ logged in';
@@ -374,6 +386,9 @@ export class DiscordActivityFormatter {
   private formatSelectionHeader(selection: AgentConfigSelection): string {
     if (selection.step === 'profile') {
       return '👥 **Choose the profiles to configure** — type numbers separated by commas, or 0 to exit:';
+    }
+    if (selection.step === 'squad') {
+      return '👥 **Choose the squad to apply** by replying with the option number, or 0 to cancel:';
     }
     const header = this.formatInnerSelectionHeader(selection);
     return selection.targetRoles ? `${header}\nType 0 to go back to the profile list.` : header;

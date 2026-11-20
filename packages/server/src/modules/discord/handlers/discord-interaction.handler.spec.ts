@@ -55,7 +55,17 @@ class StubDiscordConversationService implements Partial<DiscordConversationServi
 
   startedSelections: string[] = [];
   startedAgentSelections: string[] = [];
+  squadSelectionResult: StartAgentConfigSelectionResult = {
+    kind: 'selection',
+    selection: {
+      conversationId: 'channel-123',
+      step: 'squad',
+      options: [{ index: 1, id: 's-1', label: 'Backend team', description: '2 roles · Claude Code (default)' }],
+    },
+  };
+
   startedProfilesSelections: string[] = [];
+  startedSquadSelections: string[] = [];
   languageRequests: string[] = [];
   agentAuthSelectionResult: StartAgentAuthSelectionResult = {
     kind: 'menu',
@@ -90,6 +100,14 @@ class StubDiscordConversationService implements Partial<DiscordConversationServi
     }
     this.startedProfilesSelections.push(conversationId);
     return this.profilesSelectionResult;
+  }
+
+  async startSquadSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    if (this.throwError) {
+      throw new Error('squads down');
+    }
+    this.startedSquadSelections.push(conversationId);
+    return this.squadSelectionResult;
   }
 
   async cancelConfigSelection(_conversationId: string): Promise<boolean> {
@@ -721,6 +739,59 @@ describe('DiscordInteractionHandler', () => {
     });
   });
 
+  describe('/squad', () => {
+    const menuText = '👥 **Choose the squad to apply** by replying with the option number, or 0 to cancel:\n**1.** Backend team — 2 roles · Claude Code (default)';
+
+    const guildChannelInteraction = (startThread: ReturnType<typeof rs.fn>) => buildInteraction({
+      commandName: 'squad',
+      editReply: rs.fn().mockResolvedValue({ startThread }),
+    });
+
+    it('should open the squad list in a new thread when used in a guild channel', async () => {
+      const thread = { id: 'squad-thread', send: rs.fn().mockResolvedValue(undefined) };
+      const startThread = rs.fn().mockResolvedValue(thread);
+      const interaction = guildChannelInteraction(startThread);
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '🧵 Choose the squad in the thread below.' });
+      expect(startThread).toHaveBeenCalledWith({ name: 'Squad selection', autoArchiveDuration: 60 });
+      expect(dialogs.startedSquadSelections).toEqual(['channel-123:squad-thread']);
+      expect(thread.send).toHaveBeenCalledWith(menuText);
+    });
+
+    it('should explain that there is no squad to apply', async () => {
+      dialogs.squadSelectionResult = { kind: 'unavailable' };
+      const interaction = buildInteraction({ commandName: 'squad', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: 'ℹ️ No squads to apply. Create one in the web interface.' });
+    });
+
+    it('should refuse while questions wait for an answer', async () => {
+      questions.pending = true;
+      const interaction = buildInteraction({ commandName: 'squad', inGuild: false, channelId: 'dm-1', channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(dialogs.startedSquadSelections).toEqual([]);
+      expect(interaction.reply).toHaveBeenCalledWith({
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, squad, language or login.',
+        ephemeral: true,
+      });
+    });
+
+    it('should report failures starting the squad selection', async () => {
+      dialogs.throwError = true;
+      const interaction = buildInteraction({ commandName: 'squad', inGuild: false, channel: null });
+
+      await handler.handleInteraction(interaction);
+
+      expect(interaction.editReply).toHaveBeenCalledWith({ content: '❌ **Failed to open squad selection**: squads down' });
+    });
+  });
+
   describe('/language', () => {
     const requestText = '🌐 **Current language**: English\nReply with the language the agents should use to talk to you, such as "Spanish" or "Português".';
 
@@ -757,7 +828,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(dialogs.languageRequests).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.',
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, squad, language or login.',
         ephemeral: true,
       });
     });
@@ -823,7 +894,7 @@ describe('DiscordInteractionHandler', () => {
 
       expect(dialogs.startedAgentAuthSelections).toEqual([]);
       expect(interaction.reply).toHaveBeenCalledWith({
-        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.',
+        content: '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, squad, language or login.',
         ephemeral: true,
       });
     });

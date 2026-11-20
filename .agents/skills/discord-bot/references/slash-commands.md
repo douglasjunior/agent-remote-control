@@ -4,9 +4,9 @@ Slash commands are intercepted by `DiscordInteractionHandler`.
 
 ## Common behavior
 
-- **Pending questions block the menus**: `/model`, `/agent`, `/profiles`, `/language` and `/agent-auth` in a conversation
-  with pending questions (DM or thread) reply ephemerally
-  `❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.`
+- **Pending questions block the menus**: `/model`, `/agent`, `/profiles`, `/squad`, `/language` and `/agent-auth` in a
+  conversation with pending questions (DM or thread) reply ephemerally
+  `❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, squad, language or login.`
   without opening the selection. In a guild channel the selection opens another conversation, in a new thread, and is
   not blocked.
 - **Menu commands share the `/model` flow**: public `deferReply()`, because the options are answered by message in the
@@ -30,6 +30,7 @@ Slash commands are intercepted by `DiscordInteractionHandler`.
 | `/model` | `startConfigSelection` | `🧵 Choose the model in the thread below.` | `Model selection` | `ℹ️ The current agent does not expose any models to select.` | `❌ **Failed to open model selection**: <error>` |
 | `/agent` | `startAgentSelection` | `🧵 Choose the agent in the thread below.` | `Agent selection` | `ℹ️ No agents available to select.` | `❌ **Failed to open agent selection**: <error>` |
 | `/profiles` | `startProfilesSelection` | `🧵 Configure the profiles in the thread below.` | `Profile configuration` | `ℹ️ No profiles available to configure.` | `❌ **Failed to open profile selection**: <error>` |
+| `/squad` | `startSquadSelection` | `🧵 Choose the squad in the thread below.` | `Squad selection` | `ℹ️ No squads to apply. Create one in the web interface.` | `❌ **Failed to open squad selection**: <error>` |
 | `/language` | `requestLanguageChange` | `🧵 Choose the language in the thread below.` | `Language selection` | — | `❌ **Failed to open language selection**: <error>` |
 | `/agent-auth` | `startAgentAuthSelection` | `🧵 Choose the agent to log in in the thread below.` | `Agent login` | `ℹ️ No agents with a CLI login are available.` | `❌ **Failed to open login selection**: <error>` |
 
@@ -42,6 +43,11 @@ The `unavailable` message is posted in the same destination as the options.
   saved agent is not in the `PATH` reads `<agent> (not installed) - <model> - <effort>`. The user replies with
   comma-separated numbers, then chooses agent, model and effort for those roles; the list reappears after each save and
   `0` exits (or goes back one level inside a role selection).
+- **/squad**: opens the `squad` step listing every squad (`IAgentConfigurationPort.listSquads`) as
+  `**<n>.** <name> — <description>`, or `<n> roles · <agents>` for a squad without a description, followed by
+  ` (default)` for the default squad. The number applies the squad to the conversation
+  (`IAgentConfigurationPort.applySquad`): its profiles replace those of the roles it sets and the other roles stay as
+  they are. The selection closes either way; `0` closes it without applying anything.
 - **/language**: marks the conversation so its next message is the language and resolves to the current one. Publishes
   `🌐 **Current language**: <language>` with the instruction to reply with the language name. The next message
   resolves to `language_set`, answered with `✅ **Language saved**: <language>`, or `invalid_language`, answered with
@@ -72,11 +78,11 @@ only records the outcome.
 
 ## Other commands
 
-- **/cancel**: locates the interaction's channel and thread, calls `cancelConfigSelection`, `cancelAgentAuth`,
+- **/cancel**: locates the interaction's channel and thread, calls `cancelConfigSelection` (a squad selection included), `cancelAgentAuth`,
   `cancelLanguageChange` and then `IAgentTurnPort.cancelTurn`, which also discards pending questions and unlocks the
   conversation. With a turn in progress or pending questions, replies
   `🛑 **Cancellation requested.** The active turn will be stopped.`; with only a closed selection (of agent, model,
-  effort, language or login, a running login included), `🛑 **Selection cancelled.**`; with neither,
+  effort, squad, language or login, a running login included), `🛑 **Selection cancelled.**`; with neither,
   `ℹ️ There is no turn in progress to cancel.` The reply is ephemeral.
 - **/shell**: adapter over `IAgentTurnPort.runShellCommand(conversationId, command)`; the handler holds no rule (flag,
   working directory, timeout and output limit belong to the port). Replies ephemerally
