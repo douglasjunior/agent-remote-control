@@ -181,7 +181,7 @@ writes. Which role reads which skill, and the details: [references/agent-skills.
 
 Every executor but IT_SUPPORT reads `board-requests`; every executor reads `role-guide`. The procedures a role needs only
 sometimes are skills of that role: `git-remote` (DEVELOPER, GIT_OPS), `repository-setup` (GIT_OPS),
-`review-publishing` (CODE_REVIEWER), the testing skills (QA).
+`review-publishing` (CODE_REVIEWER), `running-checks` (DEVELOPER, CODE_REVIEWER, QA), the testing skills (QA).
 
 ## Questions to the user
 

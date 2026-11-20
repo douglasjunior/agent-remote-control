@@ -49,8 +49,8 @@ describe('AgentSkillsService', () => {
     const qa = (await service.list('QA')).map(skill => skill.name);
     const developer = (await service.list('developer')).map(skill => skill.name);
 
-    expect(qa).toEqual(['board-requests', 'running-the-app', 'web-ui-testing', 'api-testing', 'mobile-testing', 'role-guide', 'cypress']);
-    expect(developer).toEqual(['board-requests', 'git-remote', 'role-guide', 'cypress']);
+    expect(qa).toEqual(['board-requests', 'running-the-app', 'web-ui-testing', 'api-testing', 'mobile-testing', 'running-checks', 'role-guide', 'cypress']);
+    expect(developer).toEqual(['board-requests', 'git-remote', 'running-checks', 'role-guide', 'cypress']);
     expect((await service.list('CEO')).map(skill => skill.name)).toContain('artifact-board');
     expect(await service.list('UNKNOWN')).toEqual([]);
   });

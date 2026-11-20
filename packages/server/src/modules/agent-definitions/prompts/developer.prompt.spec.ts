@@ -29,9 +29,37 @@ describe('developer.prompt', () => {
     expect(DEVELOPER_SYSTEM_PROMPT).toContain('append what you fixed and how (`mode="append"`)');
   });
 
-  it('should run the checks of the project and wait for them before it finishes', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Run the checks the project defines');
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain('Work whose checks you did not see pass is not done.');
+  describe('checks', () => {
+    it('should run the checks non-interactively and wait for them before it finishes', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('### Checks');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('never in watch or interactive mode (set `CI=1`');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Work whose checks you did not see pass is not done.');
+    });
+
+    it('should find the checks once per task before the first edit and record them for whoever comes next', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('**Before your first edit, find the checks, once per task.**');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('already have a `Checks:` line, use it and skip this step');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('the CI workflows (`.github/workflows`), which show what a pull request must pass');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('know its command for one file and for one package, and write them in a `Checks:` line of the notes you record with your answer');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain(`The \`${SKILL_NAMES.runningChecks}\` skill has the commands of each ecosystem.`);
+    });
+
+    it('should check only the files it changes while it works', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('**While you work, check only the files you change.**');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('A type check that cannot be scoped to a file (`tsc`) runs on the package, and only before a commit.');
+    });
+
+    it('should run the full checks of the affected packages only, before the verdict', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('**Before your verdict, run the full checks of each affected package, once.**');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Run the checks of the whole repository only when it has no packages or you changed its shared root configuration');
+    });
+
+    it('should fix failures without weakening the checks and prove the unrelated ones pre-existing', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('re-run only what failed, then step 3 again');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Never skip or disable a test or a lint rule, nor lower a coverage threshold');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('run only that test on the base branch');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`DONE` requires step 3 to pass, or its failures proven pre-existing and recorded in your notes.');
+    });
   });
 
   it('should use the commands the project documents for itself', () => {
@@ -107,7 +135,8 @@ describe('developer.prompt', () => {
     });
 
     it('should carry the checks, the push and the record with the verdict words', () => {
-      expect(DEVELOPER_REENTRY_NOTE).toContain('run the project\'s checks and wait for them, then push and update its pull request');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('work on its branch, then push and update its pull request');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('Run the checks of the files you change while you work, and the full checks of the affected packages before the verdict; the commands are in the `Checks:` line of the notes.');
       expect(DEVELOPER_REENTRY_NOTE).toContain('Record the branch, the pull request and the implementation notes on the task');
       expect(DEVELOPER_REENTRY_NOTE).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
     });
@@ -137,9 +166,17 @@ describe('developer.prompt', () => {
       expect(prompt).toContain('`DONE`: everything the task asks is committed');
     });
 
+    it('should record the checks at once with artifact_update and keep them in the final notes', () => {
+      expect(prompt).toContain('### Checks');
+      expect(prompt).toContain('record them at once in a `Checks:` line of the task\'s `implementation_notes` with `artifact_update`');
+      expect(prompt).toContain('keep that line in the notes you record at the end.');
+      expect(prompt).toContain('**Before your verdict, run the full checks of each affected package, once.**');
+    });
+
     it('should name the tools in the re-entry note with the verdict words', () => {
       expect(note).toContain('the tools of the `arc` MCP server');
       expect(note).toContain('on the task with `artifact_update`, then write your answer');
+      expect(note).toContain('the commands are in the `Checks:` line of the notes');
       expect(note).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
       expect(note).not.toContain('<skill_read');
     });

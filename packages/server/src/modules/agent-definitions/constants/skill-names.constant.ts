@@ -15,5 +15,6 @@ export const SKILL_NAMES = {
   gitRemote: 'git-remote',
   repositorySetup: 'repository-setup',
   reviewPublishing: 'review-publishing',
+  runningChecks: 'running-checks',
   roleGuide: 'role-guide',
 } as const;

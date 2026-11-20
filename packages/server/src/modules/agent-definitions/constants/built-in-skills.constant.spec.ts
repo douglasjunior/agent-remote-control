@@ -43,6 +43,7 @@ describe('built-in-skills.constant', () => {
     expect(rolesOf(SKILL_NAMES.gitRemote)).toEqual(['DEVELOPER', 'GIT_OPS']);
     expect(rolesOf(SKILL_NAMES.repositorySetup)).toEqual(['GIT_OPS']);
     expect(rolesOf(SKILL_NAMES.reviewPublishing)).toEqual(['CODE_REVIEWER']);
+    expect(rolesOf(SKILL_NAMES.runningChecks)).toEqual(['DEVELOPER', 'CODE_REVIEWER', 'QA']);
   });
 
   it('should let every executor role, and only them, read the role guide', () => {

@@ -21,6 +21,7 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 | DEVELOPER, GIT_OPS | `git-remote` |
 | GIT_OPS | `repository-setup` |
 | CODE_REVIEWER | `review-publishing` |
+| DEVELOPER, CODE_REVIEWER, QA | `running-checks` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
 
 ### `role-guide`
@@ -52,6 +53,15 @@ Procedures that touch a Git hosting provider, each for the roles that need it:
 - `review-publishing` (CODE_REVIEWER): the provider tooling, reading the pull request and its checks, publishing each
   finding inline on the new line or in the main discussion, submitting the verdict, and resolving the threads of fixed
   findings on a later review.
+
+### `running-checks`
+
+How to run each check for one file and for one package, read when the agent does not know it for the ecosystem at
+hand: non-interactive runs through the project's scripts, the required checks read from the CI workflows (jobs on
+`pull_request`, their `run:` steps, working directory, matrix and `paths` filters), the package of a file from its
+nearest manifest and the workspace declarations, and the commands of Node (pnpm, npm, yarn; vitest, jest, rstest,
+mocha; eslint, biome, prettier; tsc, vue-tsc), turbo, nx, lerna, Python (uv, poetry; pytest, ruff, mypy), Go, Rust
+(cargo workspaces), JVM (Gradle and Maven per module) and .NET. The DEVELOPER's `### Checks` section names it.
 
 ### `running-the-app` and `mobile-testing`
 
