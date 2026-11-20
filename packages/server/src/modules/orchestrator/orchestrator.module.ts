@@ -11,8 +11,8 @@ import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
-import { JsonOpenWorkStoreAdapter } from './adapters/json-open-work-store.adapter.js';
 import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
+import { SqliteOpenWorkStoreAdapter } from './adapters/sqlite-open-work-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
 import { SqliteSessionStoreAdapter } from './adapters/sqlite-session-store.adapter.js';
 import { SqliteSquadStoreAdapter } from './adapters/sqlite-squad-store.adapter.js';
@@ -104,7 +104,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     { provide: ISquadStorePort, useClass: SqliteSquadStoreAdapter },
     {
       provide: IOpenWorkStorePort,
-      useClass: JsonOpenWorkStoreAdapter,
+      useClass: SqliteOpenWorkStoreAdapter,
     },
     OpenWorkService,
     RestoreOpenWorkUseCase,

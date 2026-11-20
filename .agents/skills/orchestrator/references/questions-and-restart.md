@@ -87,9 +87,11 @@ My understanding is: ... (free text, shown before the first question)
 ## Work Across a Restart
 
 A turn with `TurnRequest.resumable` (the web channel sets it; Discord does not) keeps its work on disk through
-`OpenWorkService` over `IOpenWorkStorePort` (`JsonOpenWorkStoreAdapter`, `DATA_DIR/open-work.json`). Each change
-writes, through `update(change)`, the records the conversation holds in memory at that moment over the other conversations
-as they are on disk; a failed write is logged, and the next change of the conversation writes its records again.
+`OpenWorkService` over `IOpenWorkStorePort` (`SqliteOpenWorkStoreAdapter`, one `open_work` row per record, `questions`
+as JSON validated with `constants/open-work-schema.constant.ts` on read). Each change writes, through `update(change)`,
+the records the conversation holds in memory at that moment over the other conversations as they are stored; the store
+rewrites only the conversations whose records changed, in one `SqliteTransactionService.run`. A failed write is logged,
+and the next change of the conversation writes its records again. A conversation left without records has no rows.
 Each delegation and each CEO loop has an `OpenWork` record (`models/open-work.model.ts`): role, project, `artifactId?`, `summary`,
 `taskSpec`, `cwd`, `round`, `root` (the CEO) and `questions` with the answers so far. The last answer of a request is
 never written. A resumed record keeps its questions until the prompt with the answers is sent: a restart before that asks

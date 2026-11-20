@@ -147,12 +147,10 @@ of earlier versions into it.
 
 `DataDirectoryService.resolve()` (`PathsModule`, `paths/services/data-directory.service.ts`) resolves `process.env.DATA_DIR`,
 or `data/` at the repository root when it is unset or blank, and a relative value starts from the repository root.
-Every adapter that persists data receives the service through its constructor, and specs build the adapters with
-`dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`) and `createNodeLockedFiles()` (`storage/testing/node-locked-files.ts`).
+The database module opens `DATA_DIR/arc.sqlite` with it, where the orchestrator's stores keep the agent settings, the
+squads, the preferences, the agent sessions and the open work (see the `database` skill); the user's own skills stay in
+`DATA_DIR/skills/`. Specs build file adapters with `dataDirectoryAt(path)` (`paths/testing/fixed-directories.ts`).
 `WorkspaceDirectoryService` does the same for `WORKSPACE_DIR` (default `workspaces/`) and feeds `LocalWorkspaceAdapter`.
-`JsonOpenWorkStoreAdapter` reads and writes its file through `ILockedFilesPort` of the `storage` module: reads use the copy cached
-while the file is unchanged, every change re-reads the file under its lock, a missing or invalid file reads as empty
-and the next change replaces it, and a change that cannot take the lock rejects to its caller.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
 

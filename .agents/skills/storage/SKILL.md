@@ -86,13 +86,12 @@ held by a live owner times it out.
 
 | Store | File in `DATA_DIR` | Atomic operation | When the lock times out |
 |---|---|---|---|
-| `JsonOpenWorkStoreAdapter` | `open-work.json` | `update(work => work)`, one conversation per change | logged; the next change rewrites the conversation |
 | `FileUserSkillStoreAdapter` | `skills/<name>/SKILL.md` | `write`, `delete` under `skills/.lock` | rejects |
 | `AccessTokenService` | `web/access-token` | created once in `onModuleInit` | startup fails |
 | `RemoteIdentityService` | `remote/key.pem`, `remote/certificate.pem` | created once under the key's lock | `identity()` rejects |
 
-The web conversations, the prompt history, the preferences, the agent settings and the agent sessions of each conversation,
-the board of each conversation and the settings saved from the web live in the SQLite database. The legacy importers of the database
+The web conversations, the prompt history, the preferences, the agent settings, agent sessions, open work and board of
+each conversation and the settings saved from the web live in the SQLite database. The legacy importers of the database
 module read their JSON files once, each under the lock its store wrote it with, through these ports.
 
 Files written once under a unique name (downloaded attachments, uploads), the append-only log files and the executable

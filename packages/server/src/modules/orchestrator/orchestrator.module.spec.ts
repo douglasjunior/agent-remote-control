@@ -5,6 +5,7 @@ import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
 import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
+import { SqliteOpenWorkStoreAdapter } from './adapters/sqlite-open-work-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
 import { SqliteSessionStoreAdapter } from './adapters/sqlite-session-store.adapter.js';
 import { SqliteSquadStoreAdapter } from './adapters/sqlite-squad-store.adapter.js';
@@ -13,6 +14,7 @@ import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
 import { IAgentToolsPort } from './ports/agent-tools.port.js';
 import { IAgentTurnPort } from './ports/agent-turn.port.js';
+import { IOpenWorkStorePort } from './ports/open-work-store.port.js';
 import { IPreferencesStorePort } from './ports/preferences-store.port.js';
 import { ISessionStorePort } from './ports/session-store.port.js';
 import { ISquadStorePort } from './ports/squad-store.port.js';
@@ -35,6 +37,7 @@ describe('OrchestratorModule', () => {
     expect(module.get(IAgentSettingsStorePort)).toBeInstanceOf(SqliteAgentSettingsStoreAdapter);
     expect(module.get(ISquadStorePort)).toBeInstanceOf(SqliteSquadStoreAdapter);
     expect(module.get(IPreferencesStorePort)).toBeInstanceOf(SqlitePreferencesStoreAdapter);
+    expect(module.get(IOpenWorkStorePort)).toBeInstanceOf(SqliteOpenWorkStoreAdapter);
     expect(module.get(IAgentTurnPort)).toBeInstanceOf(AgentTurnService);
     expect(module.get(IAgentConfigurationPort)).toBeInstanceOf(AgentConfigurationService);
     expect(module.get(IUserQuestionPort)).toBeInstanceOf(UserQuestionService);
