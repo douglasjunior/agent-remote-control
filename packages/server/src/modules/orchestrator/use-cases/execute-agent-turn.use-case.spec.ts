@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { type AgentUpdate, PromptCancelledError } from '../../agent/ports/agent.port.js';
@@ -164,7 +165,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const runAgentRequests = new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills, new AgentRequestParserService());
     const questionParser = new QuestionParserService();
     const audioTranscription = new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem);
-    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills);
+    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills, new AgentRequestParserService());
     const agentQuestions = new AnswerAgentQuestionsUseCase(agentRegistry, questionParser, questionQueue, openWork, audioTranscription);
     useCase = new ExecuteAgentTurnUseCase(
       factory,
@@ -365,6 +366,28 @@ describe('ExecuteAgentTurnUseCase', () => {
         durationMs: expect.any(Number),
       },
     ]);
+  });
+
+  it('should add up the prompts and token usage of a delegation in its finished event and log', async () => {
+    stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Go.</delegate>', 'Ok.'];
+    delegateStubPort.mockResponses = ['<artifact_list/>', 'Done.'];
+    delegateStubPort.getLastRoundUsage = rs.fn()
+      .mockResolvedValueOnce({ totalTokens: 40, inputTokens: 30, outputTokens: 10, cachedReadTokens: 5 })
+      .mockResolvedValueOnce({ totalTokens: 20, inputTokens: 15, outputTokens: 5 });
+    const events: DelegationEvent[] = [];
+    const log = rs.spyOn(Logger.prototype, 'log');
+
+    await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+    const messages = log.mock.calls.map(([message]) => String(message));
+    log.mockRestore();
+
+    const promptChars = delegateStubPort.promptCalls.reduce((total, prompt) => total + prompt.length, 0);
+    const finished = events.find(event => event.phase === 'finished');
+    expect(finished && 'usage' in finished ? finished.usage : undefined).toStrictEqual({ totalTokens: 60, inputTokens: 45, outputTokens: 15, cachedReadTokens: 5 });
+    expect(messages).toContainEqual(expect.stringMatching(new RegExp(`^\\[Delegation Finished\\] .*, Prompts=2, PromptChars=${promptChars}, InputTokens=45, OutputTokens=15$`)));
+    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=30, Output=10, CachedRead=5, Total=40');
+    expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=15, Output=5, CachedRead=0, Total=20');
+    expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=new, SystemPrompt=yes, Chars=${delegateStubPort.promptCalls[0]!.length}`);
   });
 
   it('should give each delegation its own id, shared by every phase of it', async () => {
@@ -1031,12 +1054,16 @@ describe('ExecuteAgentTurnUseCase', () => {
     delegateStubPort.mockResponses = ['Done.'];
     delegateStubPort.usageErrorToThrow = new Error('usage unavailable');
     const events: DelegationEvent[] = [];
+    const log = rs.spyOn(Logger.prototype, 'log');
 
     await useCase.execute(turnRequest({ onDelegation: event => events.push(event) }));
+    const messages = log.mock.calls.map(([message]) => String(message));
+    log.mockRestore();
 
     const finished = events.find(event => event.phase === 'finished');
     expect(finished).toMatchObject({ phase: 'finished', response: 'Done.' });
     expect(finished && 'usage' in finished ? finished.usage : undefined).toBeUndefined();
+    expect(messages).toContainEqual(expect.stringMatching(/^\[Delegation Finished\] .*, Prompts=1, PromptChars=\d+$/));
   });
 
   it('should close a cancelled delegation with its own phase', async () => {
@@ -4012,14 +4039,25 @@ describe('ExecuteAgentTurnUseCase', () => {
     });
 
     it('should answer the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
-      stubAgentPort.mockResponses = ['Creating it. <artifact_create type="task" title="Login" project="my-app"/>', 'Created T-1.'];
+      stubAgentPort.mockResponses = ['Checking the board. <artifact_list/>', 'The board is empty.'];
       const onDraft = rs.fn();
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
-      expect(result).toMatchObject({ status: 'completed', response: 'Created T-1.' });
-      expect(stubAgentPort.promptCalls[1]).toContain('<request_result request="create" id="T-1" status="ok">');
+      expect(result).toMatchObject({ status: 'completed', response: 'The board is empty.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('No artifact matches.');
       expect(onDraft).toHaveBeenCalledWith('');
+    });
+
+    it('should deliver the answer of the CEO in the same round as the board writes that go with it', async () => {
+      stubAgentPort.mockResponses = ['Created the login task. <artifact_create type="task" title="Login" project="my-app"/>'];
+      const onDraft = rs.fn();
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Created the login task.' });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+      expect(onDraft).not.toHaveBeenCalledWith('');
       expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ title: 'Login', history: [{ actor: { kind: 'agent', role: 'CEO' } }] });
     });
 
@@ -4062,9 +4100,24 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.promptCalls[1]).toMatch(/^<request_results>[\s\S]*Commented on T-1[\s\S]*<\/request_results>\n\n<user_answers>/);
     });
 
-    it('should ask again when protocol tags were written outside the final response envelope', async () => {
+    it('should carry out the requests written outside the final response envelope, without asking again', async () => {
+      seed({ id: 'T-1', status: 'ready' });
+      stubAgentPort.mockResponses = ['<artifact_update id="T-1" status="in_progress"/>\nNo need for `<artifact_list/>` now.\n<final_response>Starting T-1.</final_response>'];
+      const log = rs.spyOn(Logger.prototype, 'log');
+
+      const result = await useCase.execute(turnRequest());
+      const messages = log.mock.calls.map(([message]) => message);
+      log.mockRestore();
+
+      expect(result).toMatchObject({ status: 'completed', response: 'Starting T-1.' });
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+      expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ status: 'in_progress' });
+      expect(messages).toContain('[Stray Requests] Role=CEO: artifact_update outside the final response, carried out');
+    });
+
+    it('should ask again when other protocol tags were written outside the final response envelope', async () => {
       stubAgentPort.mockResponses = [
-        '<artifact_list status="all"/>\n<final_response>Vou conferir o quadro.</final_response>',
+        '<artifact_list status="all"/>\n<question>Which board?</question>\n<final_response>Vou conferir o quadro.</final_response>',
         '<final_response><artifact_list status="all"/></final_response>',
         'Nothing on the board yet.',
       ];
@@ -4072,16 +4125,28 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       const result = await useCase.execute(turnRequest({ onDraft }));
 
-      expect(stubAgentPort.promptCalls[1]).toBe('[PROTOCOL_ERROR]\nYour previous response wrote <artifact_list> outside the <final_response> block, where text is only progress narration, so nothing was done with it.\nAnswer again with every protocol tag, and the text that goes with it, inside a single <final_response>...</final_response> block.');
+      expect(stubAgentPort.promptCalls[1]).toBe('[PROTOCOL_ERROR]\nYour previous response wrote <artifact_list>, <question> outside the <final_response> block, where text is only progress narration, so nothing was done with it.\nAnswer again with every protocol tag, and the text that goes with it, inside a single <final_response>...</final_response> block.');
       expect(stubAgentPort.promptCalls[2]).toContain('No artifact matches.');
       expect(result).toMatchObject({ status: 'completed', response: 'Nothing on the board yet.' });
       expect(onDraft).toHaveBeenCalledWith('');
     });
 
-    it('should repair a delegate the same way, without touching the draft of the CEO', async () => {
+    it('should carry out the requests a delegate wrote outside its final response along with that response', async () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
-      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">x</artifact_comment><final_response>Built.</final_response>', 'Built.'];
+      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">Built it.</artifact_comment><final_response>Built.</final_response>'];
+
+      await useCase.execute(turnRequest());
+
+      expect(delegateStubPort.promptCalls).toHaveLength(1);
+      expect(stubAgentPort.promptCalls[1]).toContain('>\nBuilt.\n</agent_result>');
+      expect((await artifacts.get('conv-1', 'T-1'))?.history).toContainEqual(expect.objectContaining({ kind: 'commented', text: 'Built it.' }));
+    });
+
+    it('should repair a delegate that wrote other protocol tags outside its final response, without touching the draft of the CEO', async () => {
+      seed({ id: 'T-1' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<artifact_comment id="T-1">x</artifact_comment><attachment>a.png</attachment><final_response>Built.</final_response>', 'Built.'];
       const onDraft = rs.fn();
 
       await useCase.execute(turnRequest({ onDraft }));

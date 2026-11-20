@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
-import type { IAgentPort } from '../../agent/ports/agent.port.js';
+import type { AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
 import type { AgentSession } from '../models/agent-session.model.js';
@@ -28,6 +28,7 @@ import { resolveProfile } from '../utils/agent-profile.util.js';
 import { previewForLog } from '../utils/log-preview.util.js';
 
 import { AgentProtocolService } from './agent-protocol.service.js';
+import { AgentRequestParserService } from './agent-request-parser.service.js';
 import { OpenWorkService } from './open-work.service.js';
 
 
@@ -45,6 +46,14 @@ export type AgentRoundInput = {
   /** A message the user wrote, which brings the CEO its system prompt again when it gets one every turn. */
   readonly isUserMessage?: boolean;
   readonly answerDelivery?: AnswerDelivery;
+  /** Hears what each prompt of the round cost, for whoever adds up a delegation. */
+  readonly onPrompt?: (cost: AgentPromptCost) => void;
+};
+
+export type AgentPromptCost = {
+  readonly promptChars: number;
+  readonly responseChars: number;
+  readonly usage?: AgentUsage;
 };
 
 /** Runs the prompts of one agent in the session the conversation keeps for its role and project, with the role's profile. */
@@ -63,12 +72,14 @@ export class AgentRoundService {
     private readonly agentProtocol: AgentProtocolService,
     private readonly openWork: OpenWorkService,
     @Inject(IAgentSkillsPort) private readonly agentSkills: IAgentSkillsPort,
+    private readonly requestParser: AgentRequestParserService,
   ) {}
 
   /**
    * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
    * for the role and project, adds the system prompt to a new session, the reminder and the language, applies the
-   * role's profile and returns the final response, after one repair when protocol tags were written outside it.
+   * role's profile and returns the final response. Requests written outside the final response go in front of it, as
+   * written, for the caller to carry out with the rest; any other protocol tag written there gets one repair prompt.
    */
   async run({
     agentPort,
@@ -82,6 +93,7 @@ export class AgentRoundService {
     projectName,
     isUserMessage = false,
     answerDelivery,
+    onPrompt,
   }: AgentRoundInput): Promise<string> {
     let unsubscribeActivity: (() => void) | undefined;
 
@@ -96,6 +108,7 @@ export class AgentRoundService {
       const languagePrompt = await this.buildLanguagePrompt(role, request.agentRole);
       let fullPrompt = [prompt, reminder, languagePrompt].filter(Boolean).join('\n\n');
       let systemPromptPending = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
+      let sessionState: 'live' | 'resumed' | 'new' = 'live';
       if (!agentPort.currentSessionId) {
         const latest = await this.findLatestSession(session);
         const storedSessionId = sessionMode === 'new'
@@ -103,6 +116,7 @@ export class AgentRoundService {
           : latest.agentSessions.find(agentSession =>
             this.isSameAgentSession(agentSession, { role, agentId: agentPort.agentName, projectName: projectName ?? null }))?.sessionId;
         const resumed = await this.resumeAgentSession(agentPort, workspacePath, storedSessionId);
+        sessionState = resumed ? 'resumed' : 'new';
         if (!resumed) {
           await this.workspacePort.ensureDirectory(workspacePath);
           await agentPort.createSession(workspacePath);
@@ -139,18 +153,25 @@ export class AgentRoundService {
       if (answerDelivery) {
         await this.openWork.update(request.conversationId, answerDelivery.workId, { questions: undefined });
       }
-      let written = await this.promptAgent(agentPort, fullPrompt);
+      this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, SystemPrompt=${systemPromptPending ? 'yes' : 'no'}, Chars=${fullPrompt.length}`);
+      let written = await this.promptAgent(agentPort, fullPrompt, role, onPrompt);
       const stray = this.agentProtocol.strayTags(written.all);
-      if (stray.length > 0) {
+      let strayRequests = '';
+      if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
+        this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
+        const parsed = this.requestParser.parse(this.agentProtocol.narration(written.all));
+        strayRequests = parsed.kind === 'requests' ? parsed.raw : '';
+      } else if (stray.length > 0) {
         this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
         if (role === request.agentRole) {
           request.onDraft?.('');
         }
         turn.throwIfCancelled();
-        written = await this.promptAgent(agentPort, buildProtocolRepairPrompt(stray));
+        written = await this.promptAgent(agentPort, buildProtocolRepairPrompt(stray), role, onPrompt);
       }
 
-      const response = this.agentProtocol.finalResponse(written.last);
+      const finalResponse = this.agentProtocol.finalResponse(written.last);
+      const response = strayRequests ? `${strayRequests}\n\n${finalResponse}` : finalResponse;
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${previewForLog(response)}"`);
       return response;
     } finally {
@@ -158,12 +179,26 @@ export class AgentRoundService {
     }
   }
 
+  private isRequestTag(tag: string): boolean {
+    return tag.startsWith('artifact_') || tag.startsWith('skill_');
+  }
+
   /** `last` is the agent's final message, falling back to everything it wrote; `all` is everything it wrote. */
-  private async promptAgent(agentPort: IAgentPort, prompt: string): Promise<{ readonly last: string; readonly all: string }> {
+  private async promptAgent(
+    agentPort: IAgentPort,
+    prompt: string,
+    role: string,
+    onPrompt: AgentRoundInput['onPrompt'],
+  ): Promise<{ readonly last: string; readonly all: string }> {
     let all = '';
     for await (const update of agentPort.prompt(prompt)) {
       all += update.text;
     }
+    const usage = await agentPort.getLastRoundUsage().catch(() => undefined);
+    if (usage) {
+      this.logger.log(`[Agent Usage] Role=${role}, Input=${usage.inputTokens}, Output=${usage.outputTokens}, CachedRead=${usage.cachedReadTokens ?? 0}, Total=${usage.totalTokens}`);
+    }
+    onPrompt?.({ promptChars: prompt.length, responseChars: all.length, ...(usage ? { usage } : {}) });
     return { last: agentPort.lastAgentMessage || all, all };
   }
 

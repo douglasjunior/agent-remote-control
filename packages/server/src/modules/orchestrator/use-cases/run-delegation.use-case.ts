@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
+import type { AgentUsage } from '../../agent/ports/agent.port.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { statusSetByUserWhileHeld } from '../../artifacts/utils/artifact-status.util.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
@@ -15,7 +16,7 @@ import type { AnswerDelivery, ValidatedDelegation } from '../models/validated-de
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { type AgentResultDetails, buildAgentResult } from '../prompts/agent-result.prompt.js';
 import { describeDelegation } from '../prompts/previous-turn.prompt.js';
-import { AgentRoundService } from '../services/agent-round.service.js';
+import { type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
@@ -222,6 +223,7 @@ export class RunDelegationUseCase {
     }
 
     let outcome = 'stopped';
+    const costs: AgentPromptCost[] = [];
     try {
       const runRound = (text: string, delivery?: AnswerDelivery) => this.agentRound.run({
         agentPort: delegatePort,
@@ -234,6 +236,7 @@ export class RunDelegationUseCase {
         sessionMode: effectiveSessionMode,
         projectName,
         answerDelivery: delivery,
+        onPrompt: cost => costs.push(cost),
       });
       const requester: AgentRequester = {
         role: delegateToRole,
@@ -259,15 +262,18 @@ export class RunDelegationUseCase {
         openWorkId,
       );
       const durationMs = Date.now() - startedAt;
+      const usage = this.totalUsage(costs);
+      const promptChars = costs.reduce((total, cost) => total + cost.promptChars, 0);
+      const tokens = usage ? `, InputTokens=${usage.inputTokens}, OutputTokens=${usage.outputTokens}` : '';
       this.logger.log(
-        `[Delegation Finished] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}`,
+        `[Delegation Finished] Conversation=${session.conversationId}, Round=${round}, Role=${delegateToRole}, Duration=${(durationMs / 1000).toFixed(1)}s, ResponseLength=${response.length}, Prompts=${costs.length}, PromptChars=${promptChars}${tokens}`,
       );
       request.onDelegation?.({
         ...event,
         phase: 'finished',
         response,
         agentInfo: await this.agentRound.buildAgentInfo(delegatePort, delegateToRole, request.conversationId),
-        usage: await delegatePort.getLastRoundUsage().catch(() => undefined),
+        usage,
         durationMs,
       });
       outcome = 'finished';
@@ -322,6 +328,25 @@ export class RunDelegationUseCase {
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }
+  }
+
+  /** The usage of every prompt of a delegation added up, field by field; a field no prompt reported stays out. */
+  private totalUsage(costs: readonly AgentPromptCost[]): AgentUsage | undefined {
+    const usages = costs.flatMap(cost => (cost.usage ? [cost.usage] : []));
+    if (usages.length === 0) {
+      return undefined;
+    }
+    const sum = (field: keyof AgentUsage): number => usages.reduce((total, usage) => total + (usage[field] ?? 0), 0);
+    const optional = (field: 'thoughtTokens' | 'cachedReadTokens' | 'cachedWriteTokens') =>
+      (usages.some(usage => usage[field] !== undefined) ? { [field]: sum(field) } : {});
+    return {
+      totalTokens: sum('totalTokens'),
+      inputTokens: sum('inputTokens'),
+      outputTokens: sum('outputTokens'),
+      ...optional('thoughtTokens'),
+      ...optional('cachedReadTokens'),
+      ...optional('cachedWriteTokens'),
+    };
   }
 
   /** The agent starts from the content of the artifact it holds, read when it starts, so the specification only says what to do with it. */

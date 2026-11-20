@@ -199,15 +199,20 @@ describe('AgentRequestParserService', () => {
     });
   });
 
-  it('should keep the rest of the response, without its requests', () => {
-    const parsed = parser.parse('Moving it.\n<artifact_update id="T-1" status="in_progress"/>\n\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>');
+  it('should keep the rest of the response, without its requests, and the requests as they were written', () => {
+    const parsed = parser.parse('Moving it.\n<artifact_update id="T-1" status="in_progress"/>\n\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>\n<artifact_comment id="T-1">Go.</artifact_comment> `<artifact_list/>`');
 
-    expect(parsed).toMatchObject({ kind: 'requests', rest: 'Moving it.\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>' });
+    expect(parsed).toEqual({
+      kind: 'requests',
+      requests: expect.any(Array),
+      rest: 'Moving it.\n\n<delegate role="DEVELOPER" summary="x" artifact="T-1">Implement it.</delegate>\n `<artifact_list/>`',
+      raw: '<artifact_update id="T-1" status="in_progress"/>\n<artifact_comment id="T-1">Go.</artifact_comment>',
+    });
   });
 
   it('should drop everything from a request that never closes', () => {
-    expect(parser.parse('Before <artifact_comment id="T-1">never closed')).toMatchObject({ kind: 'requests', rest: 'Before' });
-    expect(parser.parse('A </artifact_read> B')).toMatchObject({ kind: 'requests', rest: 'A  B' });
+    expect(parser.parse('Before <artifact_comment id="T-1">never closed')).toMatchObject({ kind: 'requests', rest: 'Before', raw: '<artifact_comment id="T-1">never closed' });
+    expect(parser.parse('A </artifact_read> B')).toMatchObject({ kind: 'requests', rest: 'A  B', raw: '</artifact_read>' });
   });
 
   it('should report a closing tag without its opening and go on with the next request', () => {

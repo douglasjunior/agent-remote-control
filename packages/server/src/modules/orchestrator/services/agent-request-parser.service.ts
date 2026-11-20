@@ -19,10 +19,13 @@ import type { AgentRequest } from '../models/agent-request.model.js';
 import { type CodeSpan, findCodeSpans, isInCode, parseTagAttributes, readTagBody, type TagAttributes } from '../utils/protocol-tag.util.js';
 
 
-/** `rest` is the response without its requests, which still carries whatever else the agent wrote. */
+/**
+ * `rest` is the response without its requests, which still carries whatever else the agent wrote; `raw` is the text of
+ * the requests as the agent wrote them, one after the other.
+ */
 export type ParsedAgentRequests =
   | { readonly kind: 'none' }
-  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string };
+  | { readonly kind: 'requests'; readonly requests: readonly AgentRequest[]; readonly rest: string; readonly raw: string };
 
 const REQUEST_TAG = /<(\/?)(artifact_list|artifact_read|artifact_create|artifact_update|artifact_comment|skill_read|skill_list|skill_write)\b([^>]*)>/gi;
 const CHILD_TAG = /<(\/?)(section|pull_request)\b([^>]*)>/gi;
@@ -54,6 +57,7 @@ export class AgentRequestParserService {
     const ignored = [...findCodeSpans(response), ...this.delegateBlocks(response)];
     const tags = new RegExp(REQUEST_TAG.source, REQUEST_TAG.flags);
     const requests: AgentRequest[] = [];
+    const raw: string[] = [];
     let rest = '';
     let cursor = 0;
 
@@ -63,6 +67,7 @@ export class AgentRequestParserService {
       rest += response.slice(cursor, tag.index);
       cursor = tag.index + rawTag.length;
       if (closing) {
+        raw.push(rawTag);
         requests.push(this.invalid(rawTag, `Found ${rawTag} without its opening <${name}> tag.`));
         continue;
       }
@@ -73,10 +78,12 @@ export class AgentRequestParserService {
         ? { content: '', end: contentStart + this.emptyClosingLength(response, name, contentStart, selfClosing) }
         : readTagBody(response, name, contentStart);
       if (typeof body === 'string') {
+        raw.push(response.slice(tag.index));
         requests.push(this.invalid(rawTag, body));
         cursor = response.length;
         break;
       }
+      raw.push(response.slice(tag.index, body.end));
       tags.lastIndex = body.end;
       cursor = body.end;
       requests.push(typeof attributes === 'string' ? this.invalid(rawTag, attributes) : this.toRequest(name, rawTag, attributes, body.content));
@@ -85,7 +92,7 @@ export class AgentRequestParserService {
     rest += response.slice(cursor);
     return requests.length === 0
       ? { kind: 'none' }
-      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim() };
+      : { kind: 'requests', requests, rest: rest.replace(/\n{3,}/g, '\n\n').trim(), raw: raw.join('\n') };
   }
 
   private toRequest(name: string, rawTag: string, attributes: TagAttributes, content: string): AgentRequest {

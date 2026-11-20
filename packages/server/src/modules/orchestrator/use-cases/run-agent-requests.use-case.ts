@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import { FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
-import type { Artifact, ArtifactActor, ArtifactChanges, ArtifactOutcome } from '../../artifacts/models/artifact.model.js';
+import type { Artifact, ArtifactActor, ArtifactChanges, ArtifactOutcome, ArtifactSection } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import type { AgentRequest, AgentRequester } from '../models/agent-request.model.js';
 import type { ResolvedResponse } from '../models/pending-request-results.model.js';
@@ -11,6 +11,7 @@ import { type ArtifactAccess, type ArtifactField, IAgentRegistryPort } from '../
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
+import { previewForLog } from '../utils/log-preview.util.js';
 import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 
 
@@ -28,8 +29,16 @@ type Result = {
 /** A failed request is often a grammar the agent no longer has in view, which its skills hold. */
 const FAILED_REQUESTS_NOTE = 'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).';
 
+type AgentRequestResults = { readonly text: string; readonly failed: boolean };
+
 const MAX_REQUEST_ROUNDS = 30;
-const REQUEST_RESULTS_NOTE = 'Your last response had only artifact requests, so it was not taken as your final answer. Go on with your work.';
+const FAILED_RESPONSE_NOTE = 'Some of the requests of your last response failed, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.';
+const READ_RESPONSE_NOTE = 'Your last response read from the board or the skills, so it was not taken as your final answer. Go on with your work with these results; your final answer comes in a later response.';
+const REQUESTS_ONLY_NOTE = 'Your last response had only requests, so it was not taken as your final answer. Go on with your work; your final answer comes in a later response.';
+const WRITE_REQUESTS: readonly AgentRequest['kind'][] = ['create', 'update', 'comment', 'skill_write'];
+
+/** The agent that creates an artifact says what it is, whatever sections its role writes afterwards. */
+const CREATOR_SECTION: ArtifactSection = 'overview';
 
 /** Fields a coordinating agent may change on an artifact another agent holds: they steer the work without touching its content. */
 const BOARD_FIELDS_WHILE_HELD: readonly ArtifactField[] = ['status', 'refinement'];
@@ -54,10 +63,10 @@ export class RunAgentRequestsUseCase {
   ) {}
 
   /**
-   * Carries out the artifact requests of each response before anything else reads it, so the content an agent reads
-   * never passes through the CEO. A response that also has an outcome (`hasOutcome`: a delegation or questions) goes on
-   * with it, without its requests, and the results wait for the agent's next prompt; any other response gets the
-   * results right away, until a response carries no request.
+   * Carries out the requests of each response before anything else reads it, so the content an agent reads never passes
+   * through the CEO. A response that also has an outcome (`hasOutcome`: a delegation or questions), or whose requests
+   * all wrote and succeeded next to the text of an answer, goes on without its requests, and the results wait for the
+   * agent's next prompt. Any other response gets the results right away, until a response carries no request.
    */
   async resolve(
     response: string,
@@ -73,17 +82,26 @@ export class RunAgentRequestsUseCase {
         return { response: current };
       }
       const results = await this.execute(parsed.requests, requester, onSkill);
-      if (hasOutcome(parsed.rest)) {
-        return { response: parsed.rest, requestResults: results };
+      const reads = parsed.requests.some(request => !WRITE_REQUESTS.includes(request.kind));
+      if (hasOutcome(parsed.rest) || (!reads && !results.failed && parsed.rest.length > 0)) {
+        return { response: parsed.rest, requestResults: results.text };
       }
-      current = await runAgent(`${results}\n${REQUEST_RESULTS_NOTE}`);
+      current = await runAgent(`${results.text}\n${this.notAnAnswerNote(results.failed, reads)}`);
     }
     this.logger.warn(`[Artifact Requests Exceeded] Role=${requester.role}, Rounds=${MAX_REQUEST_ROUNDS}`);
     return { response: current };
   }
 
+  /** An invalid request is a failure, so its note wins over that of a read. */
+  private notAnAnswerNote(failed: boolean, reads: boolean): string {
+    if (failed) {
+      return FAILED_RESPONSE_NOTE;
+    }
+    return reads ? READ_RESPONSE_NOTE : REQUESTS_ONLY_NOTE;
+  }
+
   /** `onSkill` hears each skill read or written, for the channel to show it. */
-  async execute(requests: readonly AgentRequest[], requester: AgentRequester, onSkill?: (activity: SkillActivity) => void): Promise<string> {
+  async execute(requests: readonly AgentRequest[], requester: AgentRequester, onSkill?: (activity: SkillActivity) => void): Promise<AgentRequestResults> {
     const access = this.agentRegistry.getArtifactAccess(requester.role);
     const refs = new Map<string, string>();
     const results: Result[] = [];
@@ -94,13 +112,18 @@ export class RunAgentRequestsUseCase {
         onSkill?.(this.skillActivity(request, result));
       }
     }
-    this.logger.log(`[Agent Requests] Conversation=${requester.conversationId}, Role=${requester.role}, Requests=${requests.length}, Failed=${results.filter(result => result.failed).length}`);
-    return [
+    const failures = results.filter(result => result.failed);
+    for (const failure of failures) {
+      this.logger.warn(`[Agent Request Failed] Role=${requester.role}, Request=${failure.request}${failure.id ? `, Id=${failure.id}` : ''}, Reason="${previewForLog(failure.body)}"`);
+    }
+    this.logger.log(`[Agent Requests] Conversation=${requester.conversationId}, Role=${requester.role}, Requests=${requests.length}, Failed=${failures.length}`);
+    const text = [
       '<request_results>',
       ...results.map(result => this.formatResult(result)),
       '</request_results>',
-      ...(results.some(result => result.failed) ? [FAILED_REQUESTS_NOTE] : []),
+      ...(failures.length > 0 ? [FAILED_REQUESTS_NOTE] : []),
     ].join('\n');
+    return { text, failed: failures.length > 0 };
   }
 
   private async run(request: AgentRequest, requester: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {
@@ -203,7 +226,8 @@ export class RunAgentRequestsUseCase {
     if (!access.create) {
       return fail('You cannot create artifacts.');
     }
-    const forbidden = request.sections.map(change => change.section).filter(section => !access.sections.includes(section));
+    const writable: readonly ArtifactSection[] = [...access.sections, CREATOR_SECTION];
+    const forbidden = request.sections.map(change => change.section).filter(section => !writable.includes(section));
     if (forbidden.length > 0) {
       return fail(`You cannot write the sections ${forbidden.join(', ')}.`);
     }
