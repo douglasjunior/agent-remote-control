@@ -11,6 +11,8 @@ import type { IAgentPort } from '../../agent/ports/agent.port.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 
+import { AgentToolSessionsService } from './agent-tool-sessions.service.js';
+
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
@@ -35,6 +37,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   constructor(
     @Inject(IAgentPortFactory)
     private readonly agentPortFactory: IAgentPortFactory,
+    private readonly toolSessions: AgentToolSessionsService,
     @Optional() idleTimeoutMs?: number,
   ) {
     this.idleTimeoutMs =
@@ -203,11 +206,19 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     await Promise.all(runtimes.map(async (runtime) => {
       this.clearIdleTimer(runtime);
       for (const delegation of runtime.activeDelegations.values()) {
+        this.toolSessions.close(delegation.agentPort);
         await delegation.agentPort.disconnect().catch(() => undefined);
       }
       runtime.activeDelegations.clear();
+      this.closeToolSession(runtime.agentPort);
       await runtime.agentPort?.disconnect().catch(() => undefined);
     }));
+  }
+
+  private closeToolSession(agentPort: IAgentPort | null): void {
+    if (agentPort) {
+      this.toolSessions.close(agentPort);
+    }
   }
 
   private delegationKey(role: string): string {
@@ -250,10 +261,12 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     this.runtimes.delete(conversationKey);
     this.logger.log(`[Session Expired] Conversation=${conversationKey} idle for ${this.idleTimeoutMs}ms`);
     for (const delegation of runtime.activeDelegations.values()) {
+      this.toolSessions.close(delegation.agentPort);
       await delegation.agentPort.closeSession().catch(() => undefined);
       await delegation.agentPort.disconnect().catch(() => undefined);
     }
     runtime.activeDelegations.clear();
+    this.closeToolSession(runtime.agentPort);
     await runtime.agentPort?.closeSession().catch(() => undefined);
     await runtime.agentPort?.disconnect().catch(() => undefined);
   }
@@ -271,6 +284,7 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     if (current) {
       this.logger.log(`[CEO Agent Switched] Conversation=${conversationKey}, From=${current.agentName}, To=${agentId}`);
       runtime.agentPort = null;
+      this.toolSessions.close(current);
       await current.closeSession().catch(() => undefined);
       await current.disconnect().catch(() => undefined);
     }

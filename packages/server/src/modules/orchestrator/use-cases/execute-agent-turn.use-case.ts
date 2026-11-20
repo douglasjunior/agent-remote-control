@@ -423,12 +423,18 @@ export class ExecuteAgentTurnUseCase {
     answerDelivery: AnswerDelivery | undefined,
   ): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> {
     const prepareRetryMessage: PrepareRetryMessage = message => this.prepareRetryMessage(request, message);
+    const requester: AgentRequester = {
+      role: request.agentRole,
+      roleName: this.agentRegistry.getDisplayName(request.agentRole),
+      conversationId: request.conversationId,
+    };
     const runRound = (text: string, isUserText = false, delivery?: AnswerDelivery) => this.retryCeoRound.execute(
       request,
       async retry => this.takeUserLanguage(await this.agentRound.run({
         agentPort: ceoPort,
         cwd: request.workspacePath,
         role: request.agentRole,
+        requester,
         prompt: retry ? buildTurnRetryPrompt(retry, text) : text,
         request,
         turn,
@@ -438,11 +444,6 @@ export class ExecuteAgentTurnUseCase {
       })),
       prepareRetryMessage,
     );
-    const requester: AgentRequester = {
-      role: request.agentRole,
-      roleName: this.agentRegistry.getDisplayName(request.agentRole),
-      conversationId: request.conversationId,
-    };
     const pending = new PendingRequestResults();
     const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => pending.keep(await this.runAgentRequests.resolve(
       await runRound(pending.before(text), isUserText, delivery),

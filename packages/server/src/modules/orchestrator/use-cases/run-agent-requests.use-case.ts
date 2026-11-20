@@ -114,15 +114,11 @@ export class RunAgentRequestsUseCase {
     const refs = new Map<string, string>();
     const results: Result[] = [];
     for (const request of requests) {
-      const result = await this.run(request, requester, access, refs);
-      results.push(result);
-      if (request.kind === 'skill_read' || request.kind === 'skill_write') {
-        onSkill?.(this.skillActivity(request, result));
-      }
+      results.push(await this.carryOut(request, requester, access, refs, onSkill));
     }
     const failures = results.filter(result => result.failed);
     for (const failure of failures) {
-      this.logger.warn(`[Agent Request Failed] Role=${requester.role}, Request=${failure.request}${failure.id ? `, Id=${failure.id}` : ''}, Reason="${previewForLog(failure.body)}"`);
+      this.logFailure(requester, failure);
     }
     this.logger.log(`[Agent Requests] Conversation=${requester.conversationId}, Role=${requester.role}, Requests=${requests.length}, Failed=${failures.length}`);
     const text = [
@@ -132,6 +128,36 @@ export class RunAgentRequestsUseCase {
       ...(failures.length > 0 ? [FAILED_REQUESTS_NOTE] : []),
     ].join('\n');
     return { text, failed: failures.length > 0 };
+  }
+
+  /**
+   * Carries out one request on its own, as a tool call does, with the checks and results of the same request written
+   * as a tag. A `ref` names nothing here, since no other request comes with it.
+   */
+  async executeOne(request: AgentRequest, requester: AgentRequester, onSkill?: (activity: SkillActivity) => void): Promise<{ readonly body: string; readonly failed: boolean }> {
+    const result = await this.carryOut(request, requester, this.agentRegistry.getArtifactAccess(requester.role), new Map(), onSkill);
+    if (result.failed) {
+      this.logFailure(requester, result);
+    }
+    return { body: result.body, failed: result.failed === true };
+  }
+
+  private async carryOut(
+    request: AgentRequest,
+    requester: AgentRequester,
+    access: ArtifactAccess,
+    refs: Map<string, string>,
+    onSkill: ((activity: SkillActivity) => void) | undefined,
+  ): Promise<Result> {
+    const result = await this.run(request, requester, access, refs);
+    if (request.kind === 'skill_read' || request.kind === 'skill_write') {
+      onSkill?.(this.skillActivity(request, result));
+    }
+    return result;
+  }
+
+  private logFailure({ role }: AgentRequester, failure: Result): void {
+    this.logger.warn(`[Agent Request Failed] Role=${role}, Request=${failure.request}${failure.id ? `, Id=${failure.id}` : ''}, Reason="${previewForLog(failure.body)}"`);
   }
 
   private async run(request: AgentRequest, requester: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {

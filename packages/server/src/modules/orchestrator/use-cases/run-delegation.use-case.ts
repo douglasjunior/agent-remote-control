@@ -20,6 +20,7 @@ import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { type AgentResultDetails, buildAgentResult } from '../prompts/agent-result.prompt.js';
 import { describeDelegation } from '../prompts/previous-turn.prompt.js';
 import { type AgentPrompt, type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
+import { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationLimitsConfigService } from '../services/delegation-limits-config.service.js';
@@ -61,6 +62,7 @@ export class RunDelegationUseCase {
     private readonly runAgentRequests: RunAgentRequestsUseCase,
     private readonly delegationStatus: DelegationStatusService,
     private readonly limits: DelegationLimitsConfigService,
+    private readonly toolSessions: AgentToolSessionsService,
   ) {}
 
   /**
@@ -135,6 +137,7 @@ export class RunDelegationUseCase {
       this.replacedDelegations.add(existing);
       this.questionQueue.discard(conversationKey, delegateToRole, existing.projectName);
       await existing.turn.cancel();
+      this.toolSessions.close(existing.agentPort);
       await existing.agentPort.closeSession().catch(() => undefined);
       await existing.agentPort.disconnect().catch(() => undefined);
       this.conversationRuntime.unregisterDelegation(conversationKey, existing);
@@ -237,10 +240,18 @@ export class RunDelegationUseCase {
       if (artifactId) {
         workingStatus = await this.delegationStatus.start(request.conversationId, artifactId, delegateToRole);
       }
+      const requester: AgentRequester = {
+        role: delegateToRole,
+        roleName,
+        conversationId: request.conversationId,
+        delegationId,
+        ...(artifactId ? { artifactId } : {}),
+      };
       const runRound = (prompt: AgentPrompt, delivery?: AnswerDelivery) => this.agentRound.run({
         agentPort: delegatePort,
         cwd,
         role: delegateToRole,
+        requester,
         prompt,
         request,
         turn: delegationTurn,
@@ -251,13 +262,6 @@ export class RunDelegationUseCase {
         answerDelivery: delivery,
         onPrompt: cost => costs.push(cost),
       });
-      const requester: AgentRequester = {
-        role: delegateToRole,
-        roleName,
-        conversationId: request.conversationId,
-        delegationId,
-        ...(artifactId ? { artifactId } : {}),
-      };
       const pending = new PendingRequestResults();
       const resolveRequests = async (response: string) => pending.keep(await this.runAgentRequests.resolve(
         response,
@@ -352,6 +356,7 @@ export class RunDelegationUseCase {
         });
       }
       this.conversationRuntime.unregisterDelegation(conversationKey, activeDelegation);
+      this.toolSessions.close(delegatePort);
       await delegatePort.closeSession().catch(() => undefined);
       await delegatePort.disconnect().catch(() => undefined);
     }

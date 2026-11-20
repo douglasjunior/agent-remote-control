@@ -68,3 +68,33 @@ Integrates the OpenCode CLI through its native ACP mode:
 - It has no quota: OpenCode bills through the configured model provider.
 - It works without a login, with the free `opencode/*` models and with local models, so `IAgentAuthPort` does not cover it.
 - The CLI starts a background service of its own (`opencode serve --service`, port `49374`) that outlives the ACP process. The adapter never stops it, and every `opencode` run must use the same `HOME`, because a service started under another `HOME` makes the next run fail with `Managed service port 49374 ... already in use`.
+
+## MCP servers
+
+`createSession` and `loadSession` attach `AgentMcpServer` entries as ACP `mcpServers` of type `http`, and only for an
+agent that advertises `agentCapabilities.mcpCapabilities.http`. The port has no stdio variant: Copilot drops a stdio
+server sent over ACP, logging only `Rejecting non-http/sse MCP server "<name>" from client` in `~/.copilot/logs`, so
+the session would start without its tools. What each CLI does with an HTTP server, measured on real sessions:
+
+| Agent | Advertises | Tool name the model sees |
+|---|---|---|
+| Antigravity (`agy`) | `http` | `mcp_<server>_<tool>` |
+| Claude Code | `http`, `sse` | `mcp__<server>__<tool>`, loaded through `ToolSearch` |
+| Copilot | `http`, `sse` | `<server>-<tool>` |
+| Codex | `http` | `mcp.<server>.<tool>` |
+| Cursor | `http`, `sse` | `<server>: <tool>` |
+| OpenCode | `http` | none: its `execute` code tool runs `tools["<server>"].<tool>(...)` |
+
+- Every CLI starts the servers sent with `session/load` and lists their tools again in the new process, so a server
+  is attached on every creation and every load.
+- No CLI raises `session/request_permission` for an MCP tool under the adapters' approval flags and presets.
+- Cursor cancels an MCP call after 60 s (`MCP error -32001: Request timed out`, then `notifications/cancelled`) and
+  hands that to the model as the tool's output, so a tool must answer quickly and never wait for a person.
+- Antigravity, Claude Code and Copilot send the MCP `server/discover` request first and carry on when it answers
+  `Method not found`.
+- Antigravity adds a `toolSummary` argument to the calls it reports, so a server ignores arguments it does not know.
+- Clients may open a `GET` stream on the endpoint and may end with `DELETE`; Copilot does not always send the
+  `DELETE`.
+- The `instructions` of the MCP `initialize` result reach the model on Claude Code, which keeps them across a
+  compaction; Codex shows only their first line. A tool description does not reach the model on five of the six
+  CLIs.

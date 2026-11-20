@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   type ClientApp,
   type ClientConnection,
+  type McpServer,
   type ParamsParser,
   type PermissionOption,
   type SessionConfigOption,
@@ -24,10 +25,12 @@ import {
   type AgentActivity,
   type AgentConfig,
   type AgentEffortState,
+  type AgentMcpServer,
   type AgentModelInfo,
   type AgentModelState,
   type AgentUpdate,
   type AgentQuota,
+  type AgentSessionOptions,
   type AgentUsage,
   type IAgentPort,
 } from '../ports/agent.port.js';
@@ -93,9 +96,14 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
   private cancelledSeq = 0;
   private steeringSupported = false;
   private loadSessionSupported = false;
+  private httpMcpSupported = false;
 
   get supportsSteering(): boolean {
     return this.steeringSupported;
+  }
+
+  get supportsHttpMcp(): boolean {
+    return this.httpMcpSupported;
   }
 
   constructor(preferredConfig: AgentConfig = {}) {
@@ -230,8 +238,9 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
 
       this.steeringSupported = this.readSteeringSupport(initializeResponse);
       this.loadSessionSupported = this.readLoadSessionSupport(initializeResponse);
+      this.httpMcpSupported = this.readHttpMcpSupport(initializeResponse);
       this.logger.debug(
-        `capabilities_detected: steering=${this.steeringSupported} loadSession=${this.loadSessionSupported}`,
+        `capabilities_detected: steering=${this.steeringSupported} loadSession=${this.loadSessionSupported} httpMcp=${this.httpMcpSupported}`,
       );
       this.connection = connection;
     } catch (err) {
@@ -273,6 +282,30 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     return capabilities?.loadSession === true;
   }
 
+  private readHttpMcpSupport(initializeResponse: unknown): boolean {
+    const capabilities = (
+      initializeResponse as
+        { agentCapabilities?: { mcpCapabilities?: { http?: unknown } } } | undefined
+    )?.agentCapabilities;
+    return capabilities?.mcpCapabilities?.http === true;
+  }
+
+  private toAcpMcpServers(servers: readonly AgentMcpServer[] | undefined): McpServer[] {
+    if (!servers?.length) {
+      return [];
+    }
+    if (!this.httpMcpSupported) {
+      this.logger.debug(`http_mcp_unsupported: ${servers.map(server => server.name).join(', ')} left out`);
+      return [];
+    }
+    return servers.map(server => ({
+      type: 'http',
+      name: server.name,
+      url: server.url,
+      headers: Object.entries(server.headers).map(([name, value]) => ({ name, value })),
+    }));
+  }
+
   private handleTransportLost(reason: unknown): void {
     this.logger.warn(`agent_process_exited: ${String(reason)}`);
     this.discardSessionAndTransport();
@@ -312,7 +345,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
   }
 
-  async createSession(cwd: string): Promise<void> {
+  async createSession(cwd: string, options?: AgentSessionOptions): Promise<void> {
     if (!this.connection) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -322,7 +355,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     let configOptions: SessionConfigOption[] | null | undefined;
     try {
       const session = await this.connection.agent
-        .buildSession({ cwd, mcpServers: [] })
+        .buildSession({ cwd, mcpServers: this.toAcpMcpServers(options?.mcpServers) })
         .start();
       this.activeSession = session;
       this.currentSessionId = session.sessionId;
@@ -334,7 +367,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     await this.applySessionConfig(configOptions);
   }
 
-  async loadSession(cwd: string, sessionId: string): Promise<boolean> {
+  async loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean> {
     if (!this.connection) {
       throw new Error('Not connected. Call connect() first.');
     }
@@ -352,7 +385,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
       const response = await connection.agent.request('session/load', {
         sessionId,
         cwd,
-        mcpServers: [],
+        mcpServers: this.toAcpMcpServers(options?.mcpServers),
       });
       this.activeSession?.dispose();
       this.activeSession = new ResumedSession(sessionId, connection);

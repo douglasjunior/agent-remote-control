@@ -1,7 +1,8 @@
-import { rs, type Mock } from '@rstest/core';
+import { expect, rs, type Mock } from '@rstest/core';
 import type { ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 
+import type { AgentMcpServer, IAgentPort } from '../ports/agent.port.js';
 import type { IProcessRunnerPort } from '../ports/process-runner.port.js';
 
 
@@ -396,4 +397,40 @@ export function messageChunk(text: string, messageId?: string) {
       messageId,
     },
   };
+}
+
+export const HTTP_MCP_SERVER: AgentMcpServer = {
+  name: 'arc',
+  url: 'http://127.0.0.1:3000/mcp',
+  headers: { authorization: 'Bearer credential' },
+};
+
+/** `HTTP_MCP_SERVER` as ACP `mcpServers` carries it. */
+export const ACP_HTTP_MCP_SERVER = {
+  type: 'http',
+  name: 'arc',
+  url: 'http://127.0.0.1:3000/mcp',
+  headers: [{ name: 'authorization', value: 'Bearer credential' }],
+};
+
+/** The next connection advertises session loading and HTTP MCP servers in `initialize`. */
+export function advertiseHttpMcp(): void {
+  acpHarness.pendingConnectionOverrides = {
+    initialize: rs.fn(async () => ({ agentCapabilities: { loadSession: true, mcpCapabilities: { http: true } } })),
+  };
+}
+
+/** Connects the adapter, which must follow `advertiseHttpMcp()`, and checks that new and loaded sessions carry the server. */
+export async function expectHttpMcpServerAttached(adapter: IAgentPort): Promise<void> {
+  await adapter.connect();
+  await adapter.createSession('/repo', { mcpServers: [HTTP_MCP_SERVER] });
+  await adapter.loadSession('/repo', 'session-1', { mcpServers: [HTTP_MCP_SERVER] });
+
+  expect(adapter.supportsHttpMcp).toBe(true);
+  expect(acpHarness.connectionInstance?.newSession).toHaveBeenLastCalledWith({ cwd: '/repo', mcpServers: [ACP_HTTP_MCP_SERVER] });
+  expect(acpHarness.connectionInstance?.loadSession).toHaveBeenCalledWith({
+    sessionId: 'session-1',
+    cwd: '/repo',
+    mcpServers: [ACP_HTTP_MCP_SERVER],
+  });
 }

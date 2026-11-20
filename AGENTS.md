@@ -28,7 +28,8 @@ agent-remote-control/
 │       │   │   ├── artifacts/              # Board of each conversation: features and tasks, statuses, dependencies, holders and history (IArtifactsPort)
 │       │   │   ├── discord/                # Discord Bot: handlers, formatters and progress utils
 │       │   │   ├── logging/                # Application logger bound to Nest's LoggerService; conversation-tagged log files
-│       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
+│       │   │   ├── mcp/                    # MCP endpoint (/mcp) that serves the agent tools (board and skill requests) to agent CLIs
+│       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation, cancellation and the agent tools behind the MCP endpoint
 │       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
 │       │   │   ├── remote/                 # Remote access: the host's identity, its signaling socket and the WebRTC transport of the web channel
 │       │   │   ├── storage/                # File locks (IFileLockPort) and locked JSON/text files (ILockedFilesPort) through which every store in DATA_DIR reads and changes its files

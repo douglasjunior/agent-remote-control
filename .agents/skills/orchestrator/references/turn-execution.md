@@ -89,7 +89,7 @@ Each agent round (`AgentRoundService.run`, CEO or delegate) runs:
 
 1. `turn.activate(agentPort)` and `turn.throwIfCancelled()`.
 2. `connect()` followed by `turn.throwIfCancelled()`.
-3. The session state is `live` when `currentSessionId` is set; otherwise (`openSession`):
+3. The session state is `live` when `currentSessionId` is set, and its tool session, if any, passes to this round's `requester` and turn (`AgentToolSessionsService.update`); otherwise (`openSession`), with the servers of a tool session opened for the round's `requester` (`AgentToolSessionsService.open`, none for an agent without `supportsHttpMcp`) sent with the load and with the creation alike:
    1. **With a session in `agentSessions` for the role, the port's agent (`agentId === agentPort.agentName`), the project and the artifact (`null` without one), and `sessionMode !== 'new'`**: rereads the `SessionContext` from the store and calls `loadSession(cwd, sessionId)`; on success the state is `resumed`. The reread is necessary because the turn's object does not reflect the sessions written by the CEO and by previous rounds.
    2. **Without an ID, `'new'` mode or a failed load**: `ensureDirectory(cwd)` and `createSession(cwd)`; the state is `new`.
    3. If the ACP session ID changed, replaces the entry of that key in `agentSessions`, preserving the others, and saves to the store.

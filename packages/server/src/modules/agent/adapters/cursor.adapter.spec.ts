@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import {
   acpHarness,
   acpSdkMockModule,
+  advertiseHttpMcp,
   createProcessRunnerMock,
+  expectHttpMcpServerAttached,
   modelConfigOption,
   resetAcpHarness,
   streamMockModule,
@@ -39,6 +41,12 @@ function spawnCall(spawn: ReturnType<typeof createProcessRunnerMock>['spawn']) {
 }
 
 describe('CursorAdapter', () => {
+  it('should attach an HTTP MCP server to new and loaded sessions when the CLI advertises it', async () => {
+    advertiseHttpMcp();
+
+    await expectHttpMcpServerAttached(buildAdapter().adapter);
+  });
+
   beforeEach(() => {
     resetAcpHarness();
   });

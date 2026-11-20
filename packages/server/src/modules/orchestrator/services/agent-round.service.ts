@@ -1,11 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
-import type { AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
+import type { AgentMcpServer, AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentRequester } from '../models/agent-request.model.js';
 import type { AgentSession, OpenedAgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
+import type { AgentToolSession } from '../models/agent-tool.model.js';
 import type { SessionContext } from '../models/session-context.model.js';
 import type { TurnAgentInfo } from '../models/turn-agent-info.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -29,6 +31,7 @@ import { previewForLog } from '../utils/log-preview.util.js';
 
 import { AgentProtocolService } from './agent-protocol.service.js';
 import { AgentRequestParserService } from './agent-request-parser.service.js';
+import { AgentToolSessionsService } from './agent-tool-sessions.service.js';
 import { OpenWorkService } from './open-work.service.js';
 
 
@@ -43,6 +46,8 @@ export type AgentRoundInput = {
   /** The folder the session of the agent runs in. */
   readonly cwd: string;
   readonly role: string;
+  /** The agent its requests and tools act for. */
+  readonly requester: AgentRequester;
   readonly prompt: AgentPrompt;
   readonly request: TurnRequest;
   readonly turn: ActiveTurn;
@@ -81,12 +86,14 @@ export class AgentRoundService {
     private readonly openWork: OpenWorkService,
     @Inject(IAgentSkillsPort) private readonly agentSkills: IAgentSkillsPort,
     private readonly requestParser: AgentRequestParserService,
+    private readonly toolSessions: AgentToolSessionsService,
   ) {}
 
   /**
    * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
    * for the role, project and task, puts the system prompt in front of a new session's prompt and the re-entry note and
-   * the current skill catalog of the role in front of a resumed one's, adds the language, applies the role's profile and returns the final response. Requests
+   * the current skill catalog of the role in front of a resumed one's, adds the language, applies the role's profile and returns the final response. A
+   * session it creates or loads gets the agent tools of the requester when the agent takes them. Requests
    * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
    * other protocol tag written there gets one repair prompt.
    */
@@ -94,6 +101,7 @@ export class AgentRoundService {
     agentPort,
     cwd: workspacePath,
     role,
+    requester,
     prompt,
     request,
     turn,
@@ -114,14 +122,18 @@ export class AgentRoundService {
       await agentPort.connect();
       turn.throwIfCancelled();
 
-      const opened: OpenedAgentSession = agentPort.currentSessionId
-        ? { state: 'live' }
-        : await this.openSession(agentPort, workspacePath, session, sessionMode, {
+      const toolSession: AgentToolSession = { requester, onSkill: activity => request.onActivity?.(activity, requester.role) };
+      let opened: OpenedAgentSession = { state: 'live' };
+      if (agentPort.currentSessionId) {
+        this.toolSessions.update(agentPort, toolSession);
+      } else {
+        opened = await this.openSession(agentPort, workspacePath, session, sessionMode, {
           role,
           agentId: agentPort.agentName,
           projectName: projectName ?? null,
           artifactId: artifactId ?? null,
-        });
+        }, this.toolSessions.open(agentPort, toolSession));
+      }
       const sessionState = opened.state;
       const systemPromptPending = sessionState === 'new' || (isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role));
       const fullPrompt = [
@@ -189,22 +201,23 @@ export class AgentRoundService {
     return tag.startsWith('artifact_') || tag.startsWith('skill_');
   }
 
-  /** Loads the stored session of the key, or creates one in its place, and stores the id the port ends up with. */
+  /** Loads the stored session of the key, or creates one in its place, both with `mcpServers`, and stores the id the port ends up with. */
   private async openSession(
     agentPort: IAgentPort,
     workspacePath: string,
     session: SessionContext,
     sessionMode: 'resume' | 'new',
     key: AgentSessionKey,
+    mcpServers: readonly AgentMcpServer[],
   ): Promise<OpenedAgentSession> {
     const latest = await this.findLatestSession(session);
     const stored = sessionMode === 'new'
       ? undefined
       : latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key));
-    const resumed = await this.resumeAgentSession(agentPort, workspacePath, stored?.sessionId);
+    const resumed = await this.resumeAgentSession(agentPort, workspacePath, stored?.sessionId, mcpServers);
     if (!resumed) {
       await this.workspacePort.ensureDirectory(workspacePath);
-      await agentPort.createSession(workspacePath);
+      await agentPort.createSession(workspacePath, { mcpServers });
     }
     const { currentSessionId } = agentPort;
     if (currentSessionId && currentSessionId !== stored?.sessionId) {
@@ -255,11 +268,12 @@ export class AgentRoundService {
     agentPort: IAgentPort,
     workspacePath: string,
     sessionId: string | undefined,
+    mcpServers: readonly AgentMcpServer[],
   ): Promise<boolean> {
     if (!sessionId) {
       return false;
     }
-    const loaded = await agentPort.loadSession(workspacePath, sessionId);
+    const loaded = await agentPort.loadSession(workspacePath, sessionId, { mcpServers });
     this.logger.log(
       `[Agent Session ${loaded ? 'Resumed' : 'Not Resumed'}] AgentSession=${sessionId}`,
     );

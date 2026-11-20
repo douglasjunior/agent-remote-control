@@ -15,6 +15,7 @@ import { JsonPreferencesStoreAdapter } from './adapters/json-preferences-store.a
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
+import { IAgentToolsPort } from './ports/agent-tools.port.js';
 import { IAgentTurnPort } from './ports/agent-turn.port.js';
 import { IOpenWorkStorePort } from './ports/open-work-store.port.js';
 import { IPreferencesStorePort } from './ports/preferences-store.port.js';
@@ -27,6 +28,11 @@ import { AgentProfilesService } from './services/agent-profiles.service.js';
 import { AgentProtocolService } from './services/agent-protocol.service.js';
 import { AgentRequestParserService } from './services/agent-request-parser.service.js';
 import { AgentRoundService } from './services/agent-round.service.js';
+import { AgentToolCatalogService } from './services/agent-tool-catalog.service.js';
+import { AgentToolRequestService } from './services/agent-tool-request.service.js';
+import { AgentToolSessionsService } from './services/agent-tool-sessions.service.js';
+import { AgentToolsConfigService } from './services/agent-tools-config.service.js';
+import { AgentToolsService } from './services/agent-tools.service.js';
 import { AgentTurnService } from './services/agent-turn.service.js';
 import { ArtifactPromptFormatterService } from './services/artifact-prompt-formatter.service.js';
 import { CeoBoardService } from './services/ceo-board.service.js';
@@ -53,6 +59,7 @@ import { GetAgentQuotaUseCase } from './use-cases/get-agent-quota.use-case.js';
 import { RestoreOpenWorkUseCase } from './use-cases/restore-open-work.use-case.js';
 import { RetryCeoRoundUseCase } from './use-cases/retry-ceo-round.use-case.js';
 import { RunAgentRequestsUseCase } from './use-cases/run-agent-requests.use-case.js';
+import { RunAgentToolUseCase } from './use-cases/run-agent-tool.use-case.js';
 import { RunDelegationUseCase } from './use-cases/run-delegation.use-case.js';
 import { RunShellCommandUseCase } from './use-cases/run-shell-command.use-case.js';
 import { StopArtifactWorkUseCase } from './use-cases/stop-artifact-work.use-case.js';
@@ -98,6 +105,11 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     UserLanguageService,
     UserQuestionQueueService,
     AgentRoundService,
+    AgentToolsConfigService,
+    AgentToolSessionsService,
+    AgentToolCatalogService,
+    AgentToolRequestService,
+    RunAgentToolUseCase,
     DelegationValidatorService,
     TeamProfilesService,
     AnswerAgentQuestionsUseCase,
@@ -115,9 +127,11 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     { provide: IAgentConfigurationPort, useClass: AgentConfigurationService },
     { provide: IUserQuestionPort, useClass: UserQuestionService },
     { provide: ITurnRetryPort, useExisting: TurnRetryService },
+    { provide: IAgentToolsPort, useClass: AgentToolsService },
   ],
   exports: [
     IAgentTurnPort,
+    IAgentToolsPort,
     IAgentConfigurationPort,
     IUserQuestionPort,
     ITurnRetryPort,

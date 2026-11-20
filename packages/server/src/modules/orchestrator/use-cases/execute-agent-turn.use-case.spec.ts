@@ -32,6 +32,7 @@ import {
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { AgentRequestParserService } from '../services/agent-request-parser.service.js';
 import { AgentRoundService } from '../services/agent-round.service.js';
+import type { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
 import { ArtifactPromptFormatterService } from '../services/artifact-prompt-formatter.service.js';
 import { CeoBoardService } from '../services/ceo-board.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
@@ -43,6 +44,7 @@ import { QuestionParserService } from '../services/question-parser.service.js';
 import { TeamProfilesService } from '../services/team-profiles.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
+import { createServedToolSessions, credentialOf, TOOLS_URL } from '../testing/agent-tool-sessions.fixture.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 import { InMemorySessionStoreFake } from '../testing/in-memory-session-store.fake.js';
 import { questionListener } from '../testing/question-listener.fixture.js';
@@ -135,6 +137,7 @@ describe('ExecuteAgentTurnUseCase', () => {
   let artifacts: ArtifactsService;
   let artifactStore: InMemoryArtifactStoreFake;
   let agentSkills: StubAgentSkillsPort;
+  let toolSessions: AgentToolSessionsService;
 
   beforeEach(() => {
     retryPolicy = { baseDelayMs: 0, maxDelayMs: 0, maxTotalMs: 0 };
@@ -161,7 +164,8 @@ describe('ExecuteAgentTurnUseCase', () => {
   });
 
   const wire = (factory: StubAgentPortFactory) => {
-    runtime = new ConversationRuntimeService(factory, 60_000);
+    toolSessions = createServedToolSessions();
+    runtime = new ConversationRuntimeService(factory, toolSessions, 60_000);
     questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => questionTimeoutMs });
     turnRetry = new TurnRetryService();
     openWork = new OpenWorkService(openWorkStore);
@@ -173,7 +177,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const runAgentRequests = new RunAgentRequestsUseCase(artifacts, agentRegistry, formatter, agentSkills, new AgentRequestParserService());
     const questionParser = new QuestionParserService();
     const audioTranscription = new TranscribeAudioAttachmentsUseCase(speechToText, fileSystem);
-    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills, new AgentRequestParserService());
+    const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills, new AgentRequestParserService(), toolSessions);
     const agentQuestions = new AnswerAgentQuestionsUseCase(agentRegistry, artifacts, questionParser, questionQueue, openWork, audioTranscription);
     const delegationStatus = new DelegationStatusService(artifacts, agentRegistry);
     const limits = { getMaxSpecChars: () => maxSpecChars, getMaxResultChars: () => maxResultChars };
@@ -194,7 +198,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       audioTranscription,
       agentQuestions,
       runAgentRequests,
-      new RunDelegationUseCase(factory, agentRegistry, artifacts, runtime, questionQueue, questionParser, openWork, formatter, agentRound, agentQuestions, runAgentRequests, delegationStatus, limits),
+      new RunDelegationUseCase(factory, agentRegistry, artifacts, runtime, questionQueue, questionParser, openWork, formatter, agentRound, agentQuestions, runAgentRequests, delegationStatus, limits, toolSessions),
       new RetryCeoRoundUseCase(agentRegistry, turnRetry, { getPolicy: () => retryPolicy }),
     );
   };
@@ -1359,6 +1363,104 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toBe('raw failure');
+  });
+
+  describe('agent tools', () => {
+    const toolsOf = (port: StubAgentPort, call = 0) => toolSessions.find(credentialOf(port.mcpServersSent[call]));
+    /** Runs `inspect` when the port is prompted, while the session it opened is live. */
+    const onPrompt = (port: StubAgentPort, inspect: () => void) => {
+      const prompt = port.prompt.bind(port);
+      port.prompt = async function* (text: string) {
+        inspect();
+        yield* prompt(text);
+      };
+    };
+
+    afterEach(() => {
+      rs.unstubAllEnvs();
+    });
+
+    it('should attach the tools to the CEO session it creates, acting for the CEO, and keep them while its port lives', async () => {
+      stubAgentPort.supportsHttpMcp = true;
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.mcpServersSent).toEqual([[{ name: 'arc', url: TOOLS_URL, headers: { authorization: expect.stringMatching(/^Bearer [\w-]{43}$/) } }]]);
+      expect(toolsOf(stubAgentPort)?.requester).toEqual({ role: 'CEO', roleName: 'CEO', conversationId: 'conv-1' });
+    });
+
+    it('should attach the tools again to a session it loads', async () => {
+      await sessionStore.seed(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
+      stubAgentPort.supportsHttpMcp = true;
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'conv-old' }]);
+      expect(toolsOf(stubAgentPort)?.requester.role).toBe('CEO');
+    });
+
+    it('should open one tool session for both the failed load and the session created in its place', async () => {
+      await sessionStore.seed(buildSessionContext({ agentSessions: [{ role: 'CEO', agentId: 'stub', sessionId: 'conv-old', projectName: null, artifactId: null }] }));
+      stubAgentPort.supportsHttpMcp = true;
+      stubAgentPort.loadSessionResult = false;
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.mcpServersSent).toHaveLength(2);
+      expect(stubAgentPort.mcpServersSent[1]).toEqual(stubAgentPort.mcpServersSent[0]);
+    });
+
+    it('should attach nothing to an agent that does not take HTTP MCP servers', async () => {
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.mcpServersSent).toEqual([[]]);
+    });
+
+    it('should attach nothing with AGENT_MCP_ENABLED=false', async () => {
+      rs.stubEnv('AGENT_MCP_ENABLED', 'false');
+      stubAgentPort.supportsHttpMcp = true;
+      stubAgentPort.mockResponses = ['Hi.'];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.mcpServersSent).toEqual([[]]);
+    });
+
+    it('should send the skill activity of the CEO tools to the turn running now', async () => {
+      stubAgentPort.supportsHttpMcp = true;
+      stubAgentPort.mockResponses = ['Hi.', 'Again.'];
+      const first = rs.fn();
+      const second = rs.fn();
+      await useCase.execute(turnRequest({ onActivity: first }));
+      await useCase.execute(turnRequest({ onActivity: second }));
+      const activity = { kind: 'skill' as const, id: 's-1', action: 'read' as const, names: ['a'], status: 'completed' as const };
+
+      toolsOf(stubAgentPort)?.onSkill?.(activity);
+
+      expect(stubAgentPort.mcpServersSent).toHaveLength(1);
+      expect(first).not.toHaveBeenCalled();
+      expect(second).toHaveBeenCalledWith(activity, 'CEO');
+    });
+
+    it('should give a delegated agent tools that act for its delegation and close them when its work ends', async () => {
+      delegateStubPort.supportsHttpMcp = true;
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Implement login.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['Login implemented.'];
+      let whileWorking: ReturnType<typeof toolsOf>;
+      onPrompt(delegateStubPort, () => {
+        whileWorking = toolsOf(delegateStubPort);
+      });
+
+      await useCase.execute(turnRequest());
+
+      expect(whileWorking!.requester).toEqual({ role: 'DEVELOPER', roleName: 'DEVELOPER', conversationId: 'conv-1', delegationId: expect.any(String) });
+      expect(toolsOf(delegateStubPort)).toBeUndefined();
+    });
   });
 
   describe('agent session recovery', () => {

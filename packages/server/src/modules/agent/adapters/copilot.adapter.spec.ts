@@ -4,7 +4,9 @@ import { tmpdir } from 'node:os';
 import {
   acpHarness,
   acpSdkMockModule,
+  advertiseHttpMcp,
   createProcessRunnerMock,
+  expectHttpMcpServerAttached,
   resetAcpHarness,
   streamMockModule,
 } from '../testing/acp-adapter-test-harness.js';
@@ -46,6 +48,12 @@ function permissionsConfigOption(currentValue: string, values: readonly string[]
 }
 
 describe('CopilotAdapter', () => {
+  it('should attach an HTTP MCP server to new and loaded sessions when the CLI advertises it', async () => {
+    advertiseHttpMcp();
+
+    await expectHttpMcpServerAttached(buildAdapter().adapter);
+  });
+
   beforeEach(() => {
     resetAcpHarness();
   });

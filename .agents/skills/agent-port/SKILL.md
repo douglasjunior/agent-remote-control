@@ -20,8 +20,9 @@ description: >
 ## Reference files
 
 - [references/acp-adapters.md](references/acp-adapters.md): each per-CLI adapter — command line, environment
-  variables, session presets, published options, steering and resumption support, quota source and known CLI
-  behavior. Read it when changing, debugging or adding an adapter, or when touching `getQuota()` of one agent.
+  variables, session presets, published options, steering and resumption support, quota source, MCP server support
+  and known CLI behavior. Read it when changing, debugging or adding an adapter, when touching `getQuota()` of one
+  agent, or before attaching an MCP server to a session.
 - [references/cli-login.md](references/cli-login.md): `IAgentAuthPort` in full — status probes and login commands per
   agent, the Copilot pseudo-terminal, output parsing, code input, cancellation and timeouts. Read it when changing
   agent login or the login-state probes.
@@ -65,19 +66,20 @@ same ACP session and the same `cwd`.
 - `lastAgentMessage: string`: the last message of the turn as the agent wrote it, protocol tags included.
 - `currentSessionId?: string`: ID of the active ACP session. It is `undefined` without a session, including after a lost transport or a forced cancellation.
 - `supportsSteering: boolean`: whether the agent supports native steering while a turn is running.
+- `supportsHttpMcp: boolean`: whether the agent advertised Streamable HTTP MCP servers in `initialize` (`agentCapabilities.mcpCapabilities.http`); `false` before `connect()`.
 
 ### Methods
 
-- `connect(): Promise<void>`: initializes the transport, reads the capabilities (`agentCapabilities.loadSession` and `_meta.steering.supported`) and discovers the configuration options. It is idempotent. If the handshake fails, the subprocess is terminated and the state cleared, allowing a retry. When the subprocess cannot be spawned because its binary does not exist (`ENOENT`), the error is `The <agent> agent CLI was not found in PATH (<spawn error>).`
-- `createSession(cwd: string): Promise<void>`: creates a session (`session/new`) bound to the given directory.
-- `loadSession(cwd: string, sessionId: string): Promise<boolean>`: resumes an existing session via `session/load`. Returns `false`, without throwing, when the agent does not advertise `loadSession` or when the load fails; returns `true` with `currentSessionId` set.
+- `connect(): Promise<void>`: initializes the transport, reads the capabilities (`agentCapabilities.loadSession`, `agentCapabilities.mcpCapabilities.http` and `_meta.steering.supported`) and discovers the configuration options. It is idempotent. If the handshake fails, the subprocess is terminated and the state cleared, allowing a retry. When the subprocess cannot be spawned because its binary does not exist (`ENOENT`), the error is `The <agent> agent CLI was not found in PATH (<spawn error>).`
+- `createSession(cwd: string, options?: AgentSessionOptions): Promise<void>`: creates a session (`session/new`) bound to the given directory, with the MCP servers of `options.mcpServers` (`AgentMcpServer`: `name`, `url` and `headers` of a Streamable HTTP server) as ACP `mcpServers` of type `http`. An agent without `supportsHttpMcp` gets none of them: the adapter leaves them out with a debug log, never throws.
+- `loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean>`: resumes an existing session via `session/load`, with `options.mcpServers` as `createSession` sends them. A new agent process knows none of the servers of the session it loads, so the caller sends them on every load. Returns `false`, without throwing, when the agent does not advertise `loadSession` or when the load fails; returns `true` with `currentSessionId` set.
 - `prompt(text: string): AsyncGenerator<AgentUpdate>`: sends a turn and delivers the consolidated final block.
 - `sendSteeringPrompt(text: string): Promise<boolean>`: injects text into the running prompt. With steering, it sends `_session/steering` with `_meta.steering.idleBehavior = 'promptRequired'` and resolves `true` only with `outcome: 'injected'`; with no running prompt (`promptRequired`), no session or an error, it resolves `false` and the text is not delivered, so the caller decides what to do with it. Without steering, it fires `session/prompt` as a fallback and resolves `true`.
 - `cancel(): Promise<void>`: interrupts the running prompt through the cancellation ladder. With no running prompt it is a no-op, so a late cancellation does not abort the next turn.
 - `closeSession(): Promise<void>`: closes the active session, keeping the connection.
 - `disconnect(): Promise<void>`: discards the session, terminates the subprocess and clears the cached options.
 - `getAvailableModels(): AgentModelState | null`: published models and the active model. Grouped select options are flattened and each value listed once, the first occurrence kept, since some CLIs publish one value twice (Copilot's `auto`).
-- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: the model's effort levels, read in an isolated probe session.
+- `getAvailableEffortsForModel(modelId: string): Promise<AgentEffortState | null>`: the model's effort levels, read in an isolated probe session, which, like the discovery session of `connect()`, attaches no MCP server.
 - `setConfig(config: AgentConfig): Promise<void>`: applies model and/or effort to the active session and stores it as the preference for the next sessions.
 - `getLastRoundUsage(): Promise<AgentUsage | undefined>`: token usage of the last turn or via fallback.
 - `getQuota(): Promise<AgentQuota | undefined>`: the agent's usage limits (`groups` → `buckets` with `window`, `remainingFraction` from 0 to 1 and ISO `resetTime`). Resolves `undefined` when the agent does not expose a quota or the query fails; `AbstractAcpAdapter` returns `undefined` by default. Each adapter that overrides it reads its CLI's or service's own usage source and converts it in a private method of the adapter (sources per agent in [references/acp-adapters.md](references/acp-adapters.md)); OpenCode has no quota.

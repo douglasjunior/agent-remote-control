@@ -120,6 +120,9 @@ the lockfiles and temporary files beside them never count as boards. Specs use `
   a failure, nothing but requests) the results come back right away with a note that the response was not the final
   answer and asking for the whole final answer again, until a response carries none (at most 30 rounds); the CEO's draft is discarded first, and
   `AgentProtocolService.visibleReply` hides the tags. The content an agent reads never passes through the CEO.
+- **Tools**: an agent whose CLI takes an HTTP MCP server also makes each request as a tool of the same name during its
+  turn; the orchestrator reads the tool's arguments into the same request and carries it out with the same checks and
+  messages, one request per call. The tags keep working alongside.
 - **Access** (`ArtifactAccess` from `IAgentRegistryPort.getArtifactAccess`, declared per definition in
   `agent-definitions/constants/artifact-access.constant.ts`): `scope` `board` (CEO: lists everything, reads one
   artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner and Tech Lead:

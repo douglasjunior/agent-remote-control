@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import type { ActiveDelegation } from '../models/active-delegation.model.js';
+import { createServedToolSessions, credentialOf } from '../testing/agent-tool-sessions.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
+import type { AgentToolSessionsService } from './agent-tool-sessions.service.js';
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
 
 
@@ -13,6 +16,7 @@ describe('ConversationRuntimeService', () => {
   let ports: StubAgentPort[];
   let factory: StubAgentPortFactory;
   let runtime: ConversationRuntimeService;
+  let toolSessions: AgentToolSessionsService;
 
   const buildTrackedFactory = (): StubAgentPortFactory => new StubAgentPortFactory((agentId) => {
     const port = new StubAgentPort();
@@ -25,7 +29,8 @@ describe('ConversationRuntimeService', () => {
     rs.useFakeTimers();
     ports = [];
     factory = buildTrackedFactory();
-    runtime = new ConversationRuntimeService(factory, IDLE_MS);
+    toolSessions = createServedToolSessions();
+    runtime = new ConversationRuntimeService(factory, toolSessions, IDLE_MS);
   });
 
   afterEach(() => {
@@ -164,17 +169,72 @@ describe('ConversationRuntimeService', () => {
     expect(ports.every(port => port.closeSessionCalls === 0)).toBe(true);
   });
 
+  describe('tool sessions', () => {
+    const requester = { role: 'CEO', roleName: 'CEO', conversationId: 'a' };
+    const openTools = (port: StubAgentPort): string => {
+      port.supportsHttpMcp = true;
+      return credentialOf(toolSessions.open(port, { requester }));
+    };
+    const delegationOn = (agentPort: StubAgentPort): ActiveDelegation => ({
+      delegationId: 'd-1',
+      role: 'DEVELOPER',
+      roleName: 'Developer Agent',
+      agentInfo: { roleName: 'Developer Agent', agentName: 'stub' },
+      projectName: 'my-app',
+      artifactId: null,
+      summary: 'Summary',
+      taskSpec: 'Build it',
+      cwd: '/mock/my-app',
+      startedAt: Date.now(),
+      agentPort,
+      turn: { cancel: rs.fn() } as never,
+      steer: rs.fn(),
+      stop: rs.fn(),
+    });
+
+    it('should close the tool session of the CEO when the conversation expires', async () => {
+      await runtime.run('a', 'stub', async () => undefined);
+      const credential = openTools(ports[0]!);
+
+      await rs.advanceTimersByTimeAsync(IDLE_MS);
+
+      expect(toolSessions.find(credential)).toBeUndefined();
+    });
+
+    it('should close the tool session of the previous CEO port when the agent changes', async () => {
+      await runtime.run('a', 'first', async () => undefined);
+      const credential = openTools(ports[0]!);
+
+      await runtime.run('a', 'second', async () => undefined);
+
+      expect(toolSessions.find(credential)).toBeUndefined();
+    });
+
+    it('should close every tool session on application shutdown', async () => {
+      await runtime.run('a', 'stub', async () => undefined);
+      const ceo = openTools(ports[0]!);
+      const delegatePort = new StubAgentPort();
+      const delegate = openTools(delegatePort);
+      runtime.registerDelegation('a', delegationOn(delegatePort));
+
+      await runtime.onApplicationShutdown();
+
+      expect(toolSessions.find(ceo)).toBeUndefined();
+      expect(toolSessions.find(delegate)).toBeUndefined();
+    });
+  });
+
   it('should read the idle timeout from SESSION_IDLE_TIMEOUT_MS or default to 30 minutes', async () => {
     process.env.SESSION_IDLE_TIMEOUT_MS = '50';
     const created = ports;
     const trackingFactory = factory;
-    const envRuntime = new ConversationRuntimeService(trackingFactory);
+    const envRuntime = new ConversationRuntimeService(trackingFactory, toolSessions);
     await envRuntime.run('a', 'stub', async () => undefined);
     await rs.advanceTimersByTimeAsync(50);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
     delete process.env.SESSION_IDLE_TIMEOUT_MS;
-    const defaultRuntime = new ConversationRuntimeService(trackingFactory);
+    const defaultRuntime = new ConversationRuntimeService(trackingFactory, toolSessions);
     await defaultRuntime.run('b', 'stub', async () => undefined);
     await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
     expect(created[1]!.closeSessionCalls).toBe(0);
@@ -263,7 +323,7 @@ describe('ConversationRuntimeService', () => {
         }
         return buildTrackedFactory().create(agentId);
       });
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
 
       await expect(runtime.run('a', 'broken', async () => 'never')).rejects.toThrow('cannot create');
       await expect(runtime.run('a', 'fine', async port => port.agentName)).resolves.toBe('fine');
@@ -279,7 +339,7 @@ describe('ConversationRuntimeService', () => {
         ports.push(port);
         return port;
       });
-      runtime = new ConversationRuntimeService(factory, IDLE_MS);
+      runtime = new ConversationRuntimeService(factory, toolSessions, IDLE_MS);
     };
 
     const startRunningCeo = async (agentId = 'stub') => {
@@ -772,7 +832,7 @@ describe('ConversationRuntimeService', () => {
 
     it('should tear down every agent on shutdown even when disconnecting fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
       await runtime.run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
 
@@ -782,7 +842,7 @@ describe('ConversationRuntimeService', () => {
 
     it('should expire an idle session even when closing its agents fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
       await runtime.run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
       runtime.unregisterDelegation('unknown', runtime.getActiveDelegations('a')[0]!);
