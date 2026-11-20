@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { ConversationLogContextService } from '../services/conversation-log-context.service.js';
 
 import { FileConsoleLoggerAdapter } from './file-console-logger.adapter.js';
@@ -21,7 +22,7 @@ describe('FileConsoleLoggerAdapter', () => {
     rs.spyOn(process.stdout, 'write').mockReturnValue(true);
     rs.spyOn(process.stderr, 'write').mockReturnValue(true);
     directory = join(mkdtempSync(join(tmpdir(), 'arc-logs-')), 'logs');
-    logger = new FileConsoleLoggerAdapter(directory, 14, logContext);
+    logger = new FileConsoleLoggerAdapter(directory, new StubRuntimeSettings({ LOG_RETENTION_DAYS: 14 }), logContext);
   });
 
   afterEach(() => {
@@ -92,7 +93,7 @@ describe('FileConsoleLoggerAdapter', () => {
 
   it('should keep working when the file cannot be written', () => {
     writeFileSync(join(directory, '..', 'blocked'), '');
-    const blocked = new FileConsoleLoggerAdapter(join(directory, '..', 'blocked'), 14, logContext);
+    const blocked = new FileConsoleLoggerAdapter(join(directory, '..', 'blocked'), new StubRuntimeSettings(), logContext);
 
     expect(() => blocked.log('hello', 'Context')).not.toThrow();
     expect(process.stderr.write).toHaveBeenCalledWith(expect.stringContaining('log_file_write_failed'));

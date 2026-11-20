@@ -8,6 +8,7 @@ import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
 import type { InMemoryArtifactStoreFake } from '../../artifacts/testing/in-memory-artifact-store.fake.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { StubSpeechToText } from '../../speech-to-text/testing/stub-speech-to-text.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { AgentProfileSettings, AgentSettings } from '../models/agent-settings.model.js';
@@ -37,11 +38,14 @@ import { ArtifactPromptFormatterService } from '../services/artifact-prompt-form
 import { CeoBoardService } from '../services/ceo-board.service.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { DelegationDetectorService } from '../services/delegation-detector.service.js';
+import { DelegationLimitsConfigService } from '../services/delegation-limits-config.service.js';
 import { DelegationStatusService } from '../services/delegation-status.service.js';
 import { DelegationValidatorService } from '../services/delegation-validator.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
+import { QuestionTimeoutConfigService } from '../services/question-timeout-config.service.js';
 import { TeamProfilesService } from '../services/team-profiles.service.js';
+import { TurnRetryConfigService } from '../services/turn-retry-config.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { createServedToolSessions, credentialOf, TOOLS_URL } from '../testing/agent-tool-sessions.fixture.js';
@@ -165,8 +169,8 @@ describe('ExecuteAgentTurnUseCase', () => {
 
   const wire = (factory: StubAgentPortFactory) => {
     toolSessions = createServedToolSessions();
-    runtime = new ConversationRuntimeService(factory, toolSessions, 60_000);
-    questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => questionTimeoutMs });
+    runtime = new ConversationRuntimeService(factory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: 60_000 }));
+    questionQueue = new UserQuestionQueueService(new QuestionTimeoutConfigService(new StubRuntimeSettings(() => ({ QUESTION_TIMEOUT_MS: questionTimeoutMs }))));
     turnRetry = new TurnRetryService();
     openWork = new OpenWorkService(openWorkStore);
     speechToText = new StubSpeechToText();
@@ -180,7 +184,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     const agentRound = new AgentRoundService(factory, sessionStore, agentRegistry, workspacePort, settingsStore, preferencesStore, new AgentProtocolService(), openWork, agentSkills, new AgentRequestParserService(), toolSessions);
     const agentQuestions = new AnswerAgentQuestionsUseCase(agentRegistry, artifacts, questionParser, questionQueue, openWork, audioTranscription);
     const delegationStatus = new DelegationStatusService(artifacts, agentRegistry);
-    const limits = { getMaxSpecChars: () => maxSpecChars, getMaxResultChars: () => maxResultChars };
+    const limits = new DelegationLimitsConfigService(new StubRuntimeSettings(() => ({ DELEGATION_SPEC_MAX_CHARS: maxSpecChars, AGENT_RESULT_MAX_CHARS: maxResultChars })));
     useCase = new ExecuteAgentTurnUseCase(
       factory,
       agentRegistry,
@@ -199,7 +203,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       agentQuestions,
       runAgentRequests,
       new RunDelegationUseCase(factory, agentRegistry, artifacts, runtime, questionQueue, questionParser, openWork, formatter, agentRound, agentQuestions, runAgentRequests, delegationStatus, limits, toolSessions),
-      new RetryCeoRoundUseCase(agentRegistry, turnRetry, { getPolicy: () => retryPolicy }),
+      new RetryCeoRoundUseCase(agentRegistry, turnRetry, new TurnRetryConfigService(new StubRuntimeSettings(() => ({ TURN_RETRY_BASE_DELAY_MS: retryPolicy.baseDelayMs, TURN_RETRY_MAX_DELAY_MS: retryPolicy.maxDelayMs, TURN_RETRY_MAX_TOTAL_MS: retryPolicy.maxTotalMs })))),
     );
   };
 

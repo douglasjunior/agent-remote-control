@@ -37,7 +37,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 ## Origin check
 
 - The upgrade is accepted when the `Origin` host equals the request `Host`, or when the origin is listed
-  in `WEB_ALLOWED_ORIGINS` (comma-separated, compared without a trailing slash).
+  in the `WEB_ALLOWED_ORIGINS` setting (comma-separated, compared without a trailing slash), read on every upgrade, so
+  a change saved from the settings page applies to the next connection.
 - A missing or malformed `Origin` is rejected. Rejection answers `403` and destroys the socket.
 - When the web app reaches the server directly (no proxy), its origin goes in `WEB_ALLOWED_ORIGINS`.
 

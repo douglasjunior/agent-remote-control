@@ -5,11 +5,9 @@ import { availableParallelism, tmpdir } from 'node:os';
 import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { IProcessRunnerPort } from '../../agent/ports/process-runner.port.js';
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import type { ISpeechToTextPort, TranscribeOptions } from '../ports/speech-to-text.port.js';
 
-
-const DEFAULT_TIMEOUT_MS = 300_000;
-const DEFAULT_MODEL = 'small';
 
 /** CPU transcription with the whisper.cpp `whisper-cli` binary; ffmpeg converts any input to 16 kHz mono WAV. */
 @Injectable()
@@ -18,6 +16,7 @@ export class WhisperCppAdapter implements ISpeechToTextPort {
     @Inject(IProcessRunnerPort) private readonly processRunner: IProcessRunnerPort,
     @Inject(IFileSystemPort) private readonly fileSystem: IFileSystemPort,
     private readonly dataDirectory: DataDirectoryService,
+    @Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort,
   ) {}
 
   isEnabled(): boolean {
@@ -33,7 +32,7 @@ export class WhisperCppAdapter implements ISpeechToTextPort {
       await this.run(this.whisperBin(), [
         '-m', this.modelPath(),
         '-f', wavPath,
-        '-l', options?.language ?? process.env.STT_LANGUAGE?.trim() ?? 'auto',
+        '-l', options?.language ?? this.settings.get('STT_LANGUAGE'),
         '-t', String(this.threads()),
         '-nt', '-np',
         '-otxt', '-of', workBase,
@@ -53,26 +52,24 @@ export class WhisperCppAdapter implements ISpeechToTextPort {
   }
 
   private ffmpegBin(): string {
-    return process.env.STT_FFMPEG_BIN?.trim() || 'ffmpeg';
+    return this.settings.get('STT_FFMPEG_BIN');
   }
 
   private whisperBin(): string {
-    return process.env.STT_WHISPER_BIN?.trim() || 'whisper-cli';
+    return this.settings.get('STT_WHISPER_BIN');
   }
 
   private modelPath(): string {
-    const model = process.env.STT_MODEL?.trim() || DEFAULT_MODEL;
-    return process.env.STT_MODEL_PATH?.trim()
-      || this.fileSystem.joinPath(this.dataDirectory.resolve(), 'models', `ggml-${model}.bin`);
+    return this.settings.get('STT_MODEL_PATH')
+      || this.fileSystem.joinPath(this.dataDirectory.resolve(), 'models', `ggml-${this.settings.get('STT_MODEL')}.bin`);
   }
 
+  /** `0` uses every CPU. */
   private threads(): number {
-    const configured = Number(process.env.STT_THREADS);
-    return Number.isInteger(configured) && configured > 0 ? configured : availableParallelism();
+    return this.settings.get('STT_THREADS') || availableParallelism();
   }
 
   private timeoutMs(): number {
-    const configured = Number(process.env.STT_TIMEOUT_MS);
-    return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS;
+    return this.settings.get('STT_TIMEOUT_MS');
   }
 }

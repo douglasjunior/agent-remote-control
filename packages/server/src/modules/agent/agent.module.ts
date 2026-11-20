@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { SettingsModule } from '../settings/settings.module.js';
+
 import { AcpAgentPortFactoryAdapter } from './adapters/acp-agent-port-factory.adapter.js';
 import { CliAgentAuthAdapter } from './adapters/cli-agent-auth.adapter.js';
 import { NodeFileSystemAdapter } from './adapters/node-file-system.adapter.js';
@@ -12,6 +14,7 @@ import { AgentAuthConfigService } from './services/agent-auth-config.service.js'
 
 
 @Module({
+  imports: [SettingsModule],
   providers: [
     AgentAuthConfigService,
     {

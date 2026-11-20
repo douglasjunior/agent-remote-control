@@ -1,11 +1,12 @@
 import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { Duplex } from 'node:stream';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import type { IClientConnection, IClientTransportPort } from '../ports/client-transport.port.js';
 import { parseJsonMessage } from '../utils/json-message.util.js';
 
@@ -44,13 +45,15 @@ class WsClientConnection implements IClientConnection {
 export class WsClientTransportAdapter implements IClientTransportPort, OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WsClientTransportAdapter.name);
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
-  private readonly allowedOrigins = this.parseAllowedOrigins(process.env.WEB_ALLOWED_ORIGINS);
   private readonly listeners = new Set<(connection: IClientConnection) => void>();
   private readonly onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     this.handleUpgrade(request, socket, head);
   };
 
-  constructor(private readonly httpAdapterHost: HttpAdapterHost) {}
+  constructor(
+    private readonly httpAdapterHost: HttpAdapterHost,
+    @Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort,
+  ) {}
 
   onConnection(listener: (connection: IClientConnection) => void): () => void {
     this.listeners.add(listener);
@@ -90,8 +93,9 @@ export class WsClientTransportAdapter implements IClientTransportPort, OnModuleI
     });
   }
 
-  private parseAllowedOrigins(raw: string | undefined): ReadonlySet<string> {
-    const origins = (raw ?? '')
+  /** Read on every upgrade, so a changed `WEB_ALLOWED_ORIGINS` applies to the next connection. */
+  private allowedOrigins(): ReadonlySet<string> {
+    const origins = this.settings.get('WEB_ALLOWED_ORIGINS')
       .split(',')
       .map(origin => origin.trim().replace(/\/+$/, ''))
       .filter(origin => origin.length > 0);
@@ -103,7 +107,7 @@ export class WsClientTransportAdapter implements IClientTransportPort, OnModuleI
     if (!origin) {
       return false;
     }
-    if (this.allowedOrigins.has(origin)) {
+    if (this.allowedOrigins().has(origin)) {
       return true;
     }
     try {

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { RetryBudget } from '../models/retry-budget.model.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { RetryEvent, RetryMessage, RetryNote } from '../models/turn-retry.model.js';
 import type { IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { TurnRetryConfigService } from '../services/turn-retry-config.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
 import type { RetryPolicy } from '../utils/retry-delay.util.js';
 
@@ -29,7 +31,7 @@ describe('RetryCeoRoundUseCase', () => {
     policy = { baseDelayMs: 15 * SECOND, maxDelayMs: 2 * 60 * MINUTE, maxTotalMs: 5 * 60 * MINUTE };
     turnRetry = new TurnRetryService();
     const registry = { getDisplayName: (role: string) => `The ${role}` } as unknown as IAgentRegistryPort;
-    useCase = new RetryCeoRoundUseCase(registry, turnRetry, { getPolicy: () => policy });
+    useCase = new RetryCeoRoundUseCase(registry, turnRetry, new TurnRetryConfigService(new StubRuntimeSettings(() => ({ TURN_RETRY_BASE_DELAY_MS: policy.baseDelayMs, TURN_RETRY_MAX_DELAY_MS: policy.maxDelayMs, TURN_RETRY_MAX_TOTAL_MS: policy.maxTotalMs }))));
     events = [];
     drafts = [];
     prepared = [];

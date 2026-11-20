@@ -35,7 +35,9 @@ describe('AgentConfigurationService', () => {
     } as unknown as AgentProfilesService;
     language = {
       get: rs.fn().mockResolvedValue('Spanish'),
+      getStored: rs.fn().mockResolvedValue(undefined),
       set: rs.fn().mockResolvedValue('French'),
+      reset: rs.fn().mockResolvedValue(undefined),
     } as unknown as UserLanguageService;
     configure = { execute: rs.fn().mockResolvedValue({ ok: true }) } as unknown as ConfigureAgentProfilesUseCase;
     service = new AgentConfigurationService(capabilities, profiles, language, configure);
@@ -87,9 +89,13 @@ describe('AgentConfigurationService', () => {
     expect(configure.execute).toHaveBeenCalledWith({ conversationId: 'conv-1', agentId: 'stub' });
   });
 
-  it('should read and set the user language', async () => {
+  it('should read, set and reset the user language', async () => {
     await expect(service.getLanguage()).resolves.toBe('Spanish');
+    await expect(service.getStoredLanguage()).resolves.toBeUndefined();
     await expect(service.setLanguage('French')).resolves.toBe('French');
+    await service.resetLanguage();
+
     expect(language.set).toHaveBeenCalledWith('French');
+    expect(language.reset).toHaveBeenCalledTimes(1);
   });
 });

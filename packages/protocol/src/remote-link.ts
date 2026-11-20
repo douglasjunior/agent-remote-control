@@ -5,6 +5,8 @@ import { FINGERPRINT_PATTERN } from './fingerprint.js';
 /** The path of the hosted web app for one host: `/i/<instance id>`, the base of every route of the app. */
 export const REMOTE_INSTANCE_PATH_PREFIX = '/i/';
 const INSTANCE_ID_BYTES = 10;
+/** Hosts a signaling server may be reached at over plain HTTP: the host's own machine only, for development. */
+const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 
 /**
  * The public id of a host: the first 10 bytes of the SHA-256 fingerprint of its certificate, in hex. Registering an
@@ -32,4 +34,19 @@ export function buildRemoteLink(baseUrl: string, instanceId: string, fingerprint
 export function instanceIdFromPath(pathname: string): string | null {
   const match = /^\/i\/([0-9a-f]{20})(?:\/|$)/.exec(pathname);
   return match ? match[1] : null;
+}
+
+/**
+ * The base URL of a signaling server a host may trust with its remote link, without a trailing slash: an HTTPS URL,
+ * or an HTTP one of the host's own machine. Null for anything else, an empty text included.
+ */
+export function trustedSignalingBaseUrl(text: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(text.trim());
+  } catch {
+    return null;
+  }
+  const trusted = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname));
+  return trusted ? url.href.replace(/\/+$/, '') : null;
 }

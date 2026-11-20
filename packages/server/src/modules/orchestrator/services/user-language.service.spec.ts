@@ -16,10 +16,23 @@ describe('UserLanguageService', () => {
 
   it('should report English while no language is stored, and the stored one afterwards', async () => {
     await expect(service.get()).resolves.toBe('English');
+    await expect(service.getStored()).resolves.toBeUndefined();
 
     store.preferences = { language: 'Spanish' };
 
     await expect(service.get()).resolves.toBe('Spanish');
+    await expect(service.getStored()).resolves.toBe('Spanish');
+  });
+
+  it('should forget a stored language, and change nothing when none is stored', async () => {
+    await service.reset();
+    expect(store.updates).toEqual([]);
+
+    store.preferences = { language: 'Spanish' };
+    await service.reset();
+
+    expect(store.updates).toEqual([{ language: undefined }]);
+    await expect(service.getStored()).resolves.toBeUndefined();
   });
 
   it('should store the normalized language', async () => {

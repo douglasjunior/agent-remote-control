@@ -1,3 +1,5 @@
+import { userLanguageSchema } from '@agent-remote-control/protocol/settings';
+
 import { findCodeSpans, isInCode } from './protocol-tag.util.js';
 
 
@@ -7,16 +9,15 @@ export type ExtractedUserLanguage = {
   readonly text: string;
 };
 
-const MAX_LANGUAGE_LENGTH = 64;
 const USER_LANGUAGE_TAG = /<user_language>([\s\S]*?)<\/user_language>/gi;
 
-/** The language goes into every prompt, so anything that could break out of a prompt line is rejected. */
+/**
+ * The language goes into every prompt, so `userLanguageSchema` rejects anything that could break out of a prompt line;
+ * the settings page checks it with the same schema.
+ */
 export function normalizeUserLanguage(input: string): string | undefined {
-  const language = input.replace(/\s+/g, ' ').trim();
-  if (!language || language.length > MAX_LANGUAGE_LENGTH || /[<>[\]`]/.test(language)) {
-    return undefined;
-  }
-  return language;
+  const parsed = userLanguageSchema.safeParse(input);
+  return parsed.success ? parsed.data : undefined;
 }
 
 /** The first valid tag outside Markdown code wins; every tag outside code is removed from the text. */

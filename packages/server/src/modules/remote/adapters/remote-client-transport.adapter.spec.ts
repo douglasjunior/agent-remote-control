@@ -9,6 +9,8 @@ import { join } from 'node:path';
 
 import { AccessTokenService } from '../../access-token/services/access-token.service.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { SettingsChangeNotifierService } from '../../settings/services/settings-change-notifier.service.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { InMemoryLockedFilesFake } from '../../storage/testing/in-memory-locked-files.fake.js';
 import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 import type { IClientConnection } from '../../web/ports/client-transport.port.js';
@@ -38,8 +40,10 @@ describe('RemoteClientTransportAdapter', () => {
   let connections: IClientConnection[];
   let proof: string;
   let warn: ReturnType<typeof rs.spyOn>;
+  let settings: StubRuntimeSettings;
+  let settingsChanges: SettingsChangeNotifierService;
 
-  const create = (client = signaling) => new RemoteClientTransportAdapter(identity, accessToken, client, peers);
+  const create = (client = signaling) => new RemoteClientTransportAdapter(identity, accessToken, client, peers, settingsChanges);
   const request = (index = 1, withProof = proof, source = SOURCE) =>
     signaling.receive({ type: 'session.request', sessionId: sessionId(index), source, fingerprint: BROWSER_FINGERPRINT, proof: withProof });
   const wrongProof = () => `${proof[0] === 'A' ? 'B' : 'A'}${proof.slice(1)}`;
@@ -55,10 +59,10 @@ describe('RemoteClientTransportAdapter', () => {
     rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     dataDir = mkdtempSync(join(tmpdir(), 'remote-transport-'));
-    rs.stubEnv('REMOTE_ENABLED', 'true');
-    rs.stubEnv('REMOTE_URL', 'http://localhost:3100');
     rs.stubEnv('WEB_ACCESS_TOKEN', TOKEN);
-    identity = new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles());
+    settings = new StubRuntimeSettings({ REMOTE_ENABLED: true, REMOTE_URL: 'http://localhost:3100' });
+    settingsChanges = new SettingsChangeNotifierService();
+    identity = new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles(), settings);
     accessToken = new AccessTokenService(dataDirectoryAt(dataDir), new InMemoryLockedFilesFake());
     signaling = new FakeSignalingClient();
     peers = new FakeRemotePeerFactory();
@@ -92,7 +96,7 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it('should not reach the signaling server unless remote access is on', async () => {
-    rs.stubEnv('REMOTE_ENABLED', '');
+    settings.set('REMOTE_ENABLED', false);
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
 
@@ -100,11 +104,11 @@ describe('RemoteClientTransportAdapter', () => {
   });
 
   it.each([
-    ['missing', undefined],
+    ['missing', ''],
     ['plain HTTP to another machine', 'http://arc.example.com'],
   ])('should stay off with REMOTE_URL %s', async (_name, remoteUrl) => {
     const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
-    rs.stubEnv('REMOTE_URL', remoteUrl);
+    settings.set('REMOTE_URL', remoteUrl);
     const idle = new FakeSignalingClient();
     await create(idle).onApplicationBootstrap();
 
@@ -121,6 +125,55 @@ describe('RemoteClientTransportAdapter', () => {
 
     expect(idle.options).toBeUndefined();
     expect(error).toHaveBeenCalledWith(expect.stringContaining('Remote access off: the access token must hold at least 32 characters'));
+  });
+
+  describe('when its settings change', () => {
+    it('should reach the signaling server of the new REMOTE_URL', async () => {
+      settings.set('REMOTE_URL', 'https://arc.example.com');
+
+      settingsChanges.notify(['REMOTE_URL']);
+
+      await rs.waitFor(() => expect(signaling.starts).toBe(2));
+      expect(signaling.options!.url).toBe('wss://arc.example.com/signal/host');
+    });
+
+    it('should end the remote connections and stay off once turned off', async () => {
+      const peer = negotiate();
+      settings.set('REMOTE_ENABLED', false);
+
+      settingsChanges.notify(['REMOTE_ENABLED']);
+
+      await rs.waitFor(() => expect(signaling.stopped).toBe(true));
+      expect(signaling.starts).toBe(1);
+      expect(peer.closed).toBe(true);
+      expect(Logger.prototype.log).toHaveBeenCalledWith('Remote access stopped');
+    });
+
+    it('should leave remote access alone when another setting changes', async () => {
+      settingsChanges.notify(['QUESTION_TIMEOUT_MS']);
+      await transport.restart();
+
+      expect(signaling.starts).toBe(2);
+    });
+
+    it('should run two restarts one after the other, and the next one after a restart that failed', async () => {
+      const error = rs.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      rs.spyOn(identity, 'identity').mockRejectedValueOnce(new Error('disk gone'));
+
+      await expect(transport.restart()).rejects.toThrow('disk gone');
+      await Promise.all([transport.restart(), transport.restart()]);
+
+      expect(signaling.starts).toBe(3);
+      expect(error).not.toHaveBeenCalled();
+    });
+
+    it('should stop listening once destroyed', async () => {
+      transport.onModuleDestroy();
+      settingsChanges.notify(['REMOTE_URL']);
+      await Promise.resolve();
+
+      expect(signaling.starts).toBe(1);
+    });
   });
 
   it('should accept a session whose proof holds, before creating any peer', () => {

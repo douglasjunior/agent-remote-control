@@ -5,6 +5,7 @@ import { Events } from 'discord.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module.js';
 import { type AgentProviderInfo, IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
@@ -774,7 +775,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
       id: 'bot-e2e-id',
     };
-    const readLanguage = () => JSON.parse(readFileSync(join(dataDir, 'preferences.json'), 'utf-8')).language;
+    const readLanguage = async () => (await moduleFixture.get(DataSource).query('SELECT "language" FROM "preferences"'))[0]?.language;
 
     const sent: string[] = [];
     const thread = buildThread('thread-language', 'channel-general', sent);
@@ -783,7 +784,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(agent.prompts[0]).toContain('<user_language>language name in English</user_language>');
     expect(sent.some(message => message.startsWith('Olá!'))).toBe(true);
     expect(sent.join('\n')).not.toContain('<user_language>');
-    expect(readLanguage()).toBe('Brazilian Portuguese');
+    expect(await readLanguage()).toBe('Brazilian Portuguese');
 
     const interaction = {
       isChatInputCommand: rs.fn().mockReturnValue(true),
@@ -808,7 +809,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, 'Spanish'));
 
     expect(sent.at(-1)).toBe('✅ **Language saved**: Spanish');
-    expect(readLanguage()).toBe('Spanish');
+    expect(await readLanguage()).toBe('Spanish');
 
     await messageHandler.handleMessage(threadReply(thread, 'Hola'));
 
