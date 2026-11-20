@@ -17,7 +17,7 @@ const api = detail({
   parentId: 'F-1',
   status: 'in_progress',
   dependsOn: ['T-1', 'T-9'],
-  refinement: { business: 'done', technical: 'pending' },
+  refinement: { business: 'done', design: 'skipped', technical: 'pending' },
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd1', since: AT },
   branch: 'feat/login-api',
   pullRequests: [
@@ -122,6 +122,7 @@ describe('ArtifactPane', () => {
   it.each([
     ['Status', 'Approved', { status: 'approved' }],
     ['Business refinement', 'Not needed', { refinement: { business: 'skipped' } }],
+    ['Design refinement', 'Pending', { refinement: { design: 'pending' } }],
     ['Technical refinement', 'Done', { refinement: { technical: 'done' } }],
     ['Feature', 'Standalone task', { parentId: null }],
   ])('should change the %s', async (combobox, option, changes) => {

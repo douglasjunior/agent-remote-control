@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 
+import { REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { type DelegationStatusFlow, IAgentRegistryPort } from '../ports/agent-registry.port.js';
@@ -104,7 +105,7 @@ export class DelegationStatusService {
 
   /** Each refinement the task still owes, with the roles that settle it. */
   private owedRefinements(artifact: Artifact): string[] {
-    const owed = (['business', 'technical'] as const).filter(kind => artifact.refinement[kind] === 'pending');
+    const owed = REFINEMENT_KINDS.filter(kind => artifact.refinement[kind] === 'pending');
     return owed.map((kind) => {
       const roles = this.agentRegistry.listRoles().filter(role => this.agentRegistry.getDelegationContract(role).refines === kind);
       return `the ${kind} refinement${roles.length > 0 ? ` (${roles.join(' or ')})` : ''}`;

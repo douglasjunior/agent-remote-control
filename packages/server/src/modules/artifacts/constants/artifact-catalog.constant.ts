@@ -38,6 +38,7 @@ export const ARTIFACT_SECTIONS = [
   'glossary',
   'pending_decisions',
   'open_questions',
+  'ux_design',
   'technical_solution',
   'implementation_notes',
   'review_findings',
@@ -55,13 +56,27 @@ export const ARTIFACT_SECTION_TITLES: Readonly<Record<(typeof ARTIFACT_SECTIONS)
   glossary: 'Glossary',
   pending_decisions: 'Pending decisions',
   open_questions: 'Open questions',
+  ux_design: 'UX design',
   technical_solution: 'Technical solution',
   implementation_notes: 'Implementation notes',
   review_findings: 'Review findings',
   test_report: 'Test report',
 };
 
+/** The refinements an artifact may owe, in the order the work goes through them: what to build, how it looks, how to build it. */
+export const REFINEMENT_KINDS = ['business', 'design', 'technical'] as const;
+
 export const REFINEMENT_STATES = ['pending', 'done', 'skipped'] as const;
+
+/**
+ * The state of a kind an artifact has no stored state for. A kind added after the artifact was stored was never owed
+ * by it, so `design` reads as skipped; the others are owed.
+ */
+export const UNSTORED_REFINEMENT_STATES: Readonly<Record<(typeof REFINEMENT_KINDS)[number], (typeof REFINEMENT_STATES)[number]>> = {
+  business: 'pending',
+  design: 'skipped',
+  technical: 'pending',
+};
 
 export const PULL_REQUEST_STATES = ['open', 'merged', 'closed'] as const;
 

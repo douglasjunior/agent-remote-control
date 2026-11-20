@@ -449,7 +449,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
       '<skill_read name="artifact-board"/>',
-      '<artifact_create type="task" title="Login screen" project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Add login to my-app.</section></artifact_create>',
+      '<artifact_create type="task" title="Login screen" project="my-app" business_refinement="skipped" design_refinement="skipped" technical_refinement="skipped"><section name="overview">Add login to my-app.</section></artifact_create>',
       'On it.\n<artifact_update id="T-1" status="in_progress"/>\n<delegate role="DEVELOPER" summary="Doing the work" artifact="T-1">\nImplement T-1.\n</delegate>',
       '<artifact_update id="T-1" status="done"/>',
       'Login delivered.',

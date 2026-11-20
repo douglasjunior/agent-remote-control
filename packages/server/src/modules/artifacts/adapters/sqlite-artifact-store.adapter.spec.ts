@@ -80,6 +80,7 @@ describe('SqliteArtifactStoreAdapter', () => {
     expect(await storeOver(dataSource).list(CONVERSATION)).toEqual([artifact]);
     expect(await dataSource.query('SELECT "kind", "state" FROM "artifact_refinement" ORDER BY "kind"')).toEqual([
       { kind: 'business', state: 'skipped' },
+      { kind: 'design', state: 'done' },
       { kind: 'technical', state: 'pending' },
     ]);
     expect(await dataSource.query('SELECT "position", "depends_on_id" FROM "artifact_dependency" ORDER BY "position"')).toEqual([
@@ -189,7 +190,7 @@ describe('SqliteArtifactStoreAdapter', () => {
     expect((await store.list(CONVERSATION)).map(artifact => artifact.id)).toEqual(['T-1', 'T-2', 'T-3', 'T-4']);
   });
 
-  it('should read a refinement without a row as owed, and leave out an artifact whose rows are invalid', async () => {
+  it('should read a missing refinement as owed, a missing design as skipped, and leave out an artifact whose rows are invalid', async () => {
     const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     await store.transaction(CONVERSATION, (transaction) => {
       transaction.save(buildArtifact({ id: 'T-1' }));
@@ -198,12 +199,12 @@ describe('SqliteArtifactStoreAdapter', () => {
     });
     await dataSource.query('DELETE FROM "artifact_refinement" WHERE "artifact_id" = \'T-1\' AND "kind" = \'technical\'');
     await dataSource.query('DELETE FROM "artifact_refinement" WHERE "artifact_id" = \'T-3\'');
-    await dataSource.query('INSERT INTO "artifact_refinement" VALUES (?, \'T-1\', \'design\', \'done\')', [CONVERSATION]);
+    await dataSource.query('INSERT INTO "artifact_refinement" VALUES (?, \'T-1\', \'legal\', \'done\')', [CONVERSATION]);
     await dataSource.query('UPDATE "artifact" SET "status" = \'lost\' WHERE "id" = \'T-2\'');
 
     expect(await store.list(CONVERSATION)).toEqual([
-      buildArtifact({ id: 'T-1', refinement: { business: 'done', technical: 'pending' } }),
-      buildArtifact({ id: 'T-3', refinement: { business: 'pending', technical: 'pending' } }),
+      buildArtifact({ id: 'T-1', refinement: { business: 'done', design: 'done', technical: 'pending' } }),
+      buildArtifact({ id: 'T-3', refinement: { business: 'pending', design: 'skipped', technical: 'pending' } }),
     ]);
     expect(warn).toHaveBeenCalledWith(`artifacts_invalid_row: T-2 of ${CONVERSATION}`);
   });

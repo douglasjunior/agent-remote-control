@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { ACTIVE_TASK_STATUSES, ARTIFACT_PARENT_TYPES, CLOSED_ARTIFACT_STATUSES } from '../constants/artifact-catalog.constant.js';
+import { ACTIVE_TASK_STATUSES, ARTIFACT_PARENT_TYPES, CLOSED_ARTIFACT_STATUSES, REFINEMENT_KINDS } from '../constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactRefinement, ArtifactStatus, ArtifactType } from '../models/artifact.model.js';
 import type { ArtifactTransaction } from '../ports/artifact-store.port.js';
 
@@ -104,7 +104,7 @@ export class ArtifactRulesService {
   }
 
   owesRefinement(refinement: ArtifactRefinement): boolean {
-    return refinement.business === 'pending' || refinement.technical === 'pending';
+    return REFINEMENT_KINDS.some(kind => refinement[kind] === 'pending');
   }
 
   /**

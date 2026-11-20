@@ -3,7 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 import { SqliteTransactionService, type SqliteStatements } from '../../database/services/sqlite-transaction.service.js';
-import { ARTIFACT_ID_PREFIXES } from '../constants/artifact-catalog.constant.js';
+import { ARTIFACT_ID_PREFIXES, REFINEMENT_KINDS, UNSTORED_REFINEMENT_STATES } from '../constants/artifact-catalog.constant.js';
 import type { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import type { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
 import type { ArtifactHistoryEntity } from '../entities/artifact-history.entity.js';
@@ -320,10 +320,10 @@ export class SqliteArtifactStoreAdapter implements IArtifactStorePort {
     return groups;
   }
 
-  /** A kind without a row is owed. */
+  /** A kind without a row takes its `UNSTORED_REFINEMENT_STATES`; a row of an unknown kind is ignored. */
   private toRefinement(rows: readonly RefinementRow[]): Record<string, string> {
-    const states = Object.fromEntries(rows.map(row => [row.kind, row.state]));
-    return { business: states.business ?? 'pending', technical: states.technical ?? 'pending' };
+    const states = new Map(rows.map(row => [row.kind, row.state]));
+    return Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, states.get(kind) ?? UNSTORED_REFINEMENT_STATES[kind]]));
   }
 
   private toEvent(event: HistoryRow, changes: readonly ChangeRow[]): unknown {

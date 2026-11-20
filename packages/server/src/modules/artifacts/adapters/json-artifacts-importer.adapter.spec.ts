@@ -89,7 +89,15 @@ describe('JsonArtifactsImporterAdapter', () => {
 
     await importAll();
 
-    expect(await dataSource.query('SELECT COUNT(*) AS "count" FROM "artifact_refinement"')).toEqual([{ count: 600 }]);
+    expect(await dataSource.query('SELECT COUNT(*) AS "count" FROM "artifact_refinement"')).toEqual([{ count: 900 }]);
+  });
+
+  it('should import a board written before the design refinement with the design skipped', async () => {
+    seed(FILE, { artifacts: [{ ...buildArtifact({ id: 'T-1' }), refinement: { business: 'pending', technical: 'done' } }] });
+
+    await importAll();
+
+    expect((await store().find(CONVERSATION, 'T-1'))?.refinement).toEqual({ business: 'pending', design: 'skipped', technical: 'done' });
   });
 
   it('should leave out a board that does not parse and the other files of the folder', async () => {

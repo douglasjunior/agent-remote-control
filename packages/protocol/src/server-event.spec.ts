@@ -12,7 +12,7 @@ const artifact = {
   parentId: 'F-1',
   projectName: 'app',
   dependsOn: ['T-2'],
-  refinement: { business: 'done', technical: 'skipped' },
+  refinement: { business: 'done', design: 'pending', technical: 'skipped' },
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: at },
   branch: 'feat/login',
   pullRequests: [{ url: 'https://example.com/pr/1', state: 'open', addedAt: at }],

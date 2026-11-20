@@ -75,7 +75,7 @@ describe('board-requests skill', () => {
       const instructions = buildBoardRequestsBody(PRODUCT_OWNER_ARTIFACT_ACCESS, 'tags');
 
       expect(instructions).toContain('`<artifact_read id="F-1" tree="true"/>` reads a feature with the full content of every task under it.');
-      expect(instructions).toContain('<artifact_create type="task" title="Short title" project="my-app" parent="F-1" depends_on="T-1" ref="login-api" business_refinement="pending" technical_refinement="pending">');
+      expect(instructions).toContain('<artifact_create type="task" title="Short title" project="my-app" parent="F-1" depends_on="T-1" ref="login-api" business_refinement="pending" design_refinement="pending" technical_refinement="pending">');
       expect(instructions).toContain('A refinement left out is `pending`.');
       expect(instructions).toContain('Meanwhile you cannot change it; comment instead.');
       expect(instructions).toContain('When you were delegated an artifact, its content opens your prompt');

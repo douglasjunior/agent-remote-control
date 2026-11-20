@@ -3,6 +3,7 @@ import type {
   ARTIFACT_STATUSES,
   ARTIFACT_TYPES,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../constants/artifact-catalog.constant.js';
 
@@ -10,14 +11,12 @@ import type {
 export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 export type ArtifactStatus = (typeof ARTIFACT_STATUSES)[number];
 export type ArtifactSection = (typeof ARTIFACT_SECTIONS)[number];
+export type RefinementKind = (typeof REFINEMENT_KINDS)[number];
 export type RefinementState = (typeof REFINEMENT_STATES)[number];
 export type PullRequestState = (typeof PULL_REQUEST_STATES)[number];
 
-/** Whether the business (Product Owner) and technical (Tech Lead) refinements are still owed. */
-export type ArtifactRefinement = {
-  readonly business: RefinementState;
-  readonly technical: RefinementState;
-};
+/** Whether each refinement is still owed. */
+export type ArtifactRefinement = Readonly<Record<RefinementKind, RefinementState>>;
 
 /** The agent holding the artifact while its delegation runs; an artifact is with one agent at a time. */
 export type ArtifactAssignee = {

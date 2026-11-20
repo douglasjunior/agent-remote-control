@@ -118,24 +118,26 @@ describe('ArtifactRulesService', () => {
   });
 
   it.each([
-    [{ business: 'pending', technical: 'done' }, true],
-    [{ business: 'skipped', technical: 'pending' }, true],
-    [{ business: 'done', technical: 'skipped' }, false],
+    [{ business: 'pending', design: 'skipped', technical: 'done' }, true],
+    [{ business: 'skipped', design: 'skipped', technical: 'pending' }, true],
+    [{ business: 'done', design: 'pending', technical: 'done' }, true],
+    [{ business: 'done', design: 'skipped', technical: 'skipped' }, false],
   ] as const)('should tell whether %j owes a refinement', (refinement, expected) => {
     expect(rules.owesRefinement(refinement)).toBe(expected);
   });
 
   it.each([
-    ['a backlog task owing nothing', { status: 'backlog', refinement: { business: 'done', technical: 'skipped' } }, 'ready'],
-    ['a backlog task owing the business refinement', { status: 'backlog', refinement: { business: 'pending', technical: 'done' } }, undefined],
-    ['a backlog task owing the technical refinement', { status: 'backlog', refinement: { business: 'done', technical: 'pending' } }, undefined],
-    ['a ready task owing the business refinement', { status: 'ready', refinement: { business: 'pending', technical: 'done' } }, 'backlog'],
-    ['a ready task owing the technical refinement', { status: 'ready', refinement: { business: 'skipped', technical: 'pending' } }, 'backlog'],
-    ['a ready task owing nothing', { status: 'ready', refinement: { business: 'done', technical: 'skipped' } }, undefined],
-    ['a task in another status', { status: 'blocked', refinement: { business: 'done', technical: 'done' } }, undefined],
-    ['a parked task owing a refinement', { status: 'blocked', refinement: { business: 'pending', technical: 'done' } }, undefined],
-    ['a ready feature owing a refinement', { type: 'feature', status: 'ready', refinement: { business: 'pending', technical: 'done' } }, undefined],
-    ['a backlog feature owing nothing', { type: 'feature', status: 'backlog', refinement: { business: 'done', technical: 'done' } }, undefined],
+    ['a backlog task owing nothing', { status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'skipped' } }, 'ready'],
+    ['a backlog task owing the business refinement', { status: 'backlog', refinement: { business: 'pending', design: 'skipped', technical: 'done' } }, undefined],
+    ['a backlog task owing the technical refinement', { status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'pending' } }, undefined],
+    ['a ready task owing the business refinement', { status: 'ready', refinement: { business: 'pending', design: 'skipped', technical: 'done' } }, 'backlog'],
+    ['a ready task owing the technical refinement', { status: 'ready', refinement: { business: 'skipped', design: 'skipped', technical: 'pending' } }, 'backlog'],
+    ['a ready task owing the design refinement', { status: 'ready', refinement: { business: 'done', design: 'pending', technical: 'done' } }, 'backlog'],
+    ['a ready task owing nothing', { status: 'ready', refinement: { business: 'done', design: 'skipped', technical: 'skipped' } }, undefined],
+    ['a task in another status', { status: 'blocked', refinement: { business: 'done', design: 'skipped', technical: 'done' } }, undefined],
+    ['a parked task owing a refinement', { status: 'blocked', refinement: { business: 'pending', design: 'skipped', technical: 'done' } }, undefined],
+    ['a ready feature owing a refinement', { type: 'feature', status: 'ready', refinement: { business: 'pending', design: 'skipped', technical: 'done' } }, undefined],
+    ['a backlog feature owing nothing', { type: 'feature', status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'done' } }, undefined],
   ] as const)('should derive the status of %s', (_name, overrides, expected) => {
     expect(rules.derivedTaskStatus(buildArtifact({ id: 'T-1', ...overrides }))).toBe(expected);
   });

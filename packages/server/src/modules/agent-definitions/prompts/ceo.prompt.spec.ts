@@ -188,8 +188,8 @@ describe('ceo.prompt', () => {
     it('should add a new request to an open artifact that still allows it and otherwise create one', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('A new request joins an open artifact that still allows it (`backlog`, `ready`, or `changes_requested` for a correction)');
       expect(CEO_SYSTEM_PROMPT).toContain('Otherwise create a task, or a feature for an initiative');
-      expect(CEO_SYSTEM_PROMPT).toContain('`business_refinement="pending"`');
-      expect(CEO_SYSTEM_PROMPT).toContain('`technical_refinement="pending"`');
+      expect(CEO_SYSTEM_PROMPT).toContain('`business_refinement="pending"` when what to build or why is open, `design_refinement="pending"` when it has screens or interactions whose look and flow are not settled, `technical_refinement="pending"` when how to build it needs planning, every refinement `skipped`');
+      expect(CEO_SYSTEM_PROMPT).toContain('project="my-app" business_refinement="skipped" design_refinement="skipped" technical_refinement="skipped">');
     });
 
     it('should let the server move the statuses from the verdicts and keep the user\'s own', () => {

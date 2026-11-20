@@ -5,9 +5,16 @@ import {
   ARTIFACT_STATUSES,
   ARTIFACT_TYPES,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
-import type { ArtifactRefinement, PullRequestInput, SectionChange } from '../../artifacts/models/artifact.model.js';
+import type {
+  ArtifactRefinement,
+  PullRequestInput,
+  RefinementKind,
+  RefinementState,
+  SectionChange,
+} from '../../artifacts/models/artifact.model.js';
 import type { AgentToolName } from '../constants/agent-tools.constant.js';
 import type { AgentRequest } from '../models/agent-request.model.js';
 import { isNoneValue, normalizeArtifactId, readArtifactReference } from '../utils/artifact-reference.util.js';
@@ -136,11 +143,11 @@ export class AgentToolRequestService {
     const parent = this.optional(args, 'parent');
     const project = this.optional(args, 'project');
     const dependsOn = this.ids(args, 'depends_on');
-    const refinement: { business?: ArtifactRefinement['business']; technical?: ArtifactRefinement['technical'] } = {};
-    for (const side of ['business', 'technical'] as const) {
-      const state = this.optional(args, `${side}_refinement`)?.toLowerCase();
+    const refinement: Partial<Record<RefinementKind, RefinementState>> = {};
+    for (const kind of REFINEMENT_KINDS) {
+      const state = this.optional(args, `${kind}_refinement`)?.toLowerCase();
       if (state !== undefined) {
-        refinement[side] = this.oneOf(state, REFINEMENT_STATES, `${side}_refinement`);
+        refinement[kind] = this.oneOf(state, REFINEMENT_STATES, `${kind}_refinement`);
       }
     }
     return {

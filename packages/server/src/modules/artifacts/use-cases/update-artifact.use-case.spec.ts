@@ -39,7 +39,7 @@ describe('UpdateArtifactUseCase', () => {
       parentId: 'F-2',
       projectName: 'web',
       dependsOn: ['T-5'],
-      refinement: { business: 'done', technical: 'skipped' },
+      refinement: { business: 'done', design: 'pending', technical: 'skipped' },
       branch: ' feat/b ',
       sections: [
         { section: 'overview', content: 'More', mode: 'append' },
@@ -59,7 +59,7 @@ describe('UpdateArtifactUseCase', () => {
         parentId: 'F-2',
         projectName: 'web',
         dependsOn: ['T-5'],
-        refinement: { business: 'done', technical: 'skipped' },
+        refinement: { business: 'done', design: 'pending', technical: 'skipped' },
         branch: 'feat/b',
         sections: { overview: 'Why\n\nMore', technical_solution: 'Use JWT', glossary: 'Term' },
         pullRequests: [
@@ -70,7 +70,7 @@ describe('UpdateArtifactUseCase', () => {
     });
     const event = store.artifactsOf().get('T-1')!.history.at(-1);
     expect(event).toMatchObject({ kind: 'updated', actor: ceo, text: 'PR merged' });
-    expect(event?.summary).toBe('Status ready → in_review; updated title, parent, project, depends on, technical refinement, branch, pull request, overview, test cases, technical solution, glossary');
+    expect(event?.summary).toBe('Status ready → in_review; updated title, parent, project, depends on, design refinement, technical refinement, branch, pull request, overview, test cases, technical solution, glossary');
     expect(event?.changes).toEqual([
       { field: 'title', from: 'Artifact T-1', to: 'Login API' },
       { field: 'status', from: 'ready', to: 'in_review' },
@@ -78,6 +78,7 @@ describe('UpdateArtifactUseCase', () => {
       { field: 'project', from: 'shop', to: 'web' },
       { field: 'depends_on', from: 'T-2', to: 'T-5' },
       { field: 'business_refinement', from: 'done', to: 'done' },
+      { field: 'design_refinement', from: 'done', to: 'pending' },
       { field: 'technical_refinement', from: 'done', to: 'skipped' },
       { field: 'branch', from: 'feat/a', to: 'feat/b' },
       { field: 'pull_request', from: 'open', to: `${pr} (merged)` },
@@ -153,8 +154,8 @@ describe('UpdateArtifactUseCase', () => {
 });
 
 describe('UpdateArtifactUseCase derived statuses', () => {
-  const pending = { business: 'pending', technical: 'pending' } as const;
-  const businessPending = { business: 'pending', technical: 'done' } as const;
+  const pending = { business: 'pending', design: 'skipped', technical: 'pending' } as const;
+  const businessPending = { business: 'pending', design: 'skipped', technical: 'done' } as const;
 
   function setupBoard() {
     const harness = createArtifactHarness([
@@ -268,7 +269,7 @@ describe('UpdateArtifactUseCase derived statuses', () => {
   it('should not make a feature ready when its refinements are settled', async () => {
     const { useCase, store } = setupBoard();
 
-    await useCase.execute('c1', 'F-1', { refinement: { business: 'done', technical: 'skipped' } }, ceo);
+    await useCase.execute('c1', 'F-1', { refinement: { business: 'done', design: 'skipped', technical: 'skipped' } }, ceo);
 
     expect(statusOf(store, 'F-1')).toBe('backlog');
   });

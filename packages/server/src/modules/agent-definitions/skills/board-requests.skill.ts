@@ -3,6 +3,7 @@ import {
   ARTIFACT_SECTIONS,
   ARTIFACT_STATUSES,
   FROZEN_STATUS,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import { AGENT_TOOLS_SERVER_NAME } from '../../orchestrator/constants/agent-tools.constant.js';
@@ -20,7 +21,7 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
   project: 'project="<project-folder>"',
   depends_on: 'depends_on="T-1,T-2" (or "none")',
   status: `status="${ARTIFACT_STATUSES.filter(status => status !== FROZEN_STATUS).join('|')}" (${STATUS_RULE})`,
-  refinement: `business_refinement="${REFINEMENT_STATES.join('|')}" and technical_refinement="${REFINEMENT_STATES.join('|')}"`,
+  refinement: REFINEMENT_KINDS.map(kind => `${kind}_refinement="${REFINEMENT_STATES.join('|')}"`).join(', '),
   branch: 'branch="<branch name>" (or "none")',
   pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request',
 };
@@ -47,7 +48,7 @@ ${buildRules(access)}`;
 }
 
 function buildModel(): string {
-  return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the business and technical refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
+  return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the ${REFINEMENT_KINDS.join(', ')} refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
 ${ARTIFACT_SECTIONS.map(section => `- \`${section}\`: ${ARTIFACT_SECTION_TITLES[section]}`).join('\n')}`;
 }
 
@@ -76,7 +77,7 @@ function buildRequests(access: ArtifactAccess): string {
 
 function buildCreateRequest(access: ArtifactAccess): string {
   const refinement = access.fields.includes('refinement')
-    ? ` business_refinement="pending" technical_refinement="pending"`
+    ? REFINEMENT_KINDS.map(kind => ` ${kind}_refinement="pending"`).join('')
     : '';
   return `- Create an artifact, with the sections you write as children:
   \`\`\`text

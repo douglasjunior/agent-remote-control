@@ -36,17 +36,23 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   dependencies must fit the new place. Listings show the dependencies still open as `waiting on`.
 - **Fields**: `title`, `status` (`backlog`, `ready`, `in_progress`, `in_review`, `changes_requested`, `approved`,
   `in_testing`, `tested`, `done`, `blocked`, `frozen`, `cancelled`; `done` and `cancelled` are closed; `tested` is a task
-  that passed its practical test and waits for the merge), `refinement.business` / `refinement.technical`
-  (`pending`, `done`, `skipped`), `dependsOn`, `assignee`, `branch`,
+  that passed its practical test and waits for the merge), `refinement` (one state per kind of `REFINEMENT_KINDS`:
+  `business`, `design`, `technical`, each `pending`, `done` or `skipped`), `dependsOn`, `assignee`, `branch`,
   `pullRequests` (`url`, `title?`, `state` `open|merged|closed`, upserted by URL), `sections` and `history`.
 - **Sections** (`ARTIFACT_SECTIONS`, titles in `ARTIFACT_SECTION_TITLES`): `overview`, `user_stories`, `scope`,
   `business_rules`, `flows`, `acceptance_criteria`, `test_cases`, `glossary`, `pending_decisions`,
-  `open_questions`, `technical_solution`, `implementation_notes`, `review_findings`, `test_report`. A section is Markdown; an
-  empty one is absent. `review_findings` holds the verdict and findings of the last review, whether of a pull request or of
+  `open_questions`, `ux_design`, `technical_solution`, `implementation_notes`, `review_findings`, `test_report`. A section is Markdown; an
+  empty one is absent. `ux_design` holds the design of the work: the prototype branch and how to open it, the screens,
+  states and design decisions. `review_findings` holds the verdict and findings of the last review, whether of a pull request or of
   the task's branch reviewed locally, and `test_report` the verdict and results of the last practical test (QA), so whoever
   fixes the task finds them there.
 - **Creation**: a task that owes no refinement starts `ready` (a simple task straight to development); anything
   else starts in the `backlog`. A refinement left out is `pending`.
+- **Refinement kinds**: every rule, request attribute, tool property, prompt and channel iterates `REFINEMENT_KINDS`
+  (the protocol exports the same list, checked by `artifact-catalog.constant.spec.ts`), so a new kind is added there, in
+  `UNSTORED_REFINEMENT_STATES` and in the protocol only. A kind an artifact has no stored state for takes its
+  `UNSTORED_REFINEMENT_STATES` entry: `business` and `technical` are owed (`pending`), and `design`, added after boards
+  existed, reads `skipped`.
 - **Derived statuses** (`ArtifactRulesService.derivedTaskStatus` and `derivedFeatureStatus`, applied by
   `ArtifactDerivationService` inside the transaction of the change, as `system` history events that say why, and
   published like any saved artifact):
@@ -108,9 +114,10 @@ Specs use `InMemoryArtifactStoreFake`, `buildArtifact`, `buildPopulatedArtifact`
 
 - **Requests** go inside the final response and are read by `AgentRequestParserService`, ignoring Markdown code
   and the body of `<delegate>` tags: `<artifact_list type status parent project/>`, `<artifact_read id="T-1,T-2" tree="true"/>`,
-  `<artifact_create type title project parent depends_on ref business_refinement technical_refinement>` with
+  `<artifact_create type title project parent depends_on ref <kind>_refinement>` with
   `<section name>` children, `<artifact_update id title status parent project depends_on branch note
-  business_refinement technical_refinement>` with `<section name mode="replace|append">` and
+  <kind>_refinement>` (one `<kind>_refinement` attribute per refinement kind: `business_refinement`,
+  `design_refinement`, `technical_refinement`) with `<section name mode="replace|append">` and
   `<pull_request url title state/>` children, and `<artifact_comment id>text</artifact_comment>`. `none` clears
   `parent`, `depends_on` and `branch`; `ref` names an artifact created earlier in the same response.
 - **Round trip**: `ExecuteAgentTurnUseCase` resolves the requests of every CEO and delegate response before anything

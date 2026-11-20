@@ -16,7 +16,7 @@ export function summary(overrides: Partial<ArtifactSummary> & Pick<ArtifactSumma
     parentId: null,
     projectName: 'app',
     dependsOn: [],
-    refinement: { business: 'pending', technical: 'pending' },
+    refinement: { business: 'pending', design: 'skipped', technical: 'pending' },
     assignee: null,
     branch: null,
     pullRequests: [],

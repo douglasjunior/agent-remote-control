@@ -69,7 +69,7 @@ describe('AgentRequestParserService', () => {
         '<section name="overview">Why we sell online.</section>',
         '<section name="glossary">Cart</section>',
         '</artifact_create>',
-        '<artifact_create type="task" title="Cart" parent="checkout" depends_on="t-1,api" technical_refinement="skipped"/>',
+        '<artifact_create type="task" title="Cart" parent="checkout" depends_on="t-1,api" design_refinement="Pending" technical_refinement="skipped"/>',
       ].join('\n');
 
       expect(requestsOf(response)).toEqual([
@@ -85,7 +85,7 @@ describe('AgentRequestParserService', () => {
             { section: 'glossary', content: 'Cart', mode: 'replace' },
           ],
         },
-        { kind: 'create', type: 'task', title: 'Cart', parent: 'checkout', dependsOn: ['T-1', 'api'], refinement: { technical: 'skipped' }, sections: [] },
+        { kind: 'create', type: 'task', title: 'Cart', parent: 'checkout', dependsOn: ['T-1', 'api'], refinement: { design: 'pending', technical: 'skipped' }, sections: [] },
       ]);
     });
 
@@ -98,7 +98,7 @@ describe('AgentRequestParserService', () => {
       ['<artifact_create type="task"/>', '<artifact_create> needs a title attribute.'],
       ['<artifact_create type="task" title="x" business_refinement="maybe"/>', 'The business_refinement attribute is one of: pending, done, skipped.'],
       ['<artifact_create type="task" title="x">loose text</artifact_create>', 'Text outside a <section> is not kept. Put each piece of content inside the <section name="..."> it belongs to, and set fields such as branch, status or title as attributes of the tag itself.'],
-      ['<artifact_create type="task" title="x"><section name="notes">x</section></artifact_create>', 'Every <section> needs a name among: overview, user_stories, scope, business_rules, flows, acceptance_criteria, test_cases, glossary, pending_decisions, open_questions, technical_solution, implementation_notes, review_findings, test_report.'],
+      ['<artifact_create type="task" title="x"><section name="notes">x</section></artifact_create>', 'Every <section> needs a name among: overview, user_stories, scope, business_rules, flows, acceptance_criteria, test_cases, glossary, pending_decisions, open_questions, ux_design, technical_solution, implementation_notes, review_findings, test_report.'],
       ['<artifact_create type="task" title="x"><section name="scope" mode="append">x</section></artifact_create>', 'Unknown attribute "mode" in <section name="scope" mode="append">. Use only "name".'],
       ['<artifact_create type="task" title="x"><section name="scope">x</artifact_create>', 'Every <section> must be closed with </section> before the next <section> starts.'],
       ['<artifact_create type="task" title="x"></section></artifact_create>', 'Found </section> without its opening <section> tag.'],

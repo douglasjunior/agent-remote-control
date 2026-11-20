@@ -35,6 +35,7 @@ describe('ArtifactCreateDialog', () => {
     expect(create).toBeDisabled();
     await pick(user, 'Project', 'site');
     await user.type(within(dialog).getByLabelText('Overview'), 'Pay online');
+    expect(within(dialog).getByRole('switch', { name: /Design refinement/ })).not.toBeChecked();
     await user.click(within(dialog).getByRole('switch', { name: /Business refinement/ }));
     expect(within(dialog).queryByText('A simple item: it goes straight to the Developer.')).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('switch', { name: /Technical refinement/ }));
@@ -47,8 +48,7 @@ describe('ArtifactCreateDialog', () => {
       projectName: 'site',
       dependsOn: [],
       sections: { overview: 'Pay online' },
-      businessRefinement: false,
-      technicalRefinement: false,
+      refinements: { business: false, design: false, technical: false },
     });
     await answer(app, 'artifact.create', { ok: true, id: 'F-2' });
     expect(await screen.findByText('F-2 created')).toBeInTheDocument();
@@ -72,14 +72,14 @@ describe('ArtifactCreateDialog', () => {
     await pick(user, 'Add a dependency', 'T-5 · Login form');
 
     await user.type(within(dialog).getByLabelText('Title'), 'Login API');
+    await user.click(within(dialog).getByRole('switch', { name: /Design refinement/ }));
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
     expect(lastSent(app, 'artifact.create').artifact).toEqual({
       type: 'task',
       title: 'Login API',
       parentId: 'F-1',
       dependsOn: ['T-5'],
-      businessRefinement: true,
-      technicalRefinement: true,
+      refinements: { business: true, design: true, technical: true },
     });
     await answer(app, 'artifact.create', { ok: false, error: 'Unknown feature' });
     expect(await screen.findByText('Unknown feature')).toBeInTheDocument();

@@ -53,7 +53,7 @@ describe('ArtifactsProvider and useBoard', () => {
     const { connection, board } = mount();
     let created!: ReturnType<Board['createArtifact']>;
     act(() => {
-      created = board().createArtifact({ type: 'task', title: 'A', projectName: 'app', businessRefinement: false, technicalRefinement: false });
+      created = board().createArtifact({ type: 'task', title: 'A', projectName: 'app', refinements: {} });
     });
     expect(connection.sent.at(-1)).toMatchObject({ type: 'artifact.create', conversationId: 'c1', artifact: { title: 'A' } });
     act(() => connection.emitEvent({ type: 'artifact.result', conversationId: 'c1', requestId: 'someone-else', ok: true, id: 'T-9' }));

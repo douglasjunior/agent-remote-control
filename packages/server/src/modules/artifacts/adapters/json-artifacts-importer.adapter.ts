@@ -1,4 +1,4 @@
-import { artifactDetailSchema } from '@agent-remote-control/protocol/artifact';
+import { artifactDetailSchema, refinementKindSchema, refinementStateSchema } from '@agent-remote-control/protocol/artifact';
 import { Injectable } from '@nestjs/common';
 import { basename } from 'node:path';
 import type { EntityManager } from 'typeorm';
@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import type { ILegacyJsonImporterPort, LegacyJsonImport } from '../../database/ports/legacy-json-importer.port.js';
 import { LegacyJsonFilesService } from '../../database/services/legacy-json-files.service.js';
+import { REFINEMENT_KINDS, UNSTORED_REFINEMENT_STATES } from '../constants/artifact-catalog.constant.js';
 import { ArtifactCounterEntity } from '../entities/artifact-counter.entity.js';
 import { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
@@ -14,7 +15,7 @@ import { ArtifactPullRequestEntity } from '../entities/artifact-pull-request.ent
 import { ArtifactRefinementEntity } from '../entities/artifact-refinement.entity.js';
 import { ArtifactSectionEntity } from '../entities/artifact-section.entity.js';
 import { ArtifactEntity } from '../entities/artifact.entity.js';
-import type { Artifact } from '../models/artifact.model.js';
+import type { Artifact, ArtifactRefinement } from '../models/artifact.model.js';
 import { toArtifactRows, type ArtifactRows } from '../utils/artifact-rows.util.js';
 
 
@@ -22,9 +23,14 @@ const ARTIFACTS_DIRECTORY = 'artifacts';
 const FILE_EXTENSION = '.json';
 const ROWS_PER_INSERT = 500;
 
+/** A board file was written before some refinement kinds existed, and a kind it lacks takes its unstored state. */
+const storedRefinementSchema = z
+  .partialRecord(refinementKindSchema, refinementStateSchema)
+  .transform(stored => Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, stored[kind] ?? UNSTORED_REFINEMENT_STATES[kind]])) as ArtifactRefinement);
+
 const boardFileSchema = z.object({
   counters: z.record(z.string(), z.number().int().min(0)).default({}),
-  artifacts: z.array(artifactDetailSchema),
+  artifacts: z.array(artifactDetailSchema.extend({ refinement: storedRefinementSchema })),
 });
 
 type ImportedBoard = {

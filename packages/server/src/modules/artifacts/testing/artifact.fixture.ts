@@ -11,7 +11,7 @@ export function buildArtifact(overrides: Partial<Artifact> & Pick<Artifact, 'id'
     parentId: null,
     projectName: 'shop',
     dependsOn: [],
-    refinement: { business: 'done', technical: 'done' },
+    refinement: { business: 'done', design: 'done', technical: 'done' },
     assignee: null,
     branch: null,
     pullRequests: [],
@@ -29,7 +29,7 @@ export function buildPopulatedArtifact(overrides: Partial<Artifact> & Pick<Artif
     status: 'tested',
     parentId: 'F-1',
     dependsOn: ['T-7', 'T-3'],
-    refinement: { business: 'skipped', technical: 'pending' },
+    refinement: { business: 'skipped', design: 'done', technical: 'pending' },
     assignee: { role: 'QA', roleName: 'QA Engineer', delegationId: 'd-1', since: '2026-01-02T00:00:00.000Z' },
     branch: 'feat/t-1',
     pullRequests: [

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES } from '../../artifacts/constants/artifact-catalog.constant.js';
+import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor, ArtifactHistoryEvent, ArtifactSection } from '../../artifacts/models/artifact.model.js';
 import { lastStatusChange } from '../../artifacts/utils/artifact-status.util.js';
 
@@ -18,7 +18,7 @@ export class ArtifactPromptFormatterService {
       ...(artifact.parentId ? [`parent: ${artifact.parentId}`] : []),
       ...(artifact.dependsOn.length > 0 ? [`depends on: ${artifact.dependsOn.map(id => `${id} (${this.find(all, id)?.status ?? 'deleted'})`).join(', ')}`] : []),
       ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
-      `refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`,
+      `refinement: ${this.refinementStates(artifact)}`,
       ...(artifact.assignee ? [`with: ${artifact.assignee.role}`] : []),
       ...(artifact.pullRequests.length > 0 ? [`pull requests: ${artifact.pullRequests.length}`] : []),
     ];
@@ -137,7 +137,11 @@ export class ArtifactPromptFormatterService {
   }
 
   private refinementFact(artifact: Artifact): string {
-    return `- Refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`;
+    return `- Refinement: ${this.refinementStates(artifact)}`;
+  }
+
+  private refinementStates(artifact: Artifact): string {
+    return REFINEMENT_KINDS.map(kind => `${kind} ${artifact.refinement[kind]}`).join(', ');
   }
 
   private holderFact(artifact: Artifact): string {
@@ -178,7 +182,7 @@ export class ArtifactPromptFormatterService {
   }
 
   private backlogEntry(task: Artifact): string {
-    const owed = (['business', 'technical'] as const).filter(kind => task.refinement[kind] === 'pending');
+    const owed = REFINEMENT_KINDS.filter(kind => task.refinement[kind] === 'pending');
     const notes = [...(task.parentId ? [task.parentId] : []), ...(owed.length > 0 ? [`owes ${owed.join(' and ')}`] : [])];
     return notes.length > 0 ? `${task.id} (${notes.join(', ')})` : task.id;
   }

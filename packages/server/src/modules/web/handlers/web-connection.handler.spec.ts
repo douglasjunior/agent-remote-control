@@ -401,7 +401,7 @@ describe('WebConnectionHandler', () => {
       harness.store.seed('web-1');
       const command = { conversationId: 'web-1', requestId: 'r' };
 
-      connection.receive({ type: 'artifact.create', ...command, artifact: { type: 'task', title: 'Login', projectName: 'shop', businessRefinement: false, technicalRefinement: true } });
+      connection.receive({ type: 'artifact.create', ...command, artifact: { type: 'task', title: 'Login', projectName: 'shop', refinements: { technical: true } } });
       await settle();
       connection.receive({ type: 'artifacts.list', conversationId: 'web-1' });
       await settle();
@@ -418,7 +418,7 @@ describe('WebConnectionHandler', () => {
 
       const events = sent();
       expect(events).toContainEqual({ type: 'artifact.result', conversationId: 'web-1', requestId: 'r', ok: true, id: 'T-1' });
-      expect(events).toContainEqual({ type: 'artifacts.list', conversationId: 'web-1', artifacts: [expect.objectContaining({ id: 'T-1', status: 'backlog', refinement: { business: 'skipped', technical: 'pending' } })] });
+      expect(events).toContainEqual({ type: 'artifacts.list', conversationId: 'web-1', artifacts: [expect.objectContaining({ id: 'T-1', status: 'backlog', refinement: { business: 'skipped', design: 'skipped', technical: 'pending' } })] });
       expect(events).toContainEqual({ type: 'artifact.detail', conversationId: 'web-1', artifact: expect.objectContaining({ title: 'Sign in', sections: { overview: 'Why' } }) });
       expect(events.at(-1)).toEqual({ type: 'error', message: 'Unknown artifact "T-1"', conversationId: 'web-1' });
     });

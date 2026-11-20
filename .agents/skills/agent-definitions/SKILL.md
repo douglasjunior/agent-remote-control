@@ -75,7 +75,7 @@ export type AgentRole =
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
   - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
   - `userInitiatedOnly: true` (IT_SUPPORT): the CEO delegates to the agent only in a turn that answers the user's message or answers, after suggesting it to the user with a `<question>`;
-  - `refines`: `'business'` (PRODUCT_OWNER) or `'technical'` (TECH_LEAD), the refinement the role settles on the artifacts it is delegated;
+  - `refines`: a `RefinementKind` of the artifacts module's `REFINEMENT_KINDS`, the refinement the role settles on the artifacts it is delegated: `'business'` (PRODUCT_OWNER) or `'technical'` (TECH_LEAD);
   - `statusFlow`: how a delegation moves the status of its task (below); absent, a delegation leaves the status alone;
 - `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
 - `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills;

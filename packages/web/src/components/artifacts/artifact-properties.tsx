@@ -1,11 +1,11 @@
 import {
-  ARTIFACT_STATUSES, type ArtifactDetail, type ArtifactSummary, type ArtifactUpdateInput, type PullRequestState, type RefinementState,
+  ARTIFACT_STATUSES, REFINEMENT_KINDS, type ArtifactDetail, type ArtifactSummary, type ArtifactUpdateInput, type PullRequestState, type RefinementState,
 } from '@agent-remote-control/protocol/artifact';
 import { FolderGit2, GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed, X, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
-import { REFINEMENT_LABELS, STATUS_LABELS } from '../../artifacts/artifact-labels.js';
+import { REFINEMENT_KIND_LABELS, REFINEMENT_LABELS, STATUS_LABELS } from '../../artifacts/artifact-labels.js';
 import { artifactPath } from '../../artifacts/artifact-paths.js';
 import { dependencyCandidates, dependentsOf, parentCandidates } from '../../artifacts/artifact-tree.js';
 import { formatRelativeTime } from '../../lib/format.js';
@@ -83,24 +83,19 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
       </Property>
       <Property label="Refinement">
         <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
-          <span className="text-[13px] text-muted-foreground">Business</span>
-          <ChoiceSelect
-            label="Business refinement"
-            size="sm"
-            value={artifact.refinement.business}
-            choices={REFINEMENT_CHOICES}
-            onChange={business => onChange({ refinement: { business: business as RefinementState } })}
-            className="w-full"
-          />
-          <span className="text-[13px] text-muted-foreground">Technical</span>
-          <ChoiceSelect
-            label="Technical refinement"
-            size="sm"
-            value={artifact.refinement.technical}
-            choices={REFINEMENT_CHOICES}
-            onChange={technical => onChange({ refinement: { technical: technical as RefinementState } })}
-            className="w-full"
-          />
+          {REFINEMENT_KINDS.map(kind => (
+            <Fragment key={kind}>
+              <span className="text-[13px] text-muted-foreground">{REFINEMENT_KIND_LABELS[kind]}</span>
+              <ChoiceSelect
+                label={`${REFINEMENT_KIND_LABELS[kind]} refinement`}
+                size="sm"
+                value={artifact.refinement[kind]}
+                choices={REFINEMENT_CHOICES}
+                onChange={state => onChange({ refinement: { [kind]: state as RefinementState } })}
+                className="w-full"
+              />
+            </Fragment>
+          ))}
         </div>
       </Property>
       <Property label="Project">

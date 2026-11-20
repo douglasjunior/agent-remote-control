@@ -1,3 +1,5 @@
+import { REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import type { RefinementKind } from '../../artifacts/models/artifact.model.js';
 import { AGENT_TOOLS_SERVER_NAME } from '../../orchestrator/constants/agent-tools.constant.js';
 import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
@@ -10,7 +12,7 @@ import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 const BOARD_REQUESTS: Readonly<Record<AgentInterface, string>> = {
   tags: `- Requests, written as plain text in your response:
   - \`<artifact_list/>\` lists the open artifacts, and \`<artifact_read id="T-1"/>\` reads one in full.
-  - \`<artifact_create type="task" title="..." project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Markdown</section></artifact_create>\` creates one.
+  - \`<artifact_create type="task" title="..." project="my-app"${REFINEMENT_KINDS.map(kind => ` ${kind}_refinement="skipped"`).join('')}><section name="overview">Markdown</section></artifact_create>\` creates one.
   - \`<artifact_update id="T-1" status="done"/>\` changes its status, and \`<artifact_comment id="T-1">text</artifact_comment>\` comments on it.
   They are carried out before the rest of your response. Next to a \`<delegate>\` or a \`<question>\` their results open your next prompt. A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user. The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute, dependencies and features.`,
   tools: `- You work on the board with the tools of the \`${AGENT_TOOLS_SERVER_NAME}\` MCP server, which you call while you work, before your response:
@@ -18,6 +20,12 @@ const BOARD_REQUESTS: Readonly<Record<AgentInterface, string>> = {
   - \`artifact_create\` creates one and returns its id.
   - \`artifact_update\` changes its status, refinements, dependencies or \`overview\`, and \`artifact_comment\` comments on it.
   Each call answers at once: you can create a task and delegate it in the same response, and a refused call tells you why before you go on. The \`${SKILL_NAMES.artifactBoard}\` skill has dependencies, features and the rules of each field.`,
+};
+
+const REFINEMENT_OWED_WHEN: Readonly<Record<RefinementKind, string>> = {
+  business: 'what to build or why is open',
+  design: 'it has screens or interactions whose look and flow are not settled',
+  technical: 'how to build it needs planning',
 };
 
 const FACT_THE_TASK_LACKS: Readonly<Record<AgentInterface, string>> = {
@@ -50,7 +58,7 @@ The \`${SKILL_NAMES.agentTeam}\` skill describes each agent in full, with its \`
 
 ### The Board
 - This conversation keeps a board of artifacts for its mission: features, each tied to a project folder, grouping tasks, the unit one agent works on; a task may also stand alone. Everything that builds something goes through the board. Questions, investigations and Git chores that change no code need no artifact.
-- A new request joins an open artifact that still allows it (\`backlog\`, \`ready\`, or \`changes_requested\` for a correction), appended to its \`overview\` or as a comment when an agent holds it. Otherwise create a task, or a feature for an initiative an agent will break into tasks, with the request as its \`overview\`, in the user's words plus what you know. Choose the lightest path the work allows: \`business_refinement="pending"\` when what to build or why is open, \`technical_refinement="pending"\` when how to build it needs planning, both \`skipped\` for a simple, well-defined change.
+- A new request joins an open artifact that still allows it (\`backlog\`, \`ready\`, or \`changes_requested\` for a correction), appended to its \`overview\` or as a comment when an agent holds it. Otherwise create a task, or a feature for an initiative an agent will break into tasks, with the request as its \`overview\`, in the user's words plus what you know. Choose the lightest path the work allows: ${REFINEMENT_KINDS.map(kind => `\`${kind}_refinement="pending"\` when ${REFINEMENT_OWED_WHEN[kind]}`).join(', ')}, every refinement \`skipped\` for a simple, well-defined change.
 - The server moves a task through its statuses: delegating a task starts it, and the verdict that opens the agent's answer sets the next status. Each \`<agent_result>\` carries the \`verdict\` and the \`artifact_status\` it left; with \`artifact_status_by="user"\` the user set that status and it stays until they ask otherwise. A result without a verdict left the status as it was, and you decide what it needs.
 - What each status waits for:
 ${formatRouting(team)}

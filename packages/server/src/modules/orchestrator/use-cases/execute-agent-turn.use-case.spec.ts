@@ -5264,7 +5264,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it.each([
         ['a status the role does not take', { status: 'in_review' }, develop, 'DEVELOPER works on T-1 only while it is ready, in_progress, changes_requested, and it is in_review right now. That status waits for another step'],
-        ['a task that still owes a refinement', { status: 'backlog', refinement: { business: 'done', technical: 'pending' } }, develop, 'It still owes the technical refinement (TECH_LEAD)'],
+        ['a task that still owes a refinement', { status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'pending' } }, develop, 'It still owes the technical refinement (TECH_LEAD)'],
         ['a frozen task with the reason of the freeze', { status: 'frozen' }, develop, 'T-1 is frozen after too many delegations'],
         ['a closed task with the reason of the closing', { status: 'done' }, develop, 'T-1 is done. Set its status back to an open one'],
         ['a review of a task out of order before checking its branch', { status: 'ready' }, review, 'CODE_REVIEWER works on T-1 only while it is in_review, and it is ready right now.'],

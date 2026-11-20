@@ -5,6 +5,7 @@ import {
   ARTIFACT_TYPES,
   FROZEN_STATUS,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { ArtifactSection } from '../../artifacts/models/artifact.model.js';
@@ -172,10 +173,7 @@ export class AgentToolCatalogService {
 
   private refinementProperties(access: ArtifactAccess): Record<string, JsonSchema> {
     return access.fields.includes('refinement')
-      ? {
-        business_refinement: { type: 'string', enum: REFINEMENT_STATES },
-        technical_refinement: { type: 'string', enum: REFINEMENT_STATES },
-      }
+      ? Object.fromEntries(REFINEMENT_KINDS.map(kind => [`${kind}_refinement`, { type: 'string', enum: REFINEMENT_STATES }]))
       : {};
   }
 

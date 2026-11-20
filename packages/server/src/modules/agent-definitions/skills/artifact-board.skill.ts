@@ -41,7 +41,7 @@ Each conversation is a mission with its own board. Features group the tasks of a
 - Otherwise create the work: a task for a single deliverable, or a feature for an initiative, which the agent that settles the business refinement breaks into tasks.
 
 ## Statuses
-- The server moves a task from the delegations and their verdicts, as your instructions list, keeps a task \`ready\` exactly while neither refinement is pending (a \`ready\` task whose refinement is set back to \`pending\` returns to the \`backlog\`), and keeps a feature in step with its tasks: \`in_progress\` once any task started, \`done\` once every task is done or cancelled.
+- The server moves a task from the delegations and their verdicts, as your instructions list, keeps a task \`ready\` exactly while no refinement is pending (a \`ready\` task whose refinement is set back to \`pending\` returns to the \`backlog\`), and keeps a feature in step with its tasks: \`in_progress\` once any task started, \`done\` once every task is done or cancelled.
 - A task that passed its test is \`tested\`: it waits for the merge, and \`done\` once merged or left for the user.
 - A delegation of a task whose status does not fit the agent is rejected with the reason. To skip a step the user does not want (a review, a test), ${SKIPPING_A_STEP[agentInterface]}
 - \`blocked\` waits on something outside the team: say what in a comment, and set the previous status back when it is unblocked. It is also how a refined task is parked, since \`backlog\` and \`ready\` follow its refinements.
