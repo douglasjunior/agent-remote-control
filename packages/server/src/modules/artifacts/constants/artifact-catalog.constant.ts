@@ -69,10 +69,10 @@ export const REFINEMENT_KINDS = ['business', 'design', 'technical'] as const;
 export const REFINEMENT_STATES = ['pending', 'done', 'skipped'] as const;
 
 /**
- * The state of a kind an artifact has no stored state for. A kind added after the artifact was stored was never owed
- * by it, so `design` reads as skipped; the others are owed.
+ * The state of a refinement nobody gave: left out of a creation, or missing from an artifact stored before its kind
+ * existed. Only work that asks for a design owes one, so `design` is skipped; the others are owed.
  */
-export const UNSTORED_REFINEMENT_STATES: Readonly<Record<(typeof REFINEMENT_KINDS)[number], (typeof REFINEMENT_STATES)[number]>> = {
+export const DEFAULT_REFINEMENT_STATES: Readonly<Record<(typeof REFINEMENT_KINDS)[number], (typeof REFINEMENT_STATES)[number]>> = {
   business: 'pending',
   design: 'skipped',
   technical: 'pending',

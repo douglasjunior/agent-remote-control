@@ -96,6 +96,12 @@ describe('DelegationStatusService', () => {
       expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the business refinement (PRODUCT_OWNER) and the technical refinement (TECH_LEAD):');
     });
 
+    it('should list every refinement a backlog task owes', async () => {
+      const { status, task } = setup('backlog', { refinement: { business: 'pending', design: 'pending', technical: 'pending' } });
+
+      expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the business refinement (PRODUCT_OWNER), the design refinement (UX_DESIGNER) and the technical refinement (TECH_LEAD):');
+    });
+
     it('should leave the roles out when no role settles the refinement', async () => {
       const { service, task } = setup('backlog', { refinement: { business: 'pending', design: 'skipped', technical: 'done' } });
       const lonely = new DelegationStatusService(

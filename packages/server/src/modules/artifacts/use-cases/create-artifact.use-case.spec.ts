@@ -35,7 +35,7 @@ describe('CreateArtifactUseCase', () => {
         parentId: 'F-1',
         projectName: 'shop',
         dependsOn: ['T-7'],
-        refinement: { business: 'done', design: 'pending', technical: 'pending' },
+        refinement: { business: 'done', design: 'skipped', technical: 'pending' },
         assignee: null,
         branch: null,
         pullRequests: [],

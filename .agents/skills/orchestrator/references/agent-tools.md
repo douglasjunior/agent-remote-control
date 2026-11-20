@@ -22,7 +22,7 @@ tool, a schema or the instructions.
 |---|---|---|
 | `artifact_list` | every role | `type` (array of `feature`, `task`; not for `scope: 'task'`, which lists tasks only), `status` (array of the statuses plus `all`), `parent` (id, `none` for the roots), `project` |
 | `artifact_read` | every role | `ids` (required), `tree` (boolean, only for `scope: 'tree'`) |
-| `artifact_create` | `create` | `type` and `title` (required), `parent`, `project`, `depends_on`, one `<kind>_refinement` per refinement kind (with the `refinement` field), `sections` (`{ name, content }`, `name` among `overview` and the role's `sections`) |
+| `artifact_create` | `create` | `type` and `title` (required), `parent`, `project`, `depends_on`, one `<kind>_refinement` per refinement kind (with the `refinement` field, each described with the default it takes when left out), `sections` (`{ name, content }`, `name` among `overview` and the role's `sections`) |
 | `artifact_update` | a role with any section or field | `id` (required); one property per field of the role: `title`, `status` (every status but `frozen`), `parent` (`none` clears), `project`, `depends_on` (empty clears), one `<kind>_refinement` per refinement kind, `branch` (`none` clears), `pull_requests` (`{ url, title, state }`); `sections` (`{ name, content, mode }`, `mode` `replace` or `append`) when the role writes any; `note` |
 | `artifact_comment` | every role | `id` and `text` (required) |
 | `skill_read` | every role | `names` (required) |

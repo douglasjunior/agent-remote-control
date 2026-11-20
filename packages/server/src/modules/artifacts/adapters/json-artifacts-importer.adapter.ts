@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import type { ILegacyJsonImporterPort, LegacyJsonImport } from '../../database/ports/legacy-json-importer.port.js';
 import { LegacyJsonFilesService } from '../../database/services/legacy-json-files.service.js';
-import { REFINEMENT_KINDS, UNSTORED_REFINEMENT_STATES } from '../constants/artifact-catalog.constant.js';
+import { REFINEMENT_KINDS, DEFAULT_REFINEMENT_STATES } from '../constants/artifact-catalog.constant.js';
 import { ArtifactCounterEntity } from '../entities/artifact-counter.entity.js';
 import { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
@@ -23,10 +23,10 @@ const ARTIFACTS_DIRECTORY = 'artifacts';
 const FILE_EXTENSION = '.json';
 const ROWS_PER_INSERT = 500;
 
-/** A board file was written before some refinement kinds existed, and a kind it lacks takes its unstored state. */
+/** A board file was written before some refinement kinds existed, and a kind it lacks takes its default state. */
 const storedRefinementSchema = z
   .partialRecord(refinementKindSchema, refinementStateSchema)
-  .transform(stored => Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, stored[kind] ?? UNSTORED_REFINEMENT_STATES[kind]])) as ArtifactRefinement);
+  .transform(stored => Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, stored[kind] ?? DEFAULT_REFINEMENT_STATES[kind]])) as ArtifactRefinement);
 
 const boardFileSchema = z.object({
   counters: z.record(z.string(), z.number().int().min(0)).default({}),

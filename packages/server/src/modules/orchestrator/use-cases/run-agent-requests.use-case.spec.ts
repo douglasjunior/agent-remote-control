@@ -200,7 +200,7 @@ describe('RunAgentRequestsUseCase', () => {
         { kind: 'create', type: 'task', title: 'Loose', parent: null, project: 'web', dependsOn: ['T-3'], sections: [] },
       ], as('PRODUCT_OWNER'));
 
-      expect(await artifacts.service.get(CONVERSATION, 'F-2')).toMatchObject({ sections: { overview: 'Find products.' }, refinement: { business: 'done', design: 'pending', technical: 'pending' } });
+      expect(await artifacts.service.get(CONVERSATION, 'F-2')).toMatchObject({ sections: { overview: 'Find products.' }, refinement: { business: 'done', design: 'skipped', technical: 'pending' } });
       expect(await artifacts.service.get(CONVERSATION, 'T-4')).toMatchObject({ parentId: 'F-2', projectName: 'shop', history: [{ actor: { kind: 'agent', role: 'PRODUCT_OWNER' } }] });
       expect(await artifacts.service.get(CONVERSATION, 'T-5')).toMatchObject({ parentId: 'F-2', dependsOn: ['T-4'] });
       expect(await artifacts.service.get(CONVERSATION, 'T-6')).toMatchObject({ parentId: null, projectName: 'web', dependsOn: ['T-3'] });

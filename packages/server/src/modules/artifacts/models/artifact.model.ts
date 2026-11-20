@@ -96,7 +96,7 @@ export type CreateArtifactInput = {
   readonly projectName?: string;
   readonly dependsOn?: readonly string[];
   readonly sections?: ArtifactSections;
-  /** Each refinement left out is owed (`pending`). */
+  /** Each refinement left out takes its `DEFAULT_REFINEMENT_STATES` entry. */
   readonly refinement?: Partial<ArtifactRefinement>;
 };
 

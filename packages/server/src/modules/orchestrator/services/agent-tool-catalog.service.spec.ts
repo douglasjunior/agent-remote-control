@@ -44,6 +44,7 @@ describe('AgentToolCatalogService', () => {
       required: ['id'],
       properties: {
         status: { type: 'string', enum: STATUSES_BUT_FROZEN },
+        design_refinement: { type: 'string', enum: ['pending', 'done', 'skipped'] },
         sections: { type: 'array', items: { properties: { name: { enum: ['overview'] }, mode: { enum: ['replace', 'append'] } }, required: ['name', 'content'] } },
       },
     });
@@ -87,13 +88,14 @@ describe('AgentToolCatalogService', () => {
       required: ['type', 'title'],
       properties: {
         type: { enum: ['feature', 'task'] },
-        business_refinement: { enum: ['pending', 'done', 'skipped'] },
-        design_refinement: { enum: ['pending', 'done', 'skipped'] },
-        technical_refinement: { enum: ['pending', 'done', 'skipped'] },
+        business_refinement: { enum: ['pending', 'done', 'skipped'], description: 'Left out: pending.' },
+        design_refinement: { enum: ['pending', 'done', 'skipped'], description: 'Left out: skipped.' },
+        technical_refinement: { enum: ['pending', 'done', 'skipped'], description: 'Left out: pending.' },
         sections: { items: { properties: { name: { enum: ['overview', 'technical_solution', 'test_cases', 'acceptance_criteria', 'flows', 'glossary', 'pending_decisions', 'open_questions'] } } } },
       },
     });
     expect(propertiesOf(catalog, 'CEO', 'artifact_create')).not.toContain('ref');
+    expect(JSON.stringify(toolOf(catalog, 'CEO', 'artifact_update')?.inputSchema)).not.toContain('Left out');
   });
 
   it('should name the roles a skill may be written for', () => {

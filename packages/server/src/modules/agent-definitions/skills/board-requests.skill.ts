@@ -2,6 +2,7 @@ import {
   ARTIFACT_SECTION_TITLES,
   ARTIFACT_SECTIONS,
   ARTIFACT_STATUSES,
+  DEFAULT_REFINEMENT_STATES,
   FROZEN_STATUS,
   REFINEMENT_KINDS,
   REFINEMENT_STATES,
@@ -25,6 +26,8 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
   branch: 'branch="<branch name>" (or "none")',
   pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request',
 };
+
+const REFINEMENT_DEFAULTS = `A refinement left out takes its default: ${REFINEMENT_KINDS.map(kind => `\`${kind}_refinement="${DEFAULT_REFINEMENT_STATES[kind]}"\``).join(', ')}.`;
 
 /** The board and how the reader works on it, written for its access and interface; its system prompt carries it in brief. */
 export const BOARD_REQUESTS_SKILL: AgentSkillDefinition = {
@@ -77,7 +80,7 @@ function buildRequests(access: ArtifactAccess): string {
 
 function buildCreateRequest(access: ArtifactAccess): string {
   const refinement = access.fields.includes('refinement')
-    ? REFINEMENT_KINDS.map(kind => ` ${kind}_refinement="pending"`).join('')
+    ? REFINEMENT_KINDS.map(kind => ` ${kind}_refinement="${DEFAULT_REFINEMENT_STATES[kind]}"`).join('')
     : '';
   return `- Create an artifact, with the sections you write as children:
   \`\`\`text
@@ -85,7 +88,7 @@ function buildCreateRequest(access: ArtifactAccess): string {
   <section name="overview">Markdown content</section>
   </artifact_create>
   \`\`\`
-  \`type\` (\`feature\` or \`task\`) and \`title\` are required, and the \`overview\` of an artifact is yours to write when you create it. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
+  \`type\` (\`feature\` or \`task\`) and \`title\` are required, and the \`overview\` of an artifact is yours to write when you create it. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? `${REFINEMENT_DEFAULTS} ` : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
 }
 
 function buildUpdateRequest(access: ArtifactAccess): string {
@@ -116,7 +119,7 @@ function buildTools(access: ArtifactAccess): string {
 }
 
 function buildCreateTool(access: ArtifactAccess): string {
-  return `- \`artifact_create\` creates a feature or a task and returns its id, which the \`parent\` and \`depends_on\` of the next creations take. The \`overview\` of what you create is yours to write. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
+  return `- \`artifact_create\` creates a feature or a task and returns its id, which the \`parent\` and \`depends_on\` of the next creations take. The \`overview\` of what you create is yours to write. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. ${access.fields.includes('refinement') ? `${REFINEMENT_DEFAULTS} ` : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
 }
 
 function buildUpdateTool(access: ArtifactAccess): string {

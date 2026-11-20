@@ -121,7 +121,7 @@ describe('ArtifactPromptFormatterService', () => {
         buildArtifact({ id: 'T-5', parentId: 'F-1', status: 'ready' }),
         buildArtifact({ id: 'T-12', parentId: 'F-2', status: 'ready' }),
         buildArtifact({ id: 'T-10', status: 'ready' }),
-        buildArtifact({ id: 'T-8', status: 'backlog', refinement: { business: 'pending', design: 'skipped', technical: 'pending' } }),
+        buildArtifact({ id: 'T-8', status: 'backlog', refinement: { business: 'pending', design: 'pending', technical: 'pending' } }),
         buildArtifact({ id: 'T-7', parentId: 'F-1', status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'pending' } }),
         buildArtifact({ id: 'T-11', parentId: 'F-1', status: 'backlog', refinement: { business: 'pending', design: 'pending', technical: 'skipped' } }),
         buildArtifact({ id: 'T-13', status: 'backlog' }),
@@ -130,7 +130,7 @@ describe('ArtifactPromptFormatterService', () => {
 
       expect(formatter.digest(board).split('\n').slice(2)).toEqual([
         'Ready: T-5, T-6 (F-1); T-12 (F-2); T-9, T-10',
-        'Backlog: T-7 (F-1, owes technical); T-8 (owes business and technical); T-11 (F-1, owes business and design); T-13; T-14 (F-2)',
+        'Backlog: T-7 (F-1, owes technical refinement); T-8 (owes business, design and technical refinement); T-11 (F-1, owes business and design refinement); T-13; T-14 (F-2)',
       ]);
     });
 

@@ -47,12 +47,12 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   the task's branch reviewed locally, and `test_report` the verdict and results of the last practical test (QA), so whoever
   fixes the task finds them there.
 - **Creation**: a task that owes no refinement starts `ready` (a simple task straight to development); anything
-  else starts in the `backlog`. A refinement left out is `pending`.
+  else starts in the `backlog`. A refinement left out takes its `DEFAULT_REFINEMENT_STATES` entry.
 - **Refinement kinds**: every rule, request attribute, tool property, prompt and channel iterates `REFINEMENT_KINDS`
   (the protocol exports the same list, checked by `artifact-catalog.constant.spec.ts`), so a new kind is added there, in
-  `UNSTORED_REFINEMENT_STATES` and in the protocol only. A kind an artifact has no stored state for takes its
-  `UNSTORED_REFINEMENT_STATES` entry: `business` and `technical` are owed (`pending`), and `design`, added after boards
-  existed, reads `skipped`.
+  `DEFAULT_REFINEMENT_STATES` and in the protocol only. `DEFAULT_REFINEMENT_STATES` is the state of a refinement nobody
+  gave, left out of a creation or missing from an artifact stored before its kind existed: `business` and `technical`
+  are owed (`pending`), and `design` is `skipped`, so only work that asks for a design owes one.
 - **Derived statuses** (`ArtifactRulesService.derivedTaskStatus` and `derivedFeatureStatus`, applied by
   `ArtifactDerivationService` inside the transaction of the change, as `system` history events that say why, and
   published like any saved artifact):

@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor, ArtifactHistoryEvent, ArtifactSection } from '../../artifacts/models/artifact.model.js';
 import { lastStatusChange } from '../../artifacts/utils/artifact-status.util.js';
+import { formatWordList } from '../utils/word-list.util.js';
 
 
 /** Renders artifacts as the Markdown agents read: the lines of a listing, the full content of one artifact and what changed on it. */
@@ -183,7 +184,7 @@ export class ArtifactPromptFormatterService {
 
   private backlogEntry(task: Artifact): string {
     const owed = REFINEMENT_KINDS.filter(kind => task.refinement[kind] === 'pending');
-    const notes = [...(task.parentId ? [task.parentId] : []), ...(owed.length > 0 ? [`owes ${owed.join(' and ')}`] : [])];
+    const notes = [...(task.parentId ? [task.parentId] : []), ...(owed.length > 0 ? [`owes ${formatWordList(owed)} refinement`] : [])];
     return notes.length > 0 ? `${task.id} (${notes.join(', ')})` : task.id;
   }
 

@@ -4,6 +4,7 @@ import { REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.con
 import type { Artifact, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { type DelegationStatusFlow, IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { formatWordList } from '../utils/word-list.util.js';
 
 
 /** The verdict that opened an agent's final answer, as the flow writes it, and whether it moved the task on. */
@@ -37,7 +38,7 @@ export class DelegationStatusService {
     const base = `${role} works on ${artifact.id} only while it is ${takes}, and it is ${artifact.status} right now.`;
     const owed = artifact.status === 'backlog' ? this.owedRefinements(artifact) : [];
     if (owed.length > 0) {
-      return `${base} It still owes ${owed.join(' and ')}: the agent that settles it comes first, so delegate ${artifact.id} to it, or set the refinement to skipped when the user does not want it.`;
+      return `${base} It still owes ${formatWordList(owed)}: the agent that settles it comes first, so delegate ${artifact.id} to it, or set the refinement to skipped when the user does not want it.`;
     }
     return `${base} That status waits for another step: delegate that step first. When the user does not want it, skip it by setting the status to ${flow.from[0]}, which ${role} takes.`;
   }
