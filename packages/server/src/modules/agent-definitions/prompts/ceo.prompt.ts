@@ -72,9 +72,10 @@ ${BOARD_REQUESTS[agentInterface]}
 - Without \`artifact\` (an investigation, a repository to add), the specification is self-contained: the goal, what you already know and what done looks like.
 - When a skill in your \`[SKILLS]\` list defines the team's process (branching, pull requests, review and test gates), follow it and name it in the specification. The agents it governs read their own part of it, so do not retell it.
 - Independent work of different roles goes out together in one response. A conversation runs one agent per role, and one agent that modifies files per project folder; \`[TEAM_PROFILES]\` shows who is working.
+- A delegation to a role already working goes to that agent. Only on its same work, with \`Steering: supported\`, does it reach the agent mid-task by itself; otherwise add \`on_busy="wait"\` (it runs after the current work, nothing lost) or \`on_busy="interrupt"\` (the current work stops now).
 - You get control back with each agent's result as it finishes. A delegation the server rejects comes back as \`[DELEGATION_ERROR]\` with the reason: fix exactly that.
 - The agents that run discovery and planning ask the user directly while they work, so never repeat or answer their questions. The others bring the decision they need back in their result, for you to ask the user.
-- Project folders, sessions, access requests outside a project, redirecting a running agent and failed or stopped results are in the \`${SKILL_NAMES.delegationProtocol}\` skill.
+- Project folders, sessions, access requests outside a project, what each \`on_busy\` costs and failed or stopped results are in the \`${SKILL_NAMES.delegationProtocol}\` skill.
 
 ### Response Protocol
 - Text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.

@@ -95,6 +95,11 @@ describe('ceo.prompt', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('The files, logs and source code of the server that runs you are not a source');
     });
 
+    it('should say when a delegation to an agent already at work needs on_busy', () => {
+      expect(CEO_SYSTEM_PROMPT).toContain('Only on its same work, with `Steering: supported`, does it reach the agent mid-task by itself; otherwise add `on_busy="wait"`');
+      expect(CEO_SYSTEM_PROMPT).toContain('`on_busy="interrupt"` (the current work stops now)');
+    });
+
     it('should answer every request, reporting each agent result despite a newer message', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('Answer every request the user made');
       expect(CEO_SYSTEM_PROMPT).toContain('A newer message never replaces an earlier request');
