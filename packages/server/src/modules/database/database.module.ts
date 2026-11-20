@@ -12,6 +12,7 @@ import { DATABASE_ENTITIES, DATABASE_MIGRATIONS } from './constants/database-sch
 import { ILegacyJsonImporterPort } from './ports/legacy-json-importer.port.js';
 import { LegacyJsonFilesService } from './services/legacy-json-files.service.js';
 import { LegacyJsonImportService } from './services/legacy-json-import.service.js';
+import { SqliteTransactionService } from './services/sqlite-transaction.service.js';
 
 
 const LEGACY_JSON_IMPORTERS = [JsonConversationsImporterAdapter, JsonPromptHistoryImporterAdapter];
@@ -39,7 +40,8 @@ const LEGACY_JSON_IMPORTERS = [JsonConversationsImporterAdapter, JsonPromptHisto
     ...LEGACY_JSON_IMPORTERS,
     { provide: ILegacyJsonImporterPort, useFactory: (...importers: ILegacyJsonImporterPort[]) => importers, inject: LEGACY_JSON_IMPORTERS },
     LegacyJsonImportService,
+    SqliteTransactionService,
   ],
-  exports: [TypeOrmModule],
+  exports: [TypeOrmModule, SqliteTransactionService],
 })
 export class DatabaseModule {}
