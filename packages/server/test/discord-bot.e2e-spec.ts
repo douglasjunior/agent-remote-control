@@ -193,6 +193,17 @@ class SelectableAgentFake extends E2EAgentFake {
   }
 }
 
+/** The CEO profile of the conversation as the settings store keeps it. */
+async function storedCeoProfile(moduleFixture: TestingModule, conversationId: string): Promise<Record<string, unknown> | undefined> {
+  const rows = await moduleFixture.get(DataSource).query(
+    'SELECT "agent_id" AS "agentId", "agent_name" AS "agentName", "model_id" AS "modelId", "model_name" AS "modelName", '
+    + '"effort_id" AS "effortId", "effort_name" AS "effortName" FROM "agent_profile" WHERE "conversation_id" = ? AND "role" = \'CEO\'',
+    [conversationId],
+  );
+  return rows[0];
+}
+
+/** Written as an earlier version kept it, so the server imports it into the database as it starts. */
 function seedAgentSettings(dataDir: string, conversationId = 'channel-e2e-111:thread-e2e-999'): void {
   const existing = existsSync(join(dataDir, 'agent-settings.json'))
     ? JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))
@@ -565,7 +576,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
     expect(sent).toContain('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select'].profiles.CEO).toMatchObject({
+    expect(await storedCeoProfile(moduleFixture, 'channel-select:thread-select')).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'two',
@@ -634,7 +645,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
     expect(sent).toEqual(['✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default']);
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].profiles.CEO.modelId).toBe('one');
+    expect((await storedCeoProfile(moduleFixture, 'channel-model:thread-model'))?.modelId).toBe('one');
 
     await app.close();
   });
@@ -691,7 +702,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
     expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].profiles.CEO.modelId).toBe('one');
+    expect((await storedCeoProfile(moduleFixture, 'channel-general:thread-selection'))?.modelId).toBe('one');
 
     await app.close();
   });
@@ -749,7 +760,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model One · ⚡ default');
     expect(createdAgentIds).toContain('claude');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent'].profiles.CEO).toMatchObject({
+    expect(await storedCeoProfile(moduleFixture, 'channel-general:thread-agent')).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'one',

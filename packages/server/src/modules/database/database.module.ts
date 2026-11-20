@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 
+import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
+import { JsonAgentSettingsImporterAdapter } from '../orchestrator/adapters/json-agent-settings-importer.adapter.js';
 import { JsonPreferencesImporterAdapter } from '../orchestrator/adapters/json-preferences-importer.adapter.js';
 import { PathsModule } from '../paths/paths.module.js';
 import { DataDirectoryService } from '../paths/services/data-directory.service.js';
@@ -16,10 +18,16 @@ import { LegacyJsonImportService } from './services/legacy-json-import.service.j
 import { SqliteTransactionService } from './services/sqlite-transaction.service.js';
 
 
-const LEGACY_JSON_IMPORTERS = [JsonConversationsImporterAdapter, JsonPromptHistoryImporterAdapter, JsonPreferencesImporterAdapter];
+const LEGACY_JSON_IMPORTERS = [
+  JsonConversationsImporterAdapter,
+  JsonPromptHistoryImporterAdapter,
+  JsonPreferencesImporterAdapter,
+  JsonAgentSettingsImporterAdapter,
+];
 
 @Module({
   imports: [
+    AgentDefinitionsModule,
     PathsModule,
     StorageModule,
     TypeOrmModule.forRootAsync({

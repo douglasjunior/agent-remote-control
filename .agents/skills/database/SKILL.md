@@ -93,6 +93,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `SqlitePromptHistoryAdapter` (web) | `prompt_history` (greater id is more recent, capped at `MAX_PROMPT_HISTORY`) |
 | `SqliteSettingsStoreAdapter` (settings) | `setting` (key, value as JSON); `save` upserts and deletes in one `SqliteTransactionService.run` |
 | `SqlitePreferencesStoreAdapter` (orchestrator) | `preferences`, one row with id 1; `update(change)` reads, changes and writes in one `SqliteTransactionService.run` |
+| `SqliteAgentSettingsStoreAdapter` (orchestrator) | `agent_settings` (one row per conversation), `agent_profile` (one row per conversation and role); `update(id, change)` reads the conversation's and the most recent settings, changes and replaces the conversation's rows in one `SqliteTransactionService.run` |
 
 ## Legacy JSON import
 
@@ -120,6 +121,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `web-conversations` | `web/conversations.json`, `web/history/<id>.json` | ids must be file names (`[\w-]+`); one entry per id at its first place, latest version; histories of no listed conversation are logged and left |
 | `web-prompt-history` | `web/prompt-history.json` | most recent first, capped at `MAX_PROMPT_HISTORY` |
 | `preferences` | `preferences.json` | a field of another type is left out; a row already in the database is kept |
+| `agent-settings` | `agent-settings.json` | a flat entry of the earliest format gives its profile to every role of `IAgentRegistryPort.listRoles()` (so `DatabaseModule` imports `AgentDefinitionsModule`); profiles without a text `agentId` and entries left without profiles are dropped; a conversation already in the database is kept |
 
 ### Adding a store and its importer
 

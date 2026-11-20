@@ -11,9 +11,9 @@ import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
-import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
 import { JsonOpenWorkStoreAdapter } from './adapters/json-open-work-store.adapter.js';
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
+import { SqliteAgentSettingsStoreAdapter } from './adapters/sqlite-agent-settings-store.adapter.js';
 import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
@@ -88,7 +88,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     },
     {
       provide: IAgentSettingsStorePort,
-      useClass: JsonAgentSettingsStoreAdapter,
+      useClass: SqliteAgentSettingsStoreAdapter,
     },
     {
       provide: IPreferencesStorePort,

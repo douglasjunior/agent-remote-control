@@ -86,7 +86,6 @@ held by a live owner times it out.
 
 | Store | File in `DATA_DIR` | Atomic operation | When the lock times out |
 |---|---|---|---|
-| `JsonAgentSettingsStoreAdapter` | `agent-settings.json` | `update(conversationId, (own, mostRecent) => settings)` | rejects to the command |
 | `JsonSessionStoreAdapter` | `sessions.json` | `updateSession(conversationId, session => session)` | rejects; the turn fails, a binding stamp is logged |
 | `JsonOpenWorkStoreAdapter` | `open-work.json` | `update(work => work)`, one conversation per change | logged; the next change rewrites the conversation |
 | `JsonArtifactStoreAdapter` | `artifacts/<id>.json` | `transaction(conversationId, work)` | rejects to the agent request |
@@ -94,8 +93,8 @@ held by a live owner times it out.
 | `AccessTokenService` | `web/access-token` | created once in `onModuleInit` | startup fails |
 | `RemoteIdentityService` | `remote/key.pem`, `remote/certificate.pem` | created once under the key's lock | `identity()` rejects |
 
-The web conversations, the prompt history, the preferences and the settings saved from the web live in the SQLite
-database. The legacy importers of the database
+The web conversations, the prompt history, the preferences, the agent settings of each conversation and the settings
+saved from the web live in the SQLite database. The legacy importers of the database
 module read their JSON files once, each under the lock its store wrote it with, through these ports.
 
 Files written once under a unique name (downloaded attachments, uploads), the append-only log files and the executable

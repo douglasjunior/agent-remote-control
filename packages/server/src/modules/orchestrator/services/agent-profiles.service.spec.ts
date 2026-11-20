@@ -1,12 +1,8 @@
 import { beforeEach, describe, expect, it, rs } from '@rstest/core';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
-import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
-import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
-import { JsonAgentSettingsStoreAdapter } from '../adapters/json-agent-settings-store.adapter.js';
+import { SqliteTransactionService } from '../../database/services/sqlite-transaction.service.js';
+import { createInMemoryDataSource } from '../../database/testing/in-memory-data-source.js';
+import { SqliteAgentSettingsStoreAdapter } from '../adapters/sqlite-agent-settings-store.adapter.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { buildStubProfile, buildStubSettings, StubAgentSettingsStore } from '../testing/stub-agent-settings-store.js';
 
@@ -149,19 +145,19 @@ describe('AgentProfilesService', () => {
     });
   });
 
-  it('should keep four concurrent profile changes to different roles of one conversation on disk', async () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'agent-profiles-'));
+  it('should keep four concurrent profile changes to different roles of one conversation in the database', async () => {
+    const dataSource = await createInMemoryDataSource();
     try {
-      const jsonStore = new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(dataDir), createNodeLockedFiles());
-      const onDisk = new AgentProfilesService(new AgentCapabilitiesService(factory), jsonStore, registry);
+      const sqliteStore = new SqliteAgentSettingsStoreAdapter(dataSource, new SqliteTransactionService(dataSource));
+      const stored = new AgentProfilesService(new AgentCapabilitiesService(factory), sqliteStore, registry);
       const roles = ['CEO', 'DEVELOPER', 'QA', 'TECH_LEAD'];
 
-      await Promise.all(roles.map(role => onDisk.save('conv', [role], buildStubProfile(`agent-${role}`))));
+      await Promise.all(roles.map(role => stored.save('conv', [role], buildStubProfile(`agent-${role}`))));
 
-      const stored = await new JsonAgentSettingsStoreAdapter(registry, dataDirectoryAt(dataDir), createNodeLockedFiles()).load('conv');
-      expect(roles.map(role => stored?.profiles[role]?.agentId)).toEqual(roles.map(role => `agent-${role}`));
+      const settings = await sqliteStore.load('conv');
+      expect(roles.map(role => settings?.profiles[role]?.agentId)).toEqual(roles.map(role => `agent-${role}`));
     } finally {
-      rmSync(dataDir, { recursive: true, force: true });
+      await dataSource.destroy();
     }
   });
 });

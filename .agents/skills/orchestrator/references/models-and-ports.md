@@ -118,7 +118,11 @@ settings afterwards. Every change of a profile goes through `update`, so concurr
 conversation (four `profiles.set` commands at once) all stay. Each conversation
 has its own configuration: a channel that changes the configuration changes only the conversation (`conversationId`) it runs in.
 `loadMostRecent()` returns the most recent configuration (highest `updatedAt`), allowing automatic inheritance for new conversations.
-Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`, a `conversationId` → `AgentSettings` map. A legacy flat entry (`agentId`, `modelId`... at the top level) is read as the same profile replicated to every role listed by `IAgentRegistryPort.listRoles()` (injected into the adapter).
+Implemented by `SqliteAgentSettingsStoreAdapter`: one `agent_settings` row per conversation (`updated_at`) and one
+`agent_profile` row per role of it; `update` reads both settings, calls `change` and replaces the conversation's rows in
+one `SqliteTransactionService.run`. The `agent-settings` legacy importer moves `DATA_DIR/agent-settings.json` into them,
+reading a flat entry of the earliest format (`agentId`, `modelId`... at the top level) as the same profile for every role
+listed by `IAgentRegistryPort.listRoles()`.
 
 ### `IPreferencesStorePort` (`preferences-store.port.ts`)
 
@@ -140,9 +144,8 @@ Every adapter that persists data receives the service through its constructor, a
 The JSON adapters read and write their file through `ILockedFilesPort` of the `storage` module: reads use the copy cached
 while the file is unchanged, every change re-reads the file under its lock, a missing or invalid file reads as empty
 and the next change replaces it, and a change that cannot take the lock rejects to its caller.
-`JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list.
-Settings without any profile with an `agentId` are treated as absent, so the conversation counts as unconfigured, and
-`agentSessions` entries without `agentId` are discarded on read.
+`JsonSessionStoreAdapter` loads a record without `agentSessions` with an empty list, and discards `agentSessions`
+entries without `agentId` on read.
 
 ### 2. `IAgentRegistryPort` (`agent-registry.port.ts`)
 

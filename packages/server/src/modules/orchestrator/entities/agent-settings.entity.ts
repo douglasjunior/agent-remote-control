@@ -1,0 +1,13 @@
+import { Column, Entity, Index, PrimaryColumn } from 'typeorm';
+
+
+/** The agent settings of one conversation; its profiles are the rows of `agent_profile`. */
+@Entity('agent_settings')
+@Index('IDX_agent_settings_updated_at', ['updatedAt'])
+export class AgentSettingsEntity {
+  @PrimaryColumn({ name: 'conversation_id', type: 'text' })
+  conversationId: string;
+
+  @Column({ name: 'updated_at', type: 'text' })
+  updatedAt: string;
+}
