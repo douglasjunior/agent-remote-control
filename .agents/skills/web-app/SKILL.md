@@ -143,7 +143,9 @@ packages/web/src/
   `ConversationView` sends `conversation.history` and `profiles.get` whenever the status is `open` or the
   conversation changes, `agents.list` while no agents are known, and `profiles.get` again on every `squads`, since a
   squad saved or deleted changes whether the conversation still matches the squad it applied. `useEarlierEntries` sends
-  `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection.
+  `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection;
+  its `load` decides from refs, since Virtuoso's `startReached` keeps the callback it holds and may call it in the same
+  tick as a click.
 
 ## Theme and motion
 
