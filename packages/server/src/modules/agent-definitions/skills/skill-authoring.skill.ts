@@ -97,7 +97,7 @@ ${FIELDS[agentInterface]}
 - Keep each skill to one subject; split a subject that grows past a few hundred lines.
 
 ## Availability
-- An agent sees a new skill in its catalog from its next session; a changed skill applies the next time it is read.
+- An agent sees a new skill in its catalog from its next delegation, in a new session or in one it comes back to; a changed skill applies the next time it is read.
 - Skills live in the server's data directory, where the user can also edit or delete them. The server stores ${STORED_FROM[agentInterface]} as \`skills/electron-testing/SKILL.md\`, its attributes in the frontmatter:
 \`\`\`markdown
 ---

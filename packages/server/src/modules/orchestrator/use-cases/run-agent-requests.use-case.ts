@@ -221,7 +221,7 @@ export class RunAgentRequestsUseCase {
       return { request: 'skill_write', name, failed: true, body: result.error };
     }
     const action = result.created ? 'Created' : 'Updated';
-    return { request: 'skill_write', name, created: result.created, body: `${action} skill "${name}" for ${roles.join(', ')}. Agents of those roles see it in their skill catalog from their next session, and its content applies the next time it is read.` };
+    return { request: 'skill_write', name, created: result.created, body: `${action} skill "${name}" for ${roles.join(', ')}. Agents of those roles see it in their skill catalog from their next delegation, and its content applies the next time it is read.` };
   }
 
   private async list(request: Extract<AgentRequest, { kind: 'list' }>, { conversationId }: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {

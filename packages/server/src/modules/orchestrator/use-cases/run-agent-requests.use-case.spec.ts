@@ -408,7 +408,7 @@ describe('RunAgentRequestsUseCase', () => {
       ]);
 
       expect(skills.written[0]).toEqual({ name: 'electron-testing', description: 'Electron.', roles: ['QA'], content: '# Electron' });
-      expect(created).toContain('<request_result request="skill_write" name="electron-testing" status="ok">\nCreated skill "electron-testing" for QA. Agents of those roles see it in their skill catalog from their next session');
+      expect(created).toContain('<request_result request="skill_write" name="electron-testing" status="ok">\nCreated skill "electron-testing" for QA. Agents of those roles see it in their skill catalog from their next delegation');
       expect(updated).toContain('Updated skill "electron-testing" for QA.');
       expect(refused).toContain('<request_result request="skill_write" name="electron-testing" status="error">\nYou cannot write skills.');
     });

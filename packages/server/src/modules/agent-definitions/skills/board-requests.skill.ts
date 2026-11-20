@@ -28,7 +28,7 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
 /** The board and how the reader works on it, written for its access and interface; its system prompt carries it in brief. */
 export const BOARD_REQUESTS_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.boardRequests,
-  description: 'The board of the conversation and the requests you read and change it with, written for your role: what an artifact holds, the request grammar, and the sections and fields you may write. Read it whenever that grammar is no longer in front of you, before writing an artifact request.',
+  description: 'The board in full, written for your role: listing, dependencies, statuses, refinements, creating several artifacts at once and what each field holds. Your instructions already cover reading, updating and commenting on the task you hold. Read it only for something beyond them.',
   roles: ['GIT_OPS', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA'],
   buildContent: ({ artifacts, agentInterface }) => `# Board Requests\n\n${buildBoardRequestsBody(artifacts, agentInterface)}`,
 };
