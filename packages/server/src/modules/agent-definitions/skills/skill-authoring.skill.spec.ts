@@ -35,6 +35,11 @@ describe('skill-authoring skill', () => {
     expect(skill).toContain('\nroles: QA\n---\n# Testing an Electron App');
   });
 
+  it('should write a process skill for every role it governs, one section per role', () => {
+    expect(skill).toContain('names every role it governs in `roles`, yours included, and has one section per role');
+    expect(skill).toContain('A process skill only you can read forces you to repeat the process in every delegation.');
+  });
+
   it('should keep the content in English, prescriptive and within the role limits', () => {
     expect(skill).toContain('In English, whatever the language of the conversation');
     expect(skill).toContain('Prescriptive and concrete');

@@ -15,7 +15,7 @@ const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
   parent: 'parent="F-1" (or "none")',
   project: 'project="<project-folder>"',
   depends_on: 'depends_on="T-1,T-2" (or "none")',
-  status: `status="${ARTIFACT_STATUSES.filter(status => status !== FROZEN_STATUS).join('|')}" (\`frozen\` is set by the server on a task that went through too many delegations, and only the user takes a task out of it)`,
+  status: `status="${ARTIFACT_STATUSES.filter(status => status !== FROZEN_STATUS).join('|')}" (the server sets the status a delegation or a verdict leaves, so set one only for a decision; \`frozen\` is set by the server on a task that went through too many delegations, and only the user takes a task out of it)`,
   refinement: `business_refinement="${REFINEMENT_STATES.join('|')}" and technical_refinement="${REFINEMENT_STATES.join('|')}"`,
   branch: 'branch="<branch name>" (or "none")',
   pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request',
@@ -37,7 +37,7 @@ export function buildBoardRequestsBody(access: ArtifactAccess): string {
   return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the business and technical refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
 ${ARTIFACT_SECTIONS.map(section => `- \`${section}\`: ${ARTIFACT_SECTION_TITLES[section]}`).join('\n')}
 
-You read and change the board with requests written inside your final response. The orchestrator carries them out in order, before anything else in the response, and answers with an \`<request_results>\` block, one \`<request_result>\` per request with \`status="ok"\` or \`status="error"\` and the reason. When the response also ${access.scope === 'board' ? 'delegates or asks the user questions' : 'asks the user questions'}, it goes on as usual and the results open your next prompt. Otherwise the results come back right away and the response is not taken as your final answer: give your final answer in a later response without requests. Write the tags as plain text, never inside code fences.
+You read and change the board with requests written inside your final response. The orchestrator carries them out in order, before anything else in the response, and answers with an \`<request_results>\` block, one \`<request_result>\` per request with \`status="ok"\` or \`status="error"\` and the reason. When the response also ${access.scope === 'board' ? 'delegates or asks the user questions' : 'asks the user questions'}, it goes on as usual and the results open your next prompt. Requests that only write (create, update, comment) ride with your final answer: they are carried out and the answer is delivered, unless one of them fails. A response that reads (list, read), or whose request failed, gets the results right away and is not taken as your final answer: give it in a later response. Write the tags as plain text, never inside code fences.
 
 ${buildRequests(access)}
 
@@ -71,7 +71,7 @@ function buildCreateRequest(access: ArtifactAccess): string {
   <section name="overview">Markdown content</section>
   </artifact_create>
   \`\`\`
-  \`type\` (\`feature\` or \`task\`) and \`title\` are required. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
+  \`type\` (\`feature\` or \`task\`) and \`title\` are required, and the \`overview\` of an artifact is yours to write when you create it. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
 }
 
 function buildUpdateRequest(access: ArtifactAccess): string {

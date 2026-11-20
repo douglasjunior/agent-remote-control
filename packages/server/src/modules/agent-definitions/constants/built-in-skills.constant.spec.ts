@@ -36,8 +36,28 @@ describe('built-in-skills.constant', () => {
     }
   });
 
-  it('should open every content with its title', () => {
+  it('should give the roles that work on a repository the skills of their procedures', () => {
+    const rolesOf = (name: string) => BUILT_IN_SKILLS.find(skill => skill.name === name)?.roles;
+
+    expect(rolesOf(SKILL_NAMES.gitRemote)).toEqual(['DEVELOPER', 'GIT_OPS']);
+    expect(rolesOf(SKILL_NAMES.repositorySetup)).toEqual(['GIT_OPS']);
+    expect(rolesOf(SKILL_NAMES.reviewPublishing)).toEqual(['CODE_REVIEWER']);
+  });
+
+  it('should let every executor role, and only them, read the role guide', () => {
+    const roleGuide = BUILT_IN_SKILLS.find(skill => skill.name === SKILL_NAMES.roleGuide);
+
+    expect([...(roleGuide?.roles ?? [])].sort()).toEqual(AGENT_ROLES.filter(role => role !== 'CEO').sort());
+  });
+
+  it('should give every skill a description that says when to read it', () => {
     for (const skill of BUILT_IN_SKILLS) {
+      expect(skill.description).toMatch(/\b(Read|Use)\b/);
+    }
+  });
+
+  it('should open every content with its title, but for the role guide, which is the prompt of the reader', () => {
+    for (const skill of BUILT_IN_SKILLS.filter(candidate => candidate.name !== SKILL_NAMES.roleGuide)) {
       expect(skill.buildContent(skillContext({ workspaceDir: '/ws' })).startsWith('# ')).toBe(true);
     }
   });

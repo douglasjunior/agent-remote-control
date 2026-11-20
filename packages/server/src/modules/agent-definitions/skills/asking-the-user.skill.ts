@@ -4,7 +4,7 @@ import type { AgentSkillDefinition } from '../models/agent-skill-definition.mode
 
 export const ASKING_THE_USER_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.askingTheUser,
-  description: 'How to ask the user for a decision - the <question> grammar, making each question stand on its own, recommending an option, several questions at once, attachments in the answers, and answers that time out. Read it before your first question in a session.',
+  description: 'How to ask the user for a decision - the <question> grammar, making each question stand on its own, recommending an option, several questions at once, attachments in the answers, and answers that time out. Read it when a question needs more than the brief in your instructions: several dependent questions, attachments in the answers, or a timed-out answer.',
   roles: ['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT'],
   buildContent: () => `# Asking the User
 

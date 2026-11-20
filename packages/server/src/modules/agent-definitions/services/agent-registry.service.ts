@@ -58,12 +58,12 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.artifacts ?? READ_TASKS_ONLY;
   }
 
-  getTurnReminder(agentRole: string): string {
+  getReentryNote(agentRole: string): string {
     const definition = this.getDefinition(agentRole);
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}. Always provide your final response inside the <final_response> block.`;
     }
-    return definition.turnReminder ?? '';
+    return definition.reentryNote ?? '';
   }
 
   isSystemPromptEveryTurn(agentRole: string): boolean {

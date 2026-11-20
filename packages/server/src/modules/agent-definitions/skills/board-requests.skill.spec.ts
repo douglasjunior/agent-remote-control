@@ -8,7 +8,8 @@ import {
   PRODUCT_OWNER_ARTIFACT_ACCESS,
   TECH_LEAD_ARTIFACT_ACCESS,
 } from '../constants/artifact-access.constant.js';
-import { buildArtifactProtocolReminder } from '../prompts/artifact-protocol.prompt.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
+import { buildArtifactProtocolBrief } from '../prompts/artifact-protocol.prompt.js';
 import { skillContext } from '../testing/skill-context.fixture.js';
 
 import { BOARD_REQUESTS_SKILL, buildBoardRequestsBody } from './board-requests.skill.js';
@@ -30,8 +31,8 @@ describe('board-requests skill', () => {
     expect(lead).toContain('tree="true"');
   });
 
-  it('should be named by the reminder every executor gets each turn', () => {
-    expect(buildArtifactProtocolReminder(DEVELOPER_ARTIFACT_ACCESS)).toContain('read the `board-requests` skill before writing a request');
+  it('should be named by the board brief of every executor', () => {
+    expect(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS)).toContain(`in the \`${SKILL_NAMES.boardRequests}\` skill`);
   });
 
   describe('body', () => {
@@ -41,7 +42,7 @@ describe('board-requests skill', () => {
       expect(instructions).toContain('A feature groups the tasks of one initiative');
       expect(instructions).toContain('- `technical_solution`: Technical solution');
       expect(instructions).toContain('When the response also asks the user questions, it goes on as usual and the results open your next prompt.');
-      expect(instructions).toContain('Otherwise the results come back right away and the response is not taken as your final answer');
+      expect(instructions).toContain('A response that reads (list, read), or whose request failed, gets the results right away and is not taken as your final answer');
     });
 
     it('should give an agent that works on tasks only the task grammar it may use', () => {
@@ -53,12 +54,15 @@ describe('board-requests skill', () => {
       expect(instructions).not.toContain('<artifact_create');
       expect(instructions).toContain('Attributes you may set: branch="<branch name>" (or "none").');
       expect(instructions).toContain('Children: `<section name="..." mode="replace|append">Markdown</section>`');
+      expect(instructions).toContain('<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request');
+      expect(instructions).toContain('Fields you change: branch, pull_requests.');
       expect(instructions).toContain('- Sections you write: `implementation_notes`.');
       expect(instructions).toContain('you change only the task you were delegated, whose content opens your prompt in a `[DELEGATED_ARTIFACT]` block');
     });
 
     it('should let the agent that handles remotes link pull requests and the reviewer write only its findings', () => {
       const gitOps = buildBoardRequestsBody(GIT_OPS_ARTIFACT_ACCESS);
+      expect(gitOps).toContain('Attributes you may set: branch=');
       expect(gitOps).toContain('Children: <pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request.');
       expect(gitOps).toContain('- You write no section. Record what the next agent must know as a comment on the artifact.');
       const reviewer = buildBoardRequestsBody(CODE_REVIEWER_ARTIFACT_ACCESS);
@@ -81,7 +85,14 @@ describe('board-requests skill', () => {
 
       expect(instructions).toContain('Meanwhile you change only its status and refinement states; comment instead.');
       expect(instructions).toContain('When the response also delegates or asks the user questions, it goes on as usual');
-      expect(instructions).toContain('status="backlog|ready|in_progress|in_review|changes_requested|approved|in_testing|done|blocked|cancelled" (`frozen` is set by the server');
+      expect(instructions).toContain('status="backlog|ready|in_progress|in_review|changes_requested|approved|in_testing|done|blocked|cancelled" (the server sets the status a delegation or a verdict leaves, so set one only for a decision; `frozen` is set by the server');
+    });
+
+    it('should leave the children out of the update of an agent that writes fields only', () => {
+      const instructions = buildBoardRequestsBody({ scope: 'task', sections: [], fields: ['branch'] });
+
+      expect(instructions).toContain('Attributes you may set: branch=');
+      expect(instructions).not.toContain('Children:');
     });
 
     it('should leave the refinement attributes out of creation for an agent that cannot set them', () => {

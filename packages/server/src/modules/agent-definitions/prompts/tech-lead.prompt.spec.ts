@@ -1,79 +1,95 @@
 import { describe, expect, it } from '@rstest/core';
 
 import { TECH_LEAD_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
+import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
-import { buildArtifactProtocolBrief, buildArtifactProtocolReminder } from './artifact-protocol.prompt.js';
-import { CWD_BOUNDARY_INSTRUCTIONS, CWD_BOUNDARY_REMINDER } from './cwd-boundary.prompt.js';
+import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
+import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { PROJECT_ORIENTATION_INSTRUCTIONS, PROJECT_ORIENTATION_REMINDER } from './project-orientation.prompt.js';
-import {
-  TECH_LEAD_SYSTEM_PROMPT,
-  TECH_LEAD_TURN_REMINDER,
-} from './tech-lead.prompt.js';
-import { USER_QUESTIONS_BRIEF, USER_QUESTIONS_REMINDER } from './user-questions.prompt.js';
+import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
+import { TECH_LEAD_REENTRY_NOTE, TECH_LEAD_SYSTEM_PROMPT } from './tech-lead.prompt.js';
+import { USER_QUESTIONS_BRIEF } from './user-questions.prompt.js';
 
 
 describe('tech-lead.prompt', () => {
-  it('should define tech lead agent role and its core principles', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Tech Lead Agent');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('general-purpose analytical agent');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Technical Planning & Architecture');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Read-Only Exploration & Non-Execution');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Decision Discipline');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Technical Refinement on the Board');
+  it('should define the tech lead as the agent that plans before implementation and writes the plan on the board', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('You are the Tech Lead Agent');
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('write the plan on the team\'s board');
   });
 
-  it('should write the technical solution of each task on the board instead of a file', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Write the `technical_solution` of each task');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Set `technical_refinement="done"` on every artifact you refined');
+  it('should write for a developer with no memory of this session', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('A developer with no memory of this session implements each task from the task alone');
+  });
+
+  describe('planning', () => {
+    it('should read the artifact, its business sections and pending decisions, then the code', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('a feature with `tree="true"` to see all its tasks');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('its `pending_decisions`');
+    });
+
+    it('should change no project file and run only commands that inspect', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('You change no project file and run only commands that inspect');
+    });
+  });
+
+  describe('decisions', () => {
+    it('should ask the user each design decision with the trade-offs and the recommendation first', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('are decisions for the user');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('before writing the solution: one option per viable approach, the one you recommend first, and the trade-offs in the rationale');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('When the documentation, the code and the request disagree, ask which one holds.');
+    });
+
+    it('should follow a decision the project already made and cite where it is recorded', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('A decision the project already made is not asked again');
+    });
+
+    it('should explain how to ask the user', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
+    });
+  });
+
+  describe('the board', () => {
+    it('should write the technical solution of each task with the files, steps, tests and verification commands', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('The `technical_solution` of each task holds the design');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('the exact files and modules to create, change or remove, the ordered steps, the automated tests to add, and the commands that verify the work');
+    });
+
+    it('should split large work into tasks ordered by dependencies, each fitting one pull request', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('with `depends_on` giving the order; a task fits one pull request');
+    });
+
+    it('should set the technical refinement to done and keep what still holds when refining', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Set `technical_refinement="done"` on every artifact you refined');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('keep what still holds so earlier references stay valid');
+    });
+
+    it('should send one request of a batch first and read its result', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Before a batch of creations or updates, send one first and read its result');
+    });
+
+    it('should answer with the ids and what the caller must decide, without repeating the content', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Your final answer gives the ids you created or changed');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('It does not repeat their content.');
+    });
+  });
+
+  it('should include the board brief of its access and the shared blocks', () => {
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS));
-    expect(TECH_LEAD_TURN_REMINDER).toContain(buildArtifactProtocolReminder(TECH_LEAD_ARTIFACT_ACCESS));
-    expect(TECH_LEAD_SYSTEM_PROMPT).not.toContain('plan.md');
-  });
-
-  it('should prohibit modifying code files and enforce read-only exploration', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('strictly planning, specification, investigation, and architecture');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('do NOT modify code files, apply patches, create git commits, or implement production changes, and you write no file');
-  });
-
-  it('should ask the user each design decision with the trade-offs and a recommendation', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Do NOT make silent assumptions or arbitrarily elect a solution');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('Ask each decision as a question to the user (see Asking the User) before writing the solution');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('your justified recommendation as the first option, and the trade-offs, pros, and cons in the rationale');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('ask which one holds instead of silently picking a side');
-  });
-
-  it('should explain how to ask the user in the prompt and in every turn', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(USER_QUESTIONS_BRIEF);
-    expect(TECH_LEAD_TURN_REMINDER).toContain(USER_QUESTIONS_REMINDER);
-  });
-
-  it('should specify a solution with affected files, steps, tests and verification, splitting large work into dependent tasks', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('the exact files and modules to create, change, or remove, the ordered steps to implement it, the automated tests to add, and the commands that verify it');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('with `depends_on` giving the order; a task should fit one pull request');
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain('keep what still holds so earlier references stay valid');
-  });
-
-  it('should require the final answer inside the final response block', () => {
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
   });
 
-  it('should confine the tech lead to its CWD in the prompt and in every turn', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
-    expect(TECH_LEAD_TURN_REMINDER).toContain(CWD_BOUNDARY_REMINDER);
-  });
+  describe('re-entry note', () => {
+    it('should send the tech lead back to its role guide', () => {
+      expect(TECH_LEAD_REENTRY_NOTE.startsWith('[RE-ENTRY]')).toBe(true);
+      expect(TECH_LEAD_REENTRY_NOTE).toContain('a session you started as the Tech Lead Agent');
+      expect(TECH_LEAD_REENTRY_NOTE).toContain(`<skill_read name="${SKILL_NAMES.roleGuide}"/>`);
+    });
 
-  it('should orient the tech lead in the project documentation in the prompt and in every turn', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
-    expect(TECH_LEAD_TURN_REMINDER).toContain(PROJECT_ORIENTATION_REMINDER);
-  });
-
-  it('should define TECH_LEAD_TURN_REMINDER with planning role, read-only restriction, decision discipline, and final response instructions', () => {
-    expect(TECH_LEAD_TURN_REMINDER).toContain('Tech Lead and software architect');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('Do NOT implement production code or modify project files');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('Decide nothing silently');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('the pros and cons of each option and your recommendation');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('names the affected files, the ordered steps, the tests to add and concrete verification commands');
-    expect(TECH_LEAD_TURN_REMINDER).toContain('<final_response>...</final_response>');
+    it('should carry the no-change rule and the question rule', () => {
+      expect(TECH_LEAD_REENTRY_NOTE).toContain('change no project file');
+      expect(TECH_LEAD_REENTRY_NOTE).toContain('is a `<question>` to the user, with your recommendation first');
+    });
   });
 });

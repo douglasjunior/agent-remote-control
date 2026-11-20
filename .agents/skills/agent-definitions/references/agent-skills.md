@@ -1,8 +1,8 @@
 # Agent Skills
 
 Every skill is an `AgentSkillDefinition` (`models/agent-skill-definition.model.ts`): `name`, `description`, the `roles`
-that may read it, and `buildContent({ team, artifacts, workspaceDir })`, built when read with the team and the board
-access of the reader and the workspaces root.
+that may read it, and `buildContent(context)`, built when read from a `SkillContext`: the `team` and the `artifacts`
+access of the reader, its `rolePrompt` (the role's full system prompt) and the `workspaceDir`.
 
 ## Built-in skills
 
@@ -13,24 +13,56 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 |---|---|
 | CEO | `agent-team`, `artifact-board`, `delegation-protocol`, `response-protocol`, `workspace-navigation`, `skill-authoring` |
 | Every executor (GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
+| Every executor and IT_SUPPORT | `role-guide` |
 | CEO, PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
+| DEVELOPER, GIT_OPS | `git-remote` |
+| GIT_OPS | `repository-setup` |
+| CODE_REVIEWER | `review-publishing` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
+
+### `role-guide`
+
+Returns `SkillContext.rolePrompt`, the full system prompt of the reader's role (`AgentSkillsService` builds it with
+`getSystemPrompt(role)`), for a session whose history has lost it. A reader
+that browses skills for the user (`readAny`) gets the prompt of the first role the skill names.
 
 ### `asking-the-user`
 
-The only guide to asking the user (`skills/asking-the-user.skill.ts`): when to ask, the grammar, options without
-"Other", the recommended option first and marked `recommended` (assumed when the user does not reply within
-`QUESTION_TIMEOUT_MS`), the text outside the tags as the context so each question stands on its own among several
-agents, a `rationale` always filled, one independent question per item of a batch, and the `<user_answers>` format,
-with `<attachment path="…"/>` for files the user attaches and `status="timed_out"` for an answer assumed because the
-user was absent.
+The guide to asking the user in full (`skills/asking-the-user.skill.ts`); the essentials are inline in
+`USER_QUESTIONS_BRIEF`. It covers when to ask, the grammar, options without "Other", the recommended option first and
+marked `recommended` (assumed when the user does not reply in time), the text outside the tags as the context so each
+question stands on its own among several agents, a `rationale` always filled, independent questions in one response,
+and the `<user_answers>` format, with `<attachment path="…"/>` for files the user attaches and `status="timed_out"` for
+an answer assumed because the user was absent.
+
+### `git-remote`, `repository-setup` and `review-publishing`
+
+Procedures that touch a Git hosting provider, each for the roles that need it:
+
+- `git-remote` (DEVELOPER, GIT_OPS): finding the provider with `git remote -v` and using its MCP tools, then its
+  official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per task, titled
+  with the task id and title, described from the task and recorded on it with `<pull_request …/>`; merging only on an
+  instruction, with checks green, and recording `state="merged"`; authentication failures reported with the exact error.
+- `repository-setup` (GIT_OPS): the workspace manifest (`WORKSPACE_MANIFEST_FILE`, a JSON array of
+  `{ url, folder, defaultBranch }`, GIT_OPS its only writer), folder naming from the URL, choosing the transport, cloning,
+  SSH key setup (an existing key is never overwritten and the private key never printed) and initializing a new repository.
+- `review-publishing` (CODE_REVIEWER): the provider tooling, reading the pull request and its checks, publishing each
+  finding inline on the new line or in the main discussion, submitting the verdict, and resolving the threads of fixed
+  findings on a later review.
 
 ### `running-the-app` and `mobile-testing`
 
 The QA prepares its own environment with them: `running-the-app` brings up local services with migrations and seeds,
-points the application and its clients at them, rebuilding what reads a setting at build time, shapes the state a test needs in local data or, when data cannot reach it, in code, and undoes it
-all at shutdown (tracked files reverted, `git status` as found, kept local data listed); `mobile-testing` adds how a
-device reaches the host, with `adb reverse` for an Android emulator. Nothing either skill changes is ever committed.
+points the application and its clients at them, rebuilding what reads a setting at build time, shapes the state a test
+needs in local data or, when data cannot reach it, in code, and undoes it all at shutdown (tracked files reverted,
+`git status` as found, kept local data listed); `mobile-testing` adds how a device reaches the host, with `adb reverse`
+for an Android emulator. Nothing either skill changes is ever committed.
+
+### `skill-authoring`
+
+The CEO's guide to writing skills. A skill about how the team works (branching, pull requests, review and test gates)
+names every role it governs in `roles`, the CEO included, with a section per role, so that each agent reads its own part
+and the CEO's specifications name the skill without retelling it.
 
 ## User skills
 

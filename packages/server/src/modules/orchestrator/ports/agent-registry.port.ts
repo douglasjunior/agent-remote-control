@@ -1,8 +1,19 @@
-import type { ArtifactSection } from '../../artifacts/models/artifact.model.js';
+import type { ArtifactSection, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
 
+
+/** How a delegation of a role moves the status of the task it works on. */
+export interface DelegationStatusFlow {
+  /** The statuses a task may be in when it is delegated to the role. */
+  readonly from: readonly ArtifactStatus[];
+  /** The status the task takes when the agent starts. */
+  readonly start?: ArtifactStatus;
+  /** The status each verdict, the first word of the agent's final answer, leaves the task in. */
+  readonly verdicts: Readonly<Record<string, ArtifactStatus>>;
+}
 
 export interface DelegationContract {
   readonly project?: 'required' | 'optional';
+  /** The `session` attribute picks the session of a delegation without an artifact; with one, the task's session is used. */
   readonly sessionMode?: 'overridable';
   readonly readOnly?: true;
   /** Whether a delegation names the artifact the agent works on; absent, the agent takes none. */
@@ -13,6 +24,10 @@ export interface DelegationContract {
   readonly asksUser?: true;
   /** The CEO may delegate to the agent only in a turn that answers the user's message or answers, never on its own after an agent result. */
   readonly userInitiatedOnly?: true;
+  /** The refinement the role settles on the artifacts it is delegated. */
+  readonly refines?: 'business' | 'technical';
+  /** Absent, a delegation of the role leaves the status of its task alone. */
+  readonly statusFlow?: DelegationStatusFlow;
 }
 
 /** The artifact fields besides the sections; `pull_requests` adds or updates the links of the artifact. */
@@ -37,11 +52,13 @@ export interface IAgentRegistryPort {
   getDisplayName(agentRole: string): string;
   hasRole(agentRole: string): boolean;
   listRoles(): string[];
+  /** The session of a delegation without an artifact and without the `session` attribute. */
   getDefaultSessionMode(agentRole: string): 'resume' | 'new';
   getDelegationContract(agentRole: string): DelegationContract;
   /** Read-only access to tasks for an unknown role. */
   getArtifactAccess(agentRole: string): ArtifactAccess;
-  getTurnReminder(agentRole: string): string;
+  /** What the agent reads first in a prompt to a session it resumes, whose instructions may have been compacted away; empty for none. */
+  getReentryNote(agentRole: string): string;
   isSystemPromptEveryTurn(agentRole: string): boolean;
 }
 

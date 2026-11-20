@@ -49,6 +49,7 @@ A complete request, to copy and adapt:
 - Prescriptive and concrete: imperative instructions, exact commands, tool names, file locations and the output to produce. Say what to do when something fails.
 - Only what the agent cannot already know: the project's or team's choices, pitfalls, the shape of the deliverable. Skip generic advice.
 - Respect the role's limits: a skill never asks an agent to do what its role forbids (a QA agent changing code, a reviewer running the project).
+- A skill about how the team works (branching, pull requests, review and test gates) names every role it governs in \`roles\`, yours included, and has one section per role, written to that role: "## Developer: branch from the feature branch...". Each agent reads its own part, and your specifications name the skill instead of retelling it. A process skill only you can read forces you to repeat the process in every delegation.
 - No secrets, tokens or personal data: point to where the agent finds them instead.
 - Keep each skill to one subject; split a subject that grows past a few hundred lines.
 

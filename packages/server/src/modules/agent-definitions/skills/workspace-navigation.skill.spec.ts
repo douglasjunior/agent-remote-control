@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@rstest/core';
 
+import { WORKSPACE_MANIFEST_FILE } from '../constants/workspace-manifest.constant.js';
 import { skillContext } from '../testing/skill-context.fixture.js';
 
 import { WORKSPACE_NAVIGATION_SKILL } from './workspace-navigation.skill.js';
@@ -15,7 +16,8 @@ describe('workspace-navigation skill', () => {
   });
 
   it('should let the CEO read the manifest but never write it', () => {
-    expect(skill).toContain('workspace-manifest.json');
+    expect(skill).toContain(`├── ${WORKSPACE_MANIFEST_FILE}`);
+    expect(WORKSPACE_NAVIGATION_SKILL.description).toContain(WORKSPACE_MANIFEST_FILE);
     expect(skill).toContain('Read it to answer whether a repository is already in the workspace');
     expect(skill).toContain('Never write it.');
   });

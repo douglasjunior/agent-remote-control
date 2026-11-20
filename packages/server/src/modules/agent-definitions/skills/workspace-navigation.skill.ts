@@ -1,8 +1,7 @@
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
+import { WORKSPACE_MANIFEST_FILE } from '../constants/workspace-manifest.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
-
-const WORKSPACE_MANIFEST_FILE = 'workspace-manifest.json';
 
 export const WORKSPACE_NAVIGATION_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.workspaceNavigation,

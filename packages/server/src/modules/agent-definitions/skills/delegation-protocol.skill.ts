@@ -4,19 +4,22 @@ import type { AgentSkillDefinition } from '../models/agent-skill-definition.mode
 
 export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.delegationProtocol,
-  description: `Protocol the CEO follows to delegate work to agents - the <delegate> tag, the artifact and project folder, session mode, task specification, parallel delegations, agent results, redirecting a running agent, access requests outside the project folder, and delegation errors. Use before writing any delegation and whenever an agent result or a [DELEGATION_ERROR] arrives.`,
+  description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, redirecting a running agent, failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
   roles: ['CEO'],
   buildContent: ({ workspaceDir }) => `# Delegation Protocol
 
-## Delegate Tag
-- The task specification goes inside \`<delegate role="ROLE" summary="what the user reads">...</delegate>\` in the final response block, as plain text without code fences around the tag.
-- Attributes: \`role\` and \`summary\` (both required), \`artifact\` with the id of the artifact the agent works on, \`project\` with the project folder, and \`session\` with \`new\` or \`resume\`, in double quotes: \`<delegate role="DEVELOPER" summary="Adding the login screen" artifact="T-3" session="new">\`. Use only the attributes the agent accepts, as listed in Your Team.
-- With \`artifact\`, the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out. See the \`${SKILL_NAMES.artifactBoard}\` skill.
-- \`summary\` is one short sentence (up to 120 characters) in the user's language that tells a non-technical user what this agent is doing and why, such as "Planning how to build the login screen". It is shown next to the agent's name; the agent never sees it. Without jargon, file names or commands.
-- Only the text inside the tag reaches the agent. The text outside it is shown to the user as a short progress note, and the user does not see the tasks.
+## The Delegate Tag
+- \`<delegate role="ROLE" summary="what the user reads" artifact="T-3" project="my-app" session="new">specification</delegate>\`, in the final response block, as plain text without code fences around the tag. \`role\` and \`summary\` are required; use only the other attributes the agent accepts, as listed in Your Team.
+- \`summary\`: one short sentence (up to 120 characters) in the user's language that tells a non-technical user what the agent is doing and why, such as "Planning how to build the login screen". The agent never sees it.
+- \`artifact\`: the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out.
+
+## The Specification
+- With \`artifact\`, name the step in a sentence or two. The task holds everything else, and what it lacks goes on it as an \`<artifact_comment>\` in the same response: a decision the user gave you, an exact path you authorize, a file the user attached (its absolute path, with permission to read it).
+- Without \`artifact\`, the agent knows only what you write: the goal, the facts you already have (a repository URL, a command that worked, an existing branch, copied verbatim), and what done looks like.
+- When an agent reports where it put something, route the follow-up work there.
 
 ## Project Folder
-The project folder sets the agent's working directory (CWD) to \`${workspaceDir}/<project-folder>\`. The orchestrator rejects a folder that is not an existing direct subfolder of the workspaces root.
+The project folder sets the agent's working directory (CWD) to \`${workspaceDir}/<project-folder>\`. It must be an existing direct subfolder of the workspaces root.
 
 | Attribute | Valid | Why |
 |---|---|---|
@@ -26,78 +29,42 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 | \`project="${workspaceDir}/my-app"\` | no | Absolute path. |
 | \`project="My-App"\` when the folder is \`my-app\` | no | Folder names are exact. |
 
-- Before delegating with a folder, confirm it exists by listing your CWD or with the \`${SKILL_NAMES.workspaceNavigation}\` skill.
-- The agent starts at the project root, where the project's own governance files live. Describe subdirectories and specific scopes in the specification, with paths relative to the project root.
+- Confirm a folder exists by listing your CWD or with the \`${SKILL_NAMES.workspaceNavigation}\` skill.
 - Work on a repository that is not in the workspace yet starts by adding it, through the agent that adds repositories, delegated without a folder. Use the folder name that agent reports for every follow-up.
 
-## Session Mode
-Each agent keeps one session per conversation and project folder, so its history in one project never leaks into another. Choose the mode deliberately:
-- \`session="new"\` when the task or subject changes for that agent (another feature, another bug, another project), or when you need a judgment free of earlier implementation bias.
-- \`session="resume"\`, or the agent's default when it resumes, to continue the same task: refinements, fixes to its own work, answers to its questions, granting an access request, or publishing findings it already mapped.
-- An agent whose mode is fixed never takes the \`session\` attribute.
+## Sessions
+- With \`artifact\`, an agent keeps one session per task: a new task starts with a clean context, and the same task continues where the agent left it. There is nothing to choose, and \`session\` is ignored.
+- Without \`artifact\`, an agent keeps one session per project folder. \`session="resume"\` (or the agent's default when it resumes) continues the same subject; \`session="new"\` starts over when the subject changes or you need a judgment free of what came before.
+- When the coding agent of a role differs from the one in the last \`[TEAM_PROFILES]\` you received, that role starts a new session. With \`artifact\` it receives the whole task again, so nothing needs restating; without one, restate the goal, the state of the work and the decisions already made. A change of model or effort alone keeps the session.
 
-## Task Specification
-- An agent only knows what you write and, with \`artifact\`, what the artifact holds. Make the specification self-contained: with an artifact, say what to do with it now; without one, include the acceptance criteria.
-- Carry everything it needs from the conversation: details from the user (such as a repository URL), and, verbatim, commands and verified facts from earlier agent results (such as working credentials or existing branches).
-- When the project documents a command for the task (package.json scripts, Makefile targets, setup or init scripts in README or AGENTS.md), ask for that command instead of a manual reproduction of its steps.
-- When an agent reports where it put something, route the follow-up work there.
-- The artifact replaces the content you would copy into the specification: delegate with \`artifact\` and say what the agent does with it now.
-- To hand over a file the user attached, include its absolute path and authorize reading it, since it lives outside the agent's folder.
-
-## Parallel Work
-Delegate in one response every task that does not need the output of another task, whatever the roles. Sequence only when a task consumes another's output (a plan before its implementation, an implementation before its review). Never hold back an independent task to wait for another agent.
-
-A conversation runs one agent per role at a time, however many projects exist. Parallelism comes from different roles working on different items:
-
-\`\`\`text
-Reviewing the backend while the screen is built and the import is investigated.
-
-<delegate role="CODE_REVIEWER" summary="Reviewing the orders endpoint" artifact="T-4">
-Review the pull request of T-4.
-</delegate>
-
-<delegate role="DEVELOPER" summary="Building the orders screen" artifact="T-7">
-Implement T-7.
-</delegate>
-
-<delegate role="TECH_LEAD" summary="Investigating the slow nightly import" project="importer">
-Investigate why the nightly import is slow and propose a fix.
-</delegate>
-\`\`\`
-
-- Several items that each go through plan, develop and review form a pipeline. Each response moves every item one stage forward, with a different role per item: plan project 1; then develop project 1 while planning project 2; then review project 1 while developing project 2 while planning project 3.
-- Each task specification is self-contained. Context shared by several tasks is repeated in each one.
-- A role appears once per response. Several tasks for the same role go into a single delegation.
-- Only one agent that modifies files may work in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it. Your Team states which agents are read-only.
-- You get back control as each agent finishes, with its result, including failures, and the results of agents that finish while you are working arrive together. Act on a result right away: an item whose plan is ready moves to development while the other agents keep working. The turn ends with your answer once no agent is left running.
+## Pipelines
+- Several items that each go through planning, development and review form a pipeline: each response moves every item one stage forward, with a different role per item.
+- A role appears once per response, and several pieces of work for the same role without an artifact go into a single delegation.
+- Only one agent that modifies files works in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it; Your Team says which agents are read-only in the \`${SKILL_NAMES.agentTeam}\` skill.
+- Results of agents that finish while you are working arrive together. Act on a result right away: an item whose plan is ready moves to development while the other agents keep working. The turn ends with your answer once no agent is left running.
 
 ## Agent Results
-- An agent's output arrives inside \`<agent_result role="ROLE" project="project-folder" artifact="T-3" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\` (without \`project\` or \`artifact\` when it had none; \`artifact_status\` is the artifact's status when the agent finished, followed by \`artifact_status_by="user"\` when the user set it on the board while the agent worked; \`agent\`, \`model\` and \`effort\` are the coding agent, model and effort that ran it, \`default\` when none was set), one block per delegation, delivered as soon as that agent finishes. Evaluate it against the user's original request, update the board, then delegate follow-up work or answer the user.
-- The agents that run discovery and planning ask the user directly whenever they need a decision, and the user answers them without you. A result arrives only when the agent has finished, so never repeat its questions to the user or answer them on the user's behalf.
-- The other agents never ask the user: a decision they need comes back in their result, with the options they see. Ask the user, then delegate again to the same agent, resuming its session, with the answer.
-- When a result points to a document outside the workspaces root that the agent produced for this request, attach it to your answer and authorize reading that exact path in the specification of the agent that continues the work.
-- \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the task again when the error looks transient, or report it to the user.
-- \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent before it finished. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it, for them to keep or discard.
+- \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
+- A result that opened with a verdict is a short receipt, cut when it runs long: the report is on the task, in the section that agent writes. Read the task when you need it.
+- \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the work again when the error looks transient, or report it to the user.
+- \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it.
+- When a result points to a document outside the workspaces root that the agent produced for this request, attach it to your answer and authorize reading that exact path for the agent that continues the work.
 - If a result asks the user to register an SSH public key, relay the full key block verbatim in your answer and wait for the user's confirmation before delegating again.
 
 ## Running Agents
-- \`[TEAM_PROFILES]\` lists every agent of your team with its role, coding agent, model and effort, and whether it is idle or working. A working agent also shows its project, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes while you work; a prompt without it means it is the same as the last one you received. You can answer the user while agents keep working, delegate independent work to other agents, or redirect a running agent.
-- When the coding agent of a role differs from the one in the last \`[TEAM_PROFILES]\` you received, that role starts a new session without the history of the earlier one. In its next specification, restate the goal, the current state of the work (commits, branches, what is done and pending), the decisions already made and the criterion for done. A change of model or effort alone keeps the session, so nothing needs restating.
-- \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Your session still shows those delegations as sent, so trust this block over it.
-- Delegating to a role that is already working, in any project, replaces its task with the new specification. In the same project the agent receives the new instructions mid-task when it supports that, or restarts with them otherwise; in another project it restarts there. Unfinished work is lost on a restart, so redirect an agent only to change what it does.
+- \`[TEAM_PROFILES]\` lists every agent of your team with its coding agent, model and effort, and whether it is idle or working: its project and artifact, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes; a prompt without it means nothing changed.
+- \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Trust it over what your session remembers as sent.
+- \`[BOARD_CHECK]\` arrives when you were about to end a turn with tasks in the middle of the flow and nobody working on them. Delegate their next step, or answer the user saying what each one waits for.
+- Delegating to a role that is already working replaces its task with the new specification: it receives the new instructions mid-task when it supports that, or restarts with them otherwise. Unfinished work is lost on a restart, so redirect an agent only to change what it does.
 
 ## Access Requests
-Agents never read or write outside their project folder unless the specification authorizes the exact path. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.
+Agents never read or write outside their project folder unless the exact path was authorized. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.
 1. Check that the access is really needed for the task and that no path inside the project would do.
-2. Paths outside \`${workspaceDir}\`, write access, and anything holding secrets or credentials need the user's explicit confirmation: ask it with a \`<question>\` that explains the request and its risk, and continue with the answer.
-3. To grant it, delegate again to the same agent with \`session="resume"\`, naming the exact path, the allowed mode (read or write), and the task to continue.
+2. Paths outside \`${workspaceDir}\`, write access, and anything holding secrets or credentials need the user's explicit confirmation: ask it with a \`<question>\` that explains the request and its risk.
+3. To grant it, delegate again to the same agent, naming the exact path, the allowed mode (read or write) and the work to continue.
 4. To deny it, tell the agent the same way and suggest an alternative, or report the limitation to the user.
-- Do not authorize outside paths in a specification unless the task needs them.
 
 ## Agents Only on the User's Decision
-An agent whose catalog entry says it is delegated to only on the user's decision is never your own initiative. When a task would need it, suggest it with a \`<question>\` that says what it would do and why, and delegate only after the user agrees or asks for it in their own words. Such a delegation is rejected in a turn that follows an agent result. The agent asks the user to approve its plan itself, so do not relay or answer that question for the user.
-
-## Delegation Errors
-\`[DELEGATION_ERROR]\` means the orchestrator rejected your last response. Fix exactly the stated reason and answer again following this protocol.
+An agent whose catalog entry says it is delegated to only on the user's decision is never your own initiative. When the work would need it, suggest it with a \`<question>\` that says what it would do and why, and delegate only after the user agrees or asks for it in their own words. Such a delegation is rejected in a turn that follows an agent result. The agent asks the user to approve its plan itself, so do not relay or answer that question for the user.
 `,
 };

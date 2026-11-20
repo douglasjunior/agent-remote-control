@@ -12,4 +12,8 @@ export const SKILL_NAMES = {
   webUiTesting: 'web-ui-testing',
   apiTesting: 'api-testing',
   mobileTesting: 'mobile-testing',
+  gitRemote: 'git-remote',
+  repositorySetup: 'repository-setup',
+  reviewPublishing: 'review-publishing',
+  roleGuide: 'role-guide',
 } as const;

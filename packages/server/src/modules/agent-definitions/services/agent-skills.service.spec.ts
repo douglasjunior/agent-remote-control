@@ -49,8 +49,8 @@ describe('AgentSkillsService', () => {
     const qa = (await service.list('QA')).map(skill => skill.name);
     const developer = (await service.list('developer')).map(skill => skill.name);
 
-    expect(qa).toEqual(['board-requests', 'running-the-app', 'web-ui-testing', 'api-testing', 'mobile-testing', 'cypress']);
-    expect(developer).toEqual(['board-requests', 'cypress']);
+    expect(qa).toEqual(['board-requests', 'running-the-app', 'web-ui-testing', 'api-testing', 'mobile-testing', 'role-guide', 'cypress']);
+    expect(developer).toEqual(['board-requests', 'git-remote', 'role-guide', 'cypress']);
     expect((await service.list('CEO')).map(skill => skill.name)).toContain('artifact-board');
     expect(await service.list('UNKNOWN')).toEqual([]);
   });
@@ -64,6 +64,21 @@ describe('AgentSkillsService', () => {
     expect(team?.content).toContain('### QA — QA Agent');
     expect(team?.content).not.toContain('### CEO');
     expect(delegation?.content).toContain('`project="/ws/my-app"`');
+  });
+
+  it('should build the role guide with the system prompt of the reader', async () => {
+    const { service } = setup();
+    const registry = new AgentRegistryService();
+
+    expect((await service.read('QA', 'role-guide'))?.content).toBe(registry.getSystemPrompt('QA'));
+    expect((await service.read('developer', 'role-guide'))?.content).toBe(registry.getSystemPrompt('DEVELOPER'));
+    expect((await service.read('CEO', 'role-guide'))?.content).toBe(registry.getSystemPrompt('CEO'));
+  });
+
+  it('should build the workspace manifest path of a skill from the workspaces root', async () => {
+    const { service } = setup();
+
+    expect((await service.read('GIT_OPS', 'repository-setup'))?.content).toContain('`/ws/workspace-manifest.json`');
   });
 
   it('should let a user skill replace a built-in one, roles included', async () => {
@@ -92,10 +107,13 @@ describe('AgentSkillsService', () => {
     const { service, userSkills } = setup();
     userSkills.skills = [userSkill('cypress', ['QA'])];
 
+    expect((await service.readAny('role-guide'))?.content).toBe(new AgentRegistryService().getSystemPrompt('GIT_OPS'));
     expect(await service.readAny('Agent-Team')).toMatchObject({ name: 'agent-team', roles: ['CEO'], builtIn: true });
     expect((await service.readAny('agent-team'))?.content).not.toContain('### CEO');
     expect(await service.readAny('cypress')).toEqual({ name: 'cypress', description: 'cypress skill.', roles: ['QA'], builtIn: false, content: 'Run it.' });
     expect(await service.readAny('missing')).toBeUndefined();
+    userSkills.skills = [userSkill('orphan', [])];
+    expect(await service.readAny('orphan')).toMatchObject({ name: 'orphan', roles: [], content: 'Run it.' });
   });
 
   it('should delete a user skill, bringing back the built-in one it replaced', async () => {

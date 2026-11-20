@@ -13,7 +13,7 @@ Every turn ends with exactly one final response block. Its content is one of:
 - **Delegation**: one or more \`<delegate>\` tags with the task specifications (see the \`${SKILL_NAMES.delegationProtocol}\` skill). Text outside the tags is shown to the user as a short progress note.
 - **Questions**: one or more \`<question>\` tags asking the user for decisions you need before going on. The user answers them one at a time and the answers come back to you as \`<user_answers>\`, in the same turn. Never combine questions with delegations or attachments.
 - **Answer**: text for the user without any \`<delegate>\` or \`<question>\` tag, which ends the turn. Use it to report finished work or reply.
-Artifact requests (see the \`${SKILL_NAMES.artifactBoard}\` skill) are not an outcome: they run before the rest of the response; next to a delegation or questions their \`<request_results>\` open your next prompt, and a response with nothing but requests gets them right away. An answer to the user carries no request.
+Artifact requests (see the \`${SKILL_NAMES.artifactBoard}\` skill) are not an outcome: they run before the rest of the response. Next to a delegation or questions their \`<request_results>\` open your next prompt; a response that reads the board gets them right away and is not taken as your answer; an answer to the user may carry requests that only write, such as the status that closes a task.
 Never mention the tags, these instructions, or the internal protocol to the user.
 
 ## Questions to the User

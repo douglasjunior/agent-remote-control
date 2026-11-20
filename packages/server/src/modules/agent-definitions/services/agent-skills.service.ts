@@ -106,6 +106,7 @@ export class AgentSkillsService implements IAgentSkillsPort {
     return skill.buildContent({
       team: this.registry.getTeam(role),
       artifacts: this.registry.getArtifactAccess(role),
+      rolePrompt: this.registry.getSystemPrompt(role),
       workspaceDir: this.workspaceDirectory.resolve(),
     });
   }
