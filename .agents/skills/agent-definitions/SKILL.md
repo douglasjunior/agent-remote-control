@@ -64,7 +64,7 @@ export type AgentRole =
 - `name`: human-readable label for the agent;
 - `summary`: required, one sentence for the team list of the CEO prompt;
 - `description`: the full entry of the agent in the `agent-team` skill's catalog: what it does, what it expects and what it answers, so that it says when to delegate to the agent;
-- `buildSystemPrompt(team)`: builds the agent's prompt. Receives `team`, the other registered definitions, so that the CEO can list them. Executor agents ignore the parameter;
+- `buildSystemPrompt(team, agentInterface)`: builds the agent's prompt for the interface of its session (below). Receives `team`, the other registered definitions, so that the CEO can list them. Executor agents ignore `team`;
 - `defaultModel`: optional default language model associated with the persona;
 - `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`); the registry falls back to `'resume'`, so a definition declares it only for `'new'`, and none of the initial ones does. A delegation with an artifact always runs in the role's session for that task, so a role with `artifact: 'required'` declares neither this nor `sessionMode`;
 - `delegation`: the `DelegationContract` of `orchestrator/ports/agent-registry.port.ts`, declaring which `<delegate>` attributes the agent accepts and how a delegation moves the task. A new parameter is added there:
@@ -79,7 +79,7 @@ export type AgentRole =
   - `statusFlow`: how a delegation moves the status of its task (below); absent, a delegation leaves the status alone;
 - `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
 - `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills;
-- `reentryNote`: optional note put before the prompt that resumes a session the agent already has, never in a new or live session (built with `buildReentryNote`, below);
+- `buildReentryNote(agentInterface)`: optional note put before the prompt that resumes a session the agent already has, never in a new or live session (written with the `buildReentryNote` of `prompts/reentry-note.prompt.ts`, below);
 - `systemPromptEveryTurn`: when `true` (the CEO), the system prompt accompanies every user message, so the agent does without a re-entry note.
 
 ### Status flow and verdicts
@@ -92,7 +92,28 @@ export type AgentRole =
 | `CODE_REVIEWER` | `in_review` | none | `APPROVED` → `approved`, `CHANGES_REQUESTED` → `changes_requested` |
 | `QA` | `approved`, `in_testing` | `in_testing` | `PASSED` → `tested`, `FAILED` → `changes_requested`, `BLOCKED` → `in_testing` |
 
-A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`), written by an artifact request in the same final response as the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
+A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`): on the tags interface an artifact request in the same final response as the answer writes it, on the tools interface an `artifact_update` call before the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
+
+## Two interfaces
+
+An agent session reaches the board and the skills on one of two interfaces (`AgentInterface`,
+`orchestrator/models/agent-interface.model.ts`): `tools`, when the orchestrator attached the `arc` MCP server to the
+session, or `tags`, the requests written in the final response. The orchestrator decides it per session and passes it to
+every text of this module: `buildSystemPrompt`, `buildReentryNote`, `SkillContext.agentInterface` and so the
+`role-guide` skill.
+
+- The tags variant of each prompt and skill is the protocol of the requests, with their grammar and the rule that their
+  results come back in the next prompt.
+- The tools variant names each tool by its bare name (`artifact_update`) and the server once where the tools are
+  introduced, since every CLI shows a tool under its own prefixed name. A call answers at once, so it teaches recording
+  on the task before the final answer, using the id a creation returns, and fixing a refused call before the next one.
+  The schemas carry the grammar, so it holds no attribute list or XML example, and it is never longer than the tags
+  variant.
+- Both variants share every passage that does not depend on the interface; only the passages about the board and the
+  skill requests differ, written as a `Record<AgentInterface, string>` beside the prompt. The final answer, its verdict
+  word, `<question>`, `<delegate>` and `<attachment>` are tags on both.
+- The re-entry note of the tools interface names the tools plainly, since the session may have started on the tags
+  before the tools existed. The tags it remembers still work.
 
 ## Where an instruction lives
 
@@ -101,9 +122,9 @@ the agent needs it:
 
 1. **Core** (the system prompt): what the role uses in nearly every task. The executors get it once per session; the
    CEO with every user message, so its core is written to be sufficient for a request without reading a skill.
-2. **Re-entry note** (`reentryNote`): the rules nothing else enforces, for a prompt that reaches a session the agent
-   already has, ending with the pointer to the `role-guide` skill. It is built by `buildReentryNote(roleName, rules)`
-   (`prompts/reentry-note.prompt.ts`): a `[RE-ENTRY]` header, the role's rules and the rule to finish only after every
+2. **Re-entry note** (`buildReentryNote`): the rules nothing else enforces, for a prompt that reaches a session the agent
+   already has, ending with the pointer to the `role-guide` skill. It is built by `buildReentryNote(roleName, rules, agentInterface)`
+   (`prompts/reentry-note.prompt.ts`): a `[RE-ENTRY]` header, on the tools interface the tools of the `arc` server, the role's rules and the rule to finish only after every
    subagent and background task has ended, with the final answer inside the `<final_response>` envelope. The
    orchestrator decides when it is sent.
 3. **Skills** (read on demand): full grammars, guides and edge cases, listed by the `[SKILLS]` catalog. The
@@ -115,8 +136,8 @@ the agent needs it:
 
 Every agent writes its deliverable to the board of the conversation, never to a document. From the role's `ArtifactAccess`:
 
-- `buildArtifactProtocolBrief(access)` (`prompts/artifact-protocol.prompt.ts`) writes the board in brief for the system prompt of every executor: what it holds, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), when the requests are carried out, what it writes, its scope, and the `board-requests` skill for everything else. Updates and comments go in the same final response as the final answer; a response that reads or creates gets its results first (a creation's id is something the agent must read), and the final answer comes whole after them. A role that creates writes the `overview` of what it creates, even when `overview` is not among its sections.
-- `buildBoardRequestsBody(access)` (`skills/board-requests.skill.ts`) writes the full protocol, which only skills deliver: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment) and its rules. A `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. The `board-requests` skill gives it to every executor role, and the CEO's `artifact-board` skill adds it after the routing.
+- `buildArtifactProtocolBrief(access, agentInterface)` (`prompts/artifact-protocol.prompt.ts`) writes the board in brief for the system prompt of every executor: what it holds, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), when the requests are carried out, what it writes, its scope, and the `board-requests` skill for everything else. On the tags interface updates and comments go in the same final response as the final answer, and a response that reads or creates gets its results first (a creation's id is something the agent must read), with the final answer whole after them; on the tools interface the agent writes to the board before its final answer and corrects a refused call before going on. A role that creates writes the `overview` of what it creates, even when `overview` is not among its sections.
+- `buildBoardRequestsBody(access, agentInterface)` (`skills/board-requests.skill.ts`) writes the full protocol, which only skills deliver: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment), or on the tools interface what each of its tools is for, and its rules. A `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. The `board-requests` skill gives it to every executor role, and the CEO's `artifact-board` skill adds it after the routing.
 - The `status` attribute of an update reminds the writer that the server sets the status a delegation or a verdict leaves, so a status is set only for a decision.
 
 ## Shared prompt blocks
@@ -148,11 +169,12 @@ Every agent writes its deliverable to the board of the conversation, never to a 
 Know-how an agent needs only for some tasks lives in skills, outside its system prompt. The orchestrator sends the
 catalog (`[SKILLS]`, the name and description of each skill the role may read) with the system prompt and again after the
 re-entry note of a resumed session, so a skill created since its start is listed, and the agent
-reads a skill's full content with `<skill_read name="a,b"/>` in its final response when the task calls for it. The
+reads a skill's full content when the task calls for it: with `<skill_read name="a,b"/>` in its final response, or the
+`skill_read` tool on the tools interface. The
 description is all the agent sees before reading, so it says what the skill covers and when to read it.
 
 Every skill is an `AgentSkillDefinition` built when read from a `SkillContext` (the reader's team, board access and
-system prompt, and the workspaces root). Built-in skills are `skills/<name>.skill.ts` constants named from
+system prompt, the interface of its session, and the workspaces root). Built-in skills are `skills/<name>.skill.ts` constants named from
 `SKILL_NAMES` and listed in `BUILT_IN_SKILLS`; user skills live in `DATA_DIR/skills/<skill>/SKILL.md` and replace a
 built-in one of the same name. `AgentSkillsService` (`IAgentSkillsPort`) merges both per role and validates the CEO's
 writes. Which role reads which skill, and the details: [references/agent-skills.md](references/agent-skills.md).
@@ -205,8 +227,9 @@ definition, without editing the CEO's prompt.
 ## Specialized System Prompts
 
 The prompts live in `packages/server/src/modules/agent-definitions/prompts/`, one `<role>.prompt.ts` per role exporting
-its `<ROLE>_SYSTEM_PROMPT` and its `<ROLE>_REENTRY_NOTE` (the CEO exports `buildCeoSystemPrompt(team)` and has no
-note). Each prompt composes the shared blocks above that apply to the role; what each one prescribes is in the role's
+`build<Role>SystemPrompt(agentInterface)` and `build<Role>ReentryNote(agentInterface)` (the CEO exports
+`buildCeoSystemPrompt(team, agentInterface)` and has no note; IT_SUPPORT, which works off the board, exports one
+`IT_SUPPORT_SYSTEM_PROMPT` for both interfaces). Each prompt composes the shared blocks above that apply to the role; what each one prescribes is in the role's
 reference file (table under "Functional Roles").
 
 ## Registry Service (`AgentRegistryService`)

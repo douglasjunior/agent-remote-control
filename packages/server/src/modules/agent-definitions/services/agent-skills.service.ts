@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import type {
   AgentSkill,
   AgentSkillInput,
@@ -38,10 +39,10 @@ export class AgentSkillsService implements IAgentSkillsPort {
     return (await this.allSkills()).filter(skill => this.isFor(skill, role)).map(({ name, description }) => ({ name, description }));
   }
 
-  async read(role: string, name: string): Promise<AgentSkill | undefined> {
+  async read(role: string, name: string, agentInterface: AgentInterface): Promise<AgentSkill | undefined> {
     const readable = (await this.allSkills()).filter(skill => this.writesSkills(role) || this.isFor(skill, role));
     const skill = this.find(readable, name);
-    return skill && { name: skill.name, description: skill.description, content: this.contentOf(skill, role) };
+    return skill && { name: skill.name, description: skill.description, content: this.contentOf(skill, role, agentInterface) };
   }
 
   async listAll(): Promise<readonly AgentSkillListing[]> {
@@ -50,7 +51,7 @@ export class AgentSkillsService implements IAgentSkillsPort {
 
   async readAny(name: string): Promise<(AgentSkill & AgentSkillListing) | undefined> {
     const skill = this.find(await this.allSkills(), name);
-    return skill && { ...this.listingOf(skill), content: this.contentOf(skill, skill.roles[0] ?? '') };
+    return skill && { ...this.listingOf(skill), content: this.contentOf(skill, skill.roles[0] ?? '', 'tags') };
   }
 
   writesSkills(role: string): boolean {
@@ -102,11 +103,12 @@ export class AgentSkillsService implements IAgentSkillsPort {
     return skills.find(candidate => candidate.name.toLowerCase() === name.toLowerCase());
   }
 
-  private contentOf(skill: AgentSkillDefinition, role: string): string {
+  private contentOf(skill: AgentSkillDefinition, role: string, agentInterface: AgentInterface): string {
     return skill.buildContent({
       team: this.registry.getTeam(role),
       artifacts: this.registry.getArtifactAccess(role),
-      rolePrompt: this.registry.getSystemPrompt(role),
+      rolePrompt: this.registry.getSystemPrompt(role, agentInterface),
+      agentInterface,
       workspaceDir: this.workspaceDirectory.resolve(),
     });
   }

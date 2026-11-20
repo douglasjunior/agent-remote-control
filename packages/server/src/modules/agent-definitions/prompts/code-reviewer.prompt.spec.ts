@@ -4,11 +4,14 @@ import { CODE_REVIEWER_ARTIFACT_ACCESS } from '../constants/artifact-access.cons
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
 import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
-import { CODE_REVIEWER_REENTRY_NOTE, CODE_REVIEWER_SYSTEM_PROMPT } from './code-reviewer.prompt.js';
+import { buildCodeReviewerReentryNote, buildCodeReviewerSystemPrompt } from './code-reviewer.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
 
+
+const CODE_REVIEWER_SYSTEM_PROMPT = buildCodeReviewerSystemPrompt('tags');
+const CODE_REVIEWER_REENTRY_NOTE = buildCodeReviewerReentryNote('tags');
 
 describe('code-reviewer.prompt', () => {
   describe('what it reviews', () => {
@@ -88,7 +91,7 @@ describe('code-reviewer.prompt', () => {
   });
 
   it('should include the board brief of its access and the shared blocks', () => {
-    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS));
+    expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS, 'tags'));
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
@@ -105,6 +108,29 @@ describe('code-reviewer.prompt', () => {
       expect(CODE_REVIEWER_REENTRY_NOTE).toContain('without running the project and without changing any file');
       expect(CODE_REVIEWER_REENTRY_NOTE).toContain('Replace the `review_findings` section');
       expect(CODE_REVIEWER_REENTRY_NOTE).toContain('written exactly as shown, in English: APPROVED or CHANGES_REQUESTED');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildCodeReviewerSystemPrompt('tools');
+    const note = buildCodeReviewerReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### What Counts as a Finding');
+      expect(prompt).toContain('### Reviewer Boundaries');
+      expect(prompt).toContain(buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS, 'tools'));
+    });
+
+    it('should replace review_findings with artifact_update before the answer that opens with the verdict', () => {
+      expect(prompt).toContain('- Record the review on the task with `artifact_update` before you answer, replacing its `review_findings` section with the verdict; what you reviewed');
+      expect(prompt).toContain('- Then write your answer to the coordinator, starting with the verdict on a line of its own');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should name the tools in the re-entry note with the verdict words', () => {
+      expect(note).toContain('the tools of the `arc` MCP server');
+      expect(note).toContain('Replace the `review_findings` section of the task with `artifact_update`, then write your answer');
+      expect(note).toContain('written exactly as shown, in English: APPROVED or CHANGES_REQUESTED');
     });
   });
 });

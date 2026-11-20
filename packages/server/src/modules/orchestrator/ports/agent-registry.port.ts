@@ -1,4 +1,5 @@
 import type { ArtifactSection, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
+import type { AgentInterface } from '../models/agent-interface.model.js';
 
 
 /** How a delegation of a role moves the status of the task it works on. */
@@ -47,7 +48,7 @@ export interface ArtifactAccess {
 }
 
 export interface IAgentRegistryPort {
-  getSystemPrompt(agentRole: string): string;
+  getSystemPrompt(agentRole: string, agentInterface: AgentInterface): string;
   getDefaultModel(agentRole: string): string | undefined;
   getDisplayName(agentRole: string): string;
   hasRole(agentRole: string): boolean;
@@ -58,7 +59,7 @@ export interface IAgentRegistryPort {
   /** Read-only access to tasks for an unknown role. */
   getArtifactAccess(agentRole: string): ArtifactAccess;
   /** What the agent reads first in a prompt to a session it resumes, whose instructions may have been compacted away; empty for none. */
-  getReentryNote(agentRole: string): string;
+  getReentryNote(agentRole: string, agentInterface: AgentInterface): string;
   isSystemPromptEveryTurn(agentRole: string): boolean;
 }
 

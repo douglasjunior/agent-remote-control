@@ -54,3 +54,10 @@ Skills (read one in full with skill_read before the work it describes):
 
 The list is `IAgentSkillsPort.list(role)` at `initialize`, or `Your role has no skills.` Codex shows the model only the
 first line, so that line must keep standing on its own.
+
+## What the agent is taught
+
+A session with the tools reads every prompt and skill in its tools variant (`agent-definitions` skill, "Two
+interfaces"): each tool by its bare name and the server as `arc` (`AGENT_TOOLS_SERVER_NAME`) where the tools are
+introduced, never a prefixed form such as `mcp__arc__artifact_update`, since each CLI prefixes the name its own way.
+Changing a tool's name or what it returns changes those texts in the same change.

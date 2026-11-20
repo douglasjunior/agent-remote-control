@@ -380,8 +380,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(delegateStubPort.promptCalls[0]).toBe(toAgent('[RE-ENTRY] DEVELOPER\n\nFix it.'));
       expect(delegateStubPort.promptCalls[1]).not.toContain('[RE-ENTRY]');
       expect(stubAgentPort.promptCalls[1]).not.toContain('[RE-ENTRY]');
-      expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=resumed, SystemPrompt=no, Chars=${delegateStubPort.promptCalls[0]!.length}`);
-      expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=live, SystemPrompt=no, Chars=${delegateStubPort.promptCalls[1]!.length}`);
+      expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=resumed, Interface=tags, SystemPrompt=no, Chars=${delegateStubPort.promptCalls[0]!.length}`);
+      expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=live, Interface=tags, SystemPrompt=no, Chars=${delegateStubPort.promptCalls[1]!.length}`);
     });
 
     it('should put the note of a resumed CEO after its system prompt and before the prompt', async () => {
@@ -396,7 +396,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     describe('skill catalog', () => {
       const testing = { name: 'testing', description: 'How to test.', content: 'Test it.' };
-      const catalogOf = (...skills: { name: string; description: string }[]) => buildSkillCatalogPrompt(skills.map(({ name, description }) => ({ name, description })));
+      const catalogOf = (...skills: { name: string; description: string }[]) => buildSkillCatalogPrompt(skills.map(({ name, description }) => ({ name, description })), 'tags');
       const seedDeveloper = () => sessionStore.seed(buildSessionContext({
         agentSessions: [{ role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
       }));
@@ -442,7 +442,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         await useCase.execute(turnRequest());
 
-        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER\n\n${buildSkillCatalogPrompt([], true)}\n\nFix it.`));
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER\n\n${buildSkillCatalogPrompt([], 'tags', true)}\n\nFix it.`));
       });
 
       it('should list a skill created between two delegations of the same task in the second prompt only', async () => {
@@ -527,7 +527,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(messages).toContainEqual(expect.stringMatching(new RegExp(`^\\[Delegation Finished\\] .*, Prompts=2, PromptChars=${promptChars}, InputTokens=45, OutputTokens=15, TotalTokens=60$`)));
     expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=30, Output=10, CachedRead=5, CachedWrite=7, Total=40');
     expect(messages).toContain('[Agent Usage] Role=DEVELOPER, Input=15, Output=5, CachedRead=0, CachedWrite=0, Total=20');
-    expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=new, SystemPrompt=yes, Chars=${delegateStubPort.promptCalls[0]!.length}`);
+    expect(messages).toContain(`[Agent Prompt] Role=DEVELOPER, Session=new, Interface=tags, SystemPrompt=yes, Chars=${delegateStubPort.promptCalls[0]!.length}`);
   });
 
   it('should give each delegation its own id, shared by every phase of it', async () => {
@@ -1018,7 +1018,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     await useCase.execute(turnRequest());
     await useCase.execute(turnRequest({ prompt: 'Again' }));
 
-    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([{ name: 'board', description: 'Routing the board.' }])}\n\n`);
+    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([{ name: 'board', description: 'Routing the board.' }], 'tags')}\n\n`);
     expect(stubAgentPort.promptCalls[1]).not.toContain('[SKILLS]');
   });
 
@@ -1028,7 +1028,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
     await useCase.execute(turnRequest());
 
-    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([], true)}\n\n`);
+    expect(stubAgentPort.promptCalls[0]).toContain(`Mock system prompt.\n\n${buildSkillCatalogPrompt([], 'tags', true)}\n\n`);
   });
 
   it('should report the skills a delegated agent reads with its role', async () => {
@@ -1387,7 +1387,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       await useCase.execute(turnRequest());
 
       expect(stubAgentPort.mcpServersSent).toEqual([[{ name: 'arc', url: TOOLS_URL, headers: { authorization: expect.stringMatching(/^Bearer [\w-]{43}$/) } }]]);
-      expect(toolsOf(stubAgentPort)?.requester).toEqual({ role: 'CEO', roleName: 'CEO', conversationId: 'conv-1' });
+      expect(toolsOf(stubAgentPort)?.requester).toEqual({ role: 'CEO', roleName: 'CEO', conversationId: 'conv-1', agentInterface: 'tools' });
     });
 
     it('should attach the tools again to a session it loads', async () => {
@@ -1458,8 +1458,83 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       await useCase.execute(turnRequest());
 
-      expect(whileWorking!.requester).toEqual({ role: 'DEVELOPER', roleName: 'DEVELOPER', conversationId: 'conv-1', delegationId: expect.any(String) });
+      expect(whileWorking!.requester).toEqual({ role: 'DEVELOPER', roleName: 'DEVELOPER', conversationId: 'conv-1', delegationId: expect.any(String), agentInterface: 'tools' });
       expect(toolsOf(delegateStubPort)).toBeUndefined();
+    });
+
+    describe('the interface of the session', () => {
+      const testing = { name: 'testing', description: 'How to test.', content: 'Test it.' };
+      const seedDeveloper = () => sessionStore.seed(buildSessionContext({
+        agentSessions: [{ role: 'DEVELOPER', agentId: 'stub', sessionId: 'dev-old', projectName: 'my-app', artifactId: null }],
+      }));
+
+      beforeEach(() => {
+        agentRegistry.getSystemPrompt.mockImplementation((role: string, agentInterface: string) => `${role} ${agentInterface} prompt`);
+        agentRegistry.getReentryNote.mockImplementation((role: string, agentInterface: string) => `[RE-ENTRY] ${role} ${agentInterface}`);
+        agentSkills.skills = { CEO: [testing], DEVELOPER: [testing] };
+      });
+
+      it('should write the system prompt and the skill catalog of a session with tools for the tools interface', async () => {
+        stubAgentPort.supportsHttpMcp = true;
+        stubAgentPort.mockResponses = ['Hi.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[0]).toBe(toCeo(`CEO tools prompt\n\n${buildSkillCatalogPrompt([testing], 'tools')}\n\n${idleTeam}${emptyBoard}Hi`));
+      });
+
+      it('should write the re-entry note and the catalog of a resumed session with tools for the tools interface', async () => {
+        seedDeveloper();
+        delegateStubPort.supportsHttpMcp = true;
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER tools\n\n${buildSkillCatalogPrompt([testing], 'tools')}\n\nFix it.`));
+      });
+
+      it('should keep the tags interface for an agent that does not take HTTP MCP servers', async () => {
+        seedDeveloper();
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[0]).toBe(toCeo(`CEO tags prompt\n\n${buildSkillCatalogPrompt([testing], 'tags')}\n\n${idleTeam}${emptyBoard}Hi`));
+        expect(delegateStubPort.promptCalls[0]).toBe(toAgent(`[RE-ENTRY] DEVELOPER tags\n\n${buildSkillCatalogPrompt([testing], 'tags')}\n\nFix it.`));
+      });
+
+      it('should keep the tags interface with AGENT_MCP_ENABLED=false', async () => {
+        rs.stubEnv('AGENT_MCP_ENABLED', 'false');
+        stubAgentPort.supportsHttpMcp = true;
+        stubAgentPort.mockResponses = ['Hi.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[0]).toBe(toCeo(`CEO tags prompt\n\n${buildSkillCatalogPrompt([testing], 'tags')}\n\n${idleTeam}${emptyBoard}Hi`));
+      });
+
+      it('should write the system prompt of a live CEO session with tools for the tools interface on every message', async () => {
+        stubAgentPort.supportsHttpMcp = true;
+        agentRegistry.isSystemPromptEveryTurn.mockReturnValue(true);
+        stubAgentPort.mockResponses = ['Hi.', 'Again.'];
+
+        await useCase.execute(turnRequest());
+        await useCase.execute(turnRequest({ prompt: 'Again' }));
+
+        expect(stubAgentPort.promptCalls[1]).toContain('CEO tools prompt');
+      });
+
+      it('should read a skill requested with a tag in the variant of the session that requested it', async () => {
+        delegateStubPort.supportsHttpMcp = true;
+        stubAgentPort.mockResponses = ['<skill_read name="testing"/>', '<delegate role="DEVELOPER" summary="Working on it" project="my-app">Fix it.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['<skill_read name="testing"/>', 'Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(agentSkills.readInterfaces).toEqual(['tags', 'tools']);
+      });
     });
   });
 
@@ -5004,7 +5079,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         expect(result.status).toBe('failed');
         expect(stubAgentPort.promptCalls[1]).toContain(
-          'The specification of T-1 has 23 characters, and the limit with an artifact is 20. The agent receives T-1 in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as an <artifact_comment> in the same response. Do not restate its sections.',
+          'The specification of T-1 has 23 characters, and the limit with an artifact is 20. The agent receives T-1 in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.',
         );
       });
 

@@ -1,3 +1,4 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { CODE_REVIEWER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
@@ -8,12 +9,34 @@ import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.j
 import { buildReentryNote } from './reentry-note.prompt.js';
 
 
-export const CODE_REVIEWER_REENTRY_NOTE = buildReentryNote('Code Reviewer Agent', [
-  'You review the changes of the task in the `[DELEGATED_ARTIFACT]` block, its open pull request or its branch read locally, without running the project and without changing any file. On a task you already reviewed, check each earlier finding and what changed since.',
-  'Replace the `review_findings` section of the task in the same final response as your answer, which starts with the verdict on a line of its own, written exactly as shown, in English: APPROVED or CHANGES_REQUESTED.',
-]);
+const VERDICT_RULE = 'which starts with the verdict on a line of its own, written exactly as shown, in English: APPROVED or CHANGES_REQUESTED.';
 
-export const CODE_REVIEWER_SYSTEM_PROMPT = `You are the Code Reviewer Agent of a team of agents that builds software for a user. A coordinator hands you a task of the team's board whose implementation is ready, and you judge the change it introduces with fresh eyes: you did not write it and you carry none of the implementer's assumptions.
+const RECORD_RULE: Readonly<Record<AgentInterface, string>> = {
+  tags: `Replace the \`review_findings\` section of the task in the same final response as your answer, ${VERDICT_RULE}`,
+  tools: `Replace the \`review_findings\` section of the task with \`artifact_update\`, then write your answer, ${VERDICT_RULE}`,
+};
+
+export function buildCodeReviewerReentryNote(agentInterface: AgentInterface): string {
+  return buildReentryNote('Code Reviewer Agent', [
+    'You review the changes of the task in the `[DELEGATED_ARTIFACT]` block, its open pull request or its branch read locally, without running the project and without changing any file. On a task you already reviewed, check each earlier finding and what changed since.',
+    RECORD_RULE[agentInterface],
+  ], agentInterface);
+}
+
+const RECORD = 'the verdict; what you reviewed (the pull request URL, or the branch, its base and the commit range); the state of the checks, or that the review was local and nothing was run; and the numbered findings in the structure above, or that none were found.';
+
+const ANSWER = 'starting with the verdict on a line of its own, written exactly as shown above, in English whatever the language of the rest, then a few lines at most: what you reviewed, how many findings of each severity, and the links of the pull request comments you published. The findings themselves are on the task.';
+
+const VERDICT_AND_RECORD: Readonly<Record<AgentInterface, string>> = {
+  tags: `- Your final response carries two things together:
+  1. The record on the task: \`<artifact_update id="T-3"><section name="review_findings">Markdown</section></artifact_update>\`, replacing the section with ${RECORD}
+  2. Your answer to the coordinator, ${ANSWER}`,
+  tools: `- Record the review on the task with \`artifact_update\` before you answer, replacing its \`review_findings\` section with ${RECORD}
+- Then write your answer to the coordinator, ${ANSWER}`,
+};
+
+export function buildCodeReviewerSystemPrompt(agentInterface: AgentInterface): string {
+  return `You are the Code Reviewer Agent of a team of agents that builds software for a user. A coordinator hands you a task of the team's board whose implementation is ready, and you judge the change it introduces with fresh eyes: you did not write it and you carry none of the implementer's assumptions.
 
 ### How Your Work Is Used
 - The task opens your prompt in a \`[DELEGATED_ARTIFACT]\` block: its overview, business rules, acceptance criteria, test cases, technical solution, implementation notes, the findings of an earlier review, its branch and the pull requests linked on it.
@@ -41,12 +64,10 @@ export const CODE_REVIEWER_SYSTEM_PROMPT = `You are the Code Reviewer Agent of a
 
 ### Verdict and Record
 - \`APPROVED\`: no high or medium finding and no failing check. \`CHANGES_REQUESTED\`: anything that must change before the work is merged.
-- Your final response carries two things together:
-  1. The record on the task: \`<artifact_update id="T-3"><section name="review_findings">Markdown</section></artifact_update>\`, replacing the section with the verdict; what you reviewed (the pull request URL, or the branch, its base and the commit range); the state of the checks, or that the review was local and nothing was run; and the numbered findings in the structure above, or that none were found.
-  2. Your answer to the coordinator, starting with the verdict on a line of its own, written exactly as shown above, in English whatever the language of the rest, then a few lines at most: what you reviewed, how many findings of each severity, and the links of the pull request comments you published. The findings themselves are on the task.
+${VERDICT_AND_RECORD[agentInterface]}
 - In a pull request review, also publish every finding on the pull request and submit the review with your verdict, without asking. The \`${SKILL_NAMES.reviewPublishing}\` skill has the procedure.
 
-${buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(CODE_REVIEWER_ARTIFACT_ACCESS, agentInterface)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 
@@ -57,3 +78,4 @@ ${CWD_BOUNDARY_INSTRUCTIONS}
 - You are expected to use MCP tools and CLI commands to read the repository, the pull request and its checks, and to publish your review on the pull request.
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
+}

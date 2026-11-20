@@ -1,26 +1,11 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
 
-export const SKILL_AUTHORING_SKILL: AgentSkillDefinition = {
-  name: SKILL_NAMES.skillAuthoring,
-  description: 'How the CEO creates and changes the skills agents read on demand - finding the existing skills, writing the name, description, roles and content in the expected shape, and the <skill_list> and <skill_write> requests. Use when the user asks to create, change or review a skill, or to teach an agent how to do something.',
-  roles: ['CEO'],
-  buildContent: () => `# Skill Authoring
+const EXAMPLE_DESCRIPTION = 'Testing an Electron desktop app in practice with Playwright\'s Electron support - launching the app, driving its windows and capturing evidence. Read before testing any Electron app.';
 
-A skill is know-how an agent reads on demand. Its name and description go to the catalog of every role it names; the agent reads the content with \`<skill_read>\` when the description matches the work at hand. You write skills through requests, and the server stores them; you never write skill files yourself.
-
-## Steps
-1. List every skill with \`<skill_list/>\`: name, whether it is built-in or the user's, the roles that read it, and its description. Change an existing skill instead of adding one that overlaps it, and read it first with \`<skill_read name="..."/>\` (you can read any skill).
-2. Settle what the skill must teach. Ask the user with \`<question>\` for what you cannot infer: which roles use it, the tools, commands and conventions to follow, and what the agent must produce. When writing it needs technical knowledge you do not have, delegate an investigation to the agent that plans and write the skill from its result.
-3. Write it with \`<skill_write>\`. Writing replaces the whole skill, so an update carries the full content.
-4. Tell the user what the skill covers and who reads it.
-
-## Request Grammar
-A complete request, to copy and adapt:
-\`\`\`text
-<skill_write name="electron-testing" roles="QA" description="Testing an Electron desktop app in practice with Playwright's Electron support - launching the app, driving its windows and capturing evidence. Read before testing any Electron app.">
-# Testing an Electron App
+const EXAMPLE_CONTENT = `# Testing an Electron App
 
 ## Setup
 - Install the test runner in a scratch folder outside the project: \`npm i -D @playwright/test\`.
@@ -35,13 +20,71 @@ A complete request, to copy and adapt:
 - Save a screenshot of every checked screen and attach the paths to the test report.
 
 ## When It Fails
-- When the app does not launch, report the command and its output instead of testing anything else.
+- When the app does not launch, report the command and its output instead of testing anything else.`;
+
+const NAME_RULE = '- `name`: lowercase kebab-case, up to 64 characters, naming the subject (`electron-testing`, `release-checklist`). Built-in skill names are taken.';
+
+const DESCRIPTION_RULE = '- `description`: one or two sentences, up to 1024 characters: what the skill covers, then when to read it ("Read before ...", "Use when ..."). It is all an agent sees before reading, so name the technologies and situations that should trigger it.';
+
+const OVERVIEW: Readonly<Record<AgentInterface, string>> = {
+  tags: 'the agent reads the content with `<skill_read>` when the description matches the work at hand. You write skills through requests, and the server stores them; you never write skill files yourself.',
+  tools: 'the agent reads the content when the description matches the work at hand. You write skills with the `skill_write` tool, and the server stores them; you never write skill files yourself.',
+};
+
+const STEPS: Readonly<Record<AgentInterface, readonly string[]>> = {
+  tags: [
+    '1. List every skill with `<skill_list/>`: name, whether it is built-in or the user\'s, the roles that read it, and its description. Change an existing skill instead of adding one that overlaps it, and read it first with `<skill_read name="..."/>` (you can read any skill).',
+    '3. Write it with `<skill_write>`. Writing replaces the whole skill, so an update carries the full content.',
+  ],
+  tools: [
+    '1. List every skill with `skill_list`: name, whether it is built-in or the user\'s, the roles that read it, and its description. Change an existing skill instead of adding one that overlaps it, and read it first with `skill_read` (you can read any skill).',
+    '3. Write it with `skill_write`. Writing replaces the whole skill, so an update carries the full content.',
+  ],
+};
+
+const FIELDS: Readonly<Record<AgentInterface, string>> = {
+  tags: `## Request Grammar
+A complete request, to copy and adapt:
+\`\`\`text
+<skill_write name="electron-testing" roles="QA" description="${EXAMPLE_DESCRIPTION}">
+${EXAMPLE_CONTENT}
 </skill_write>
 \`\`\`
-- \`name\`: lowercase kebab-case, up to 64 characters, naming the subject (\`electron-testing\`, \`release-checklist\`). Built-in skill names are taken.
+${NAME_RULE}
 - \`roles\`: the roles that read it, comma-separated (\`roles="QA, DEVELOPER"\`), from the roles of your team or your own.
-- \`description\`: one or two sentences, up to 1024 characters: what the skill covers, then when to read it ("Read before ...", "Use when ..."). It is all an agent sees before reading, so name the technologies and situations that should trigger it.
-- The body is the content, in Markdown. The result says whether the skill was created or updated.
+${DESCRIPTION_RULE}
+- The body is the content, in Markdown. The result says whether the skill was created or updated.`,
+  tools: `## The Fields
+A complete skill, to copy and adapt: the name \`electron-testing\`, the role \`QA\`, the description "${EXAMPLE_DESCRIPTION}" and this content:
+\`\`\`markdown
+${EXAMPLE_CONTENT}
+\`\`\`
+${NAME_RULE}
+- \`roles\`: the roles that read it, from the roles of your team or your own.
+${DESCRIPTION_RULE}
+- \`content\`: the whole skill, in Markdown. The result says whether the skill was created or updated.`,
+};
+
+const STORED_FROM: Readonly<Record<AgentInterface, string>> = {
+  tags: 'the request above',
+  tools: 'the skill above',
+};
+
+export const SKILL_AUTHORING_SKILL: AgentSkillDefinition = {
+  name: SKILL_NAMES.skillAuthoring,
+  description: 'How the CEO creates and changes the skills agents read on demand - finding the existing skills, writing the name, description, roles and content in the expected shape, and listing and writing skills. Use when the user asks to create, change or review a skill, or to teach an agent how to do something.',
+  roles: ['CEO'],
+  buildContent: ({ agentInterface }) => `# Skill Authoring
+
+A skill is know-how an agent reads on demand. Its name and description go to the catalog of every role it names; ${OVERVIEW[agentInterface]}
+
+## Steps
+${STEPS[agentInterface][0]}
+2. Settle what the skill must teach. Ask the user with \`<question>\` for what you cannot infer: which roles use it, the tools, commands and conventions to follow, and what the agent must produce. When writing it needs technical knowledge you do not have, delegate an investigation to the agent that plans and write the skill from its result.
+${STEPS[agentInterface][1]}
+4. Tell the user what the skill covers and who reads it.
+
+${FIELDS[agentInterface]}
 
 ## Writing the Content
 - In English, whatever the language of the conversation: agents work in English.
@@ -55,11 +98,11 @@ A complete request, to copy and adapt:
 
 ## Availability
 - An agent sees a new skill in its catalog from its next session; a changed skill applies the next time it is read.
-- Skills live in the server's data directory, where the user can also edit or delete them. The server stores the request above as \`skills/electron-testing/SKILL.md\`, its attributes in the frontmatter:
+- Skills live in the server's data directory, where the user can also edit or delete them. The server stores ${STORED_FROM[agentInterface]} as \`skills/electron-testing/SKILL.md\`, its attributes in the frontmatter:
 \`\`\`markdown
 ---
 name: electron-testing
-description: Testing an Electron desktop app in practice with Playwright's Electron support - launching the app, driving its windows and capturing evidence. Read before testing any Electron app.
+description: ${EXAMPLE_DESCRIPTION}
 roles: QA
 ---
 # Testing an Electron App

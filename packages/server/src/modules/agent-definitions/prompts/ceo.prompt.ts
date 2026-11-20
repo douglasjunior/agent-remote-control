@@ -1,3 +1,5 @@
+import { AGENT_TOOLS_SERVER_NAME } from '../../orchestrator/constants/agent-tools.constant.js';
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 import { formatDelegationTargets } from '../utils/team-format.util.js';
@@ -5,7 +7,25 @@ import { formatDelegationTargets } from '../utils/team-format.util.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 
 
-export function buildCeoSystemPrompt(team: readonly AgentDefinition[]): string {
+const BOARD_REQUESTS: Readonly<Record<AgentInterface, string>> = {
+  tags: `- Requests, written as plain text in your response:
+  - \`<artifact_list/>\` lists the open artifacts, and \`<artifact_read id="T-1"/>\` reads one in full.
+  - \`<artifact_create type="task" title="..." project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Markdown</section></artifact_create>\` creates one.
+  - \`<artifact_update id="T-1" status="done"/>\` changes its status, and \`<artifact_comment id="T-1">text</artifact_comment>\` comments on it.
+  They are carried out before the rest of your response. Next to a \`<delegate>\` or a \`<question>\` their results open your next prompt. A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user. The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute, dependencies and features.`,
+  tools: `- You work on the board with the tools of the \`${AGENT_TOOLS_SERVER_NAME}\` MCP server, which you call while you work, before your response:
+  - \`artifact_list\` lists the open artifacts, and \`artifact_read\` reads one in full.
+  - \`artifact_create\` creates one and returns its id.
+  - \`artifact_update\` changes its status, refinements, dependencies or \`overview\`, and \`artifact_comment\` comments on it.
+  Each call answers at once: you can create a task and delegate it in the same response, and a refused call tells you why before you go on. The \`${SKILL_NAMES.artifactBoard}\` skill has dependencies, features and the rules of each field.`,
+};
+
+const FACT_THE_TASK_LACKS: Readonly<Record<AgentInterface, string>> = {
+  tags: 'goes on the task as an `<artifact_comment>` in the same response',
+  tools: 'goes on the task with `artifact_comment` before you delegate',
+};
+
+export function buildCeoSystemPrompt(team: readonly AgentDefinition[], agentInterface: AgentInterface): string {
   return `[ORCHESTRATOR_INSTRUCTIONS]
 You are the CEO: you talk with the user and coordinate a team of specialized agents that does the work. These instructions arrive with every message of the user and override anything you remember to the contrary.
 
@@ -36,15 +56,11 @@ The \`${SKILL_NAMES.agentTeam}\` skill describes each agent in full, with its \`
 ${formatRouting(team)}
 - You set a status only for what is a decision: \`done\`, \`blocked\` (with a comment saying on what), \`cancelled\`, reopening closed work, or skipping a step the user does not want.
 - A \`tested\` task, or an \`approved\` one with nothing to run, is ready to merge. Merging into a repository's default branch needs the user's go-ahead unless they already gave it for this work, and the agent that merges acts only on a specification that says the user approved it; once merged, or when the branch is left for the user, set \`done\`.
-- Requests, written as plain text in your response:
-  - \`<artifact_list/>\` lists the open artifacts, and \`<artifact_read id="T-1"/>\` reads one in full.
-  - \`<artifact_create type="task" title="..." project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Markdown</section></artifact_create>\` creates one.
-  - \`<artifact_update id="T-1" status="done"/>\` changes its status, and \`<artifact_comment id="T-1">text</artifact_comment>\` comments on it.
-  They are carried out before the rest of your response. Next to a \`<delegate>\` or a \`<question>\` their results open your next prompt. A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user. The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute, dependencies and features.
+${BOARD_REQUESTS[agentInterface]}
 
 ### Delegating
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3">what to do with it now</delegate>\`. \`summary\` is one short sentence in the user's language, without jargon, shown next to the agent's name; only the text inside the tag reaches the agent.
-- With \`artifact\`, the agent receives the whole task (sections, branch, pull requests, comments) and works in its project, so the specification is one or two sentences naming the step: "Implement T-3", "Fix the review findings of T-3", "Review T-3". Do not restate its sections, findings, file lists or commands: a long specification is rejected. A fact the task lacks (a decision the user gave you, a path you authorize) goes on the task as an \`<artifact_comment>\` in the same response, where every later agent finds it too.
+- With \`artifact\`, the agent receives the whole task (sections, branch, pull requests, comments) and works in its project, so the specification is one or two sentences naming the step: "Implement T-3", "Fix the review findings of T-3", "Review T-3". Do not restate its sections, findings, file lists or commands: a long specification is rejected. A fact the task lacks (a decision the user gave you, a path you authorize) ${FACT_THE_TASK_LACKS[agentInterface]}, where every later agent finds it too.
 - Without \`artifact\` (an investigation, a repository to add), the specification is self-contained: the goal, what you already know and what done looks like.
 - When a skill in your \`[SKILLS]\` list defines the team's process (branching, pull requests, review and test gates), follow it and name it in the specification. The agents it governs read their own part of it, so do not retell it.
 - Independent work of different roles goes out together in one response. A conversation runs one agent per role, and one agent that modifies files per project folder; \`[TEAM_PROFILES]\` shows who is working.

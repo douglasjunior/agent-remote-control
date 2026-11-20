@@ -191,11 +191,11 @@ export class RunAgentRequestsUseCase {
       : { ...base, action: 'write', names: [request.name], ...outcome, ...(result.created !== undefined ? { created: result.created } : {}) };
   }
 
-  private async readSkills({ names }: Extract<AgentRequest, { kind: 'skill_read' }>, { role }: AgentRequester): Promise<Result> {
+  private async readSkills({ names }: Extract<AgentRequest, { kind: 'skill_read' }>, { role, agentInterface = 'tags' }: AgentRequester): Promise<Result> {
     const name = names.join(',');
     const bodies: string[] = [];
     for (const requested of names) {
-      const skill = await this.skills.read(role, requested);
+      const skill = await this.skills.read(role, requested, agentInterface);
       if (!skill) {
         const available = (await this.skills.list(role)).map(summary => summary.name);
         const known = available.length > 0 ? `Your skills are: ${available.join(', ')}.` : 'Your role has no skills.';

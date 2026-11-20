@@ -2,7 +2,10 @@
 
 Every skill is an `AgentSkillDefinition` (`models/agent-skill-definition.model.ts`): `name`, `description`, the `roles`
 that may read it, and `buildContent(context)`, built when read from a `SkillContext`: the `team` and the `artifacts`
-access of the reader, its `rolePrompt` (the role's full system prompt) and the `workspaceDir`.
+access of the reader, its `rolePrompt` (the role's full system prompt), the `agentInterface` of its session and the
+`workspaceDir`. A passage that teaches a board or skill request has a variant per interface (the tags with their
+grammar, the tools by bare name); the `<delegate>`, `<question>` and `<attachment>` grammar is the same on both, and a
+description, shown in the catalog of both interfaces, names no request tag.
 
 ## Built-in skills
 
@@ -23,8 +26,8 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 ### `role-guide`
 
 Returns `SkillContext.rolePrompt`, the full system prompt of the reader's role (`AgentSkillsService` builds it with
-`getSystemPrompt(role)`), for a session whose history has lost it. A reader
-that browses skills for the user (`readAny`) gets the prompt of the first role the skill names.
+`getSystemPrompt(role, agentInterface)`, for the interface of the session reading it), for a session whose history
+has lost it. A reader that browses skills for the user (`readAny`) gets the tags prompt of the first role the skill names.
 
 ### `asking-the-user`
 
@@ -41,7 +44,7 @@ Procedures that touch a Git hosting provider, each for the roles that need it:
 
 - `git-remote` (DEVELOPER, GIT_OPS): finding the provider with `git remote -v` and using its MCP tools, then its
   official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per task, titled
-  with the task id and title, described from the task and recorded on it with `<pull_request …/>`; merging only on an
+  with the task id and title, described from the task and recorded on it (`<pull_request …/>` on the tags interface, the `pull_requests` of `artifact_update` on the tools); merging only on an
   instruction, with checks green, and recording `state="merged"`; authentication failures reported with the exact error.
 - `repository-setup` (GIT_OPS): the workspace manifest (`WORKSPACE_MANIFEST_FILE`, a JSON array of
   `{ url, folder, defaultBranch }`, GIT_OPS its only writer), folder naming from the URL, choosing the transport, cloning,
@@ -78,7 +81,8 @@ edits apply without a restart.
 ## `AgentSkillsService` (`IAgentSkillsPort`)
 
 - Merges both sources, a user skill replacing a built-in one of the same name (case-insensitive), roles included, and
-  keeps for each role the skills whose `roles` name it (`list`, `read`).
+  keeps for each role the skills whose `roles` name it (`list`, and `read(role, name, agentInterface)`, built for the
+  interface of the reader's session).
 - A role with `writesSkills` (the CEO) also reads any skill, lists them all with their roles (`listAll`) and writes user
   skills (`write`). A channel acting for the user uses `listAll` and `readAny` (built for the first role that reads the skill) to
   browse them, and `deleteUserSkill` to remove one for the user.

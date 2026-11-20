@@ -3,9 +3,11 @@ import { describe, expect, it } from '@rstest/core';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { IT_SUPPORT_REENTRY_NOTE, IT_SUPPORT_SYSTEM_PROMPT } from './it-support.prompt.js';
+import { buildItSupportReentryNote, IT_SUPPORT_SYSTEM_PROMPT } from './it-support.prompt.js';
 import { USER_QUESTIONS_BRIEF } from './user-questions.prompt.js';
 
+
+const IT_SUPPORT_REENTRY_NOTE = buildItSupportReentryNote('tags');
 
 describe('it-support.prompt', () => {
   it('should investigate read-only before asking the user to approve a plan', () => {
@@ -41,6 +43,16 @@ describe('it-support.prompt', () => {
       expect(IT_SUPPORT_REENTRY_NOTE).toContain('change nothing on the machine until the user approves your plan');
       expect(IT_SUPPORT_REENTRY_NOTE).toContain('an approval covers that plan only');
       expect(IT_SUPPORT_REENTRY_NOTE).toContain('never delete the user\'s data or expose a secret');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    it('should name the tools in the re-entry note and keep the approval rule', () => {
+      const note = buildItSupportReentryNote('tools');
+
+      expect(note).toContain('the tools of the `arc` MCP server');
+      expect(note).toContain('read them again with `skill_read` and the `role-guide` skill');
+      expect(note).toContain('change nothing on the machine until the user approves your plan');
     });
   });
 });

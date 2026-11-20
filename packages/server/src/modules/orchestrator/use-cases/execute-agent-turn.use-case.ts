@@ -451,7 +451,7 @@ export class ExecuteAgentTurnUseCase {
         request.onDraft?.('');
         return runRound(results);
       },
-      requester,
+      { ...requester, agentInterface: this.agentRound.interfaceOf(ceoPort) },
       rest => this.delegationDetector.detect(rest).kind !== 'reply',
       activity => request.onActivity?.(activity, requester.role),
     ));

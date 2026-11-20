@@ -88,4 +88,24 @@ describe('artifact-board skill', () => {
     expect(skill).toContain('`<artifact_list type="feature"');
     expect(skill).toContain('<artifact_create type="task"');
   });
+
+  describe('on the tools interface', () => {
+    const tools = ARTIFACT_BOARD_SKILL.buildContent(skillContext({ agentInterface: 'tools' }));
+
+    it('should keep the statuses and dependencies and name the tools instead of the requests', () => {
+      expect(tools).toContain('## Statuses');
+      expect(tools).toContain('## Dependencies and Parallel Work');
+      expect(tools).toContain('`artifact_list` with the status `all` lists the finished work too');
+      expect(tools).toContain('append it to the `overview` when nobody holds the artifact');
+      expect(tools).toContain('set the status that step would have left with `artifact_update`, saying why in its `note`');
+    });
+
+    it('should hold the tools of the CEO in place of the request grammar', () => {
+      expect(tools).toContain('## Working on the Board\nThe work of this conversation lives on a board');
+      expect(tools).toContain('You read and change the board with the tools of the `arc` MCP server');
+      expect(tools).toContain('- `artifact_create` creates a feature or a task and returns its id');
+      expect(tools).not.toContain('## Request Grammar');
+      expect(tools).not.toContain('<artifact_');
+    });
+  });
 });

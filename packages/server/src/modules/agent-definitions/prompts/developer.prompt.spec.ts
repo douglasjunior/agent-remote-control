@@ -5,10 +5,13 @@ import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
 import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
-import { DEVELOPER_REENTRY_NOTE, DEVELOPER_SYSTEM_PROMPT } from './developer.prompt.js';
+import { buildDeveloperReentryNote, buildDeveloperSystemPrompt } from './developer.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
 
+
+const DEVELOPER_SYSTEM_PROMPT = buildDeveloperSystemPrompt('tags');
+const DEVELOPER_REENTRY_NOTE = buildDeveloperReentryNote('tags');
 
 describe('developer.prompt', () => {
   it('should define the developer as the agent that takes one task to work ready for review', () => {
@@ -90,7 +93,7 @@ describe('developer.prompt', () => {
   });
 
   it('should include the board brief of its access and the shared blocks', () => {
-    expect(DEVELOPER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS));
+    expect(DEVELOPER_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, 'tags'));
     expect(DEVELOPER_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(DEVELOPER_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(DEVELOPER_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
@@ -107,6 +110,38 @@ describe('developer.prompt', () => {
       expect(DEVELOPER_REENTRY_NOTE).toContain('run the project\'s checks and wait for them, then push and update its pull request');
       expect(DEVELOPER_REENTRY_NOTE).toContain('Record the branch, the pull request and the implementation notes on the task');
       expect(DEVELOPER_REENTRY_NOTE).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildDeveloperSystemPrompt('tools');
+    const note = buildDeveloperReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### How Your Work Is Used');
+      expect(prompt).toContain('Work whose checks you did not see pass is not done.');
+      expect(prompt).toContain('The branch of the task is the only one you change.');
+      expect(prompt).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, 'tools'));
+      expect(prompt).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+    });
+
+    it('should record the branch, the pull request and the notes with artifact_update before the answer', () => {
+      expect(prompt).toContain('1. Record the work on the task with `artifact_update` before you answer: the branch, the pull request');
+      expect(prompt).toContain('the `implementation_notes` section. The notes say what you changed and why');
+      expect(prompt).toContain('append what you fixed and how rather than replacing the notes');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should open the answer with the verdict that follows the record', () => {
+      expect(prompt).toContain('2. Then write your answer to the coordinator, starting with the verdict on a line of its own, written exactly as shown here, in English');
+      expect(prompt).toContain('`DONE`: everything the task asks is committed');
+    });
+
+    it('should name the tools in the re-entry note with the verdict words', () => {
+      expect(note).toContain('the tools of the `arc` MCP server');
+      expect(note).toContain('on the task with `artifact_update`, then write your answer');
+      expect(note).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
+      expect(note).not.toContain('<skill_read');
     });
   });
 });

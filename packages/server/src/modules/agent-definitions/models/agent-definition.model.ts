@@ -1,3 +1,4 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import type { ArtifactAccess, DelegationContract } from '../../orchestrator/ports/agent-registry.port.js';
 
 import type { AgentRole } from './agent-role.type.js';
@@ -18,7 +19,7 @@ export interface AgentDefinition {
   /** Lists every skill, reads any of them and writes the user's skills through skill requests. */
   readonly writesSkills?: true;
   /** What the agent reads with a prompt that reaches a session it already has. */
-  readonly reentryNote?: string;
+  buildReentryNote?(agentInterface: AgentInterface): string;
   readonly systemPromptEveryTurn?: boolean;
-  buildSystemPrompt(team: readonly AgentDefinition[]): string;
+  buildSystemPrompt(team: readonly AgentDefinition[], agentInterface: AgentInterface): string;
 }

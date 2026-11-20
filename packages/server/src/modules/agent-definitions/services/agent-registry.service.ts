@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import type {
   ArtifactAccess,
   DelegationContract,
@@ -22,12 +23,12 @@ export class AgentRegistryService implements IAgentRegistryPort {
     }
   }
 
-  getSystemPrompt(agentRole: string): string {
+  getSystemPrompt(agentRole: string, agentInterface: AgentInterface): string {
     const definition = this.getDefinition(agentRole);
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}.`;
     }
-    return definition.buildSystemPrompt(this.getTeam(agentRole));
+    return definition.buildSystemPrompt(this.getTeam(agentRole), agentInterface);
   }
 
   getDefaultModel(agentRole: string): string | undefined {
@@ -58,12 +59,12 @@ export class AgentRegistryService implements IAgentRegistryPort {
     return this.getDefinition(agentRole)?.artifacts ?? READ_TASKS_ONLY;
   }
 
-  getReentryNote(agentRole: string): string {
+  getReentryNote(agentRole: string, agentInterface: AgentInterface): string {
     const definition = this.getDefinition(agentRole);
     if (!definition) {
       return `You are an AI assistant acting in the role of ${agentRole}. Always provide your final response inside the <final_response> block.`;
     }
-    return definition.reentryNote ?? '';
+    return definition.buildReentryNote?.(agentInterface) ?? '';
   }
 
   isSystemPromptEveryTurn(agentRole: string): boolean {

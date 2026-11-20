@@ -44,4 +44,14 @@ describe('git-remote skill', () => {
     expect(skill).toContain('Checks still running or failing, or a merge conflict, stop the merge');
     expect(skill).toContain('`state="merged"`');
   });
+
+  describe('on the tools interface', () => {
+    it('should record the pull request in the pull_requests of artifact_update', () => {
+      const tools = GIT_REMOTE_SKILL.buildContent(skillContext({ agentInterface: 'tools' }));
+
+      expect(tools).toContain('- Record it on the task: its URL, title and state `open` in the `pull_requests` of an `artifact_update` of the task.');
+      expect(tools).not.toContain('<pull_request');
+      expect(tools).not.toContain('<artifact_');
+    });
+  });
 });

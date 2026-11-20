@@ -14,8 +14,8 @@ describe('AgentRegistryService', () => {
 
   describe('getSystemPrompt', () => {
     it('should return specialized system prompt for DEVELOPER role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('DEVELOPER');
-      const promptLower = service.getSystemPrompt('developer');
+      const promptUpper = service.getSystemPrompt('DEVELOPER', 'tags');
+      const promptLower = service.getSystemPrompt('developer', 'tags');
 
       expect(promptUpper).toBeDefined();
       expect(promptUpper).toContain('Developer Agent');
@@ -23,8 +23,8 @@ describe('AgentRegistryService', () => {
     });
 
     it('should return specialized system prompt for TECH_LEAD role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('TECH_LEAD');
-      const promptLower = service.getSystemPrompt('tech_lead');
+      const promptUpper = service.getSystemPrompt('TECH_LEAD', 'tags');
+      const promptLower = service.getSystemPrompt('tech_lead', 'tags');
 
       expect(promptUpper).toBeDefined();
       expect(promptUpper).toContain('Tech Lead Agent');
@@ -32,8 +32,8 @@ describe('AgentRegistryService', () => {
     });
 
     it('should return specialized system prompt for CEO role in case-insensitive manner', () => {
-      const promptUpper = service.getSystemPrompt('CEO');
-      const promptMixed = service.getSystemPrompt('Ceo');
+      const promptUpper = service.getSystemPrompt('CEO', 'tags');
+      const promptMixed = service.getSystemPrompt('Ceo', 'tags');
 
       expect(promptUpper).toBeDefined();
       expect(promptUpper).toContain('You are the CEO');
@@ -41,7 +41,7 @@ describe('AgentRegistryService', () => {
     });
 
     it('should point the CEO to its delegation skill for the project folder and the other attributes', () => {
-      expect(service.getSystemPrompt('CEO')).toContain('in the `delegation-protocol` skill');
+      expect(service.getSystemPrompt('CEO', 'tags')).toContain('in the `delegation-protocol` skill');
     });
 
     it('should give the CEO its team of every other registered agent', () => {
@@ -53,18 +53,24 @@ describe('AgentRegistryService', () => {
         buildSystemPrompt: () => 'Reviewer prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        reentryNote: 'Reviewer re-entry note',
+        buildReentryNote: () => 'Reviewer re-entry note',
       });
 
-      const prompt = service.getSystemPrompt('CEO');
+      const prompt = service.getSystemPrompt('CEO', 'tags');
 
       expect(prompt).toContain('- DEVELOPER: ');
       expect(prompt).toContain('- REVIEWER: Summary. Delegated with neither.');
       expect(prompt).not.toContain('- CEO: ');
     });
 
+    it('should build the prompt for the interface of the session', () => {
+      expect(service.getSystemPrompt('DEVELOPER', 'tools')).toContain('the tools of the `arc` MCP server');
+      expect(service.getSystemPrompt('DEVELOPER', 'tags')).toContain('<artifact_update');
+      expect(service.getSystemPrompt('CEO', 'tools')).toContain('`artifact_create` creates one and returns its id.');
+    });
+
     it('should return fallback prompt when role is unknown', () => {
-      const prompt = service.getSystemPrompt('QA_ENGINEER');
+      const prompt = service.getSystemPrompt('QA_ENGINEER', 'tags');
       expect(prompt).toBe(
         'You are an AI assistant acting in the role of QA_ENGINEER.',
       );
@@ -86,7 +92,7 @@ describe('AgentRegistryService', () => {
         defaultModel: 'claude-3-5-sonnet',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        reentryNote: 'Tester re-entry note',
+        buildReentryNote: () => 'Tester re-entry note',
       });
 
       expect(service.getDefaultModel('tester')).toBe('claude-3-5-sonnet');
@@ -211,27 +217,32 @@ describe('AgentRegistryService', () => {
 
   describe('getReentryNote', () => {
     it('should return an empty note for a role without one', () => {
-      expect(service.getReentryNote('CEO')).toBe('');
+      expect(service.getReentryNote('CEO', 'tags')).toBe('');
     });
 
     it('should return the re-entry note of TECH_LEAD in case-insensitive manner', () => {
-      const noteUpper = service.getReentryNote('TECH_LEAD');
+      const noteUpper = service.getReentryNote('TECH_LEAD', 'tags');
 
-      expect(service.getReentryNote('tech_lead')).toBe(noteUpper);
+      expect(service.getReentryNote('tech_lead', 'tags')).toBe(noteUpper);
       expect(noteUpper.startsWith('[RE-ENTRY]')).toBe(true);
       expect(noteUpper).toContain('as the Tech Lead Agent');
     });
 
     it('should return the re-entry note of DEVELOPER in case-insensitive manner', () => {
-      const noteUpper = service.getReentryNote('DEVELOPER');
+      const noteUpper = service.getReentryNote('DEVELOPER', 'tags');
 
-      expect(service.getReentryNote('developer')).toBe(noteUpper);
+      expect(service.getReentryNote('developer', 'tags')).toBe(noteUpper);
       expect(noteUpper).toContain('as the Developer Agent');
       expect(noteUpper).toContain('DONE or INCOMPLETE');
     });
 
+    it('should build the note for the interface of the session', () => {
+      expect(service.getReentryNote('DEVELOPER', 'tools')).toContain('the tools of the `arc` MCP server');
+      expect(service.getReentryNote('DEVELOPER', 'tags')).toContain('<skill_read name="role-guide"/>');
+    });
+
     it('should return fallback note string for unknown role', () => {
-      const fallback = service.getReentryNote('NON_EXISTENT');
+      const fallback = service.getReentryNote('NON_EXISTENT', 'tags');
 
       expect(fallback).toContain('NON_EXISTENT');
       expect(fallback).toContain('<final_response>');
@@ -246,9 +257,9 @@ describe('AgentRegistryService', () => {
         buildSystemPrompt: () => 'prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        reentryNote: 'Custom re-entry note',
+        buildReentryNote: () => 'Custom re-entry note',
       });
-      expect(service.getReentryNote('custom')).toBe('Custom re-entry note');
+      expect(service.getReentryNote('custom', 'tags')).toBe('Custom re-entry note');
     });
   });
 
@@ -282,14 +293,14 @@ describe('AgentRegistryService', () => {
         buildSystemPrompt: () => 'Architect prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        reentryNote: 'Architect re-entry note',
+        buildReentryNote: () => 'Architect re-entry note',
       });
 
       const found = service.getDefinition('ARCHITECT');
       expect(found).toBeDefined();
       expect(found?.name).toBe('Solution Architect');
-      expect(service.getSystemPrompt('ARCHITECT')).toBe('Architect prompt');
-      expect(service.getReentryNote('ARCHITECT')).toBe('Architect re-entry note');
+      expect(service.getSystemPrompt('ARCHITECT', 'tags')).toBe('Architect prompt');
+      expect(service.getReentryNote('ARCHITECT', 'tags')).toBe('Architect re-entry note');
     });
 
     it('should allow overriding an existing agent definition', () => {
@@ -301,13 +312,13 @@ describe('AgentRegistryService', () => {
         buildSystemPrompt: () => 'Overridden prompt',
         delegation: {},
         artifacts: { scope: 'task', sections: [], fields: [] },
-        reentryNote: 'Overridden re-entry note',
+        buildReentryNote: () => 'Overridden re-entry note',
       });
 
       const found = service.getDefinition('DEVELOPER');
       expect(found?.name).toBe('Custom Developer');
-      expect(service.getSystemPrompt('DEVELOPER')).toBe('Overridden prompt');
-      expect(service.getReentryNote('DEVELOPER')).toBe('Overridden re-entry note');
+      expect(service.getSystemPrompt('DEVELOPER', 'tags')).toBe('Overridden prompt');
+      expect(service.getReentryNote('DEVELOPER', 'tags')).toBe('Overridden re-entry note');
     });
   });
 });

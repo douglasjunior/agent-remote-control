@@ -162,4 +162,14 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('do not relay or answer that question for the user');
     });
   });
+
+  describe('on the tools interface', () => {
+    it('should put a fact the task lacks on it with artifact_comment before delegating, and keep the delegate tag', () => {
+      const tools = DELEGATION_PROTOCOL_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR, agentInterface: 'tools' }));
+
+      expect(tools).toContain('what it lacks goes on it with `artifact_comment` before you delegate:');
+      expect(tools).toContain('`<delegate role="ROLE" summary="what the user reads" artifact="T-3"');
+      expect(tools).not.toContain('<artifact_');
+    });
+  });
 });

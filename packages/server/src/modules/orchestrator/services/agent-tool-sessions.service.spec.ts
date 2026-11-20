@@ -8,6 +8,7 @@ import { AgentToolsConfigService } from './agent-tools-config.service.js';
 
 
 const requester = { role: 'DEVELOPER', roleName: 'Developer', conversationId: 'c1', delegationId: 'd-1' };
+const onTools = { ...requester, agentInterface: 'tools' };
 
 function httpPort(): StubAgentPort {
   const port = new StubAgentPort();
@@ -27,7 +28,7 @@ describe('AgentToolSessionsService', () => {
     const servers = toolSessions.open(port, { requester });
 
     expect(servers).toEqual([{ name: 'arc', url: TOOLS_URL, headers: { authorization: expect.stringMatching(/^Bearer [\w-]{43}$/) } }]);
-    expect(toolSessions.find(credentialOf(servers))).toEqual({ requester });
+    expect(toolSessions.find(credentialOf(servers))).toEqual({ requester: onTools });
     expect(credentialOf(toolSessions.open(httpPort(), { requester }))).not.toBe(credentialOf(servers));
   });
 
@@ -39,7 +40,7 @@ describe('AgentToolSessionsService', () => {
     const second = credentialOf(toolSessions.open(port, { requester }));
 
     expect(toolSessions.find(first)).toBeUndefined();
-    expect(toolSessions.find(second)).toEqual({ requester });
+    expect(toolSessions.find(second)).toEqual({ requester: onTools });
   });
 
   it('should refuse the credential once the port is closed', () => {
@@ -53,6 +54,28 @@ describe('AgentToolSessionsService', () => {
     expect(toolSessions.find(credential)).toBeUndefined();
   });
 
+  it('should put a session on the tools interface exactly while its port has a tool session open', () => {
+    const toolSessions = createServedToolSessions();
+    const port = httpPort();
+    expect(toolSessions.interfaceOf(port)).toBe('tags');
+
+    toolSessions.open(port, { requester });
+    expect(toolSessions.interfaceOf(port)).toBe('tools');
+    expect(toolSessions.interfaceOf(httpPort())).toBe('tags');
+
+    toolSessions.close(port);
+    expect(toolSessions.interfaceOf(port)).toBe('tags');
+  });
+
+  it('should leave on the tags interface a session that got no tool server', () => {
+    const toolSessions = createServedToolSessions();
+    const port = new StubAgentPort();
+
+    toolSessions.open(port, { requester });
+
+    expect(toolSessions.interfaceOf(port)).toBe('tags');
+  });
+
   it('should hand the skill activity to the turn the port runs now', () => {
     const toolSessions = createServedToolSessions();
     const port = httpPort();
@@ -62,7 +85,7 @@ describe('AgentToolSessionsService', () => {
     toolSessions.update(port, { requester, onSkill });
     toolSessions.update(httpPort(), { requester: { ...requester, role: 'QA' } });
 
-    expect(toolSessions.find(credential)).toEqual({ requester, onSkill });
+    expect(toolSessions.find(credential)).toEqual({ requester: onTools, onSkill });
   });
 
   it('should attach nothing to an agent that does not take HTTP MCP servers', () => {

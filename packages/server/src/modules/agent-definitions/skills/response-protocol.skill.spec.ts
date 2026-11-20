@@ -35,4 +35,14 @@ describe('response-protocol skill', () => {
     expect(skill).toContain('the final answer covers each pending request');
     expect(skill).toContain('each `<agent_result>` is reported even when a newer message moved the conversation on');
   });
+
+  describe('on the tools interface', () => {
+    it('should let a response delegate a task created with the tools, and keep the attachment tag', () => {
+      const tools = RESPONSE_PROTOCOL_SKILL.buildContent(skillContext({ workspaceDir: WORKSPACE_DIR, agentInterface: 'tools' }));
+
+      expect(tools).toContain('The board tools (see the `artifact-board` skill) are not an outcome: you call them while you work, before the response, and each answers at once: you can create a task and delegate it in the same response');
+      expect(tools).toContain(`<attachment path="${WORKSPACE_DIR}/my-app/docs/report.pdf">Report</attachment>`);
+      expect(tools).not.toContain('request_results');
+    });
+  });
 });

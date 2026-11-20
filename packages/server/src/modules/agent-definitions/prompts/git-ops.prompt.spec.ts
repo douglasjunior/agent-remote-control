@@ -6,8 +6,11 @@ import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
-import { GIT_OPS_REENTRY_NOTE, GIT_OPS_SYSTEM_PROMPT } from './git-ops.prompt.js';
+import { buildGitOpsReentryNote, buildGitOpsSystemPrompt } from './git-ops.prompt.js';
 
+
+const GIT_OPS_SYSTEM_PROMPT = buildGitOpsSystemPrompt('tags');
+const GIT_OPS_REENTRY_NOTE = buildGitOpsReentryNote('tags');
 
 describe('git-ops.prompt', () => {
   describe('scope', () => {
@@ -75,7 +78,7 @@ describe('git-ops.prompt', () => {
   });
 
   it('should include the board brief of its access and the final response instructions', () => {
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS));
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS, 'tags'));
     expect(GIT_OPS_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
   });
 
@@ -89,6 +92,24 @@ describe('git-ops.prompt', () => {
     it('should carry the destructive operation rule and the report', () => {
       expect(GIT_OPS_REENTRY_NOTE).toContain('A destructive operation (force push, deleting a remote ref, discarding work) runs only on an instruction that names it and its target');
       expect(GIT_OPS_REENTRY_NOTE).toContain('the exact Git error when something failed');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildGitOpsSystemPrompt('tools');
+    const note = buildGitOpsReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### Destructive Operations');
+      expect(prompt).toContain('A merge into the repository\'s default branch is the user\'s decision');
+      expect(prompt).toContain(buildArtifactProtocolBrief(GIT_OPS_ARTIFACT_ACCESS, 'tools'));
+    });
+
+    it('should record a merged or closed pull request with artifact_update before the answer', () => {
+      expect(prompt).toContain('or create or rename its branch, record it on the task with `artifact_update` before your final answer');
+      expect(prompt).not.toContain('<artifact_');
+      expect(note).toContain('is updated on the task with `artifact_update` before that answer');
+      expect(note).toContain('the tools of the `arc` MCP server');
     });
   });
 });

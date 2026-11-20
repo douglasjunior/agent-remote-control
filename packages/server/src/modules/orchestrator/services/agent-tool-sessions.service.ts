@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 
 import type { AgentMcpServer, IAgentPort } from '../../agent/ports/agent.port.js';
 import { AGENT_TOOLS_SERVER_NAME } from '../constants/agent-tools.constant.js';
+import type { AgentInterface } from '../models/agent-interface.model.js';
 import type { AgentToolSession, AgentToolsEndpoint } from '../models/agent-tool.model.js';
 
 import { AgentToolsConfigService } from './agent-tools-config.service.js';
@@ -12,7 +13,8 @@ const CREDENTIAL_BYTES = 32;
 
 /**
  * The live tool sessions: one per agent port whose session took the tools, reached by an unguessable credential. The
- * classes that dispose of a port close its tool session with it, and a closed credential is refused from then on.
+ * classes that dispose of a port close its tool session with it, and a closed credential is refused from then on. A
+ * session with a tool session is on the tools interface, and every other one on the tags interface.
  */
 @Injectable()
 export class AgentToolSessionsService {
@@ -43,7 +45,7 @@ export class AgentToolSessionsService {
       return [];
     }
     this.credentials.set(agentPort, credential);
-    this.sessions.set(credential, session);
+    this.sessions.set(credential, this.onTools(session));
     this.logger.log(`[Agent Tools Opened] Conversation=${session.requester.conversationId}, Role=${session.requester.role}, Agent=${agentPort.agentName}`);
     return [{ name: AGENT_TOOLS_SERVER_NAME, url: connection.url, headers: connection.headers }];
   }
@@ -52,8 +54,13 @@ export class AgentToolSessionsService {
   update(agentPort: IAgentPort, session: AgentToolSession): void {
     const credential = this.credentials.get(agentPort);
     if (credential) {
-      this.sessions.set(credential, session);
+      this.sessions.set(credential, this.onTools(session));
     }
+  }
+
+  /** The interface of the session the port holds: `tools` while it has a tool session open. */
+  interfaceOf(agentPort: IAgentPort): AgentInterface {
+    return this.credentials.has(agentPort) ? 'tools' : 'tags';
   }
 
   close(agentPort: IAgentPort): void {
@@ -69,5 +76,9 @@ export class AgentToolSessionsService {
 
   find(credential: string): AgentToolSession | undefined {
     return this.sessions.get(credential);
+  }
+
+  private onTools(session: AgentToolSession): AgentToolSession {
+    return { ...session, requester: { ...session.requester, agentInterface: 'tools' } };
   }
 }

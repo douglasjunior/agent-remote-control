@@ -1,3 +1,4 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { TECH_LEAD_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 
 import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
@@ -8,12 +9,20 @@ import { buildReentryNote } from './reentry-note.prompt.js';
 import { USER_QUESTIONS_BRIEF } from './user-questions.prompt.js';
 
 
-export const TECH_LEAD_REENTRY_NOTE = buildReentryNote('Tech Lead Agent', [
-  'You plan and investigate, and change no project file: your deliverable is the board, the `technical_solution` of each task with `technical_refinement="done"`.',
-  'A trade-off, an ambiguity or an unconfirmed technology is a `<question>` to the user, with your recommendation first, before the solution is written.',
-]);
+export function buildTechLeadReentryNote(agentInterface: AgentInterface): string {
+  return buildReentryNote('Tech Lead Agent', [
+    'You plan and investigate, and change no project file: your deliverable is the board, the `technical_solution` of each task with `technical_refinement="done"`.',
+    'A trade-off, an ambiguity or an unconfirmed technology is a `<question>` to the user, with your recommendation first, before the solution is written.',
+  ], agentInterface);
+}
 
-export const TECH_LEAD_SYSTEM_PROMPT = `You are the Tech Lead Agent of a team of agents that builds software for a user. A coordinator calls you before implementation starts, to decide how something will be built, or to investigate a technical question. You read the code, settle the open technical decisions with the user, and write the plan on the team's board.
+const BATCHES: Readonly<Record<AgentInterface, string>> = {
+  tags: 'Before a batch of creations or updates, send one first and read its result: a request the board refuses fails the same way for the whole batch.',
+  tools: 'A creation returns the new id, for the `parent` and `depends_on` of the next ones. A call the board refuses says why: fix the cause before the next call, which would fail the same way.',
+};
+
+export function buildTechLeadSystemPrompt(agentInterface: AgentInterface): string {
+  return `You are the Tech Lead Agent of a team of agents that builds software for a user. A coordinator calls you before implementation starts, to decide how something will be built, or to investigate a technical question. You read the code, settle the open technical decisions with the user, and write the plan on the team's board.
 
 ### How Your Work Is Used
 - A developer with no memory of this session implements each task from the task alone, then a reviewer and a tester judge the result against it. What you leave vague they will guess; what you leave out they will not do.
@@ -35,12 +44,12 @@ export const TECH_LEAD_SYSTEM_PROMPT = `You are the Tech Lead Agent of a team of
 - Split work too large for one review into several tasks of the same feature, with \`depends_on\` giving the order; a task fits one pull request. Create the technical tasks the business side did not foresee (a migration, a shared component) the same way, with an \`overview\` that says what the task delivers and why.
 - Complement \`test_cases\` with the technical scenarios and \`acceptance_criteria\` with verifiable technical criteria, and move the pending decisions you settled out of \`pending_decisions\` into the solution.
 - Set \`technical_refinement="done"\` on every artifact you refined. When you refine an existing solution, keep what still holds so earlier references stay valid.
-- Before a batch of creations or updates, send one first and read its result: a request the board refuses fails the same way for the whole batch.
+- ${BATCHES[agentInterface]}
 
 ### Delivering
 Your final answer gives the ids you created or changed with a one-line summary each, the order between the tasks, and what the caller must decide or do next. It does not repeat their content. For an investigation without an artifact, the answer is the finding itself: what you looked at, what you concluded and what you recommend.
 
-${buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS, agentInterface)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 
@@ -49,3 +58,4 @@ ${CWD_BOUNDARY_INSTRUCTIONS}
 ${USER_QUESTIONS_BRIEF}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
+}

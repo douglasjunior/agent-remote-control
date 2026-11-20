@@ -146,14 +146,14 @@ Settings without any profile with an `agentId` are treated as absent, so the con
 
 Contract for resolving behavioral instructions and model specifications:
 
-- `getSystemPrompt(agentRole: string): string`
+- `getSystemPrompt(agentRole: string, agentInterface: AgentInterface): string`: the prompt written for the interface of the session (`models/agent-interface.model.ts`: `tags` or `tools`)
 - `getDefaultModel(agentRole: string): string | undefined`
 - `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`: the session of a delegation without an artifact and without the `session` attribute
 - `getDisplayName(agentRole: string): string`: name shown in the footer (the role itself when unknown)
 - `hasRole(agentRole: string): boolean`: validates the role of a delegation
 - `listRoles(): string[]`: every registered role, in registration order
 - `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`, which applies to delegations without an artifact; with one, `session` is accepted and ignored); empty contract for an unknown role
-- `getReentryNote(agentRole: string): string`: the note put before the prompt sent to a session resumed by that prompt (always a string, empty when the role has none)
+- `getReentryNote(agentRole: string, agentInterface: AgentInterface): string`: the note, written for the interface of the session, put before the prompt sent to a session resumed by that prompt (always a string, empty when the role has none)
 - `isSystemPromptEveryTurn(agentRole: string): boolean`: role whose system prompt accompanies every user message (the CEO)
 - Symbol of the same name: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
 
@@ -167,9 +167,9 @@ The skills each role reads on demand (`models/agent-skill.model.ts`: `AgentSkill
 `AgentSkill` adding `content`):
 
 - `list(role): Promise<readonly AgentSkillSummary[]>`: the catalog sent with the system prompt of a new session and with the prompt that reaches a resumed one
-- `read(role, name): Promise<AgentSkill | undefined>`: the full skill, name matched case-insensitively
+- `read(role, name, agentInterface): Promise<AgentSkill | undefined>`: the full skill, name matched case-insensitively, built for the interface of the reader's session
 - `listAll(): Promise<readonly AgentSkillListing[]>`: every skill with its roles and whether it is built-in, for a role that writes skills (checked with `writesSkills`) and for a channel acting for the user
-- `readAny(name)`: any skill with its listing, built for the first role that reads it, for a channel
+- `readAny(name)`: any skill with its listing, built for the first role that reads it on the tags interface, for a channel
 - `writesSkills(role): boolean`: whether the role lists every skill, reads any of them and writes user skills
 - `deleteUserSkill(name): Promise<boolean>`: deletes a user skill for a channel acting for the user, `false` when there is none (a built-in skill is never deleted; deleting a user skill that replaced one brings it back)
 - `write(role, skill: AgentSkillInput): Promise<AgentSkillWriteResult>`: creates or replaces a user skill, `{ ok: false, error }` when refused

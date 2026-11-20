@@ -115,6 +115,18 @@ describe('RunAgentToolUseCase', () => {
     expect(viaTool.skills.written).toEqual(viaTag.skills.written);
   });
 
+  it('should read a skill in the variant of the tools interface, which a tag reads on the tags interface', async () => {
+    const viaTool = setup();
+    const viaTag = setup();
+    const parsed = new AgentRequestParserService().parse('<skill_read name="git-flow"/>');
+
+    await viaTool.useCase.execute(viaTool.open(developer).credential, 'skill_read', { names: ['git-flow'] });
+    await viaTag.requests.executeOne(parsed.kind === 'requests' ? parsed.requests[0]! : { kind: 'skill_list' }, developer);
+
+    expect(viaTool.skills.readInterfaces).toEqual(['tools']);
+    expect(viaTag.skills.readInterfaces).toEqual(['tags']);
+  });
+
   it('should refuse a skill write to a role that does not write skills', async () => {
     const { useCase, open, skills } = setup();
     skills.writeResult = { ok: false, error: 'Writing skills is reserved to the agents that write skills.' };

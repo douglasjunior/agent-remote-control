@@ -6,12 +6,12 @@ case-insensitively.
 
 | Method | Returns | Unknown role |
 |---|---|---|
-| `getSystemPrompt(agentRole)` | `buildSystemPrompt` called with all other registered definitions | a generic prompt |
+| `getSystemPrompt(agentRole, agentInterface)` | `buildSystemPrompt` called with all other registered definitions and the interface of the session | a generic prompt |
 | `getDefaultModel(agentRole)` | the preferred model of the role | `undefined` |
 | `getDisplayName(agentRole)` | the definition's `name` | the role itself |
 | `getDefaultSessionMode(agentRole)` | `'resume' \| 'new'`, `'resume'` when not configured; it applies to delegations without an artifact | `'resume'` |
 | `getDelegationContract(agentRole)` | the definition's `delegation` (`DelegationContract`, with `refines` and `statusFlow`) | `{}` |
-| `getReentryNote(agentRole)` | the definition's `reentryNote`, an empty string for a definition without one (always a string); the orchestrator puts it before the prompt sent to a session that prompt resumed | a default fallback text |
+| `getReentryNote(agentRole, agentInterface)` | the definition's `buildReentryNote` for the interface of the session, an empty string for a definition without one (always a string); the orchestrator puts it before the prompt sent to a session that prompt resumed | a default fallback text |
 | `isSystemPromptEveryTurn(agentRole)` | whether the role receives the system prompt with every user message | `false` |
 | `getArtifactAccess(agentRole)` | the role's `ArtifactAccess` | read-only access to tasks |
 | `getTeam(agentRole)` | every definition but the role's own, the team its prompt and skills are built with | all of them |

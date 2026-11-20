@@ -7,9 +7,12 @@ import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
-import { TECH_LEAD_REENTRY_NOTE, TECH_LEAD_SYSTEM_PROMPT } from './tech-lead.prompt.js';
+import { buildTechLeadReentryNote, buildTechLeadSystemPrompt } from './tech-lead.prompt.js';
 import { USER_QUESTIONS_BRIEF } from './user-questions.prompt.js';
 
+
+const TECH_LEAD_SYSTEM_PROMPT = buildTechLeadSystemPrompt('tags');
+const TECH_LEAD_REENTRY_NOTE = buildTechLeadReentryNote('tags');
 
 describe('tech-lead.prompt', () => {
   it('should define the tech lead as the agent that plans before implementation and writes the plan on the board', () => {
@@ -74,7 +77,7 @@ describe('tech-lead.prompt', () => {
   });
 
   it('should include the board brief of its access and the shared blocks', () => {
-    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS));
+    expect(TECH_LEAD_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS, 'tags'));
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(TECH_LEAD_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
@@ -90,6 +93,30 @@ describe('tech-lead.prompt', () => {
     it('should carry the no-change rule and the question rule', () => {
       expect(TECH_LEAD_REENTRY_NOTE).toContain('change no project file');
       expect(TECH_LEAD_REENTRY_NOTE).toContain('is a `<question>` to the user, with your recommendation first');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildTechLeadSystemPrompt('tools');
+    const note = buildTechLeadReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### Decisions Belong to the User');
+      expect(prompt).toContain('Set `technical_refinement="done"` on every artifact you refined.');
+      expect(prompt).toContain(buildArtifactProtocolBrief(TECH_LEAD_ARTIFACT_ACCESS, 'tools'));
+      expect(prompt).toContain(USER_QUESTIONS_BRIEF);
+    });
+
+    it('should use the id each creation returns and fix a refused call before the next one', () => {
+      expect(prompt).toContain('A creation returns the new id, for the `parent` and `depends_on` of the next ones.');
+      expect(prompt).toContain('A call the board refuses says why: fix the cause before the next call');
+      expect(prompt).not.toContain('send one first and read its result');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should keep the question rule in the re-entry note and name the tools', () => {
+      expect(note).toContain('is a `<question>` to the user, with your recommendation first');
+      expect(note).toContain('the tools of the `arc` MCP server');
     });
   });
 });

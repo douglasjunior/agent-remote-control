@@ -1,12 +1,18 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
+
+const RECORDING_THE_PULL_REQUEST: Readonly<Record<AgentInterface, string>> = {
+  tags: '`<pull_request url="https://..." title="T-3: Login API" state="open"/>` inside the `<artifact_update>` of the task.',
+  tools: 'its URL, title and state `open` in the `pull_requests` of an `artifact_update` of the task.',
+};
 
 export const GIT_REMOTE_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.gitRemote,
   description: 'Working with a Git hosting provider - choosing between the provider\'s MCP tools and its official CLI, pushing a branch, opening, updating and merging a pull request, and what to do when authentication fails. Read before the first push, pull request or merge of a session.',
   roles: ['DEVELOPER', 'GIT_OPS'],
-  buildContent: () => `# Git Remote
+  buildContent: ({ agentInterface }) => `# Git Remote
 
 ## Provider and Tooling
 - Find the provider with \`git remote -v\`: GitHub, GitLab, Azure DevOps or Bitbucket.
@@ -22,7 +28,7 @@ export const GIT_REMOTE_SKILL: AgentSkillDefinition = {
 - Target the branch the task or the team's workflow names; without one, the repository's default branch.
 - Title it with the task id and title (\`T-3: Login API\`), unless the project or the team's workflow sets another convention.
 - Describe it from the task: what it delivers (overview), how to verify it (acceptance criteria and your implementation notes), and anything the reviewer should look at first.
-- Record it on the task: \`<pull_request url="https://..." title="T-3: Login API" state="open"/>\` inside the \`<artifact_update>\` of the task.
+- Record it on the task: ${RECORDING_THE_PULL_REQUEST[agentInterface]}
 
 ## Merging a Pull Request
 - Merge only on an instruction to merge that pull request, into the branch it targets, with the merge method the project or the team's workflow sets (the provider's default without one).

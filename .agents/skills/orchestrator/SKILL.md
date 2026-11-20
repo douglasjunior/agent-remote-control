@@ -41,7 +41,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 | `StopArtifactWorkUseCase` | Stops the agent holding an artifact the user moved to a work-ending status |
 | `CancelAgentTurnUseCase`, `RestoreOpenWorkUseCase`, `ConfigureAgentProfilesUseCase`, `RunShellCommandUseCase`, `TranscribeAudioAttachmentsUseCase`, `GetAgentQuotaUseCase` | Cancellation, open work after a restart, profiles, the shell command, audio transcription and quotas |
 | `RetryCeoRoundUseCase` | A failed prompt of the CEO: shows the failure, waits and sends the same prompt again, like a question waits for an answer (`TurnRetryService`, `TurnRetryConfigService`) |
-| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session of its role, project and task, system prompt and `[SKILLS]` (new session), re-entry note and current `[SKILLS]` (resumed session), language, profile, requests written outside the envelope (each once), protocol repair, the cost of each prompt (`onPrompt`); `recordWorkEnded` marks the binding of a session whose work on its artifact ended; a session it creates or loads gets the agent tools of its requester, and a live one hands them to the turn running now |
+| `AgentRoundService` | One prompt of one agent in its session: connect, resume or create the session of its role, project and task, system prompt and `[SKILLS]` (new session), re-entry note and current `[SKILLS]` (resumed session), each written for the interface of the session (`interfaceOf`), language, profile, requests written outside the envelope (each once), protocol repair, the cost of each prompt (`onPrompt`); `recordWorkEnded` marks the binding of a session whose work on its artifact ended; a session it creates or loads gets the agent tools of its requester, and a live one hands them to the turn running now |
 | `DelegationValidatorService` | Classifies a CEO response and checks each delegation against the team, the board, the workspace and the running agents |
 | `DelegationStatusService` | The status flow of a delegated task: `refusal` (a status the role does not take), `start` (moves the task to the role's start status from a status the role takes, and returns the status the delegation works in, none otherwise) and `finish` (applies the status of the verdict that opens the final answer while the task is still in that working status, and returns the verdict with whether it closed the step) |
 | `DelegationLimitsConfigService` | `DELEGATION_SPEC_MAX_CHARS` (600) and `AGENT_RESULT_MAX_CHARS` (2000), `0` disabling each |
@@ -66,7 +66,7 @@ Read [references/turn-execution.md](references/turn-execution.md) before changin
 Every CEO and delegate response goes through `RunAgentRequestsUseCase.resolve` before it is classified: `AgentRequestParserService`
 reads the agent requests and the response without them, and `RunAgentRequestsUseCase` runs them in order: artifact requests on the board of the conversation
 under the access of the role (`IAgentRegistryPort.getArtifactAccess`), and the skill requests through `IAgentSkillsPort`:
-`<skill_read name="a,b"/>` (`read(role, name)`, the content returned as `<request_result request="skill_read" name="a,b">` with one `# Skill: <name>` block per skill; an unknown
+`<skill_read name="a,b"/>` (`read(role, name, agentInterface)`, built for the interface of the requester's session, the content returned as `<request_result request="skill_read" name="a,b">` with one `# Skill: <name>` block per skill; an unknown
 name fails the request and lists the skills of the role), and, for a role that writes skills (`writesSkills`), `<skill_list/>` (`listAll`, one line per skill with whether it is built-in, its roles and description)
 and `<skill_write name roles description>content</skill_write>` (`write`; the result says whether the skill was created or updated, or why it was refused). When any request of a response failed, the `<request_results>` block is followed by a note sending the agent to the grammar in its skills before writing them again. Each `<skill_read>` and `<skill_write>` also reaches the channel as a `skill` activity of the agent (`execute`'s `onSkill`, wired to `TurnRequest.onActivity`). The system prompt carries the `[SKILLS]` catalog wherever it is sent (`IAgentSkillsPort.list(role)`). A response whose rest has an outcome (a delegation or questions
 for the CEO, questions for a delegate), or whose requests are all `update`, `comment` or `skill_write` that succeeded next to the text of an answer, is classified from that rest and its `<request_results>` open the agent's next prompt
@@ -104,6 +104,14 @@ goes through `RunAgentRequestsUseCase.resolve`.
   schemas built from the catalog and that access, and its skill catalog in the `instructions`, whose first line stands
   alone. The tools are fast: nothing that waits for a person is a tool, so questions, `<delegate>`, `<attachment>` and
   the final response stay tags.
+- **Interface**: a session is on the tools interface exactly while its port holds an open tool session
+  (`AgentToolSessionsService.interfaceOf`), on the tags interface otherwise: no capability, `AGENT_MCP_ENABLED=false`
+  or nothing serving the tools. `AgentRoundService` writes the system prompt, the re-entry note and the `[SKILLS]`
+  catalog for it, and a skill is built for it whichever way it is read: a tool session's requester carries
+  `agentInterface: 'tools'`, and the CEO turn and each delegation pass the interface of their port with the requests of
+  a response (`AgentRequester.agentInterface`, `tags` when absent). Every message the server writes to an agent without
+  knowing its interface (a validator or status refusal, `[BOARD_CHECK]`, `[DELEGATION_ERROR]`) names no board or skill
+  tag; the notes after `<request_results>` go only to the tags path.
 
 The tool list per role, the schemas and the exact instructions are in
 [references/agent-tools.md](references/agent-tools.md). Read it before changing a tool, a schema or the instructions.

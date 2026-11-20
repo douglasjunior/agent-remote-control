@@ -36,7 +36,8 @@ describe('initial-agents.constant', () => {
       for (const definition of INITIAL_AGENT_DEFINITIONS) {
         expect(definition.name).toBeTruthy();
         expect(definition.description).toBeTruthy();
-        expect(definition.buildSystemPrompt([])).toBeTruthy();
+        expect(definition.buildSystemPrompt([], 'tags')).toBeTruthy();
+        expect(definition.buildSystemPrompt([], 'tools')).toBeTruthy();
       }
     });
 
@@ -50,11 +51,13 @@ describe('initial-agents.constant', () => {
 
     it('should give every executor a re-entry note that opens the way the note builder does, and the CEO none', () => {
       for (const definition of executors) {
-        expect(definition.reentryNote?.startsWith('[RE-ENTRY]\n')).toBe(true);
-        expect(definition.reentryNote).toContain(`as the ${definition.name}`);
+        for (const agentInterface of ['tags', 'tools'] as const) {
+          expect(definition.buildReentryNote?.(agentInterface).startsWith('[RE-ENTRY]\n')).toBe(true);
+          expect(definition.buildReentryNote?.(agentInterface)).toContain(`as the ${definition.name}`);
+        }
         expect(definition.systemPromptEveryTurn).toBeUndefined();
       }
-      expect(definitionOf('CEO').reentryNote).toBeUndefined();
+      expect(definitionOf('CEO').buildReentryNote).toBeUndefined();
     });
 
     it('should send the CEO prompt with every turn and let only the CEO write skills', () => {
@@ -180,10 +183,13 @@ describe('initial-agents.constant', () => {
       expect(Object.keys(flowOf('CODE_REVIEWER').verdicts).sort()).toEqual(['APPROVED', 'CHANGES_REQUESTED']);
       expect(Object.keys(flowOf('QA').verdicts).sort()).toEqual(['BLOCKED', 'FAILED', 'PASSED']);
       for (const role of ['DEVELOPER', 'CODE_REVIEWER', 'QA']) {
-        const prompt = definitionOf(role).buildSystemPrompt([]);
+        for (const agentInterface of ['tags', 'tools'] as const) {
+          const prompt = definitionOf(role).buildSystemPrompt([], agentInterface);
 
-        for (const verdict of Object.keys(flowOf(role).verdicts)) {
-          expect(prompt).toContain(`\`${verdict}\``);
+          for (const verdict of Object.keys(flowOf(role).verdicts)) {
+            expect(prompt).toContain(`\`${verdict}\``);
+            expect(definitionOf(role).buildReentryNote?.(agentInterface)).toContain(verdict);
+          }
         }
       }
     });
@@ -249,6 +255,46 @@ describe('initial-agents.constant', () => {
       expect(definitionOf('DEVELOPER').description).toContain('DONE');
       expect(definitionOf('CODE_REVIEWER').description).toContain('APPROVED or CHANGES_REQUESTED');
       expect(definitionOf('QA').description).toContain('PASSED, FAILED');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    /** Each CLI shows a tool under its own prefixed name, so the texts name the bare tool and the server. */
+    const FORBIDDEN = ['<artifact_', '<skill_', '<section', '<pull_request', 'request_result', 'mcp__', 'mcp.arc', 'arc-artifact', 'arc-skill', 'arc: '];
+    const textsOf = (definition: AgentDefinition) => [
+      definition.buildSystemPrompt(INITIAL_AGENT_DEFINITIONS.filter(other => other !== definition), 'tools'),
+      ...(definition.buildReentryNote ? [definition.buildReentryNote('tools')] : []),
+    ];
+
+    it.each(INITIAL_AGENT_DEFINITIONS.map(definition => [definition.role, definition] as const))('should write no request tag and no prefixed tool name for %s', (_role, definition) => {
+      for (const text of textsOf(definition)) {
+        for (const forbidden of FORBIDDEN) {
+          expect(text).not.toContain(forbidden);
+        }
+      }
+    });
+
+    it.each(INITIAL_AGENT_DEFINITIONS.filter(definition => definition.role !== 'IT_SUPPORT').map(definition => [definition.role, definition] as const))('should introduce the arc server in the prompt of %s, which works on the board', (_role, definition) => {
+      expect(definition.buildSystemPrompt([], 'tools')).toContain('the tools of the `arc` MCP server');
+    });
+
+    it('should keep the question grammar for the agents that ask the user, and the delegate tag for the CEO', () => {
+      for (const role of ['PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT', 'CEO']) {
+        expect(definitionOf(role).buildSystemPrompt([], 'tools')).toContain('<question rationale=');
+      }
+      expect(definitionOf('CEO').buildSystemPrompt([], 'tools')).toContain('<delegate role="ROLE"');
+    });
+
+    it('should keep the final response envelope for every agent', () => {
+      for (const definition of INITIAL_AGENT_DEFINITIONS) {
+        expect(definition.buildSystemPrompt([], 'tools')).toContain('### Final Response');
+      }
+    });
+
+    it('should keep every prompt at most as long as on the tags interface, since the schemas carry the grammar', () => {
+      for (const definition of INITIAL_AGENT_DEFINITIONS) {
+        expect(definition.buildSystemPrompt([], 'tools').length).toBeLessThanOrEqual(definition.buildSystemPrompt([], 'tags').length);
+      }
     });
   });
 });

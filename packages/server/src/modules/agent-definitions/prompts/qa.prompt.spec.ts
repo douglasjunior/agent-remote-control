@@ -7,8 +7,11 @@ import { buildArtifactProtocolBrief } from './artifact-protocol.prompt.js';
 import { CWD_BOUNDARY_INSTRUCTIONS } from './cwd-boundary.prompt.js';
 import { FINAL_RESPONSE_INSTRUCTIONS } from './final-response.prompt.js';
 import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.js';
-import { QA_REENTRY_NOTE, QA_SYSTEM_PROMPT } from './qa.prompt.js';
+import { buildQaReentryNote, buildQaSystemPrompt } from './qa.prompt.js';
 
+
+const QA_SYSTEM_PROMPT = buildQaSystemPrompt('tags');
+const QA_REENTRY_NOTE = buildQaReentryNote('tags');
 
 describe('qa.prompt', () => {
   describe('testing', () => {
@@ -80,7 +83,7 @@ describe('qa.prompt', () => {
   });
 
   it('should include the board brief of its access and the shared blocks', () => {
-    expect(QA_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(QA_ARTIFACT_ACCESS));
+    expect(QA_SYSTEM_PROMPT).toContain(buildArtifactProtocolBrief(QA_ARTIFACT_ACCESS, 'tags'));
     expect(QA_SYSTEM_PROMPT).toContain(PROJECT_ORIENTATION_INSTRUCTIONS);
     expect(QA_SYSTEM_PROMPT).toContain(CWD_BOUNDARY_INSTRUCTIONS);
     expect(QA_SYSTEM_PROMPT).toContain(FINAL_RESPONSE_INSTRUCTIONS);
@@ -97,6 +100,29 @@ describe('qa.prompt', () => {
       expect(QA_REENTRY_NOTE).toContain('nothing you change is committed or pushed, and the project is left as you found it');
       expect(QA_REENTRY_NOTE).toContain('Replace the `test_report` section');
       expect(QA_REENTRY_NOTE).toContain('written exactly as shown, in English: PASSED, FAILED or BLOCKED');
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildQaSystemPrompt('tools');
+    const note = buildQaReentryNote('tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### Preparing the Environment');
+      expect(prompt).toContain('A criterion you could not verify is never a pass.');
+      expect(prompt).toContain(buildArtifactProtocolBrief(QA_ARTIFACT_ACCESS, 'tools'));
+    });
+
+    it('should replace test_report with artifact_update before the answer that opens with the verdict', () => {
+      expect(prompt).toContain('- Record the test on the task with `artifact_update` before you answer, replacing its `test_report` section with the verdict; what you tested');
+      expect(prompt).toContain('- Then write your answer to the coordinator, starting with the verdict on a line of its own');
+      expect(prompt).not.toContain('<artifact_');
+    });
+
+    it('should name the tools in the re-entry note with the verdict words', () => {
+      expect(note).toContain('the tools of the `arc` MCP server');
+      expect(note).toContain('Replace the `test_report` section of the task with `artifact_update`, then write your answer');
+      expect(note).toContain('written exactly as shown, in English: PASSED, FAILED or BLOCKED');
     });
   });
 });

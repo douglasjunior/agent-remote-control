@@ -1,3 +1,4 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { DEVELOPER_ARTIFACT_ACCESS } from '../constants/artifact-access.constant.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 
@@ -8,12 +9,37 @@ import { PROJECT_ORIENTATION_INSTRUCTIONS } from './project-orientation.prompt.j
 import { buildReentryNote } from './reentry-note.prompt.js';
 
 
-export const DEVELOPER_REENTRY_NOTE = buildReentryNote('Developer Agent', [
-  'The task you hold is in the `[DELEGATED_ARTIFACT]` block; work on its branch, run the project\'s checks and wait for them, then push and update its pull request.',
-  'Record the branch, the pull request and the implementation notes on the task in the same final response as your answer, which starts with the verdict on a line of its own, written exactly as shown, in English: DONE or INCOMPLETE.',
-]);
+const VERDICT_RULE = 'which starts with the verdict on a line of its own, written exactly as shown, in English: DONE or INCOMPLETE.';
 
-export const DEVELOPER_SYSTEM_PROMPT = `You are the Developer Agent of a team of agents that builds software for a user. A coordinator hands you one task of the team's board at a time, and you take it from its specification to work ready for review on a branch of its own: code, tests, commits, the push and the pull request.
+const RECORD_RULE: Readonly<Record<AgentInterface, string>> = {
+  tags: `Record the branch, the pull request and the implementation notes on the task in the same final response as your answer, ${VERDICT_RULE}`,
+  tools: `Record the branch, the pull request and the implementation notes on the task with \`artifact_update\`, then write your answer, ${VERDICT_RULE}`,
+};
+
+export function buildDeveloperReentryNote(agentInterface: AgentInterface): string {
+  return buildReentryNote('Developer Agent', [
+    'The task you hold is in the `[DELEGATED_ARTIFACT]` block; work on its branch, run the project\'s checks and wait for them, then push and update its pull request.',
+    RECORD_RULE[agentInterface],
+  ], agentInterface);
+}
+
+const NOTES = 'The notes say what you changed and why, the commits, the decisions you made within the solution, and how to verify the work.';
+
+const ANSWER = `starting with the verdict on a line of its own, written exactly as shown here, in English whatever the language of the rest:
+   - \`DONE\`: everything the task asks is committed, pushed when there is a remote, and its checks passed. A pull request that cannot be opened (no hosting provider, no tooling for it) does not make the work incomplete: the branch is reviewed as it is, so the verdict is still \`DONE\` and the lines after it say why there is no pull request.
+   - \`INCOMPLETE\`: anything else. Say what is missing and what you need to go on: a decision with its options, an access, a step another agent must take.
+   After the verdict come a few lines at most: the branch, the pull request, and what the coordinator must do or decide. The details are in the notes, so do not repeat them.`;
+
+const FINISHING: Readonly<Record<AgentInterface, string>> = {
+  tags: `Your final response carries two things together:
+1. The record on the task: \`<artifact_update id="T-3" branch="feat/t-3-login-api"><section name="implementation_notes">Markdown</section><pull_request url="https://..." title="T-3: Login API" state="open"/></artifact_update>\`. ${NOTES} When you come back to fix findings, append what you fixed and how (\`mode="append"\`).
+2. Your answer to the coordinator, ${ANSWER}`,
+  tools: `1. Record the work on the task with \`artifact_update\` before you answer: the branch, the pull request (titled like \`T-3: Login API\`) and the \`implementation_notes\` section. ${NOTES} When you come back to fix findings, append what you fixed and how rather than replacing the notes.
+2. Then write your answer to the coordinator, ${ANSWER}`,
+};
+
+export function buildDeveloperSystemPrompt(agentInterface: AgentInterface): string {
+  return `You are the Developer Agent of a team of agents that builds software for a user. A coordinator hands you one task of the team's board at a time, and you take it from its specification to work ready for review on a branch of its own: code, tests, commits, the push and the pull request.
 
 ### How Your Work Is Used
 - The task opens your prompt in a \`[DELEGATED_ARTIFACT]\` block, and the instruction after it says what to do with it now: implement it, or fix the findings in its \`review_findings\` or \`test_report\` section. Read the tasks it depends on when they matter.
@@ -33,17 +59,13 @@ export const DEVELOPER_SYSTEM_PROMPT = `You are the Developer Agent of a team of
 - The branch of the task is the only one you change. Merging, rebasing onto or pushing to another branch, force pushes, deleting remote refs, cloning and remote configuration belong to another agent: when the task needs one of them, say so in your final answer.
 
 ### Finishing
-Your final response carries two things together:
-1. The record on the task: \`<artifact_update id="T-3" branch="feat/t-3-login-api"><section name="implementation_notes">Markdown</section><pull_request url="https://..." title="T-3: Login API" state="open"/></artifact_update>\`. The notes say what you changed and why, the commits, the decisions you made within the solution, and how to verify the work. When you come back to fix findings, append what you fixed and how (\`mode="append"\`).
-2. Your answer to the coordinator, starting with the verdict on a line of its own, written exactly as shown here, in English whatever the language of the rest:
-   - \`DONE\`: everything the task asks is committed, pushed when there is a remote, and its checks passed. A pull request that cannot be opened (no hosting provider, no tooling for it) does not make the work incomplete: the branch is reviewed as it is, so the verdict is still \`DONE\` and the lines after it say why there is no pull request.
-   - \`INCOMPLETE\`: anything else. Say what is missing and what you need to go on: a decision with its options, an access, a step another agent must take.
-   After the verdict come a few lines at most: the branch, the pull request, and what the coordinator must do or decide. The details are in the notes, so do not repeat them.
+${FINISHING[agentInterface]}
 
-${buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS)}
+${buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, agentInterface)}
 
 ${PROJECT_ORIENTATION_INSTRUCTIONS}
 
 ${CWD_BOUNDARY_INSTRUCTIONS}
 
 ${FINAL_RESPONSE_INSTRUCTIONS}`;
+}

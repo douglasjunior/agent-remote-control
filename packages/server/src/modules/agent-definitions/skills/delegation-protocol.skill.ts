@@ -1,12 +1,18 @@
+import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentSkillDefinition } from '../models/agent-skill-definition.model.js';
 
+
+const FACT_THE_TASK_LACKS: Readonly<Record<AgentInterface, string>> = {
+  tags: 'goes on it as an `<artifact_comment>` in the same response',
+  tools: 'goes on it with `artifact_comment` before you delegate',
+};
 
 export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.delegationProtocol,
   description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, redirecting a running agent, failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
   roles: ['CEO'],
-  buildContent: ({ workspaceDir }) => `# Delegation Protocol
+  buildContent: ({ workspaceDir, agentInterface }) => `# Delegation Protocol
 
 ## The Delegate Tag
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3" project="my-app" session="new">specification</delegate>\`, in the final response block, as plain text without code fences around the tag. \`role\` and \`summary\` are required; use only the other attributes the agent accepts, as listed in Your Team.
@@ -14,7 +20,7 @@ export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
 - \`artifact\`: the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out.
 
 ## The Specification
-- With \`artifact\`, name the step in a sentence or two. The task holds everything else, and what it lacks goes on it as an \`<artifact_comment>\` in the same response: a decision the user gave you, an exact path you authorize, a file the user attached (its absolute path, with permission to read it).
+- With \`artifact\`, name the step in a sentence or two. The task holds everything else, and what it lacks ${FACT_THE_TASK_LACKS[agentInterface]}: a decision the user gave you, an exact path you authorize, a file the user attached (its absolute path, with permission to read it).
 - Without \`artifact\`, the agent knows only what you write: the goal, the facts you already have (a repository URL, a command that worked, an existing branch, copied verbatim), and what done looks like.
 - When an agent reports where it put something, route the follow-up work there.
 

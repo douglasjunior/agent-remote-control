@@ -119,7 +119,7 @@ export class DelegationValidatorService {
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
     if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, role, artifactId)) {
-      return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as an <artifact_comment> in the same response. Do not restate its sections.` };
+      return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
     }
     return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
   }

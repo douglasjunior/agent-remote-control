@@ -5,6 +5,7 @@ import { skillContext } from '../testing/skill-context.fixture.js';
 
 
 import { BUILT_IN_SKILLS } from './built-in-skills.constant.js';
+import { INITIAL_AGENT_DEFINITIONS } from './initial-agents.constant.js';
 import { SKILL_NAMES } from './skill-names.constant.js';
 
 
@@ -60,5 +61,37 @@ describe('built-in-skills.constant', () => {
     for (const skill of BUILT_IN_SKILLS.filter(candidate => candidate.name !== SKILL_NAMES.roleGuide)) {
       expect(skill.buildContent(skillContext({ workspaceDir: '/ws' })).startsWith('# ')).toBe(true);
     }
+  });
+
+  describe('on the tools interface', () => {
+    const FORBIDDEN = ['<artifact_', '<skill_', '<section', '<pull_request', 'request_result', 'mcp__', 'mcp.arc', 'arc-artifact', 'arc-skill', 'arc: '];
+    const readings = BUILT_IN_SKILLS.flatMap(skill => skill.roles.map((role) => {
+      const definition = INITIAL_AGENT_DEFINITIONS.find(candidate => candidate.role === role)!;
+      const team = INITIAL_AGENT_DEFINITIONS.filter(other => other !== definition);
+      const context = (agentInterface: 'tags' | 'tools') => skillContext({
+        team,
+        artifacts: definition.artifacts,
+        rolePrompt: definition.buildSystemPrompt(team, agentInterface),
+        agentInterface,
+      });
+      return [`${skill.name} read by ${role}`, skill.buildContent(context('tools')), skill.buildContent(context('tags'))] as const;
+    }));
+
+    it.each(readings)('should write no request tag and no prefixed tool name in %s', (_reading, tools) => {
+      for (const forbidden of FORBIDDEN) {
+        expect(tools).not.toContain(forbidden);
+      }
+    });
+
+    it.each(readings)('should keep %s at most as long as on the tags interface', (_reading, tools, tags) => {
+      expect(tools.length).toBeLessThanOrEqual(tags.length);
+    });
+
+    it('should describe every skill without a board or skill request tag, since the catalog goes to both interfaces', () => {
+      for (const skill of BUILT_IN_SKILLS) {
+        expect(skill.description).not.toContain('<artifact_');
+        expect(skill.description).not.toContain('<skill_');
+      }
+    });
   });
 });

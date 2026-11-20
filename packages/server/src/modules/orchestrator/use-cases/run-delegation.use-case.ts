@@ -266,7 +266,7 @@ export class RunDelegationUseCase {
       const resolveRequests = async (response: string) => pending.keep(await this.runAgentRequests.resolve(
         response,
         results => runRound(results),
-        requester,
+        { ...requester, agentInterface: this.agentRound.interfaceOf(delegatePort) },
         rest => this.questionParser.parse(rest).kind !== 'none',
         activity => request.onActivity?.(activity, requester.role),
       ));

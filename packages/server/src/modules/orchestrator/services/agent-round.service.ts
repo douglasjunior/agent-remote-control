@@ -4,6 +4,7 @@ import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js'
 import type { AgentMcpServer, AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentInterface } from '../models/agent-interface.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
 import type { AgentSession, OpenedAgentSession } from '../models/agent-session.model.js';
 import type { AgentProfileSettings } from '../models/agent-settings.model.js';
@@ -93,7 +94,8 @@ export class AgentRoundService {
    * Sends one prompt to the agent in its session: connects it, resumes or creates the session the conversation keeps
    * for the role, project and task, puts the system prompt in front of a new session's prompt and the re-entry note and
    * the current skill catalog of the role in front of a resumed one's, adds the language, applies the role's profile and returns the final response. A
-   * session it creates or loads gets the agent tools of the requester when the agent takes them. Requests
+   * session it creates or loads gets the agent tools of the requester when the agent takes them, and the system prompt,
+   * re-entry note and skill catalog are written for the interface of the session. Requests
    * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
    * other protocol tag written there gets one repair prompt.
    */
@@ -135,11 +137,12 @@ export class AgentRoundService {
         }, this.toolSessions.open(agentPort, toolSession));
       }
       const sessionState = opened.state;
+      const agentInterface = this.interfaceOf(agentPort);
       const systemPromptPending = sessionState === 'new' || (isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role));
       const fullPrompt = [
-        systemPromptPending ? await this.buildSystemPrompt(role) : '',
-        sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role) : '',
-        sessionState === 'resumed' && !systemPromptPending ? await this.buildSkillCatalog(role) : '',
+        systemPromptPending ? await this.buildSystemPrompt(role, agentInterface) : '',
+        sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role, agentInterface) : '',
+        sessionState === 'resumed' && !systemPromptPending ? await this.buildSkillCatalog(role, agentInterface) : '',
         sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
         typeof prompt === 'string' ? prompt : await prompt(opened),
         await this.buildLanguagePrompt(role, request.agentRole),
@@ -158,7 +161,7 @@ export class AgentRoundService {
       if (answerDelivery) {
         await this.openWork.update(request.conversationId, answerDelivery.workId, { questions: undefined });
       }
-      this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, SystemPrompt=${systemPromptPending ? 'yes' : 'no'}, Chars=${fullPrompt.length}`);
+      this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, Interface=${agentInterface}, SystemPrompt=${systemPromptPending ? 'yes' : 'no'}, Chars=${fullPrompt.length}`);
       let written = await this.promptAgent(agentPort, fullPrompt, role, onPrompt);
       const stray = this.agentProtocol.strayTags(written.all);
       let strayRequests = '';
@@ -358,16 +361,21 @@ export class AgentRoundService {
     return state?.availableModels.find(model => model.modelId === state.currentModelId)?.displayName;
   }
 
+  /** The interface of the session the port holds, which the prompts it receives and the skills it reads are written for. */
+  interfaceOf(agentPort: IAgentPort): AgentInterface {
+    return this.toolSessions.interfaceOf(agentPort);
+  }
+
   /** The system prompt of the role, followed by the catalog of its skills when it has any or writes them. */
-  private async buildSystemPrompt(role: string): Promise<string> {
-    return [this.agentRegistry.getSystemPrompt(role), await this.buildSkillCatalog(role)].filter(Boolean).join('\n\n');
+  private async buildSystemPrompt(role: string, agentInterface: AgentInterface): Promise<string> {
+    return [this.agentRegistry.getSystemPrompt(role, agentInterface), await this.buildSkillCatalog(role, agentInterface)].filter(Boolean).join('\n\n');
   }
 
   /** The skills the role may read now, or nothing for a role without skills that does not write them. */
-  private async buildSkillCatalog(role: string): Promise<string> {
+  private async buildSkillCatalog(role: string, agentInterface: AgentInterface): Promise<string> {
     const skills = await this.agentSkills.list(role);
     const writesSkills = this.agentSkills.writesSkills(role);
-    return skills.length > 0 || writesSkills ? buildSkillCatalogPrompt(skills, writesSkills) : '';
+    return skills.length > 0 || writesSkills ? buildSkillCatalogPrompt(skills, agentInterface, writesSkills) : '';
   }
 
   /** The CEO talks to the user on behalf of the team, so only its prompts carry the language detection. */

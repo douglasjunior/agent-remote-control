@@ -52,7 +52,9 @@ when a credential opens and closes belong to the orchestrator.
 - **Logs**: a refused credential is logged at debug level only, since a CLI keeps calling a server whose session
   ended. Never log a credential.
 - **Switch**: `AGENT_MCP_ENABLED=false` makes the orchestrator attach the server to no agent; the endpoint stays up
-  and refuses every credential, since none is opened.
+  and refuses every credential, since none is opened. Those agents get the prompts and skills of the tags interface.
+- **Server name**: agents know the server by the name the orchestrator attaches it under (`arc`), which the prompts
+  of the tools interface use; `MCP_SERVER_INFO.name` plays no part in them.
 
 ## Tests
 

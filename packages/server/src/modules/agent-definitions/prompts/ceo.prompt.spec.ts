@@ -41,7 +41,7 @@ const reviewer = agent('REVIEWER', {
 
 const planner = agent('PLANNER', { delegation: { project: 'optional', artifact: 'optional', refines: 'technical' } });
 
-const CEO_SYSTEM_PROMPT = buildCeoSystemPrompt([developer]);
+const CEO_SYSTEM_PROMPT = buildCeoSystemPrompt([developer], 'tags');
 
 describe('ceo.prompt', () => {
   it('should wrap the instructions so they stand apart from the user message they precede', () => {
@@ -158,14 +158,14 @@ describe('ceo.prompt', () => {
 
   describe('team', () => {
     it('should list each team member with its role, summary and what a delegation to it names', () => {
-      const prompt = buildCeoSystemPrompt([developer, reviewer]);
+      const prompt = buildCeoSystemPrompt([developer, reviewer], 'tags');
 
       expect(prompt).toContain('- DEVELOPER: Summary of DEVELOPER. Delegated with `artifact` (a task).\n');
       expect(prompt).toContain('- REVIEWER: Summary of REVIEWER. Delegated with `project`.');
     });
 
     it('should leave the display name, the description and the tag forms to the agent-team skill', () => {
-      const prompt = buildCeoSystemPrompt([developer, reviewer]);
+      const prompt = buildCeoSystemPrompt([developer, reviewer], 'tags');
 
       expect(prompt).toContain(`The \`${SKILL_NAMES.agentTeam}\` skill describes each agent in full, with its \`<delegate>\` forms.`);
       expect(prompt).not.toContain('DEVELOPER Agent');
@@ -174,7 +174,7 @@ describe('ceo.prompt', () => {
     });
 
     it('should state that no agent is available when the team is empty', () => {
-      expect(buildCeoSystemPrompt([])).toContain('No agents are available for delegation.');
+      expect(buildCeoSystemPrompt([], 'tags')).toContain('No agents are available for delegation.');
     });
   });
 
@@ -218,50 +218,86 @@ describe('ceo.prompt', () => {
 
   describe('status routing', () => {
     it('should always say that the server keeps a task ready exactly while no refinement is pending', () => {
-      expect(buildCeoSystemPrompt([])).toContain('  - The server keeps a task `ready` exactly while no refinement is pending, moving it between `backlog` and `ready`, and a feature follows its tasks.');
+      expect(buildCeoSystemPrompt([], 'tags')).toContain('  - The server keeps a task `ready` exactly while no refinement is pending, moving it between `backlog` and `ready`, and a feature follows its tasks.');
     });
 
     it('should say that a tested task, or an approved one with nothing to run, is ready to merge', () => {
-      expect(buildCeoSystemPrompt([])).toContain('- A `tested` task, or an `approved` one with nothing to run, is ready to merge.');
+      expect(buildCeoSystemPrompt([], 'tags')).toContain('- A `tested` task, or an `approved` one with nothing to run, is ready to merge.');
     });
 
     it('should say that a response that creates gets its results back before it delegates or answers', () => {
-      expect(buildCeoSystemPrompt([])).toContain(
+      expect(buildCeoSystemPrompt([], 'tags')).toContain(
         'A response that reads or creates gets its results right away, with the id of each artifact created, and is not your answer: delegate or answer in the next one. A response whose requests only update or comment can be your answer to the user.',
       );
     });
 
     it('should route a pending refinement to the agent that settles it', () => {
-      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } })]);
+      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } })], 'tags');
 
       expect(prompt).toContain('  - `backlog` with the technical refinement pending: delegate PLANNER, which settles it.');
       expect(prompt).toContain('  - `backlog` with the business refinement pending: delegate ANALYST, which settles it.');
     });
 
     it('should route the statuses an agent accepts, the status the task takes on start and each verdict', () => {
-      const prompt = buildCeoSystemPrompt([developer]);
+      const prompt = buildCeoSystemPrompt([developer], 'tags');
 
       expect(prompt).toContain('  - `ready`, `in_progress`: delegate DEVELOPER (the task becomes `in_progress`). DONE leaves it `in_review`, INCOMPLETE leaves it `in_progress`.');
     });
 
     it('should leave out the start status of an agent that does not change it', () => {
-      const prompt = buildCeoSystemPrompt([reviewer]);
+      const prompt = buildCeoSystemPrompt([reviewer], 'tags');
 
       expect(prompt).toContain('  - `in_review`: delegate REVIEWER. APPROVED leaves it `approved`.');
       expect(prompt).not.toContain('REVIEWER (the task becomes');
     });
 
     it('should route nothing for an agent that declares neither a refinement nor a status flow', () => {
-      const prompt = buildCeoSystemPrompt([agent('PLAIN')]);
+      const prompt = buildCeoSystemPrompt([agent('PLAIN')], 'tags');
 
       expect(prompt).not.toContain('delegate PLAIN');
     });
 
     it('should list the refinements before the flows', () => {
-      const prompt = buildCeoSystemPrompt([developer, planner]);
+      const prompt = buildCeoSystemPrompt([developer, planner], 'tags');
 
       expect(prompt.indexOf('delegate PLANNER, which settles it')).toBeLessThan(prompt.indexOf('The server keeps a task `ready`'));
       expect(prompt.indexOf('The server keeps a task `ready`')).toBeLessThan(prompt.indexOf('delegate DEVELOPER'));
+    });
+  });
+
+  describe('on the tools interface', () => {
+    const prompt = buildCeoSystemPrompt([developer, reviewer], 'tools');
+
+    it('should keep every passage that does not depend on the interface', () => {
+      expect(prompt).toContain('### Your Job');
+      expect(prompt).toContain('You set a status only for what is a decision: `done`, `blocked`');
+      expect(prompt).toContain('- DEVELOPER: ');
+      expect(prompt).toContain('`<delegate role="ROLE" summary="what the user reads" artifact="T-3">what to do with it now</delegate>`');
+      expect(prompt).toContain('`<question rationale="why it matters">');
+      expect(prompt).toContain('`<attachment path="/absolute/path">description</attachment>`');
+      expect(prompt).toContain(FINAL_RESPONSE_INSTRUCTIONS);
+    });
+
+    it('should work on the board with the tools of the arc server, called before the response', () => {
+      expect(prompt).toContain('- You work on the board with the tools of the `arc` MCP server, which you call while you work, before your response:');
+      expect(prompt).toContain('  - `artifact_list` lists the open artifacts, and `artifact_read` reads one in full.');
+      expect(prompt).toContain('  - `artifact_create` creates one and returns its id.');
+      expect(prompt).toContain('`artifact_comment` comments on it.');
+      expect(prompt).toContain(`The \`${SKILL_NAMES.artifactBoard}\` skill has dependencies, features and the rules of each field.`);
+    });
+
+    it('should let it create a task and delegate it in the same response', () => {
+      expect(prompt).toContain('Each call answers at once: you can create a task and delegate it in the same response, and a refused call tells you why before you go on.');
+      expect(prompt).not.toContain('is not your answer: delegate or answer in the next one');
+    });
+
+    it('should put a fact the task lacks on it with artifact_comment before delegating', () => {
+      expect(prompt).toContain('goes on the task with `artifact_comment` before you delegate, where every later agent finds it too');
+    });
+
+    it('should write no board request tag', () => {
+      expect(prompt).not.toContain('<artifact_');
+      expect(prompt).not.toContain('<section');
     });
   });
 });
