@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AccessTokenModule } from '../access-token/access-token.module.js';
 import { PathsModule } from '../paths/paths.module.js';
+import { SettingsModule } from '../settings/settings.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 
 import { NodeDataChannelPeerAdapter } from './adapters/node-datachannel-peer.adapter.js';
@@ -13,7 +14,7 @@ import { RemoteIdentityService } from './services/remote-identity.service.js';
 
 
 @Module({
-  imports: [AccessTokenModule, PathsModule, StorageModule],
+  imports: [AccessTokenModule, PathsModule, SettingsModule, StorageModule],
   providers: [
     { provide: IRemotePeerFactoryPort, useClass: NodeDataChannelPeerAdapter },
     { provide: ISignalingClientPort, useClass: WsSignalingClientAdapter },

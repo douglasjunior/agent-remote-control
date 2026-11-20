@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@rstest/core';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { OpenWork } from '../models/open-work.model.js';
 import { OpenWorkService } from '../services/open-work.service.js';
+import { QuestionTimeoutConfigService } from '../services/question-timeout-config.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
 
@@ -16,7 +18,7 @@ async function restore(...records: OpenWork[]) {
   const store = new InMemoryOpenWorkStoreFake();
   store.saved = { 'web-1': records };
   const openWork = new OpenWorkService(store);
-  const queue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
+  const queue = new UserQuestionQueueService(new QuestionTimeoutConfigService(new StubRuntimeSettings(() => ({ QUESTION_TIMEOUT_MS: 0 }))));
   await new RestoreOpenWorkUseCase(openWork, queue).onModuleInit();
   return { store, openWork, queue };
 }

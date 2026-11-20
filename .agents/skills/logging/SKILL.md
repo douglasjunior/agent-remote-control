@@ -22,7 +22,7 @@ description: >
 
 ## Files
 
-`FileConsoleLoggerAdapter` prints like Nest's console logger and appends to `DATA_DIR/logs/server-YYYY-MM-DD.jsonl` (UTC day, mode `0600`), written synchronously so a killed process loses nothing. Files older than `LOG_RETENTION_DAYS` (default 14) are removed when a new day's file opens. Each line is:
+`FileConsoleLoggerAdapter` prints like Nest's console logger and appends to `DATA_DIR/logs/server-YYYY-MM-DD.jsonl` (UTC day, mode `0600`), written synchronously so a killed process loses nothing. Files older than the `LOG_RETENTION_DAYS` setting (default 14), read from `IRuntimeSettingsPort` each time, are removed when a new day's file opens. Each line is:
 
 ```json
 {"at":"2026-03-10T12:00:00.000Z","level":"log","context":"UserQuestionQueueService","conversationId":"web-1","message":"[Questions Discarded] ...","stack":"only on errors"}

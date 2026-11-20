@@ -3,16 +3,14 @@ import {
   Injectable,
   Logger,
   type OnApplicationShutdown,
-  Optional,
 } from '@nestjs/common';
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import type { IAgentPort } from '../../agent/ports/agent.port.js';
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
 
-
-const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 type ConversationRuntime = {
   agentPort: IAgentPort | null;
@@ -30,17 +28,12 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   private readonly runtimes = new Map<string, ConversationRuntime>();
   /** Outlive the runtime, which expires while the conversation is idle and the notices wait for its next message. */
   private readonly ceoNotices = new Map<string, string[]>();
-  private readonly idleTimeoutMs: number;
 
   constructor(
     @Inject(IAgentPortFactory)
     private readonly agentPortFactory: IAgentPortFactory,
-    @Optional() idleTimeoutMs?: number,
-  ) {
-    this.idleTimeoutMs =
-      idleTimeoutMs
-      ?? (Number(process.env.SESSION_IDLE_TIMEOUT_MS) || DEFAULT_IDLE_TIMEOUT_MS);
-  }
+    @Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort,
+  ) {}
 
   run<T>(
     conversationKey: string,
@@ -231,10 +224,12 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     return runtime;
   }
 
+  /** Reads the timeout as each idle period starts, so a changed setting applies from the next one. */
   private scheduleExpiration(conversationKey: string, runtime: ConversationRuntime): void {
+    const idleTimeoutMs = this.settings.get('SESSION_IDLE_TIMEOUT_MS');
     runtime.idleTimer = setTimeout(() => {
-      void this.expire(conversationKey, runtime);
-    }, this.idleTimeoutMs);
+      void this.expire(conversationKey, runtime, idleTimeoutMs);
+    }, idleTimeoutMs);
     runtime.idleTimer.unref();
   }
 
@@ -245,10 +240,10 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
     }
   }
 
-  private async expire(conversationKey: string, runtime: ConversationRuntime): Promise<void> {
+  private async expire(conversationKey: string, runtime: ConversationRuntime, idleTimeoutMs: number): Promise<void> {
     runtime.idleTimer = null;
     this.runtimes.delete(conversationKey);
-    this.logger.log(`[Session Expired] Conversation=${conversationKey} idle for ${this.idleTimeoutMs}ms`);
+    this.logger.log(`[Session Expired] Conversation=${conversationKey} idle for ${idleTimeoutMs}ms`);
     for (const delegation of runtime.activeDelegations.values()) {
       await delegation.agentPort.closeSession().catch(() => undefined);
       await delegation.agentPort.disconnect().catch(() => undefined);

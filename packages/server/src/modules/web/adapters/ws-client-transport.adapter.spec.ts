@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { IClientConnection } from '../ports/client-transport.port.js';
 
 import { WsClientTransportAdapter } from './ws-client-transport.adapter.js';
@@ -14,6 +15,7 @@ describe('WsClientTransportAdapter', () => {
   let port: number;
   let connections: IClientConnection[];
   const clients: WebSocket[] = [];
+  let settings: StubRuntimeSettings;
 
   const open = (path: string, origin?: string) => {
     const client = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers: origin ? { origin } : {} });
@@ -28,18 +30,17 @@ describe('WsClientTransportAdapter', () => {
     });
 
   beforeEach(async () => {
-    rs.stubEnv('WEB_ALLOWED_ORIGINS', 'http://localhost:5173');
+    settings = new StubRuntimeSettings({ WEB_ALLOWED_ORIGINS: 'http://localhost:5173' });
     httpServer = createServer((_req, res) => res.end());
     await new Promise<void>(done => httpServer.listen(0, '127.0.0.1', done));
     port = (httpServer.address() as AddressInfo).port;
-    adapter = new WsClientTransportAdapter({ httpAdapter: { getHttpServer: () => httpServer } } as HttpAdapterHost);
+    adapter = new WsClientTransportAdapter({ httpAdapter: { getHttpServer: () => httpServer } } as HttpAdapterHost, settings);
     connections = [];
     adapter.onConnection(connection => connections.push(connection));
     adapter.onModuleInit();
   });
 
   afterEach(async () => {
-    rs.unstubAllEnvs();
     for (const client of clients.splice(0)) {
       client.terminate();
     }
@@ -69,23 +70,17 @@ describe('WsClientTransportAdapter', () => {
   });
 
   describe('the list in WEB_ALLOWED_ORIGINS', () => {
-    const restartWith = async (raw: string | undefined) => {
-      await adapter.onModuleDestroy();
-      rs.stubEnv('WEB_ALLOWED_ORIGINS', raw);
-      adapter = new WsClientTransportAdapter({ httpAdapter: { getHttpServer: () => httpServer } } as HttpAdapterHost);
-      adapter.onModuleInit();
-    };
-
     it('should ignore spaces, empty entries and trailing slashes', async () => {
-      await restartWith(' http://localhost:5173/ , ,http://other.test ');
+      settings.set('WEB_ALLOWED_ORIGINS', ' http://localhost:5173/ , ,http://other.test ');
 
       expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('open');
       expect(await outcome(open('/ws', 'http://other.test'))).toBe('open');
       expect(await outcome(open('/ws', 'http://evil.test'))).toBe('http-403');
     });
 
-    it('should let only the same origin in when it is unset', async () => {
-      await restartWith(undefined);
+    it('should let only the same origin in when it is empty, from the next upgrade after a change', async () => {
+      expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('open');
+      settings.set('WEB_ALLOWED_ORIGINS', '');
 
       expect(await outcome(open('/ws', 'http://localhost:5173'))).toBe('http-403');
       expect(await outcome(open('/ws', `http://127.0.0.1:${port}`))).toBe('open');

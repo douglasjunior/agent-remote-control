@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { QuestionAsker, UserQuestion } from '../models/user-question.model.js';
 import { questionListener } from '../testing/question-listener.fixture.js';
 
+import { QuestionTimeoutConfigService } from './question-timeout-config.service.js';
 import { UserQuestionQueueService } from './user-question-queue.service.js';
 
 
@@ -18,7 +20,7 @@ describe('UserQuestionQueueService', () => {
 
   beforeEach(() => {
     timeoutMs = 0;
-    queue = new UserQuestionQueueService({ getTimeoutMs: () => timeoutMs });
+    queue = new UserQuestionQueueService(new QuestionTimeoutConfigService(new StubRuntimeSettings(() => ({ QUESTION_TIMEOUT_MS: timeoutMs }))));
   });
 
   it('should show the first question with the agent message when the request reaches an empty queue', () => {

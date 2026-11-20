@@ -11,7 +11,11 @@ export class UserLanguageService {
   constructor(@Inject(IPreferencesStorePort) private readonly preferencesStore: IPreferencesStorePort) {}
 
   async get(): Promise<string> {
-    return (await this.preferencesStore.load()).language ?? DEFAULT_USER_LANGUAGE;
+    return (await this.getStored()) ?? DEFAULT_USER_LANGUAGE;
+  }
+
+  async getStored(): Promise<string | undefined> {
+    return (await this.preferencesStore.load()).language;
   }
 
   /** Stores the language and returns it as normalized; `undefined` when the input is not a valid language. */
@@ -21,5 +25,9 @@ export class UserLanguageService {
       await this.preferencesStore.update(() => ({ language }));
     }
     return language;
+  }
+
+  async reset(): Promise<void> {
+    await this.preferencesStore.update(current => (current.language ? { language: undefined } : undefined));
   }
 }

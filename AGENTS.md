@@ -14,7 +14,7 @@ Everything in the repository is written in **English**: source code, identifiers
 agent-remote-control/
 ├── .agents/                        # AI agent governance
 │   └── skills/                     # Catalog of on-demand skills (SKILL.md)
-├── data/                           # Runtime data persisted in DATA_DIR (outside Git): the SQLite database (arc.sqlite: web conversations and prompt history), sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/), global preferences (user language) and the JSON files the database imported (legacy-json-backup/)
+├── data/                           # Runtime data persisted in DATA_DIR (outside Git): the SQLite database (arc.sqlite: web conversations, prompt history, global preferences such as the user language, and the settings saved from the web), sessions, per-conversation agent settings, the board of each conversation (artifacts/), the user's own agent skills (skills/) and the JSON files the database imported (legacy-json-backup/)
 ├── packages/
 │   ├── protocol/                   # @agent-remote-control/protocol: message contract (zod schemas) shared by server and web
 │   ├── web/                        # @agent-remote-control/web: React + Rsbuild web interface (connection, conversations, components); its `p2p` build is the hosted web app of remote access
@@ -32,6 +32,7 @@ agent-remote-control/
 │       │   │   ├── orchestrator/           # Turns, per-conversation queue, delegation and cancellation
 │       │   │   ├── paths/                  # DATA_DIR and WORKSPACE_DIR resolution shared by the modules that persist data or use the workspace
 │       │   │   ├── remote/                 # Remote access: the host's identity, its signaling socket and the WebRTC transport of the web channel
+│       │   │   ├── settings/               # Settings changed from the web while the server runs: catalog, saved values over environment variables over defaults, change notifications
 │       │   │   ├── storage/                # File locks (IFileLockPort) and locked JSON/text files (ILockedFilesPort) through which every file store in DATA_DIR reads and changes its files
 │       │   │   └── workspace/              # Workspace directory and manifest
 │       │   │

@@ -77,7 +77,15 @@ export class AgentConfigurationService implements IAgentConfigurationPort {
     return this.language.get();
   }
 
+  getStoredLanguage(): Promise<string | undefined> {
+    return this.language.getStored();
+  }
+
   setLanguage(input: string): Promise<string | undefined> {
     return this.language.set(input);
+  }
+
+  resetLanguage(): Promise<void> {
+    return this.language.reset();
   }
 }

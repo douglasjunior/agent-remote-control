@@ -1,5 +1,4 @@
-import { afterEach, describe, expect, it } from '@rstest/core';
-
+import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
 import { NoopSpeechToTextAdapter } from './adapters/noop-speech-to-text.adapter.js';
@@ -10,42 +9,29 @@ import { StubSpeechToText } from './testing/stub-speech-to-text.js';
 
 
 describe('SpeechToTextModule', () => {
-  const original = process.env.STT_PROVIDER;
-
-  afterEach(() => {
-    if (original === undefined) {
-      delete process.env.STT_PROVIDER;
-    } else {
-      process.env.STT_PROVIDER = original;
-    }
-  });
+  useTemporaryDataDir();
 
   const resolveProvider = async () => {
     const module = await createTestingModule({ imports: [SpeechToTextModule] }).compile();
-    return module.get<unknown>(ISpeechToTextPort);
+    const provider = module.get<unknown>(ISpeechToTextPort);
+    await module.close();
+    return provider;
   };
 
   it('should use whisper.cpp when STT_PROVIDER is not set', async () => {
-    delete process.env.STT_PROVIDER;
-
     expect(await resolveProvider()).toBeInstanceOf(WhisperCppAdapter);
   });
 
   it('should use the noop adapter when STT_PROVIDER is none', async () => {
-    process.env.STT_PROVIDER = ' None ';
+    rs.stubEnv('STT_PROVIDER', ' None ');
 
     expect(await resolveProvider()).toBeInstanceOf(NoopSpeechToTextAdapter);
   });
 
-  it('should fail with the supported providers when STT_PROVIDER is unknown', async () => {
-    process.env.STT_PROVIDER = 'magic';
-
-    await expect(resolveProvider()).rejects.toThrow('Unknown STT_PROVIDER "magic". Supported: whisper-cpp, none.');
-  });
-
-  it('should select a provider by explicit name', () => {
+  it('should select a provider by name, and fail with the supported ones for an unknown name', () => {
     const stub = new StubSpeechToText();
 
     expect(selectSpeechToTextProvider({ stub }, 'stub')).toBe(stub);
+    expect(() => selectSpeechToTextProvider({ stub }, 'magic')).toThrow('Unknown STT_PROVIDER "magic". Supported: stub.');
   });
 });

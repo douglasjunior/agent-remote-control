@@ -49,8 +49,8 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
 
 ## Entities
 
-- An entity lives in `entities/<name>.entity.ts` of the module that owns the data (`web/entities/`), and only that
-  module's adapters use it. Ports and use cases keep their domain types; the adapter maps rows to them.
+- An entity lives in `entities/<name>.entity.ts` of the module that owns the data (`web/entities/`,
+  `settings/entities/`, `orchestrator/entities/`), and only that module's adapters use it. Ports and use cases keep their domain types; the adapter maps rows to them.
 - The database module owns `LegacyImportEntity` (`legacy_import`) only.
 
 ## Store adapters
@@ -80,7 +80,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
   `run(sql, ...params)` (rows changed), with `?` placeholders and the raw column names; statements are prepared once and
   reused.
 - A store adapter calls it inside an `async` method, so a throw reaches its caller as a rejection, and keeps the read,
-  the call to `change` and the write in the same `work`. `change` must not await, as the storage skill requires.
+  the call to `change` and the write in the same `work`.
 - A read with no write after it is a plain TypeORM query.
 - A row read back is validated with the protocol schema of its document; one that does not parse is left out and
   logged.
@@ -91,6 +91,8 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 |---|---|
 | `SqliteConversationStoreAdapter` (web) | `conversation`, `conversation_entry` (position from 0 per conversation, payload is the entry) |
 | `SqlitePromptHistoryAdapter` (web) | `prompt_history` (greater id is more recent, capped at `MAX_PROMPT_HISTORY`) |
+| `SqliteSettingsStoreAdapter` (settings) | `setting` (key, value as JSON); `save` upserts and deletes in one `SqliteTransactionService.run` |
+| `SqlitePreferencesStoreAdapter` (orchestrator) | `preferences`, one row with id 1; `update(change)` reads, changes and writes in one `SqliteTransactionService.run` |
 
 ## Legacy JSON import
 
@@ -117,6 +119,7 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 |---|---|---|
 | `web-conversations` | `web/conversations.json`, `web/history/<id>.json` | ids must be file names (`[\w-]+`); one entry per id at its first place, latest version; histories of no listed conversation are logged and left |
 | `web-prompt-history` | `web/prompt-history.json` | most recent first, capped at `MAX_PROMPT_HISTORY` |
+| `preferences` | `preferences.json` | a field of another type is left out; a row already in the database is kept |
 
 ### Adding a store and its importer
 
@@ -133,8 +136,9 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 - Adapter specs build the adapter over the in-memory data source and assert through the port and through SQL.
 - Importer specs write the JSON fixtures in a temporary directory, build `LegacyJsonFilesService` over it, run
   `read()` and `write` in a transaction, and assert through the store adapter.
-- A spec that compiles a module importing `DatabaseModule` stubs `DATA_DIR` with a temporary directory, since
-  compiling opens the file, and closes the module at the end.
+- A spec that compiles a module importing `DatabaseModule`, directly or through another module, points `DATA_DIR` at
+  a temporary directory (`useTemporaryDataDir()` from `test/temporary-data-dir.ts`), since compiling opens the file,
+  and closes the module at the end.
 
 ## Checklist
 

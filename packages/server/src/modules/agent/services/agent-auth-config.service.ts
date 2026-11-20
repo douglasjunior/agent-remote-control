@@ -1,20 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 
-const DEFAULT_LOGIN_TIMEOUT_MS = 900_000;
-const DEFAULT_STATUS_TIMEOUT_MS = 10_000;
 
 @Injectable()
 export class AgentAuthConfigService {
+  constructor(@Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort) {}
+
   isEnabled(): boolean {
-    return process.env.AGENT_AUTH_ENABLED?.trim().toLowerCase() !== 'false';
+    return this.settings.get('AGENT_AUTH_ENABLED');
   }
 
   getLoginTimeoutMs(): number {
-    return Number(process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS) || DEFAULT_LOGIN_TIMEOUT_MS;
+    return this.settings.get('AGENT_AUTH_LOGIN_TIMEOUT_MS');
   }
 
   getStatusTimeoutMs(): number {
-    return Number(process.env.AGENT_AUTH_STATUS_TIMEOUT_MS) || DEFAULT_STATUS_TIMEOUT_MS;
+    return this.settings.get('AGENT_AUTH_STATUS_TIMEOUT_MS');
   }
 }

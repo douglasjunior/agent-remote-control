@@ -24,7 +24,8 @@ export class StubAgentConfigurationPort implements IAgentConfigurationPort {
   effortsByModel: Record<string, AgentOption[]> = { gpt: [{ id: 'high', name: 'High' }] };
   unavailableAgentIds = new Set<string>();
   configureResult: ConfigureProfilesResult = { ok: true };
-  language = 'English';
+  /** The stored language; `getLanguage()` reads English while it is unset. */
+  language: string | undefined = 'English';
   store = new StubAgentSettingsStore();
 
   /** Agent ids whose models or efforts were listed, in order. */
@@ -120,7 +121,15 @@ export class StubAgentConfigurationPort implements IAgentConfigurationPort {
   }
 
   async getLanguage(): Promise<string> {
+    return this.language ?? 'English';
+  }
+
+  async getStoredLanguage(): Promise<string | undefined> {
     return this.language;
+  }
+
+  async resetLanguage(): Promise<void> {
+    this.language = undefined;
   }
 
   async setLanguage(input: string): Promise<string | undefined> {

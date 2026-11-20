@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
 import { OpenWorkService } from '../services/open-work.service.js';
+import { QuestionTimeoutConfigService } from '../services/question-timeout-config.service.js';
 import { TurnRetryService } from '../services/turn-retry.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
 import { InMemoryOpenWorkStoreFake } from '../testing/in-memory-open-work-store.fake.js';
@@ -27,8 +29,8 @@ describe('CancelAgentTurnUseCase', () => {
   beforeEach(() => {
     agentPort = new StubAgentPort();
     const factory = new StubAgentPortFactory(() => agentPort);
-    runtime = new ConversationRuntimeService(factory, 60_000);
-    questionQueue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
+    runtime = new ConversationRuntimeService(factory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: 60_000 }));
+    questionQueue = new UserQuestionQueueService(new QuestionTimeoutConfigService(new StubRuntimeSettings(() => ({ QUESTION_TIMEOUT_MS: 0 }))));
     turnRetry = new TurnRetryService();
     shellRunning = false;
     const runShellCommand = { cancel: () => shellRunning } as unknown as RunShellCommandUseCase;

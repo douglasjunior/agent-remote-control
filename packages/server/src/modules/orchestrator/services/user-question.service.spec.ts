@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from '@rstest/core';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { questionListener } from '../testing/question-listener.fixture.js';
 
+import { QuestionTimeoutConfigService } from './question-timeout-config.service.js';
 import { UserQuestionQueueService } from './user-question-queue.service.js';
 import { UserQuestionService } from './user-question.service.js';
 
@@ -13,7 +15,7 @@ describe('UserQuestionService', () => {
   let service: UserQuestionService;
 
   beforeEach(() => {
-    queue = new UserQuestionQueueService({ getTimeoutMs: () => 0 });
+    queue = new UserQuestionQueueService(new QuestionTimeoutConfigService(new StubRuntimeSettings(() => ({ QUESTION_TIMEOUT_MS: 0 }))));
     service = new UserQuestionService(queue);
   });
 

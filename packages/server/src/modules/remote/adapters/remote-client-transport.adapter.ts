@@ -7,6 +7,7 @@ import { Inject, Injectable, Logger, type OnApplicationBootstrap, type OnModuleD
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { AccessTokenService } from '../../access-token/services/access-token.service.js';
+import { ISettingsChangeNotifierPort } from '../../settings/ports/settings-change-notifier.port.js';
 import type { IClientConnection, IClientTransportPort } from '../../web/ports/client-transport.port.js';
 import type { RemoteIdentity } from '../models/remote-identity.model.js';
 import { type IRemotePeer, IRemotePeerFactoryPort } from '../ports/remote-peer.port.js';
@@ -27,6 +28,7 @@ const REJECTION_BACKOFF_MS = 1_000;
 const MAX_REJECTION_BACKOFF_MS = 30_000;
 /** Sources whose rejections this host remembers; past it, the one rejected longest ago is forgotten. */
 const MAX_REJECTED_SOURCES = 1_024;
+const REMOTE_SETTINGS: ReadonlySet<string> = new Set(['REMOTE_ENABLED', 'REMOTE_URL']);
 
 type Rejections = { readonly count: number; readonly blockedUntil: number };
 
@@ -55,12 +57,17 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
   /** By the source the signaling server gives each request, which stands for the browser's address. */
   private readonly rejections = new Map<string, Rejections>();
   private identity?: RemoteIdentity;
+  private running = false;
+  /** Restarts run one after the other, so two quick changes never leave two signaling sockets open. */
+  private restarts: Promise<void> = Promise.resolve();
+  private unsubscribe?: () => void;
 
   constructor(
     private readonly remoteIdentity: RemoteIdentityService,
     private readonly accessToken: AccessTokenService,
     @Inject(ISignalingClientPort) private readonly signaling: ISignalingClientPort,
     @Inject(IRemotePeerFactoryPort) private readonly peers: IRemotePeerFactoryPort,
+    @Inject(ISettingsChangeNotifierPort) private readonly settingsChanges: ISettingsChangeNotifierPort,
   ) {}
 
   onConnection(listener: (connection: IClientConnection) => void): () => void {
@@ -69,6 +76,32 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    this.unsubscribe = this.settingsChanges.onChange((keys) => {
+      if (keys.some(key => REMOTE_SETTINGS.has(key))) {
+        return this.restart();
+      }
+    });
+    await this.start();
+  }
+
+  onModuleDestroy(): void {
+    this.unsubscribe?.();
+    this.stop();
+  }
+
+  /**
+   * Stops remote access, ending every remote connection, and starts it again with the settings of now: turning it off
+   * from the settings page drops the browsers it let in.
+   */
+  restart(): Promise<void> {
+    this.restarts = this.restarts.catch(() => undefined).then(async () => {
+      this.stop();
+      await this.start();
+    });
+    return this.restarts;
+  }
+
+  private async start(): Promise<void> {
     if (!this.remoteIdentity.isEnabled()) {
       return;
     }
@@ -95,10 +128,15 @@ export class RemoteClientTransportAdapter implements IClientTransportPort, OnApp
       }),
       onSignal: signal => this.handleSignal(signal),
     });
+    this.running = true;
     this.linkLogger.log(`Remote access link: ${buildRemoteLink(baseUrl, instanceId, fingerprint, this.accessToken.token())}`);
   }
 
-  onModuleDestroy(): void {
+  private stop(): void {
+    if (this.running) {
+      this.running = false;
+      this.logger.log('Remote access stopped');
+    }
     this.signaling.stop();
     [...this.sessions.keys()].forEach(sessionId => this.end(sessionId));
   }

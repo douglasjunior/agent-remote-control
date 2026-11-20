@@ -4,6 +4,7 @@ import type { ArtifactActor } from '../../artifacts/models/artifact.model.js';
 import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';
 import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { buildStoppedWorkPrompt } from '../prompts/stopped-work.prompt.js';
 import { ConversationRuntimeService } from '../services/conversation-runtime.service.js';
@@ -43,7 +44,7 @@ describe('StopArtifactWorkUseCase', () => {
       conversationId: CONVERSATION,
       initial: [buildArtifact({ id: 'T-1', status: 'in_progress' })],
     }));
-    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), 60_000);
+    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: 60_000 }));
     stops = [];
     useCase = new StopArtifactWorkUseCase(artifacts, runtime);
     useCase.onModuleInit();

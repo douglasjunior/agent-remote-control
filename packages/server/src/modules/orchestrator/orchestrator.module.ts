@@ -3,16 +3,18 @@ import { Module } from '@nestjs/common';
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
+import { DatabaseModule } from '../database/database.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { PathsModule } from '../paths/paths.module.js';
+import { SettingsModule } from '../settings/settings.module.js';
 import { SpeechToTextModule } from '../speech-to-text/speech-to-text.module.js';
 import { StorageModule } from '../storage/storage.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { JsonAgentSettingsStoreAdapter } from './adapters/json-agent-settings-store.adapter.js';
 import { JsonOpenWorkStoreAdapter } from './adapters/json-open-work-store.adapter.js';
-import { JsonPreferencesStoreAdapter } from './adapters/json-preferences-store.adapter.js';
 import { JsonSessionStoreAdapter } from './adapters/json-session-store.adapter.js';
+import { SqlitePreferencesStoreAdapter } from './adapters/sqlite-preferences-store.adapter.js';
 import { IAgentConfigurationPort } from './ports/agent-configuration.port.js';
 import { IAgentSettingsStorePort } from './ports/agent-settings-store.port.js';
 import { IAgentTurnPort } from './ports/agent-turn.port.js';
@@ -60,7 +62,18 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
 
 
 @Module({
-  imports: [AgentModule, AgentDefinitionsModule, ArtifactsModule, LoggingModule, PathsModule, SpeechToTextModule, StorageModule, WorkspaceModule],
+  imports: [
+    AgentModule,
+    AgentDefinitionsModule,
+    ArtifactsModule,
+    DatabaseModule,
+    LoggingModule,
+    PathsModule,
+    SettingsModule,
+    SpeechToTextModule,
+    StorageModule,
+    WorkspaceModule,
+  ],
   providers: [
     {
       provide: ISessionStorePort,
@@ -72,7 +85,7 @@ import { TranscribeAudioAttachmentsUseCase } from './use-cases/transcribe-audio-
     },
     {
       provide: IPreferencesStorePort,
-      useClass: JsonPreferencesStoreAdapter,
+      useClass: SqlitePreferencesStoreAdapter,
     },
     {
       provide: IOpenWorkStorePort,

@@ -107,7 +107,7 @@ use the `InMemorySessionStoreFake` from `testing/`, seeded with `seed(session)`.
 
 ### `ISpeechToTextPort` (`speech-to-text/ports/speech-to-text.port.ts`)
 
-`isEnabled(): boolean` and `transcribe(audioPath, { language? }): Promise<string>` (empty text when there is no speech; rejects on failure). It belongs to the `speech-to-text` module, imported by `OrchestratorModule`. `SpeechToTextModule` binds the port with a factory that picks the adapter named by `STT_PROVIDER` (`whisper-cpp`, the default, or `none`; an unknown name fails at bootstrap with the supported list). `WhisperCppAdapter` runs on CPU: `ffmpeg` converts the file to 16 kHz mono WAV, then `whisper-cli` writes the transcript (`STT_MODEL`/`STT_MODEL_PATH`, `STT_LANGUAGE`, `STT_THREADS`, `STT_TIMEOUT_MS`, `STT_WHISPER_BIN`, `STT_FFMPEG_BIN`); it runs both through `IProcessRunnerPort.run(command, args, { signal })`, whose signal enforces the timeout, and removes its temporary files. `NoopSpeechToTextAdapter` reports `isEnabled() === false`. A new provider (for example a GPU one) is a new adapter plus one entry in `selectSpeechToTextProvider`'s map. Specs use `StubSpeechToText` from `speech-to-text/testing/`.
+`isEnabled(): boolean` and `transcribe(audioPath, { language? }): Promise<string>` (empty text when there is no speech; rejects on failure). It belongs to the `speech-to-text` module, imported by `OrchestratorModule`. `SpeechToTextModule` binds the port with a factory that picks the adapter named by the `STT_PROVIDER` setting (`whisper-cpp`, the default, or `none`) once, as the server starts, so changing it applies on restart; `selectSpeechToTextProvider` throws with the supported list for a name its map lacks. `WhisperCppAdapter` runs on CPU: `ffmpeg` converts the file to 16 kHz mono WAV, then `whisper-cli` writes the transcript (`STT_MODEL`/`STT_MODEL_PATH`, `STT_LANGUAGE`, `STT_THREADS` with `0` for every CPU, `STT_TIMEOUT_MS`, `STT_WHISPER_BIN`, `STT_FFMPEG_BIN`, read from `IRuntimeSettingsPort` on every transcription); it runs both through `IProcessRunnerPort.run(command, args, { signal })`, whose signal enforces the timeout, and removes its temporary files. `NoopSpeechToTextAdapter` reports `isEnabled() === false`. A new provider (for example a GPU one) is a new adapter plus one entry in `selectSpeechToTextProvider`'s map. Specs use `StubSpeechToText` from `speech-to-text/testing/`.
 
 ### `IAgentSettingsStorePort` (`agent-settings-store.port.ts`)
 
@@ -126,7 +126,9 @@ Implemented by `JsonAgentSettingsStoreAdapter` in `DATA_DIR/agent-settings.json`
 or `undefined` to leave the preferences, and the merge stamps `updatedAt`. The language the CEO detects is stored only
 when `change` still finds none, so it never replaces one the user set meanwhile.
 The preferences are global to the instance, shared by every conversation and channel. `Preferences.language` is the
-language of the text agents write for the user. Implemented by `JsonPreferencesStoreAdapter` in `DATA_DIR/preferences.json`.
+language of the text agents write for the user. Implemented by `SqlitePreferencesStoreAdapter` in the one row of the `preferences` table, whose `update` runs read,
+`change` and write in one synchronous database transaction; the `preferences` legacy importer moves `DATA_DIR/preferences.json`
+of earlier versions into it.
 
 ### Persistence in `DATA_DIR`
 
@@ -191,7 +193,7 @@ inside the queue:
 - **Active delegations**: `registerDelegation(conversationKey, delegation)`, `unregisterDelegation(conversationKey, delegation)`, `getActiveDelegations()` and `findActiveDelegation(conversationKey, role)` keep the registry of specialists running in the background, indexed by role: a conversation runs one agent per role, in any project, and different roles run in parallel. `unregisterDelegation` ignores a delegation that has already been replaced by a newer one of the same role;
 - **Direct shell commands**: `RunShellCommandUseCase.execute(conversationId, command)` runs `sh -c <command>` through `IProcessRunnerPort.run` with `cwd = IWorkspacePort.getBaseDirectory()`, outside the conversation queue and without any agent. It throws `ShellCommandDisabledError` unless `SHELL_COMMAND_ENABLED=true` (`ShellCommandConfigService`, disabled by default). The abort signal combines `SHELL_COMMAND_TIMEOUT_MS` (default 60 s) with a per-conversation `AbortController`; output beyond `SHELL_COMMAND_MAX_OUTPUT_CHARS` (default 8000) keeps its end. Returns `ShellCommandResult { command, exitCode, output, truncated, timedOut, cancelled }`. `CancelAgentTurnUseCase` also calls `RunShellCommandUseCase.cancel`, so `/cancel` stops a running command. `IAgentTurnPort` exposes `isShellCommandEnabled()` and `runShellCommand()`;
 - **Cancellation**: `cancel(conversationKey)` cancels the CEO's `ActiveTurn` and all active `activeDelegations` of the conversation. Returns `false` when there is no work in progress;
-- **Idle expiration**: with no turns and no delegations for `SESSION_IDLE_TIMEOUT_MS` (default 30 minutes), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
+- **Idle expiration**: with no turns and no delegations for the `SESSION_IDLE_TIMEOUT_MS` setting (default 30 minutes, read as each idle period starts), shuts down all agents (`closeSession` + `disconnect`). The `SessionContext` and its `agentSessions` remain in the store, and the next message resumes the ACP session with `loadSession`;
 - **Shutdown**: `onApplicationShutdown` disconnects all agents (CEO and delegates). Requires `app.enableShutdownHooks()` in the bootstrap.
 
 ### 3b. `AgentProtocolService` (`services/agent-protocol.service.ts`)

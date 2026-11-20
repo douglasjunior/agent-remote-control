@@ -32,8 +32,12 @@ export interface IAgentConfigurationPort {
   /** Checks the ids against the lists, takes the names from them and saves. */
   configureProfiles(input: ConfigureProfilesInput): Promise<ConfigureProfilesResult>;
   getLanguage(): Promise<string>;
+  /** The language stored; `undefined` while none is, and the CEO takes it from the user's first message. */
+  getStoredLanguage(): Promise<string | undefined>;
   /** Stores the language as normalized; `undefined` when the input is not a valid language. */
   setLanguage(input: string): Promise<string | undefined>;
+  /** Forgets the stored language, so the CEO takes it from the user's next message. */
+  resetLanguage(): Promise<void>;
 }
 
 export const IAgentConfigurationPort = Symbol('IAgentConfigurationPort');

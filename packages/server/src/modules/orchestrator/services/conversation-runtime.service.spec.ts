@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
 
@@ -25,12 +26,11 @@ describe('ConversationRuntimeService', () => {
     rs.useFakeTimers();
     ports = [];
     factory = buildTrackedFactory();
-    runtime = new ConversationRuntimeService(factory, IDLE_MS);
+    runtime = new ConversationRuntimeService(factory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
   });
 
   afterEach(() => {
     rs.useRealTimers();
-    delete process.env.SESSION_IDLE_TIMEOUT_MS;
   });
 
   const deferred = () => {
@@ -164,21 +164,19 @@ describe('ConversationRuntimeService', () => {
     expect(ports.every(port => port.closeSessionCalls === 0)).toBe(true);
   });
 
-  it('should read the idle timeout from SESSION_IDLE_TIMEOUT_MS or default to 30 minutes', async () => {
-    process.env.SESSION_IDLE_TIMEOUT_MS = '50';
+  it('should read the idle timeout as each idle period starts', async () => {
+    const settings = new StubRuntimeSettings();
     const created = ports;
-    const trackingFactory = factory;
-    const envRuntime = new ConversationRuntimeService(trackingFactory);
-    await envRuntime.run('a', 'stub', async () => undefined);
-    await rs.advanceTimersByTimeAsync(50);
+    const liveRuntime = new ConversationRuntimeService(factory, settings);
+    await liveRuntime.run('a', 'stub', async () => undefined);
+    await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+    expect(created[0]!.closeSessionCalls).toBe(0);
+    await rs.advanceTimersByTimeAsync(1);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
-    delete process.env.SESSION_IDLE_TIMEOUT_MS;
-    const defaultRuntime = new ConversationRuntimeService(trackingFactory);
-    await defaultRuntime.run('b', 'stub', async () => undefined);
-    await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
-    expect(created[1]!.closeSessionCalls).toBe(0);
-    await rs.advanceTimersByTimeAsync(1);
+    settings.set('SESSION_IDLE_TIMEOUT_MS', 50);
+    await liveRuntime.run('b', 'stub', async () => undefined);
+    await rs.advanceTimersByTimeAsync(50);
     expect(created[1]!.closeSessionCalls).toBe(1);
   });
 
@@ -263,7 +261,7 @@ describe('ConversationRuntimeService', () => {
         }
         return buildTrackedFactory().create(agentId);
       });
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
 
       await expect(runtime.run('a', 'broken', async () => 'never')).rejects.toThrow('cannot create');
       await expect(runtime.run('a', 'fine', async port => port.agentName)).resolves.toBe('fine');
@@ -279,7 +277,7 @@ describe('ConversationRuntimeService', () => {
         ports.push(port);
         return port;
       });
-      runtime = new ConversationRuntimeService(factory, IDLE_MS);
+      runtime = new ConversationRuntimeService(factory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
     };
 
     const startRunningCeo = async (agentId = 'stub') => {
@@ -772,7 +770,7 @@ describe('ConversationRuntimeService', () => {
 
     it('should tear down every agent on shutdown even when disconnecting fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
       await runtime.run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
 
@@ -782,7 +780,7 @@ describe('ConversationRuntimeService', () => {
 
     it('should expire an idle session even when closing its agents fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
       await runtime.run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
       runtime.unregisterDelegation('unknown', runtime.getActiveDelegations('a')[0]!);

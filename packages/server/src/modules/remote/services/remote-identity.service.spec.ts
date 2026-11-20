@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 
 import { RemoteIdentityService } from './remote-identity.service.js';
@@ -14,23 +15,24 @@ import { RemoteIdentityService } from './remote-identity.service.js';
 
 describe('RemoteIdentityService', () => {
   let dataDir: string;
-  const service = () => new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles());
+  let settings: StubRuntimeSettings;
+  const service = () => new RemoteIdentityService(dataDirectoryAt(dataDir), createNodeLockedFiles(), settings);
 
   beforeEach(() => {
     dataDir = mkdtempSync(join(tmpdir(), 'remote-identity-'));
+    settings = new StubRuntimeSettings();
   });
 
   afterEach(() => {
-    rs.unstubAllEnvs();
     rmSync(dataDir, { recursive: true, force: true });
   });
 
-  it('should be enabled only when REMOTE_ENABLED is true', () => {
-    expect(service().isEnabled()).toBe(false);
-    rs.stubEnv('REMOTE_ENABLED', 'yes');
-    expect(service().isEnabled()).toBe(false);
-    rs.stubEnv('REMOTE_ENABLED', 'true');
-    expect(service().isEnabled()).toBe(true);
+  it('should be enabled only when REMOTE_ENABLED is true, read on every call', () => {
+    const remote = service();
+
+    expect(remote.isEnabled()).toBe(false);
+    settings.set('REMOTE_ENABLED', true);
+    expect(remote.isEnabled()).toBe(true);
   });
 
   it.each([
@@ -39,20 +41,17 @@ describe('RemoteIdentityService', () => {
     ['http://127.0.0.1:5173', 'http://127.0.0.1:5173', 'ws://127.0.0.1:5173/signal/host'],
     ['http://[::1]:3100', 'http://[::1]:3100', 'ws://[::1]:3100/signal/host'],
   ])('should reach REMOTE_URL %s over the matching WebSocket scheme', (remoteUrl, baseUrl, signalingUrl) => {
-    rs.stubEnv('REMOTE_URL', remoteUrl);
+    settings.set('REMOTE_URL', remoteUrl);
 
     expect(service().baseUrl()).toBe(baseUrl);
     expect(service().signalingUrl(baseUrl)).toBe(signalingUrl);
   });
 
   it.each([
-    ['missing', undefined],
-    ['blank', '  '],
-    ['not a URL', 'arc.example.com'],
+    ['empty', ''],
     ['plain HTTP to another machine', 'http://arc.example.com'],
-    ['of another scheme', 'ftp://arc.example.com'],
   ])('should have no signaling server when REMOTE_URL is %s', (_name, remoteUrl) => {
-    rs.stubEnv('REMOTE_URL', remoteUrl);
+    settings.set('REMOTE_URL', remoteUrl);
 
     expect(service().baseUrl()).toBeNull();
   });
