@@ -21,7 +21,8 @@ Integrates the Claude Code CLI through the official ACP adapter `@agentclientpro
 dependency), with no bridge of its own:
 
 - Runs `node <claude-agent-acp>/dist/index.js`, resolved with `createRequire(import.meta.url)`.
-- Sets `SLASH_COMMAND_TOOL_CHAR_BUDGET=100000` when the user has not set another value. It is the budget, in characters, of the skill listing Claude Code keeps in context; the default (1% of the window) truncates descriptions when the project has a few dozen skills.
+- Sets `SLASH_COMMAND_TOOL_CHAR_BUDGET=100000`, over any value of the environment. It is the budget, in characters, of the skill listing Claude Code keeps in context; the default (1% of the window) truncates descriptions when the project has a few dozen skills.
+- Sets `CLAUDE_CODE_ARTIFACT=1`, which enables Claude Code artifacts in the session.
 - Sets `CLAUDE_CODE_EXECUTABLE` to the `claude` on the `PATH` (`IFileSystemPort.resolveInPath('claude')`), discarding any value inherited from the environment, so the Claude Agent SDK uses the CLI installed and authenticated by the user. Without `claude` on the `PATH`, the SDK uses the bundled binary.
 - Session preset `mode = bypassPermissions`. Claude Code does not offer this mode to a `root` process without `IS_SANDBOX=1`; in that case the session stays in the user's default mode and permission requests are approved by the `AbstractAcpAdapter` handler.
 - The agent advertises `loadSession` and `_meta.steering.supported`, so resumption, steering (`_session/steering`) and the cancellation ladder with steering work without specific code. `session/load` replays the history before responding and restores neither model, effort nor mode; the base adapter's `applySessionConfig` reapplies them.
