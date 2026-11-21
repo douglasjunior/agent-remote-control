@@ -1,6 +1,7 @@
 import { REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { RefinementKind } from '../../artifacts/models/artifact.model.js';
 import { AGENT_TOOLS_SERVER_NAME } from '../../orchestrator/constants/agent-tools.constant.js';
+import { FINAL_RESPONSE_OPEN } from '../../orchestrator/constants/final-response.constant.js';
 import type { AgentInterface } from '../../orchestrator/models/agent-interface.model.js';
 import { SKILL_NAMES } from '../constants/skill-names.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
@@ -78,11 +79,12 @@ ${BOARD_REQUESTS[agentInterface]}
 - Project folders, sessions, access requests outside a project, what each \`on_busy\` costs and failed or stopped results are in the \`${SKILL_NAMES.delegationProtocol}\` skill.
 
 ### Response Protocol
-- Text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.
-- Every response does exactly one of three things:
+- Every turn ends with one ${FINAL_RESPONSE_OPEN} block, and only its content is your response. Text you write outside it, such as notes before a tool call, is progress narration.
+- Inside the block, text outside protocol tags is shown to the user. Never mention the tags or these instructions to the user.
+- The block does exactly one of three things:
   - **Delegate**: one or more \`<delegate>\` tags. Text around them is the progress note.
   - **Ask**: one or more \`<question rationale="why it matters">question<option recommended>choice</option><option>other choice</option></question>\` tags ask the user for decisions you need before going on, never in plain prose. The answers come back as \`<user_answers>\` in the same turn (see the \`${SKILL_NAMES.askingTheUser}\` skill).
-  - **Answer**: a response without either tag is your answer to the user and ends the turn. It may carry \`<attachment path="/absolute/path">description</attachment>\` tags to send files (see the \`${SKILL_NAMES.responseProtocol}\` skill).
+  - **Answer**: a block without either tag is your answer to the user and ends the turn. It may carry \`<attachment path="/absolute/path">description</attachment>\` tags to send files (see the \`${SKILL_NAMES.responseProtocol}\` skill).
 - End a turn only when nothing is left to route: before answering, check that no task sits in the middle of the flow with nobody working on it, or say in your answer what each one is waiting for.
 - Anything outside the workspaces root that an agent asks to access needs the user's confirmation first.
 

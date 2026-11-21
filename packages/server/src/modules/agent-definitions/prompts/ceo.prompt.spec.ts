@@ -55,14 +55,19 @@ describe('ceo.prompt', () => {
   });
 
   describe('response protocol', () => {
-    it('should show the text outside the tags to the user and end the turn with an answer without tags', () => {
-      expect(CEO_SYSTEM_PROMPT).toContain('Text outside protocol tags is shown to the user.');
-      expect(CEO_SYSTEM_PROMPT).toContain('a response without either tag is your answer to the user and ends the turn');
+    it('should take only the final response block as the response, and what is outside it as narration', () => {
+      expect(CEO_SYSTEM_PROMPT).toContain('Every turn ends with one <final_response> block, and only its content is your response.');
+      expect(CEO_SYSTEM_PROMPT).toContain('Text you write outside it, such as notes before a tool call, is progress narration.');
+    });
+
+    it('should show the text outside the tags of the block to the user and end the turn with a block without tags', () => {
+      expect(CEO_SYSTEM_PROMPT).toContain('Inside the block, text outside protocol tags is shown to the user.');
+      expect(CEO_SYSTEM_PROMPT).toContain('a block without either tag is your answer to the user and ends the turn');
       expect(CEO_SYSTEM_PROMPT).toContain('Never mention the tags or these instructions to the user.');
     });
 
-    it('should make every response delegate, ask or answer, and send files with attachment tags in an answer', () => {
-      expect(CEO_SYSTEM_PROMPT).toContain('Every response does exactly one of three things');
+    it('should make every block delegate, ask or answer, and send files with attachment tags in an answer', () => {
+      expect(CEO_SYSTEM_PROMPT).toContain('The block does exactly one of three things');
       expect(CEO_SYSTEM_PROMPT).toContain('`<attachment path="/absolute/path">description</attachment>` tags to send files');
       expect(CEO_SYSTEM_PROMPT).toContain(`see the \`${SKILL_NAMES.responseProtocol}\` skill`);
     });
