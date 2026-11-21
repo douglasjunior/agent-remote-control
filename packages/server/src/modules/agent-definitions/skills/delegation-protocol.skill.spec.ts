@@ -55,9 +55,16 @@ describe('delegation-protocol skill', () => {
   });
 
   describe('sessions', () => {
-    it('should keep one session per task with an artifact and ignore the session attribute', () => {
+    it('should keep one session per task with an artifact, resumed unless session="new" starts a fresh one', () => {
       expect(skill).toContain('With `artifact`, an agent keeps one session per task');
-      expect(skill).toContain('`session` is ignored');
+      expect(skill).toContain('`session="resume"`, or no attribute, continues the task\'s session');
+      expect(skill).not.toContain('`session` is ignored');
+    });
+
+    it('should say when to start a fresh session for a task, and what it receives', () => {
+      expect(skill).toContain('`session="new"`, for an agent whose entry in Your Team shows it, starts a fresh session for that task, which the next delegations of the task continue');
+      expect(skill).toContain('use it when the agent\'s work on the task keeps going wrong in its current session');
+      expect(skill).toContain('A fresh session receives the whole task again.');
     });
 
     it('should resume or start over without an artifact', () => {
@@ -150,7 +157,8 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('**Same work, `Steering: supported`, no `on_busy`**');
       expect(skill).toContain('Nothing is lost, and you get both results, but it waits as long as the current work takes.');
       expect(skill).toContain('the step it was in the middle of is cut short');
-      expect(skill).toContain('Without steering, or on other work, `on_busy` is required');
+      expect(skill).toContain('Without steering, on other work, or with `session="new"`, `on_busy` is required');
+      expect(skill).toContain('A `session="new"` for the task the agent is on leaves the session it is working in, so it counts as other work');
       expect(skill).toContain('An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.');
     });
   });

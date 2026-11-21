@@ -2,10 +2,14 @@ import type { AgentDefinition } from '../models/agent-definition.model.js';
 
 
 export function formatDelegationForms(agent: AgentDefinition): string {
-  const { project, artifact } = agent.delegation;
+  const { project, artifact, sessionMode } = agent.delegation;
   const forms: string[] = [];
   if (artifact) {
-    forms.push(`<delegate role="${agent.role}" summary="<summary>" artifact="<${agent.artifacts.scope === 'task' ? 'task' : 'artifact'} id>">`);
+    const withArtifact = `<delegate role="${agent.role}" summary="<summary>" artifact="<${agent.artifacts.scope === 'task' ? 'task' : 'artifact'} id>"`;
+    forms.push(`${withArtifact}>`);
+    if (sessionMode) {
+      forms.push(`${withArtifact} session="new">`);
+    }
   }
   if (artifact !== 'required' && project !== 'required') {
     forms.push(`<delegate role="${agent.role}" summary="<summary>">`);

@@ -7,6 +7,7 @@ import type { TurnRequest } from '../models/turn-request.model.js';
 import type { ValidatedDecision, ValidatedDelegation } from '../models/validated-delegation.model.js';
 import { type DelegationContract, IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { buildBusyRoleRepair, type BusyRoleReason } from '../prompts/busy-role.prompt.js';
+import { startsNewTaskSession } from '../utils/delegation-session.util.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
 import { type DelegationResult, DelegationDetectorService } from './delegation-detector.service.js';
@@ -121,7 +122,7 @@ export class DelegationValidatorService {
       return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
-    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, role, artifactId)) {
+    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, delegation)) {
       return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
     }
     return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
@@ -129,15 +130,18 @@ export class DelegationValidatorService {
 
   /**
    * A delegation to a role already working on the same artifact steers that agent, which receives only the new text and
-   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply.
+   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply. One that
+   * starts a new session for the task gives that session the artifact in full.
    */
-  private redirects(conversationId: string, role: string, artifactId: string): boolean {
-    return this.conversationRuntime.findActiveDelegation(conversationId, role)?.artifactId === artifactId;
+  private redirects(conversationId: string, delegation: DelegationResult): boolean {
+    return !startsNewTaskSession(delegation)
+      && this.conversationRuntime.findActiveDelegation(conversationId, delegation.delegateToRole)?.artifactId === delegation.artifactId;
   }
 
   /**
    * A role already at work keeps its work unless the CEO says otherwise: only an instruction on the same work for an
-   * agent known to take it mid-prompt goes in without `on_busy`, since anything else either waits or costs work.
+   * agent known to take it mid-prompt goes in without `on_busy`, since anything else either waits or costs work. A new
+   * session for the task cannot join the running prompt, so it needs `on_busy` as other work does.
    */
   private checkBusyRole(delegation: DelegationResult, conversationId: string): string | undefined {
     const active = this.conversationRuntime.findActiveDelegation(conversationId, delegation.delegateToRole);
@@ -146,11 +150,14 @@ export class DelegationValidatorService {
     }
     const sameWork = active.projectName === (delegation.projectName ?? null) && active.artifactId === (delegation.artifactId ?? null);
     const steering = this.steeringSupport.supports(active.agentPort.agentName);
-    if (sameWork && steering === true) {
+    const newSession = startsNewTaskSession(delegation);
+    if (sameWork && !newSession && steering === true) {
       return undefined;
     }
     let reason: BusyRoleReason = 'other_work';
-    if (sameWork) {
+    if (sameWork && newSession) {
+      reason = 'new_session';
+    } else if (sameWork) {
       reason = steering === false ? 'no_steering' : 'unknown_steering';
     }
     let work = 'at the workspaces root';
@@ -249,7 +256,7 @@ export class DelegationValidatorService {
   private checkDelegationContract(
     role: string,
     contract: DelegationContract,
-    { projectName, sessionMode, artifactId }: DelegationResult,
+    { projectName, sessionMode }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
       return `Role "${role}" does not take a project folder. Use <delegate role="${role}" summary="<summary>"> without the project attribute.`;
@@ -257,8 +264,7 @@ export class DelegationValidatorService {
     if (!projectName && contract.project === 'required') {
       return `Role "${role}" requires a project folder. Use <delegate role="${role}" summary="<summary>" project="<project-folder>">.`;
     }
-    // A delegation with an artifact runs in the session of its task, so its session attribute is ignored rather than refused.
-    if (sessionMode && !artifactId && !contract.sessionMode) {
+    if (sessionMode && !contract.sessionMode) {
       return `Role "${role}" does not take a session mode. Use <delegate role="${role}" summary="<summary>"> without the session attribute.`;
     }
     return undefined;

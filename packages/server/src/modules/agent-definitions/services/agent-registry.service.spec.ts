@@ -162,6 +162,7 @@ describe('AgentRegistryService', () => {
     it('should return the contract declared by the role in case-insensitive manner', () => {
       expect(service.getDelegationContract('developer')).toMatchObject({
         project: 'required',
+        sessionMode: 'overridable',
         artifact: 'required',
       });
       expect(service.getDelegationContract('GIT_OPS')).toEqual({
@@ -175,11 +176,19 @@ describe('AgentRegistryService', () => {
     it('should have the code reviewer review the pull request of a task', () => {
       expect(service.getDelegationContract('CODE_REVIEWER')).toMatchObject({
         project: 'required',
+        sessionMode: 'overridable',
         readOnly: true,
         artifact: 'required',
         needsReviewableWork: true,
         statusFlow: { from: ['in_review'] },
       });
+    });
+
+    it('should let the delegation of every role that works on a task ask for a new session', () => {
+      for (const role of ['DEVELOPER', 'CODE_REVIEWER', 'QA']) {
+        expect(service.getDelegationContract(role)).toMatchObject({ sessionMode: 'overridable', artifact: 'required' });
+        expect(service.getDefaultSessionMode(role)).toBe('resume');
+      }
     });
 
     it('should return an empty contract for an unknown role', () => {

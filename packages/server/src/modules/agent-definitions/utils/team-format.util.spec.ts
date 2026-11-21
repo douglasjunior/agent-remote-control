@@ -29,6 +29,22 @@ describe('team-format.util', () => {
     );
   });
 
+  it('should add the form with session="new" for an agent that takes an artifact and a session mode', () => {
+    expect(formatDelegationForms(agent({ delegation: { project: 'required', sessionMode: 'overridable', artifact: 'required' } }))).toBe(
+      '<delegate role="AGENT" summary="<summary>" artifact="<task id>"> or <delegate role="AGENT" summary="<summary>" artifact="<task id>" session="new">',
+    );
+    expect(formatDelegationForms(agent({ delegation: { project: 'optional', sessionMode: 'overridable', artifact: 'optional' }, artifacts: { scope: 'tree', sections: [], fields: [] } }))).toBe(
+      '<delegate role="AGENT" summary="<summary>" artifact="<artifact id>"> or <delegate role="AGENT" summary="<summary>" artifact="<artifact id>" session="new">'
+      + ' or <delegate role="AGENT" summary="<summary>"> or <delegate role="AGENT" summary="<summary>" project="<project-folder>">',
+    );
+  });
+
+  it('should not show the session attribute for an agent that takes no artifact', () => {
+    expect(formatDelegationForms(agent({ delegation: { project: 'optional', sessionMode: 'overridable' } }))).toBe(
+      '<delegate role="AGENT" summary="<summary>"> or <delegate role="AGENT" summary="<summary>" project="<project-folder>">',
+    );
+  });
+
   it('should list the delegate tag forms allowed by the project contract', () => {
     expect(formatDelegationForms(agent({ delegation: {} }))).toBe('<delegate role="AGENT" summary="<summary>">');
     expect(formatDelegationForms(agent({ delegation: { project: 'optional' } }))).toBe(

@@ -88,6 +88,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     buildSystemPrompt: (_team, agentInterface) => buildDeveloperSystemPrompt(agentInterface),
     delegation: {
       project: 'required',
+      sessionMode: 'overridable',
       artifact: 'required',
       statusFlow: {
         from: ['ready', 'in_progress', 'changes_requested'],
@@ -107,6 +108,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     buildSystemPrompt: (_team, agentInterface) => buildCodeReviewerSystemPrompt(agentInterface),
     delegation: {
       project: 'required',
+      sessionMode: 'overridable',
       readOnly: true,
       artifact: 'required',
       needsReviewableWork: true,
@@ -127,6 +129,7 @@ export const INITIAL_AGENT_DEFINITIONS: readonly AgentDefinition[] = [
     buildSystemPrompt: (_team, agentInterface) => buildQaSystemPrompt(agentInterface),
     delegation: {
       project: 'required',
+      sessionMode: 'overridable',
       artifact: 'required',
       needsReviewableWork: true,
       statusFlow: {

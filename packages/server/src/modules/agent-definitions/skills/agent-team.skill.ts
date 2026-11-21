@@ -63,9 +63,12 @@ function formatSessionMode(agent: AgentDefinition): string {
   if (!agent.delegation.artifact) {
     return `${withoutArtifact.charAt(0).toUpperCase()}${withoutArtifact.slice(1)}.`;
   }
+  const perTask = agent.delegation.sessionMode
+    ? ' Setting session="new" with the artifact replaces that session with a fresh one, which the next delegations of the task continue.'
+    : '';
   return agent.delegation.artifact === 'required'
-    ? 'Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.'
-    : `Keeps one session per artifact it is delegated; without an artifact it ${withoutArtifact}.`;
+    ? `Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.${perTask}`
+    : `Keeps one session per artifact it is delegated; without an artifact it ${withoutArtifact}.${perTask}`;
 }
 
 function formatUserDecision(agent: AgentDefinition): string {

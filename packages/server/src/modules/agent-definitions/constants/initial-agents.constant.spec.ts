@@ -83,14 +83,18 @@ describe('initial-agents.constant', () => {
       expect(definitionOf('GIT_OPS').delegation).toEqual({ project: 'optional', sessionMode: 'overridable', artifact: 'optional' });
     });
 
-    it('should leave the session of a role that always works on a task to the task, with no session mode to set', () => {
+    it('should resume the session of the task for a role that always works on one, and let the delegation ask for a new one', () => {
       const taskBound = INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.artifact === 'required');
 
       expect(taskBound.map(def => def.role)).toEqual(['DEVELOPER', 'CODE_REVIEWER', 'QA']);
       for (const definition of taskBound) {
         expect(definition.defaultSessionMode).toBeUndefined();
-        expect(definition.delegation.sessionMode).toBeUndefined();
+        expect(definition.delegation.sessionMode).toBe('overridable');
       }
+    });
+
+    it('should take no session mode only for the CEO', () => {
+      expect(INITIAL_AGENT_DEFINITIONS.filter(def => !def.delegation.sessionMode).map(def => def.role)).toEqual(['CEO']);
     });
 
     it('should declare a default session mode only where it differs from resuming, which the registry falls back to', () => {

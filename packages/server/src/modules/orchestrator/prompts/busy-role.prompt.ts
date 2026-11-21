@@ -1,15 +1,16 @@
 /** Why a delegation to an agent already at work names no `on_busy`. */
-export type BusyRoleReason = 'other_work' | 'no_steering' | 'unknown_steering';
+export type BusyRoleReason = 'other_work' | 'new_session' | 'no_steering' | 'unknown_steering';
 
 const WHY: Readonly<Record<BusyRoleReason, string>> = {
   other_work: 'on other work than this delegation',
+  new_session: 'and this delegation starts a new session for that task, which cannot join the running prompt',
   no_steering: 'and its coding agent does not take a new instruction in the middle of a prompt',
   unknown_steering: 'and its coding agent has not said yet whether it takes a new instruction in the middle of a prompt',
 };
 
 /** `work` names what the agent is on: its artifact, or its project folder. */
 export function buildBusyRoleRepair(role: string, work: string, reason: BusyRoleReason): string {
-  const interrupt = reason === 'other_work'
+  const interrupt = reason === 'other_work' || reason === 'new_session'
     ? 'its current work ends where it stands (its task keeps its status and its changes stay in the project) and this delegation starts now, in its own session.'
     : 'its current prompt stops now and it goes on with your text as its next prompt in the same session, keeping what it learned; only the step it was in the middle of is cut short.';
   return [

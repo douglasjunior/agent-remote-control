@@ -59,7 +59,7 @@ Each class owns one part of a turn; channels reach them only through the public 
 1. The channel calls `IAgentTurnPort.executeTurn`. Audio attachments become text. A conversation runs one turn at a time: a message that finds one running joins it (see "Messages During a Turn"); no second turn starts.
 2. The CEO runs on its conversation port, one round at a time (`ConversationRuntimeService.runOnCeo`), with `[TEAM_PROFILES]`, `[BOARD]` (first round, and a round carrying a user message), pending notices, attachments, the messages of the inbox and the language block.
 3. Its board and skill requests run first; then its response is one outcome: a delegation, questions to the user, or the answer.
-4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact); the CEO gets each `<agent_result>` as it finishes and decides again. A delegation to a role already at work goes to that agent (see "Agents Already at Work").
+4. Delegations run in parallel, each agent in its project folder and in the session of its task (of its project, for work without an artifact), which `session="new"` replaces with a fresh one; the CEO gets each `<agent_result>` as it finishes and decides again. A delegation to a role already at work goes to that agent (see "Agents Already at Work").
 5. The turn ends with the CEO's answer once no delegation runs, or as failed or cancelled; delegations still running are stopped, and a message still in the inbox starts the next turn. An answer that leaves tasks the turn delegated mid-flow with nobody on them and unnamed is not delivered: the CEO goes back once with `[BOARD_CHECK]` and owes a complete answer, attachments included.
 
 Read [references/turn-execution.md](references/turn-execution.md) before changing any of these steps; it covers the directory hierarchy, the tag protocol, the CEO rounds, delegations and each agent round in detail.
@@ -101,7 +101,10 @@ own record. `on_busy` (`wait` or `interrupt`, `DelegationResult.onBusy`) says wh
   `interrupt` ends that work as replaced and waits until it released its artifact before starting the new one.
 - A run that is finishing takes no more instructions, so a steering or interruption that comes too late becomes a
   follow-up, and a delegation that is closing takes no more follow-ups, so they wait for it to end instead.
-- The validator rejects a delegation without `on_busy` to a busy role on other work, or on the same work of an agent
+- A delegation that starts a new session for the task the role is on (`session="new"` with the same artifact) cannot join the
+  running prompt, which belongs to the session being left: it counts as other work, so `wait` starts it once the current
+  run ended and `interrupt` ends the current work first (`startsNewTaskSession`), and its specification limit applies.
+- The validator rejects a delegation without `on_busy` to a busy role on other work, on a new session for its own task, or on the same work of an agent
   whose steering is unsupported or not known yet, with a repair that explains both choices (`prompts/busy-role.prompt.ts`).
 - Steering, keeping and interrupting record the instruction on the delegation (its `summary` and its updates, kept on
   the open work), emit a `steered` delegation event, and leave a receipt; so does queueing a follow-up or a delegation

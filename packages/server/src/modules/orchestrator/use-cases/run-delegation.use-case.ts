@@ -31,6 +31,7 @@ import { DelegationStatusService } from '../services/delegation-status.service.j
 import { OpenWorkService } from '../services/open-work.service.js';
 import { QuestionParserService } from '../services/question-parser.service.js';
 import { UserQuestionQueueService } from '../services/user-question-queue.service.js';
+import { startsNewTaskSession } from '../utils/delegation-session.util.js';
 import { previewForLog } from '../utils/log-preview.util.js';
 import { isPromptCancellation } from '../utils/prompt-cancellation.util.js';
 
@@ -177,8 +178,9 @@ export class RunDelegationUseCase {
   /**
    * On the same work, the instruction is steered into the running prompt or kept for the next one, cancels the running
    * prompt to be the next at once (`interrupt`), or runs after the current run (`wait`); a run that is finishing takes it
-   * as a follow-up. Other work waits for that agent to end, or ends its work first (`interrupt`). Work restored after a
-   * restart has a record and a first prompt of its own, so it never joins another run.
+   * as a follow-up. Other work, and a new session for the same task, waits for that agent to end or ends its work first
+   * (`interrupt`), since the running prompt belongs to the session being left. Work restored after a restart has a record
+   * and a first prompt of its own, so it never joins another run.
    */
   private async reachBusy(
     busy: ActiveDelegation,
@@ -192,7 +194,8 @@ export class RunDelegationUseCase {
   ): Promise<Arrival> {
     const sameWork = busy.projectName === (delegation.projectName ?? null)
       && busy.artifactId === (delegation.artifactId ?? null)
-      && delegation.workId === undefined;
+      && delegation.workId === undefined
+      && !startsNewTaskSession(delegation);
     const instruction: DelegationInstruction = { text: delegation.taskSpec, summary: delegation.summary };
     if (sameWork) {
       if (!delegation.onBusy && await this.steer(busy, instruction, request, round, conversationKey)) {
@@ -403,8 +406,8 @@ export class RunDelegationUseCase {
       control,
       conversationId: request.conversationId,
       session,
-      // A task has a session of its own, so the session mode chooses only among the sessions of work without one.
-      sessionMode: artifactId ? 'resume' : sessionMode ?? this.agentRegistry.getDefaultSessionMode(role),
+      // A task has a session of its own that a delegation resumes unless it asks for a new one, so the role's default mode chooses only among the sessions of work without a task.
+      sessionMode: artifactId ? sessionMode ?? 'resume' : sessionMode ?? this.agentRegistry.getDefaultSessionMode(role),
       ...(request.resumable ? { openWorkId: delegationId } : {}),
       stop: async (reason: string) => {
         live.stopReason = reason;

@@ -40,7 +40,7 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 - Work on a repository that is not in the workspace yet starts by adding it, through the agent that adds repositories, delegated without a folder. Use the folder name that agent reports for every follow-up.
 
 ## Sessions
-- With \`artifact\`, an agent keeps one session per task: a new task starts with a clean context, and the same task continues where the agent left it. There is nothing to choose, and \`session\` is ignored.
+- With \`artifact\`, an agent keeps one session per task: a new task starts with a clean context, and the same task continues where the agent left it. \`session="new"\`, for an agent whose entry in Your Team shows it, starts a fresh session for that task, which the next delegations of the task continue; use it when the agent's work on the task keeps going wrong in its current session. \`session="resume"\`, or no attribute, continues the task's session. A fresh session receives the whole task again.
 - Without \`artifact\`, an agent keeps one session per project folder. \`session="resume"\` (or the agent's default when it resumes) continues the same subject; \`session="new"\` starts over when the subject changes or you need a judgment free of what came before.
 - When the coding agent of a role differs from the one in the last \`[TEAM_PROFILES]\` you received, that role starts a new session. With \`artifact\` it receives the whole task again, so nothing needs restating; without one, restate the goal, the state of the work and the decisions already made. A change of model or effort alone keeps the session.
 
@@ -69,7 +69,8 @@ A conversation runs one agent per role, so a delegation to a role \`[TEAM_PROFIL
 - **Same work, \`Steering: supported\`, no \`on_busy\`**: the agent receives your text in its running prompt, or with its next prompt when it is between prompts, and goes on with it. Nothing is lost. Use it to correct or add to what the agent is doing.
 - **\`on_busy="wait"\`**: your delegation waits until the agent's current work delivers its result; on the same work it then runs as the next prompt of the same session, keeping its context, and on other work it starts once that work ended. Nothing is lost, and you get both results, but it waits as long as the current work takes. Use it for a next step that does not change what the agent is doing now.
 - **\`on_busy="interrupt"\`**: on the same work, the running prompt is cancelled and your text is the next prompt of the same session: the agent keeps what it learned, but the step it was in the middle of is cut short. On other work, the agent's current work ends where it stands (its task keeps its status, its changes stay in the project, and you get a receipt saying so) and your delegation starts now. Use it only when the current work is wrong or no longer wanted.
-- Without steering, or on other work, \`on_busy\` is required, and a delegation without it comes back as \`[DELEGATION_ERROR]\`.
+- A \`session="new"\` for the task the agent is on leaves the session it is working in, so it counts as other work: \`wait\` starts the fresh session once the current work delivers its result, and \`interrupt\` ends the current work and starts it now.
+- Without steering, on other work, or with \`session="new"\`, \`on_busy\` is required, and a delegation without it comes back as \`[DELEGATION_ERROR]\`.
 - An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.
 
 ## Access Requests

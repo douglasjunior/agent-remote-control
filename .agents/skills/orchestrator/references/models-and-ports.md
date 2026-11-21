@@ -185,11 +185,11 @@ Contract for resolving behavioral instructions and model specifications:
 
 - `getSystemPrompt(agentRole: string, agentInterface: AgentInterface): string`: the prompt written for the interface of the session (`models/agent-interface.model.ts`: `tags` or `tools`)
 - `getDefaultModel(agentRole: string): string | undefined`
-- `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`: the session of a delegation without an artifact and without the `session` attribute
+- `getDefaultSessionMode(agentRole: string): 'resume' | 'new'`: the session of a delegation without an artifact and without the `session` attribute; a delegation with an artifact resumes the session of its task
 - `getDisplayName(agentRole: string): string`: name shown in the footer (the role itself when unknown)
 - `hasRole(agentRole: string): boolean`: validates the role of a delegation
 - `listRoles(): string[]`: every registered role, in registration order
-- `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`, which applies to delegations without an artifact; with one, `session` is accepted and ignored); empty contract for an unknown role
+- `getDelegationContract(agentRole: string): DelegationContract`: `<delegate>` attributes the role accepts (`project`, `sessionMode`: with it the `session` attribute is accepted, without an artifact to choose between the project's session and a new one, with one to resume the task's session or replace it with a new one; without it `session` is rejected); empty contract for an unknown role
 - `getReentryNote(agentRole: string, agentInterface: AgentInterface): string`: the note, written for the interface of the session, put before the prompt sent to a session resumed by that prompt (always a string, empty when the role has none)
 - `isSystemPromptEveryTurn(agentRole: string): boolean`: role whose system prompt accompanies every user message (the CEO)
 - Symbol of the same name: `export const IAgentRegistryPort = Symbol('IAgentRegistryPort');`
