@@ -4,8 +4,8 @@ import type { AgentSkillDefinition } from '../models/agent-skill-definition.mode
 
 
 const RECORDING_THE_PULL_REQUEST: Readonly<Record<AgentInterface, string>> = {
-  tags: '`<pull_request url="https://..." title="T-3: Login API" state="open"/>` inside the `<artifact_update>` of the task.',
-  tools: 'its URL, title and state `open` in the `pull_requests` of an `artifact_update` of the task.',
+  tags: '`<pull_request url="https://..." title="T-3: Login API" state="open" repository="repositories/api"/>` inside the `<artifact_update>` of the task.',
+  tools: 'its URL, title, repository and state `open` in the `pull_requests` of an `artifact_update` of the task.',
 };
 
 export const GIT_REMOTE_SKILL: AgentSkillDefinition = {
@@ -24,11 +24,11 @@ export const GIT_REMOTE_SKILL: AgentSkillDefinition = {
 - An authentication failure (\`Permission denied (publickey)\`, a 401 or 403, a credential prompt) is not yours to work around: report the exact error and the transport the remote uses (SSH or HTTPS), so the caller can route the fix.
 
 ## Opening a Pull Request
-- One pull request per task. When the task already links an open one, pushing the branch updates it: do not open another.
+- One pull request per repository the task changes, each from the branch of the task, which has the same name in every repository. When the task already links an open one for a repository, pushing the branch updates it: do not open another.
 - Target the branch the task or the team's workflow names; without one, the repository's default branch.
 - Title it with the task id and title (\`T-3: Login API\`), unless the project or the team's workflow sets another convention.
 - Describe it from the task: what it delivers (overview), how to verify it (acceptance criteria and your implementation notes), and anything the reviewer should look at first.
-- Record it on the task: ${RECORDING_THE_PULL_REQUEST[agentInterface]}
+- Record each on the task with its \`repository\`, the path of the repository inside your project folder (\`.\` for the folder itself): ${RECORDING_THE_PULL_REQUEST[agentInterface]}
 
 ## Merging a Pull Request
 - Merge only on an instruction to merge that pull request, into the branch it targets, with the merge method the project or the team's workflow sets (the provider's default without one).

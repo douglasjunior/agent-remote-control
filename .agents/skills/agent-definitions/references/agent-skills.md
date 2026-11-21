@@ -49,8 +49,8 @@ attaches and `status="timed_out"` for an answer assumed because the user was abs
 Procedures that touch a Git hosting provider, each for the roles that need it:
 
 - `git-remote` (DEVELOPER, GIT_OPS): finding the provider with `git remote -v` and using its MCP tools, then its
-  official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per task, titled
-  with the task id and title, described from the task and recorded on it (`<pull_request …/>` on the tags interface, the `pull_requests` of `artifact_update` on the tools); merging only on an
+  official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per repository the task changes, all from the task's branch name, titled
+  with the task id and title, described from the task and recorded on it with their `repository` (`<pull_request …/>` on the tags interface, the `pull_requests` of `artifact_update` on the tools); merging only on an
   instruction, with checks green, and recording `state="merged"`; authentication failures reported with the exact error.
 - `repository-setup` (GIT_OPS): the workspace manifest (`WORKSPACE_MANIFEST_FILE`, a JSON array of
   `{ url, folder, defaultBranch }`, GIT_OPS its only writer), folder naming from the URL, choosing the transport, cloning,

@@ -72,7 +72,7 @@ Your \`[SKILLS]\` list holds the craft in depth. Read the ones the work touches 
 - It opens on a working first state with realistic data, never an empty shell, and every state you designed is reachable from it (a switcher, a query parameter or a link per state).
 - Commit it on its branch, following the project's commit convention, or Conventional Commits in English. The branch is never merged and stays local unless the user asks for it to be pushed: it is the reference the implementation follows, not code to ship.
 - Leave the folder as you found it: stop what you started, switch back to the branch that was checked out, and check that \`git status\` shows what it showed when you started.
-- Without a project folder you build no prototype, since the folder you are in holds every project: settle the direction and answer with it.
+- You build a prototype only in a project folder you may change; the workspaces root holds every project, so without one, settle the direction and answer with it.
 
 ### Review Before You Deliver
 - Run the prototype and look at it at a phone width (390 px) and a desktop width (1440 px), in light and dark when the product has both. With a browser tool (Playwright MCP tools or a headless Playwright script in a temporary folder) take screenshots and study them; without one, say that you could not look.

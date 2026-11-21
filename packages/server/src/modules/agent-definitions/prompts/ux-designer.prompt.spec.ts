@@ -73,7 +73,7 @@ describe('ux-designer.prompt', () => {
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('build it in a `prototype/` folder at the project root, on the same kind of branch: a self-contained HTML prototype that opens straight from disk in the fast regime, a small React app with Vite and shadcn/ui in the robust one');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('The branch is never merged and stays local unless the user asks for it to be pushed');
     expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('switch back to the branch that was checked out');
-    expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('Without a project folder you build no prototype');
+    expect(UX_DESIGNER_SYSTEM_PROMPT).toContain('You build a prototype only in a project folder you may change');
   });
 
   it('should look at the prototype at phone and desktop widths before delivering', () => {

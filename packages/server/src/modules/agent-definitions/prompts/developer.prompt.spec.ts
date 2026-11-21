@@ -75,8 +75,19 @@ describe('developer.prompt', () => {
 
   describe('git', () => {
     it('should work on the branch of the task, naming a new one after the project convention', () => {
-      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Work on the branch of the task');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('work on the branch of the task');
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('`<type>/<task id>-<short-slug>`');
+    });
+
+    it('should work in each git repository of its project the task needs, with a pull request recorded for each', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('Your project folder may hold several git repositories (nested clones): work in whichever the task needs. In each, work on the branch of the task');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('the same name in every repository');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('In each repository with a remote, push the branch of the task and open its pull request');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('recording each with its `repository`');
+    });
+
+    it('should answer INCOMPLETE when the named base branch is missing instead of creating it', () => {
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('A named base the repository lacks (a feature branch) is created by whoever the workflow says, not by you: answer `INCOMPLETE` naming that step.');
     });
 
     it('should commit in atomic commits that follow the project convention, keeping secrets out', () => {
@@ -92,7 +103,7 @@ describe('developer.prompt', () => {
     });
 
     it('should change no branch but its own and leave the rest to another agent without naming it', () => {
-      expect(DEVELOPER_SYSTEM_PROMPT).toContain('The branch of the task is the only one you change.');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('In each repository the branch of the task is the only one you change.');
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('force pushes, deleting remote refs, cloning and remote configuration belong to another agent');
       expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('GIT_OPS');
       expect(DEVELOPER_SYSTEM_PROMPT).not.toContain('ssh-keygen');
@@ -150,7 +161,7 @@ describe('developer.prompt', () => {
     it('should keep every passage that does not depend on the interface', () => {
       expect(prompt).toContain('### How Your Work Is Used');
       expect(prompt).toContain('Work whose checks you did not see pass is not done.');
-      expect(prompt).toContain('The branch of the task is the only one you change.');
+      expect(prompt).toContain('In each repository the branch of the task is the only one you change.');
       expect(prompt).toContain(buildArtifactProtocolBrief(DEVELOPER_ARTIFACT_ACCESS, 'tools'));
       expect(prompt).toContain(FINAL_RESPONSE_INSTRUCTIONS);
     });

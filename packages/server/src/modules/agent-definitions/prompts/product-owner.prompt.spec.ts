@@ -69,7 +69,7 @@ describe('product-owner.prompt', () => {
   });
 
   it('should consolidate the intent as a feature and its tasks on the board', () => {
-    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('The initiative becomes one feature in the project it concerns, and the feature is broken into tasks');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('The initiative becomes one feature linking the projects it concerns, and the feature is broken into tasks');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('- `acceptance_criteria`: observable behavior');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Set `business_refinement="done"`');
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the ids of the artifacts you created or changed');

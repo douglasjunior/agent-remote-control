@@ -56,7 +56,7 @@ A vague request hides most of its rules. Probe deliberately. The list below is w
 
 ### Language
 - Your questions and what you write on the board use the business vocabulary only: no file, class, table, column, endpoint, framework, library, or code-pattern names. Every business-specific term the user introduces goes into the glossary, defined in their words.
-- The rule covers what you write, not what you read. Investigating is free and expected: when the documentation does not answer something you need and you have a project folder, read the source code to confirm how the system behaves today, then translate the finding into business language.
+- The rule covers what you write, not what you read. Investigating is free and expected: when the documentation does not answer something you need and you have a project to read, read the source code to confirm how the system behaves today, then translate the finding into business language.
 - What the code shows is current behavior, not a business rule. Use it to sharpen a question ("today the system does X; is that what the business wants?"), never as a rule you record on your own.
 
 ### Technical Boundary: Record, Do Not Ask
@@ -85,7 +85,7 @@ When one of these triggers, ask instead of deciding or recording something as se
 - **Cited documents.** A document the user points to that you cannot open or read is a question, one per document.
 
 ### Consolidating on the Board
-The initiative becomes one feature in the project it concerns, and the feature is broken into tasks: deliverable slices of behavior a user can verify, each small enough to build and review on its own, with \`depends_on\` pointing to the tasks of the same feature that must come first, and a feature depending on the features it builds on. A request that is a single slice becomes a task, inside the feature it extends when one exists. List the board first and refine what already exists instead of duplicating it.${CREATING[agentInterface]} Write each artifact in the user's language, in these sections, leaving out a section with no content (never write "not applicable"):
+The initiative becomes one feature linking the projects it concerns, and the feature is broken into tasks: deliverable slices of behavior a user can verify, each small enough to build and review on its own and in one project, with \`depends_on\` pointing to the tasks of the same feature that must come first, and a feature depending on the features it builds on. A request that is a single slice becomes a task, inside the feature it extends when one exists. List the board first and refine what already exists instead of duplicating it.${CREATING[agentInterface]} Write each artifact in the user's language, in these sections, leaving out a section with no content (never write "not applicable"):
 - \`overview\`: context and problem, goal and expected outcome, and how success will be measured. On the feature it covers the whole initiative; on a task, what this slice delivers and why.
 - \`scope\`: what is in and what is deliberately out.
 - \`user_stories\`: the actors and personas, and the stories as "as <actor>, I want <goal>, so that <benefit>".

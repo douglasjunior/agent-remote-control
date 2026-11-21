@@ -30,13 +30,14 @@ describe('git-remote skill', () => {
     expect(skill).toContain('is not yours to work around: report the exact error and the transport the remote uses');
   });
 
-  it('should open one pull request per task and update the linked one by pushing', () => {
-    expect(skill).toContain('One pull request per task.');
+  it('should open one pull request per repository the task changes and update the linked one by pushing', () => {
+    expect(skill).toContain('One pull request per repository the task changes, each from the branch of the task, which has the same name in every repository.');
     expect(skill).toContain('pushing the branch updates it: do not open another');
   });
 
-  it('should record the pull request on the task', () => {
-    expect(skill).toContain('<pull_request url="https://..." title="T-3: Login API" state="open"/>');
+  it('should record each pull request on the task with its repository', () => {
+    expect(skill).toContain('Record each on the task with its `repository`, the path of the repository inside your project folder (`.` for the folder itself)');
+    expect(skill).toContain('<pull_request url="https://..." title="T-3: Login API" state="open" repository="repositories/api"/>');
   });
 
   it('should merge only on an instruction, stopping on running or failing checks and conflicts, and record the merge', () => {
@@ -49,7 +50,7 @@ describe('git-remote skill', () => {
     it('should record the pull request in the pull_requests of artifact_update', () => {
       const tools = GIT_REMOTE_SKILL.buildContent(skillContext({ agentInterface: 'tools' }));
 
-      expect(tools).toContain('- Record it on the task: its URL, title and state `open` in the `pull_requests` of an `artifact_update` of the task.');
+      expect(tools).toContain('- Record each on the task with its `repository`, the path of the repository inside your project folder (`.` for the folder itself): its URL, title, repository and state `open` in the `pull_requests` of an `artifact_update` of the task.');
       expect(tools).not.toContain('<pull_request');
       expect(tools).not.toContain('<artifact_');
     });

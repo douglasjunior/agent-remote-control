@@ -40,6 +40,8 @@ describe('board-requests skill', () => {
       const instructions = buildBoardRequestsBody(DEVELOPER_ARTIFACT_ACCESS, 'tags');
 
       expect(instructions).toContain('A feature groups the tasks of one initiative');
+      expect(instructions).toContain('A feature links one or more project folders of the workspace root, and a task works in exactly one of them.');
+      expect(instructions).toContain('is one feature linking them, never one feature per project.');
       expect(instructions).toContain('- `technical_solution`: Technical solution');
       expect(instructions).toContain('When the response also asks the user questions, it goes on as usual and the results open your next prompt.');
       expect(instructions).toContain('Updates and comments ride with your final answer: they are carried out and the answer is delivered, unless one of them fails.');
@@ -55,7 +57,7 @@ describe('board-requests skill', () => {
       expect(instructions).not.toContain('<artifact_create');
       expect(instructions).toContain('Attributes you may set: branch="<branch name>" (or "none").');
       expect(instructions).toContain('Children: `<section name="..." mode="replace|append">Markdown</section>`');
-      expect(instructions).toContain('<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request');
+      expect(instructions).toContain('<pull_request url="https://..." title="..." state="open|merged|closed" repository="<path inside the project folder, . by default>"/> inside the tag, one per pull request');
       expect(instructions).toContain('Fields you change: branch, pull_requests.');
       expect(instructions).toContain('- Sections you write: `implementation_notes`.');
       expect(instructions).toContain('you change only the task you were delegated, whose content opens your prompt in a `[DELEGATED_ARTIFACT]` block');
@@ -64,7 +66,7 @@ describe('board-requests skill', () => {
     it('should let the agent that handles remotes link pull requests and the reviewer write only its findings', () => {
       const gitOps = buildBoardRequestsBody(GIT_OPS_ARTIFACT_ACCESS, 'tags');
       expect(gitOps).toContain('Attributes you may set: branch=');
-      expect(gitOps).toContain('Children: <pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request.');
+      expect(gitOps).toContain('Children: <pull_request url="https://..." title="..." state="open|merged|closed" repository="<path inside the project folder, . by default>"/> inside the tag, one per pull request.');
       expect(gitOps).toContain('- You write no section. Record what the next agent must know as a comment on the artifact.');
       const reviewer = buildBoardRequestsBody(CODE_REVIEWER_ARTIFACT_ACCESS, 'tags');
       expect(reviewer).toContain('- Sections you write: `review_findings`.');
@@ -77,6 +79,7 @@ describe('board-requests skill', () => {
       expect(instructions).toContain('`<artifact_read id="F-1" tree="true"/>` reads a feature with the full content of every task under it.');
       expect(instructions).toContain('<artifact_create type="task" title="Short title" project="my-app" parent="F-1" depends_on="T-1" ref="login-api" business_refinement="pending" design_refinement="skipped" technical_refinement="pending">');
       expect(instructions).toContain('A refinement left out takes its default: `business_refinement="pending"`, `design_refinement="skipped"`, `technical_refinement="pending"`.');
+      expect(instructions).toContain('`projects` (a comma-separated list on the tags) is required for a feature; a task takes one `project`');
       expect(instructions).toContain('Meanwhile you cannot change it; comment instead.');
       expect(instructions).toContain('When you were delegated an artifact, its content opens your prompt');
     });
@@ -143,6 +146,7 @@ describe('board-requests skill', () => {
       expect(instructions).toContain('parent and project: the open ones');
       expect(instructions).toContain('a feature comes with the list of its tasks, and with `tree` with the full content of every task under it.');
       expect(instructions).toContain('- `artifact_create` creates a feature or a task and returns its id, which the `parent` and `depends_on` of the next creations take.');
+      expect(instructions).toContain('The `overview` of what you create is yours to write. `projects` is required for a feature; a task takes one `project`, left out only inside a feature that links a single project.');
       expect(instructions).toContain('A refinement left out takes its default: `business_refinement="pending"`, `design_refinement="skipped"`, `technical_refinement="pending"`.');
       expect(instructions).toContain('Meanwhile you cannot change it; comment instead.');
     });

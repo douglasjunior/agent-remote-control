@@ -71,12 +71,12 @@ describe('tech-lead.prompt', () => {
   describe('the board', () => {
     it('should write the technical solution of each task with the files, steps, tests and verification commands', () => {
       expect(TECH_LEAD_SYSTEM_PROMPT).toContain('The `technical_solution` of each task holds the design');
-      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('the exact files and modules to create, change or remove, the ordered steps, the automated tests to add, and the commands that verify the work');
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('the exact files and modules to create, change or remove (with their git repository when the project holds several), the ordered steps, the automated tests to add, and the commands that verify the work');
       expect(TECH_LEAD_SYSTEM_PROMPT).toContain('the command that checks a single changed file (its tests and lint) while the work is in progress, and the commands that check each affected package (tests, linter, build) at the end');
     });
 
-    it('should split large work into tasks ordered by dependencies, each fitting one pull request', () => {
-      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('with `depends_on` giving the order; a task fits one pull request');
+    it('should split large work into tasks ordered by dependencies, each fitting one review in one project', () => {
+      expect(TECH_LEAD_SYSTEM_PROMPT).toContain('with `depends_on` giving the order; a task fits one review and works in one project');
     });
 
     it('should set the technical refinement to done and keep what still holds when refining', () => {

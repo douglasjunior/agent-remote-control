@@ -124,6 +124,7 @@ describe('ceo.prompt', () => {
 
     it('should describe the workspace, its boundaries and the conversation style', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('Your CWD is the workspaces root, a multi-project container');
+      expect(CEO_SYSTEM_PROMPT).toContain('an independent project, with one repository or several nested ones, and the agent of a task works inside exactly one of them');
       expect(CEO_SYSTEM_PROMPT).toContain('Stay inside your CWD and its subfolders');
       expect(CEO_SYSTEM_PROMPT).toContain('get their explicit confirmation before you act or authorize an agent to');
       expect(CEO_SYSTEM_PROMPT).toContain('Talk like a friendly, experienced tech lead in a chat');
@@ -192,6 +193,7 @@ describe('ceo.prompt', () => {
     it('should run the work through the board, with the details in the artifact-board skill', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('### The Board');
       expect(CEO_SYSTEM_PROMPT).toContain('Everything that builds something goes through the board');
+      expect(CEO_SYSTEM_PROMPT).toContain('an initiative across several projects is one feature, never one per project');
       expect(CEO_SYSTEM_PROMPT).toContain(`The \`${SKILL_NAMES.artifactBoard}\` skill has every attribute`);
     });
 

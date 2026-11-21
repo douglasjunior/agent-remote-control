@@ -32,7 +32,7 @@ export const ARTIFACT_BOARD_SKILL: AgentSkillDefinition = {
   roles: ['CEO'],
   buildContent: ({ agentInterface }) => `# Artifact Board
 
-Each conversation is a mission with its own board. Features group the tasks of an initiative in one project folder; a task is the unit one agent works on, inside a feature (in the feature's project) or on its own (in a project of its own). An initiative that spans several repositories is one feature per project, with dependencies between the features. The content of each artifact lives on the board, written and read by the agents themselves: it is never copied into a specification.
+Each conversation is a mission with its own board. Features group the tasks of an initiative and link the projects it spans; a task is the unit one agent works on, in one project: one the feature links, or one of its own when it stands alone. A project folder may hold several nested git repositories, and a task in it may change any of them. An initiative across several projects, such as a separate backend and frontend, is one feature linking them, never one feature per project. The content of each artifact lives on the board, written and read by the agents themselves: it is never copied into a specification.
 
 ## Adding a Request to the Board
 - The \`[BOARD]\` block of your prompt lists the open artifacts; ${LISTING_FINISHED_WORK[agentInterface]}.

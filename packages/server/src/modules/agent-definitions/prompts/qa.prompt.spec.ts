@@ -25,6 +25,7 @@ describe('qa.prompt', () => {
     });
 
     it('should test the branch of the task without switching over uncommitted changes', () => {
+      expect(QA_SYSTEM_PROMPT).toContain('Test the branch of the task in each repository of the project that has it.');
       expect(QA_SYSTEM_PROMPT).toContain('switch to the task\'s branch');
       expect(QA_SYSTEM_PROMPT).toContain('When the working tree has uncommitted changes, do not switch');
     });
