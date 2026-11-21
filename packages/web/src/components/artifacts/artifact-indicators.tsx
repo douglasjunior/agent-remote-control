@@ -7,11 +7,17 @@ import { cn } from '../../lib/utils.js';
 
 const CHIP = 'inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11.5px] leading-none text-muted-foreground';
 
-export function ProjectChip({ projectName }: { readonly projectName: string }) {
+/** The first project and, for more, "+N" with every name in the tooltip; `titlePrefix` says what the names are. */
+export function ProjectChip({ projectNames, titlePrefix = projectNames.length > 1 ? 'Projects' : 'Project' }: {
+  readonly projectNames: readonly string[];
+  readonly titlePrefix?: string;
+}) {
+  const label = `${titlePrefix} ${projectNames.join(', ')}`;
   return (
-    <span className={cn(CHIP, 'bg-muted/70')} title={`Project ${projectName}`}>
+    <span className={cn(CHIP, 'bg-muted/70')} title={label} aria-label={label}>
       <FolderGit2 aria-hidden className="size-3" />
-      <span className="max-w-32 truncate">{projectName}</span>
+      <span className="max-w-32 truncate">{projectNames[0]}</span>
+      {projectNames.length > 1 && <span className="font-mono text-[11px] tabular-nums">{`+${projectNames.length - 1}`}</span>}
     </span>
   );
 }

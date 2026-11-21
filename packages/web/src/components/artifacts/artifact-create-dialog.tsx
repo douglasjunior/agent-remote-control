@@ -1,5 +1,5 @@
 import { ARTIFACT_TYPES, REFINEMENT_KINDS, type ArtifactType, type RefinementKind } from '@agent-remote-control/protocol/artifact';
-import { X } from 'lucide-react';
+import { FolderGit2, X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
@@ -15,6 +15,7 @@ import { Switch } from '../ui/switch.js';
 import { Textarea } from '../ui/textarea.js';
 
 import { ChoiceSelect } from './choice-select.js';
+import { ProjectsSelect } from './projects-select.js';
 
 
 const NONE = '';
@@ -58,6 +59,45 @@ function RefinementSwitch({ id, checked, onChange, title, description }: {
 }
 
 /**
+ * The project of a task: the only one of its feature when that feature links a single project, otherwise a required
+ * pick among the feature's projects, or among all of them for a standalone task.
+ */
+function TaskProject({ featureProjects, projects, value, onChange }: {
+  readonly featureProjects: readonly string[] | undefined;
+  readonly projects: readonly string[];
+  readonly value: string;
+  readonly onChange: (project: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">Project</span>
+      {featureProjects?.length === 1
+        ? (
+          <>
+            <span className="flex h-8 items-center gap-1.5 text-sm">
+              <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
+              {featureProjects[0]}
+            </span>
+            <span className="text-xs text-muted-foreground">The project of its feature.</span>
+          </>
+        )
+        : (
+          <>
+            <ChoiceSelect
+              label="Project"
+              value={value}
+              choices={[...(value === NONE ? [{ value: NONE, label: 'Choose a project' }] : []), ...(featureProjects ?? projects).map(project => ({ value: project, label: project }))]}
+              onChange={onChange}
+              className="w-full"
+            />
+            {featureProjects && <span className="text-xs text-muted-foreground">One of the projects of its feature.</span>}
+          </>
+        )}
+    </div>
+  );
+}
+
+/**
  * Creates a feature or a task on the board of a conversation. Every refinement off means a simple task the CEO
  * hands straight to the Developer.
  */
@@ -73,6 +113,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
   const [title, setTitle] = useState('');
   const [parentId, setParentId] = useState(defaultParentId ?? NONE);
   const [chosenProject, setChosenProject] = useState(NONE);
+  const [chosenProjects, setChosenProjects] = useState<readonly string[]>([]);
   const [dependsOn, setDependsOn] = useState<readonly string[]>([]);
   const [overview, setOverview] = useState('');
   const [refinements, setRefinements] = useState(DEFAULT_REFINEMENTS);
@@ -80,8 +121,8 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
 
   const parents = parentCandidates(type, artifacts);
   const effectiveParent = parents.some(parent => parent.id === parentId) ? parentId : NONE;
-  const parentProject = effectiveParent ? board.byId[effectiveParent].projectNames[0] : undefined;
-  const projectName = parentProject ?? chosenProject;
+  const parentProjects = effectiveParent ? board.byId[effectiveParent].projectNames : undefined;
+  const projectName = parentProjects?.length === 1 ? parentProjects[0] : chosenProject;
   const dependencyChoices = dependencyCandidates(type, effectiveParent || null, artifacts).filter(sibling => !dependsOn.includes(sibling.id));
 
   /** Dependencies join siblings only, so changing the type or feature drops the ones outside the new level. */
@@ -89,6 +130,9 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
     const siblings = dependencyCandidates(nextType, nextType === 'task' ? nextParentId || null : null, artifacts).map(sibling => sibling.id);
     setType(nextType);
     setParentId(nextParentId);
+    if (nextParentId !== parentId) {
+      setChosenProject(NONE);
+    }
     setDependsOn(dependsOn.filter(id => siblings.includes(id)));
   };
 
@@ -99,7 +143,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
       type,
       title: title.trim(),
       ...(effectiveParent ? { parentId: effectiveParent } : {}),
-      ...(type === 'feature' ? { projectNames: [projectName] } : { projectName }),
+      ...(type === 'feature' ? { projectNames: [...chosenProjects] } : { projectName }),
       dependsOn: [...dependsOn],
       ...(overview.trim() && { sections: { overview: overview.trim() } }),
       refinements,
@@ -148,21 +192,13 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
                 />
               </div>
             )}
-            <div className="flex flex-col gap-1.5">
-              <span className="text-sm font-medium">Project</span>
-              <ChoiceSelect
-                label="Project"
-                value={projectName}
-                choices={[
-                  ...(projectName === NONE ? [{ value: NONE, label: 'Choose a project' }] : []),
-                  ...[...new Set([...projects, ...(parentProject ? [parentProject] : [])])].map(project => ({ value: project, label: project })),
-                ]}
-                onChange={setChosenProject}
-                className="w-full"
-                disabled={parentProject !== undefined}
-              />
-              {parentProject !== undefined && <span className="text-xs text-muted-foreground">The project of its feature.</span>}
-            </div>
+            {type === 'feature' && (
+              <div className="flex flex-col gap-1.5 sm:col-span-2">
+                <span className="text-sm font-medium">Projects</span>
+                <ProjectsSelect label="Projects" value={chosenProjects} choices={projects} onChange={setChosenProjects} />
+              </div>
+            )}
+            {type === 'task' && <TaskProject featureProjects={parentProjects} projects={projects} value={projectName} onChange={setChosenProject} />}
           </div>
           <div className="flex flex-col gap-1.5">
             <span className="text-sm font-medium">Depends on</span>
@@ -217,7 +253,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
         </form>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="artifact-create" disabled={saving || title.trim() === '' || projectName === NONE}>Create</Button>
+          <Button type="submit" form="artifact-create" disabled={saving || title.trim() === '' || (type === 'feature' ? chosenProjects.length === 0 : projectName === NONE)}>Create</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

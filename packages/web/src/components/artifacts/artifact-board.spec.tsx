@@ -57,15 +57,34 @@ describe('ArtifactBoard', () => {
     expect(screen.getByText('5')).toBeInTheDocument();
   });
 
-  it('should list a feature linking several projects under its first project, and keep it when filtering by any of them', async () => {
+  it('should list a feature linking several projects under each of them, with the tasks working there', async () => {
     const user = userEvent.setup();
-    openBoard([summary({ id: 'F-7', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] })]);
-    expect(within(screen.getByRole('list', { name: 'Features of site' })).getByRole('link', { name: 'Shared' })).toBeInTheDocument();
-    expect(screen.queryByRole('list', { name: 'Features of app' })).not.toBeInTheDocument();
+    const shared = summary({ id: 'F-7', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+    const appTask = summary({ id: 'T-7', title: 'App part', parentId: 'F-7', projectName: 'app', status: 'done' });
+    const siteTask = summary({ id: 'T-8', title: 'Site part', parentId: 'F-7', projectName: 'site' });
+    const otherSiteTask = summary({ id: 'T-9', title: 'Site extra', parentId: 'F-7', projectName: 'site' });
+    openBoard([shared, appTask, siteTask, otherSiteTask]);
+
+    const inApp = screen.getByRole('list', { name: 'Features of app' });
+    expect(within(inApp).getByRole('link', { name: 'Shared' })).toHaveAttribute('href', '/c/c1/tasks/F-7');
+    expect(within(inApp).getByRole('link', { name: 'App part' })).toBeInTheDocument();
+    expect(within(inApp).queryByRole('link', { name: 'Site part' })).not.toBeInTheDocument();
+    expect(within(inApp).getByTitle('1 of 1 tasks done in app')).toBeInTheDocument();
+    expect(within(inApp).getByLabelText('Also in site')).toHaveTextContent('site');
+    const inSite = screen.getByRole('list', { name: 'Features of site' });
+    expect(within(inSite).getByRole('link', { name: 'Site part' })).toBeInTheDocument();
+    expect(within(inSite).getByRole('link', { name: 'Site extra' })).toBeInTheDocument();
+    expect(within(inSite).queryByRole('link', { name: 'App part' })).not.toBeInTheDocument();
+    expect(within(inSite).getByTitle('0 of 2 tasks done in site')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Collapse F-7 in site' }));
+    expect(within(inSite).queryByRole('link', { name: 'Site part' })).not.toBeInTheDocument();
+    expect(within(inApp).getByRole('link', { name: 'App part' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('combobox', { name: 'Project' }));
     await user.click(await screen.findByRole('option', { name: 'app' }));
-
+    expect(screen.queryByRole('list', { name: 'Features of site' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Shared' })).toBeInTheDocument();
   });
 
@@ -287,7 +306,8 @@ describe('ArtifactBoard', () => {
     expect(within(reportsCard).getByText('No tasks yet')).toBeInTheDocument();
     expect(within(reportsCard).getByLabelText('Waiting on F-1')).toBeInTheDocument();
     expect(within(reportsCard).getByRole('img', { name: 'Product Owner, working' })).toBeInTheDocument();
-    expect(within(reportsCard).getByText('site, app')).toBeInTheDocument();
+    expect(within(reportsCard).getByLabelText('Projects site, app')).toHaveTextContent('site+1');
+    expect(within(login).getByLabelText('Project app')).not.toHaveTextContent('+');
 
     await user.click(screen.getByRole('button', { name: 'Move F-2' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Ready' }));

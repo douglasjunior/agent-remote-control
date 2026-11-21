@@ -16,6 +16,7 @@ import { IconButton } from '../icon-button.js';
 import { ArtifactStatusBadge } from './artifact-status-badge.js';
 import { ArtifactTypeIcon } from './artifact-type-icon.js';
 import { ChoiceSelect } from './choice-select.js';
+import { ProjectsSelect } from './projects-select.js';
 
 
 const NONE = '';
@@ -53,6 +54,48 @@ function ArtifactLink({ conversationId, artifact, onRemove }: {
   );
 }
 
+/**
+ * A feature edits the list of its projects (the server refuses to drop one its tasks still use); a task picks one
+ * project among those of its feature, or among all of them while standalone, and only reads the one of a feature
+ * that links a single project.
+ */
+function ProjectField({ artifact, feature, projects, onChange }: {
+  readonly artifact: ArtifactDetail;
+  readonly feature: ArtifactSummary | undefined;
+  readonly projects: readonly string[];
+  readonly onChange: (changes: ArtifactUpdateInput) => void;
+}) {
+  if (artifact.type === 'feature') {
+    return (
+      <ProjectsSelect
+        label="Projects"
+        value={artifact.projectNames}
+        choices={[...new Set([...projects, ...artifact.projectNames])]}
+        onChange={projectNames => onChange({ projectNames })}
+        minSelected={1}
+      />
+    );
+  }
+  const choices = feature?.projectNames ?? [...new Set([...projects, artifact.projectNames[0]!])];
+  if (feature && choices.length === 1) {
+    return (
+      <span className="flex items-center gap-1.5" title="The project of its feature">
+        <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
+        {artifact.projectNames[0]}
+      </span>
+    );
+  }
+  return (
+    <ChoiceSelect
+      label="Project"
+      value={artifact.projectNames[0]!}
+      choices={choices.map(project => ({ value: project, label: project }))}
+      onChange={projectName => onChange({ projectName })}
+      className="w-full"
+    />
+  );
+}
+
 /** Everything about an artifact besides its text, each property editable where people may change it. */
 export function ArtifactProperties({ conversationId, artifact, byId, projects, onChange }: {
   readonly conversationId: string;
@@ -64,11 +107,9 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
   const now = useNow(true);
   const artifacts = Object.values(byId);
   const parents = parentCandidates(artifact.type, artifacts, artifact);
-  const projectLocked = artifact.parentId !== null || artifacts.some(other => other.parentId === artifact.id) || artifact.projectNames.length > 1;
   const blocks = dependentsOf(artifact.id, artifacts);
   const dependencyChoices = dependencyCandidates(artifact.type, artifact.parentId, artifacts, artifact.id)
     .filter(sibling => !artifact.dependsOn.includes(sibling.id));
-  const projectChoices = [...new Set([...projects, artifact.projectNames[0]!])];
 
   return (
     <dl className="flex flex-col gap-5">
@@ -98,23 +139,8 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
           ))}
         </div>
       </Property>
-      <Property label="Project">
-        {projectLocked
-          ? (
-            <span className="flex items-center gap-1.5" title={artifact.parentId ? 'A project of its feature' : 'Shared with the tasks of the feature'}>
-              <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
-              {artifact.projectNames.join(', ')}
-            </span>
-          )
-          : (
-            <ChoiceSelect
-              label="Project"
-              value={artifact.projectNames[0]}
-              choices={projectChoices.map(project => ({ value: project, label: project }))}
-              onChange={projectName => onChange(artifact.type === 'feature' ? { projectNames: [projectName] } : { projectName })}
-              className="w-full"
-            />
-          )}
+      <Property label={artifact.type === 'feature' ? 'Projects' : 'Project'}>
+        <ProjectField artifact={artifact} feature={artifact.parentId ? byId[artifact.parentId] : undefined} projects={projects} onChange={onChange} />
       </Property>
       {artifact.type === 'task' && (
         <Property label="Feature">
@@ -164,12 +190,14 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
                 href={pullRequest.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`${pullRequest.title ?? pullRequest.url}, ${pullRequest.state}`}
-                className="flex min-w-0 items-center gap-1.5 rounded-sm hover:underline"
+                aria-label={[pullRequest.title ?? pullRequest.url, pullRequest.state, ...(pullRequest.repository === '.' ? [] : [pullRequest.repository])].join(', ')}
+                className="flex min-w-0 items-start gap-1.5 rounded-sm hover:underline"
               >
-                <Icon aria-hidden className={cn('size-3.5 shrink-0 text-muted-foreground', pullRequest.state === 'merged' && 'text-(--agent-product-owner)')} />
-                <span className="truncate">{pullRequest.title ?? pullRequest.url}</span>
-                {pullRequest.repository !== '.' && <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground">{pullRequest.repository}</span>}
+                <Icon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0 text-muted-foreground', pullRequest.state === 'merged' && 'text-(--agent-product-owner)')} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{pullRequest.title ?? pullRequest.url}</span>
+                  {pullRequest.repository !== '.' && <span className="truncate font-mono text-[11.5px] text-muted-foreground">{pullRequest.repository}</span>}
+                </span>
               </a>
             );
           })}

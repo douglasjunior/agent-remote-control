@@ -37,7 +37,7 @@ packages/web/src/
 │   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
 │   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
 │   ├── auth/                # AgentAuthProvider (state and toasts), AgentLogins (Agents section), AgentLoginCard, useAgentAuthStatus
-│   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
+│   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, ProjectsSelect (the multi-select of projects), activity
 │   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill prompts
 │   ├── home/                # the home screen parts: RecentConversations, SquadPicker, the squad choice, the focus request paths
 │   ├── squads/              # SquadList, SquadEditor, useSquads and the roles a squad can set

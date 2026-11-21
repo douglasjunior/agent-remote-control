@@ -77,6 +77,8 @@ uses relative imports with the `.js` suffix (see `web-app`). The workaround has 
 because the generated file reads it from `next-themes`, which the app does not use. Re-apply that import after
 `--overwrite` of `sonner`. `<Toaster />` is mounted once, in `AppLayout`.
 
+`ui/combobox.tsx` renders the chip remove button as an `IconButton` named by the `removeLabel` prop of `ComboboxChip`, so the icon-only button has a name and a tooltip. Re-apply that after `--overwrite` of `combobox`.
+
 An `@/` import left in `src/` is a defect: it type-checks through `paths` but breaks the convention.
 Check with `grep -rn "from [\"']@/" packages/web/src`.
 
