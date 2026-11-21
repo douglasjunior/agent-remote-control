@@ -17,8 +17,8 @@ const api = buildArtifact({
   assignee: { role: 'CODE_REVIEWER', roleName: 'Code Reviewer', delegationId: 'd', since: ARTIFACT_AT },
   branch: 'feat/t-1',
   pullRequests: [
-    { url: 'https://x/pull/1', title: 'T-1: API', state: 'open', addedAt: ARTIFACT_AT },
-    { url: 'https://x/pull/2', state: 'merged', addedAt: ARTIFACT_AT },
+    { url: 'https://x/pull/1', title: 'T-1: API', repository: '.', state: 'open', addedAt: ARTIFACT_AT },
+    { url: 'https://x/pull/2', repository: 'repositories/web', state: 'merged', addedAt: ARTIFACT_AT },
   ],
   sections: { technical_solution: 'Use REST.', overview: 'Expose the cart.' },
   history: [
@@ -37,7 +37,8 @@ describe('ArtifactPromptFormatterService', () => {
       '- T-1 [task] "API" · status: in_review · project: shop · parent: F-1 · depends on: T-2 (done), T-9 (deleted) · refinement: business done, design done, technical done · with: CODE_REVIEWER · pull requests: 2',
     );
     expect(formatter.summaryLine(buildArtifact({ id: 'T-3', dependsOn: ['T-1', 'T-2'] }), all)).toContain('· depends on: T-1 (in_review), T-2 (done) · waiting on: T-1 ·');
-    expect(formatter.summaryLine(feature, all)).toBe('- F-1 [feature] "Checkout" · status: in_progress · project: shop · refinement: business done, design done, technical done');
+    expect(formatter.summaryLine(buildArtifact({ id: 'F-2', type: 'feature', projectNames: ['shop', 'web'] }), all)).toContain('· projects: shop, web ·');
+    expect(formatter.summaryLine(feature, all)).toBe('- F-1 [feature] "Checkout" · status: in_progress · projects: shop · refinement: business done, design done, technical done');
     expect(formatter.list([], all)).toBe('No artifact matches.');
     expect(formatter.list([feature, cart], all).split('\n')).toHaveLength(2);
   });
@@ -55,7 +56,7 @@ describe('ArtifactPromptFormatterService', () => {
         '- Refinement: business done, design done, technical done',
         `- With: Code Reviewer (CODE_REVIEWER) since ${ARTIFACT_AT}`,
         '- Branch: feat/t-1',
-        '- Pull requests: https://x/pull/1 (open) "T-1: API"; https://x/pull/2 (merged)',
+        '- Pull requests: https://x/pull/1 (open) "T-1: API"; https://x/pull/2 (merged, repository repositories/web)',
       ].join('\n'),
       '## Overview\nExpose the cart.',
       '## Technical solution\nUse REST.',
@@ -106,8 +107,8 @@ describe('ArtifactPromptFormatterService', () => {
       const dependency = buildArtifact({ id: 'T-5', status: 'ready' });
 
       expect(formatter.digest([feature, api, cart, standalone, dependency]).split('\n').slice(0, 3)).toEqual([
-        '- F-1 [feature] "Checkout" · status: in_progress · project: shop',
-        '- T-1 [task] "API" · status: in_review · feature: F-1 · with: CODE_REVIEWER · pull requests: 2',
+        '- F-1 [feature] "Checkout" · status: in_progress · projects: shop',
+        '- T-1 [task] "API" · status: in_review · feature: F-1 · project: shop · with: CODE_REVIEWER · pull requests: 2',
         '- T-4 [task] "Docs" · status: changes_requested · project: site · waiting on: T-5',
       ]);
     });
@@ -155,7 +156,7 @@ describe('ArtifactPromptFormatterService', () => {
       refinement: { business: 'done', design: 'skipped', technical: 'skipped' },
       branch: 'feat/t-5',
       assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: ARTIFACT_AT },
-      pullRequests: [{ url: 'https://x/pull/5', state: 'open', addedAt: ARTIFACT_AT }],
+      pullRequests: [{ url: 'https://x/pull/5', repository: '.', state: 'open', addedAt: ARTIFACT_AT }],
       sections: { overview: 'Sign in.', technical_solution: 'Use JWT.', implementation_notes: 'On feat/t-5.' },
       history,
     });

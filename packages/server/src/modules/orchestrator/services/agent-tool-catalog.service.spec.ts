@@ -39,7 +39,7 @@ describe('AgentToolCatalogService', () => {
   it('should build the CEO update from the fields and the one section it writes, without the frozen status', () => {
     const { catalog } = setup();
 
-    expect(propertiesOf(catalog, 'CEO', 'artifact_update')).toEqual(['id', 'title', 'status', 'parent', 'project', 'depends_on', 'business_refinement', 'design_refinement', 'technical_refinement', 'sections', 'note']);
+    expect(propertiesOf(catalog, 'CEO', 'artifact_update')).toEqual(['id', 'title', 'status', 'parent', 'project', 'projects', 'depends_on', 'business_refinement', 'design_refinement', 'technical_refinement', 'sections', 'note']);
     expect(toolOf(catalog, 'CEO', 'artifact_update')?.inputSchema).toMatchObject({
       required: ['id'],
       properties: {
@@ -57,7 +57,7 @@ describe('AgentToolCatalogService', () => {
     expect(toolOf(catalog, 'DEVELOPER', 'artifact_update')?.inputSchema).toMatchObject({
       properties: {
         sections: { items: { properties: { name: { enum: ['implementation_notes'] } } } },
-        pull_requests: { items: { properties: { state: { enum: ['open', 'merged', 'closed'] } }, required: ['url'] } },
+        pull_requests: { items: { properties: { repository: { type: 'string' }, state: { enum: ['open', 'merged', 'closed'] } }, required: ['url'] } },
       },
     });
   });

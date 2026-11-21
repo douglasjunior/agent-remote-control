@@ -64,6 +64,7 @@ export class WebArtifactsService implements OnModuleInit, OnModuleDestroy {
       title: input.title,
       ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
       ...(input.projectName !== undefined ? { projectName: input.projectName } : {}),
+      ...(input.projectNames ? { projectNames: input.projectNames } : {}),
       ...(input.dependsOn ? { dependsOn: input.dependsOn } : {}),
       ...(input.sections ? { sections: input.sections } : {}),
       refinement: Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, input.refinements[kind] ? 'pending' : 'skipped'])) as ArtifactRefinement,
@@ -115,6 +116,7 @@ export class WebArtifactsService implements OnModuleInit, OnModuleDestroy {
   private toSummary({ sections: _sections, history: _history, ...summary }: Artifact): ArtifactSummary {
     return {
       ...summary,
+      projectNames: [...summary.projectNames],
       dependsOn: [...summary.dependsOn],
       pullRequests: summary.pullRequests.map(link => ({ ...link })),
     };

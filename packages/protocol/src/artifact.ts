@@ -71,9 +71,14 @@ export const artifactAssigneeSchema = z.object({
 });
 export type ArtifactAssignee = z.infer<typeof artifactAssigneeSchema>;
 
+/** The repository a pull request belongs to, relative to the project folder of its task; `.` is the project folder itself. */
+export const DEFAULT_PULL_REQUEST_REPOSITORY = '.';
+
 export const pullRequestLinkSchema = z.object({
   url: z.string(),
   title: z.string().optional(),
+  /** Path of the git repository inside the task's project folder: `.` for the folder itself, `repositories/api` for a nested clone. */
+  repository: z.string().default(DEFAULT_PULL_REQUEST_REPOSITORY),
   state: pullRequestStateSchema,
   addedAt: z.iso.datetime(),
 });
@@ -112,8 +117,10 @@ export const artifactSummarySchema = z.object({
   title: z.string(),
   status: artifactStatusSchema,
   parentId: z.string().nullable(),
-  /** The project folder of the workspace root the artifact belongs to; a task under a feature always has the feature's. */
-  projectName: z.string(),
+  /** The one project folder of the workspace root a task works in, always one of its feature's `projectNames`; `null` for a feature. */
+  projectName: z.string().nullable(),
+  /** The project folders of the workspace root: the at least one a feature links, or a task's own project as a one-item list, so a consumer reads one field. */
+  projectNames: z.array(z.string()).min(1),
   /** Siblings only: other features for a feature, other tasks of the same feature for a task (or other standalone tasks). */
   dependsOn: z.array(z.string()),
   refinement: artifactRefinementSchema,
@@ -141,8 +148,10 @@ export const artifactCreateInputSchema = z.object({
   type: artifactTypeSchema,
   title: titleSchema,
   parentId: z.string().nullable().optional(),
-  /** Required without a parent; a task under a feature has the feature's and may leave it out. */
+  /** The project of a task; a task under a feature may leave it out only when the feature has a single project. */
   projectName: z.string().optional(),
+  /** The projects of a feature, at least one. */
+  projectNames: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
   sections: sectionsInputSchema.optional(),
   /** The refinements owed before the work moves on; a kind left out is not needed. */
@@ -154,7 +163,10 @@ export const artifactUpdateInputSchema = z.object({
   title: titleSchema.optional(),
   status: artifactStatusSchema.optional(),
   parentId: z.string().nullable().optional(),
+  /** Moves a task to another project of its feature. */
   projectName: z.string().optional(),
+  /** Replaces the projects of a feature; one still used by its tasks cannot be left out. */
+  projectNames: z.array(z.string()).optional(),
   dependsOn: z.array(z.string()).optional(),
   sections: sectionsInputSchema.optional(),
   refinement: z.partialRecord(refinementKindSchema, refinementStateSchema).optional(),

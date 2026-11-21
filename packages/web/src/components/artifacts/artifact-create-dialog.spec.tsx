@@ -83,7 +83,7 @@ describe('ArtifactCreateDialog', () => {
     expect(lastSent(app, 'artifact.create').artifact).toEqual({
       type: 'feature',
       title: 'Checkout',
-      projectName: 'site',
+      projectNames: ['site'],
       dependsOn: [],
       sections: { overview: 'Pay online' },
       refinements: { business: false, design: false, technical: false },
@@ -116,6 +116,7 @@ describe('ArtifactCreateDialog', () => {
       type: 'task',
       title: 'Login API',
       parentId: 'F-1',
+      projectName: 'app',
       dependsOn: ['T-5'],
       refinements: { business: true, design: true, technical: true },
     });
@@ -142,7 +143,7 @@ describe('ArtifactCreateDialog', () => {
     await pick(user, 'Project', 'site');
     await user.type(within(dialog).getByLabelText('Title'), 'Search');
     await user.click(within(dialog).getByRole('button', { name: 'Create' }));
-    expect(lastSent(app, 'artifact.create').artifact).toMatchObject({ type: 'feature', projectName: 'site', dependsOn: ['F-2'] });
+    expect(lastSent(app, 'artifact.create').artifact).toMatchObject({ type: 'feature', projectNames: ['site'], dependsOn: ['F-2'] });
     expect(lastSent(app, 'artifact.create').artifact).not.toHaveProperty('parentId');
   });
 });

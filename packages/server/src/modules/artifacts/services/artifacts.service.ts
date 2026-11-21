@@ -44,7 +44,7 @@ export class ArtifactsService implements IArtifactsPort {
       .filter(artifact => !types || types.includes(artifact.type))
       .filter(artifact => statuses === 'all' || (statuses ? statuses.includes(artifact.status) : !CLOSED_ARTIFACT_STATUSES.includes(artifact.status)))
       .filter(artifact => parentId === undefined || artifact.parentId === parentId)
-      .filter(artifact => projectName === undefined || artifact.projectName === projectName)
+      .filter(artifact => projectName === undefined || artifact.projectNames.includes(projectName))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 

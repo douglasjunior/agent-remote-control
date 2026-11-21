@@ -28,7 +28,10 @@ export type AgentRequest =
     readonly type: ArtifactType;
     readonly title: string;
     readonly parent?: string | null;
+    /** The project of a task. */
     readonly project?: string;
+    /** The projects of a feature. */
+    readonly projects?: readonly string[];
     readonly dependsOn?: readonly string[];
     readonly refinement?: Partial<ArtifactRefinement>;
     readonly sections: readonly SectionChange[];
@@ -39,7 +42,10 @@ export type AgentRequest =
     readonly title?: string;
     readonly status?: ArtifactStatus;
     readonly parent?: string | null;
+    /** Moves a task to another project of its feature. */
     readonly project?: string;
+    /** Replaces the projects of a feature. */
+    readonly projects?: readonly string[];
     readonly dependsOn?: readonly string[];
     readonly refinement?: Partial<ArtifactRefinement>;
     readonly branch?: string | null;

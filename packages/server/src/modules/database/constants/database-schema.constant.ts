@@ -2,6 +2,7 @@ import { ArtifactCounterEntity } from '../../artifacts/entities/artifact-counter
 import { ArtifactDependencyEntity } from '../../artifacts/entities/artifact-dependency.entity.js';
 import { ArtifactHistoryChangeEntity } from '../../artifacts/entities/artifact-history-change.entity.js';
 import { ArtifactHistoryEntity } from '../../artifacts/entities/artifact-history.entity.js';
+import { ArtifactProjectEntity } from '../../artifacts/entities/artifact-project.entity.js';
 import { ArtifactPullRequestEntity } from '../../artifacts/entities/artifact-pull-request.entity.js';
 import { ArtifactRefinementEntity } from '../../artifacts/entities/artifact-refinement.entity.js';
 import { ArtifactSectionEntity } from '../../artifacts/entities/artifact-section.entity.js';
@@ -29,14 +30,15 @@ import { CreateSessions1795200000000 } from '../migrations/1795200000000-create-
 import { CreateOpenWork1795210000000 } from '../migrations/1795210000000-create-open-work.migration.js';
 import { AddOpenWorkUpdates1795220000000 } from '../migrations/1795220000000-add-open-work-updates.migration.js';
 import { AddAgentSessionPromptHash1795230000000 } from '../migrations/1795230000000-add-agent-session-prompt-hash.migration.js';
+import { AddArtifactProjects1795240000000 } from '../migrations/1795240000000-add-artifact-projects.migration.js';
 
 
 /** Every entity of the database, whichever module owns it. */
 export const DATABASE_ENTITIES = [
   LegacyImportEntity, ConversationEntity, ConversationEntryEntity, PromptHistoryEntity, SettingEntity, PreferencesEntity, AgentSettingsEntity, AgentProfileEntity, SquadEntity, SquadProfileEntity,
-  ArtifactEntity, ArtifactRefinementEntity, ArtifactSectionEntity, ArtifactDependencyEntity, ArtifactPullRequestEntity, ArtifactHistoryEntity,
+  ArtifactEntity, ArtifactRefinementEntity, ArtifactSectionEntity, ArtifactDependencyEntity, ArtifactProjectEntity, ArtifactPullRequestEntity, ArtifactHistoryEntity,
   ArtifactHistoryChangeEntity, ArtifactCounterEntity, SessionEntity, AgentSessionEntity, OpenWorkEntity,
 ];
 
 /** Every migration, oldest first. A migration once released is never edited: a schema change is a new migration. */
-export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000, CreateArtifacts1795190000000, CreateSessions1795200000000, CreateOpenWork1795210000000, AddOpenWorkUpdates1795220000000, AddAgentSessionPromptHash1795230000000];
+export const DATABASE_MIGRATIONS = [CreateLegacyImport1795150000000, CreateWebHistory1795150145081, CreateSettings1795160000000, CreateAgentSettings1795170000000, CreateSquads1795180000000, CreateArtifacts1795190000000, CreateSessions1795200000000, CreateOpenWork1795210000000, AddOpenWorkUpdates1795220000000, AddAgentSessionPromptHash1795230000000, AddArtifactProjects1795240000000];

@@ -80,6 +80,9 @@ export const DEFAULT_REFINEMENT_STATES: Readonly<Record<(typeof REFINEMENT_KINDS
 
 export const PULL_REQUEST_STATES = ['open', 'merged', 'closed'] as const;
 
+/** The repository of a pull request link that names none: the project folder itself. */
+export const DEFAULT_PULL_REQUEST_REPOSITORY = '.';
+
 export const ARTIFACT_ID_PREFIXES: Readonly<Record<(typeof ARTIFACT_TYPES)[number], string>> = {
   feature: 'F',
   task: 'T',

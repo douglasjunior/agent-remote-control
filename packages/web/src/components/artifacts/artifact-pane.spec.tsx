@@ -21,8 +21,8 @@ const api = detail({
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd1', since: AT },
   branch: 'feat/login-api',
   pullRequests: [
-    { url: 'https://example.com/pr/1', title: 'Add login API', state: 'merged', addedAt: AT },
-    { url: 'https://example.com/pr/2', state: 'open', addedAt: AT },
+    { url: 'https://example.com/pr/1', title: 'Add login API', repository: '.', state: 'merged', addedAt: AT },
+    { url: 'https://example.com/pr/2', repository: 'repositories/api', state: 'open', addedAt: AT },
   ],
   sections: { overview: 'Users sign in.', technical_solution: '' },
   history: [
@@ -91,6 +91,8 @@ describe('ArtifactPane', () => {
     expect(within(properties).getByText('feat/login-api')).toBeInTheDocument();
     expect(within(properties).getByRole('link', { name: 'Add login API, merged' })).toHaveAttribute('href', 'https://example.com/pr/1');
     expect(within(properties).getByRole('link', { name: 'https://example.com/pr/2, open' })).toHaveAttribute('target', '_blank');
+    expect(within(properties).getByText('repositories/api')).toBeInTheDocument();
+    expect(within(properties).queryByText('.')).not.toBeInTheDocument();
   });
 
   it('should wait for the artifact, and say when it does not exist', () => {
@@ -143,6 +145,21 @@ describe('ArtifactPane', () => {
     expect(screen.queryByRole('option', { name: 'F-1 · Login' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: 'F-2 · Landing' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-3', changes: { parentId: 'F-2' } });
+  });
+
+  it('should change the project of a feature that links one and has no tasks, as a list of one', async () => {
+    const landing = summary({ id: 'F-2', type: 'feature', title: 'Landing', projectNames: ['site'] });
+    const { user, app } = openArtifact(detail({ ...landing, sections: {} }), [...board, landing]);
+    await user.click(screen.getByRole('combobox', { name: 'Project' }));
+    await user.click(await screen.findByRole('option', { name: 'app' }));
+    expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'F-2', changes: { projectNames: ['app'] } });
+  });
+
+  it('should show the projects of a feature that links several, without editing them', () => {
+    const shared = summary({ id: 'F-3', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+    openArtifact(detail({ ...shared, sections: {} }), [...board, shared]);
+    expect(screen.queryByRole('combobox', { name: 'Project' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: 'Properties' })).getByText('site, app')).toBeInTheDocument();
   });
 
   it('should add and remove dependencies', async () => {

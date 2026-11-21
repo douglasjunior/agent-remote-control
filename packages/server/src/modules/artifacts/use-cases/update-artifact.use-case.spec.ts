@@ -12,7 +12,7 @@ const pr = 'https://github.com/o/r/pull/7';
 
 function setup() {
   const harness = createArtifactHarness([
-    buildArtifact({ id: 'F-2', type: 'feature', projectName: 'web' }),
+    buildArtifact({ id: 'F-2', type: 'feature', projectNames: ['web'] }),
     buildArtifact({ id: 'T-5', parentId: 'F-2', projectName: 'web' }),
     buildArtifact({ id: 'F-1', type: 'feature' }),
     buildArtifact({
@@ -21,10 +21,13 @@ function setup() {
       dependsOn: ['T-2'],
       branch: 'feat/a',
       sections: { overview: 'Why', test_cases: 'Case 1' },
-      pullRequests: [{ url: pr, title: 'Login', state: 'open', addedAt: ARTIFACT_AT }],
+      pullRequests: [{ url: pr, title: 'Login', repository: '.', state: 'open', addedAt: ARTIFACT_AT }],
     }),
     buildArtifact({ id: 'T-2', parentId: 'F-1' }),
     buildArtifact({ id: 'T-3' }),
+    buildArtifact({ id: 'F-3', type: 'feature', projectNames: ['shop', 'web'] }),
+    buildArtifact({ id: 'T-6', parentId: 'F-3', projectName: 'shop' }),
+    buildArtifact({ id: 'T-7', parentId: 'F-3', projectName: 'web' }),
   ]);
   return { ...harness, useCase: new UpdateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events, harness.derivation) };
 }
@@ -58,13 +61,14 @@ describe('UpdateArtifactUseCase', () => {
         status: 'in_review',
         parentId: 'F-2',
         projectName: 'web',
+        projectNames: ['web'],
         dependsOn: ['T-5'],
         refinement: { business: 'done', design: 'pending', technical: 'skipped' },
         branch: 'feat/b',
         sections: { overview: 'Why\n\nMore', technical_solution: 'Use JWT', glossary: 'Term' },
         pullRequests: [
-          { url: pr, title: 'Login', state: 'merged', addedAt: ARTIFACT_AT },
-          { url: 'https://github.com/o/r/pull/8', title: 'Fix', state: 'open', addedAt: expect.any(String) },
+          { url: pr, title: 'Login', repository: '.', state: 'merged', addedAt: ARTIFACT_AT },
+          { url: 'https://github.com/o/r/pull/8', title: 'Fix', repository: '.', state: 'open', addedAt: expect.any(String) },
         ],
       },
     });
@@ -93,6 +97,66 @@ describe('UpdateArtifactUseCase', () => {
       { kind: 'saved', conversationId: 'c1', artifact: store.artifactsOf().get('F-2') },
     ]);
     expect(store.artifactsOf().get('F-2')?.status).toBe('in_progress');
+  });
+
+  it('should add a project to a feature, recording the projects before and after', async () => {
+    const { useCase, store, published } = setup();
+
+    const outcome = await useCase.execute('c1', 'F-1', { projectNames: ['shop', ' web ', 'web'] }, ceo);
+
+    expect(outcome).toMatchObject({ ok: true, changed: true, artifact: { projectName: null, projectNames: ['shop', 'web'] } });
+    expect(store.artifactsOf().get('F-1')!.history.at(-1)).toMatchObject({
+      summary: 'Updated projects',
+      changes: [{ field: 'projects', from: 'shop', to: 'shop, web' }],
+    });
+    expect(published).toHaveLength(1);
+  });
+
+  it('should drop a project of a feature that no task works in', async () => {
+    const { useCase, store } = setup();
+
+    await useCase.execute('c1', 'T-7', { projectName: 'shop' }, ceo);
+    await useCase.execute('c1', 'F-3', { projectNames: ['shop'] }, ceo);
+
+    expect(store.artifactsOf().get('F-3')).toMatchObject({ projectNames: ['shop'], history: [expect.objectContaining({ changes: [{ field: 'projects', from: 'shop, web', to: 'shop' }] })] });
+  });
+
+  it('should record nothing for the projects a feature already links', async () => {
+    const { useCase, published } = setup();
+
+    expect(await useCase.execute('c1', 'F-3', { projectNames: ['shop', 'web'] }, ceo)).toMatchObject({ ok: true, changed: false });
+    expect(published).toEqual([]);
+  });
+
+  it('should move a task to another project of its feature', async () => {
+    const { useCase, store } = setup();
+
+    const outcome = await useCase.execute('c1', 'T-6', { projectName: ' web ' }, ceo);
+
+    expect(outcome).toMatchObject({ ok: true, artifact: { projectName: 'web', projectNames: ['web'] } });
+    expect(store.artifactsOf().get('T-6')!.history.at(-1)?.changes).toEqual([{ field: 'project', from: 'shop', to: 'web' }]);
+  });
+
+  it('should keep the project of a task that moves to a feature linking it', async () => {
+    const { useCase, store } = setup();
+
+    await useCase.execute('c1', 'T-3', { parentId: 'F-3' }, ceo);
+
+    expect(store.artifactsOf().get('T-3')).toMatchObject({ parentId: 'F-3', projectName: 'shop', projectNames: ['shop'] });
+  });
+
+  it('should record the repository of a pull request, keeping the one already linked when none is given', async () => {
+    const { useCase, store } = setup();
+
+    await useCase.execute('c1', 'T-1', { pullRequests: [{ url: pr, repository: ' ./repositories/api/ ' }, { url: 'https://github.com/o/r/pull/8', repository: '.\\' }] }, ceo);
+    await useCase.execute('c1', 'T-1', { pullRequests: [{ url: pr, state: 'merged' }] }, ceo);
+
+    const task = store.artifactsOf().get('T-1')!;
+    expect(task.pullRequests).toMatchObject([{ url: pr, repository: 'repositories/api', state: 'merged' }, { url: 'https://github.com/o/r/pull/8', repository: '.' }]);
+    expect(task.history.map(event => event.changes)).toEqual([
+      [{ field: 'pull_request', from: 'open', to: `${pr} (open, repositories/api)` }, { field: 'pull_request', to: 'https://github.com/o/r/pull/8 (open)' }],
+      [{ field: 'pull_request', from: 'open', to: `${pr} (merged, repositories/api)` }],
+    ]);
   });
 
   it('should summarize a change without status by its fields', async () => {
@@ -136,9 +200,15 @@ describe('UpdateArtifactUseCase', () => {
     ['a blank title', 'T-1', { title: ' ' }, 'An artifact needs a title.'],
     ['a parent of the wrong type', 'T-1', { parentId: 'T-2' }, 'A task goes under a feature, and T-2 is a task.'],
     ['an unknown project', 'T-1', { projectName: 'api' }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
-    ['a project apart from the feature', 'T-1', { projectName: 'web' }, 'F-1 belongs to project "shop", so its tasks belong there too, not to "web". Work in another project goes in a feature of that project.'],
-    ['a feature of another project', 'T-2', { parentId: 'F-2' }, 'F-2 belongs to project "web", so its tasks belong there too, not to "shop". Work in another project goes in a feature of that project.'],
-    ['moving a feature with tasks to another project', 'F-1', { projectName: 'web' }, 'F-1 has T-1, T-2 under it, which stay in its project; move them first.'],
+    ['a project its feature does not link', 'T-1', { projectName: 'web' }, '"web" is not one of the projects of F-1 ("shop"): a task works in one of them. Add the project to F-1 first.'],
+    ['a feature that does not link the project of the task', 'T-2', { parentId: 'F-2' }, '"shop" is not one of the projects of F-2 ("web"): a task works in one of them. Add the project to F-2 first.'],
+    ['a feature that does not link the new project of the task', 'T-2', { parentId: 'F-2', projectName: 'api' }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
+    ['dropping a project its tasks work in', 'F-3', { projectNames: ['shop'] }, 'F-3 still has tasks in "web" (T-7), so it keeps that project: move the tasks to another project of the feature first.'],
+    ['a feature without projects', 'F-3', { projectNames: [] }, 'A feature links at least one project: name its project folders.'],
+    ['an unknown project of a feature', 'F-1', { projectNames: ['shop', 'api'] }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
+    ['a single project for a feature', 'F-1', { projectName: 'web' }, 'F-1 is a feature, which links a list of projects: set its projects, not a single project.'],
+    ['a list of projects for a task', 'T-1', { projectNames: ['shop'] }, 'T-1 is a task, which works in one project: set its project, not a list of projects.'],
+    ['a repository outside the project', 'T-1', { pullRequests: [{ url: pr, repository: '../other' }] }, '"../other" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.'],
     ['a dependency cycle', 'T-2', { dependsOn: ['T-1'] }, 'T-2 cannot depend on T-1, because T-1 already depends on T-2.'],
     ['a dependency outside the feature', 'T-2', { dependsOn: ['T-3'] }, 'T-3 cannot be a dependency here: a task depends only on other tasks of its feature, F-1.'],
     ['a move that leaves a dependent sibling behind', 'T-2', { parentId: null }, 'T-1 depends on T-2, and dependencies stay among siblings: remove that dependency before moving T-2.'],

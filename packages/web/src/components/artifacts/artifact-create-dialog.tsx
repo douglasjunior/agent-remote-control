@@ -80,7 +80,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
 
   const parents = parentCandidates(type, artifacts);
   const effectiveParent = parents.some(parent => parent.id === parentId) ? parentId : NONE;
-  const parentProject = effectiveParent ? board.byId[effectiveParent].projectName : undefined;
+  const parentProject = effectiveParent ? board.byId[effectiveParent].projectNames[0] : undefined;
   const projectName = parentProject ?? chosenProject;
   const dependencyChoices = dependencyCandidates(type, effectiveParent || null, artifacts).filter(sibling => !dependsOn.includes(sibling.id));
 
@@ -98,7 +98,8 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
     const result = await createArtifact({
       type,
       title: title.trim(),
-      ...(effectiveParent ? { parentId: effectiveParent } : { projectName }),
+      ...(effectiveParent ? { parentId: effectiveParent } : {}),
+      ...(type === 'feature' ? { projectNames: [projectName] } : { projectName }),
       dependsOn: [...dependsOn],
       ...(overview.trim() && { sections: { overview: overview.trim() } }),
       refinements,

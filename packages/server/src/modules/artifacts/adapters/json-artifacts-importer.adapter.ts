@@ -11,6 +11,7 @@ import { ArtifactCounterEntity } from '../entities/artifact-counter.entity.js';
 import { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
 import { ArtifactHistoryEntity } from '../entities/artifact-history.entity.js';
+import { ArtifactProjectEntity } from '../entities/artifact-project.entity.js';
 import { ArtifactPullRequestEntity } from '../entities/artifact-pull-request.entity.js';
 import { ArtifactRefinementEntity } from '../entities/artifact-refinement.entity.js';
 import { ArtifactSectionEntity } from '../entities/artifact-section.entity.js';
@@ -28,9 +29,19 @@ const storedRefinementSchema = z
   .partialRecord(refinementKindSchema, refinementStateSchema)
   .transform(stored => Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, stored[kind] ?? DEFAULT_REFINEMENT_STATES[kind]])) as ArtifactRefinement);
 
+/** A board file was written when each artifact had a single `projectName`: a feature's becomes its only project. */
+const storedArtifactSchema = artifactDetailSchema
+  .omit({ projectName: true, projectNames: true })
+  .extend({ projectName: z.string(), refinement: storedRefinementSchema })
+  .transform(({ projectName, ...artifact }) => ({
+    ...artifact,
+    projectName: artifact.type === 'feature' ? null : projectName,
+    projectNames: [projectName],
+  }));
+
 const boardFileSchema = z.object({
   counters: z.record(z.string(), z.number().int().min(0)).default({}),
-  artifacts: z.array(artifactDetailSchema.extend({ refinement: storedRefinementSchema })),
+  artifacts: z.array(storedArtifactSchema),
 });
 
 type ImportedBoard = {
@@ -82,6 +93,7 @@ export class JsonArtifactsImporterAdapter implements ILegacyJsonImporterPort {
     await this.insert(manager, ArtifactRefinementEntity, rows.flatMap(row => row.refinements));
     await this.insert(manager, ArtifactSectionEntity, rows.flatMap(row => row.sections));
     await this.insert(manager, ArtifactDependencyEntity, rows.flatMap(row => row.dependencies));
+    await this.insert(manager, ArtifactProjectEntity, rows.flatMap(row => row.projects));
     await this.insert(manager, ArtifactPullRequestEntity, rows.flatMap(row => row.pullRequests));
     await this.insert(manager, ArtifactHistoryEntity, rows.flatMap(row => row.history.map(event => event.event)));
     await this.insert(manager, ArtifactHistoryChangeEntity, rows.flatMap(row => row.history.flatMap(event => event.changes)));

@@ -89,6 +89,10 @@ describe('AgentRequestParserService', () => {
       ]);
     });
 
+    it('should read the projects of a feature as a list, trimmed and without empty names', () => {
+      expect(requestsOf('<artifact_create type="feature" title="Checkout" projects=" shop, web ,,"/>')).toEqual([{ kind: 'create', type: 'feature', title: 'Checkout', projects: ['shop', 'web'], sections: [] }]);
+    });
+
     it('should clear the parent and dependencies written as none', () => {
       expect(requestsOf('<artifact_create type="task" title="T" parent="none" depends_on="none"/>')).toEqual([{ kind: 'create', type: 'task', title: 'T', parent: null, dependsOn: [], sections: [] }]);
     });
@@ -110,6 +114,18 @@ describe('AgentRequestParserService', () => {
   });
 
   describe('update', () => {
+    it('should read the projects of a feature, an empty list included, apart from the project of a task', () => {
+      expect(requestsOf('<artifact_update id="F-1" projects="shop,web"/><artifact_update id="F-2" projects=""/><artifact_update id="T-1" project="web"/>')).toEqual([
+        { kind: 'update', id: 'F-1', projects: ['shop', 'web'], sections: [], pullRequests: [] },
+        { kind: 'update', id: 'F-2', projects: [], sections: [], pullRequests: [] },
+        { kind: 'update', id: 'T-1', project: 'web', sections: [], pullRequests: [] },
+      ]);
+    });
+
+    it('should read the repository of a pull request', () => {
+      expect(requestsOf('<artifact_update id="T-1"><pull_request url="https://x/pull/1" repository="repositories/api"/><pull_request url="https://x/pull/2"/></artifact_update>')).toEqual([{ kind: 'update', id: 'T-1', sections: [], pullRequests: [{ url: 'https://x/pull/1', repository: 'repositories/api' }, { url: 'https://x/pull/2' }] }]);
+    });
+
     it('should read fields, sections and pull requests', () => {
       const response = [
         '<artifact_update id="t-3" title="New" status="IN_REVIEW" parent="F-2" project="web" depends_on="T-1" branch="feat/t-3" note="PR opened">',
@@ -154,7 +170,7 @@ describe('AgentRequestParserService', () => {
       ['<artifact_update id="T-1"><pull_request url="https://x"></artifact_update>', 'Write a pull request as a self-closing tag: <pull_request url="..." state="open"/>.'],
       ['<artifact_update id="T-1"><pull_request title="x"/></artifact_update>', 'Every <pull_request> needs its url.'],
       ['<artifact_update id="T-1"><pull_request url="https://x" state="draft"/></artifact_update>', 'The state of a <pull_request> is one of: open, merged, closed.'],
-      ['<artifact_update id="T-1"><pull_request url="https://x" by="me"/></artifact_update>', 'Unknown attribute "by" in <pull_request url="https://x" by="me"/>. Use only "url", "title", "state".'],
+      ['<artifact_update id="T-1"><pull_request url="https://x" by="me"/></artifact_update>', 'Unknown attribute "by" in <pull_request url="https://x" by="me"/>. Use only "url", "title", "repository", "state".'],
     ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });

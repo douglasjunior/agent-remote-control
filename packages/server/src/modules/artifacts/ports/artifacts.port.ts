@@ -14,7 +14,7 @@ import type {
 /**
  * The board of features and tasks of each conversation: a conversation is a mission and keeps its own artifacts.
  * Rules about who may change what belong to the caller (the orchestrator checks each agent's access); this port keeps
- * the board consistent: valid tree, one existing project folder per feature and its tasks, known dependencies without cycles, one holder per artifact
+ * the board consistent: valid tree, existing project folders (a feature links one or more, a task works in one of its feature's), known dependencies without cycles, one holder per artifact
  * and a history of every change. Any channel (the web interface, Discord) reads and changes the board through it.
  */
 export interface IArtifactsPort {

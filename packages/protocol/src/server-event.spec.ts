@@ -11,11 +11,12 @@ const artifact = {
   status: 'in_progress',
   parentId: 'F-1',
   projectName: 'app',
+  projectNames: ['app'],
   dependsOn: ['T-2'],
   refinement: { business: 'done', design: 'pending', technical: 'skipped' },
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: at },
   branch: 'feat/login',
-  pullRequests: [{ url: 'https://example.com/pr/1', state: 'open', addedAt: at }],
+  pullRequests: [{ url: 'https://example.com/pr/1', repository: 'repositories/api', state: 'open', addedAt: at }],
   createdAt: at,
   updatedAt: at,
 };
@@ -61,6 +62,7 @@ describe('parseServerEvent', () => {
     { type: 'artifacts.list', conversationId: 'c', artifacts: [artifact] },
     { type: 'artifact.detail', conversationId: 'c', artifact: { ...artifact, sections: { overview: 'Why' }, history } },
     { type: 'artifact.updated', conversationId: 'c', artifact },
+    { type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, id: 'F-1', type: 'feature', parentId: null, projectName: null, projectNames: ['app', 'site'] } },
     { type: 'artifact.deleted', conversationId: 'c', id: 'T-1' },
     { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: true, id: 'T-1' },
     { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: false, error: 'Unknown artifact' },
@@ -145,6 +147,13 @@ describe('parseServerEvent', () => {
     expect(parseServerEvent(event)).toEqual({ ok: true, value: event });
   });
 
+  it('should read a pull request without a repository as the project folder itself', () => {
+    const { repository: _repository, ...link } = artifact.pullRequests[0]!;
+
+    expect(parseServerEvent({ type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, pullRequests: [link] } }))
+      .toMatchObject({ ok: true, value: { artifact: { pullRequests: [{ repository: '.' }] } } });
+  });
+
   it.each([
     ['unknown type', { type: 'nope' }],
     ['missing fields', { type: 'conversation.state', conversationId: 'c' }],
@@ -166,6 +175,7 @@ describe('parseServerEvent', () => {
     ['a login event of an unknown kind', { type: 'auth.login', agentId: 'claude', event: { kind: 'x' } }],
     ['invalid entry', { type: 'conversation.entry', conversationId: 'c', entry: { type: 'x' }, position: 0 }],
     ['entry without a position', { type: 'conversation.entry', conversationId: 'c', entry: { id: 'e', at: '2026-01-01T00:00:00.000Z', type: 'user_message', text: 'hi' } }],
+    ['an artifact without projects', { type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, projectNames: [] } }],
     ['null', null],
     ['array', []],
   ])('should reject %s', (_label, data) => {

@@ -18,6 +18,9 @@ async function check<T>(work: (transaction: ArtifactTransaction) => T): Promise<
     buildArtifact({ id: 'T-4', parentId: 'F-1', dependsOn: ['T-1'] }),
     buildArtifact({ id: 'T-2' }),
     buildArtifact({ id: 'T-3', dependsOn: ['T-2'] }),
+    buildArtifact({ id: 'F-3', type: 'feature', projectNames: ['shop', 'web'] }),
+    buildArtifact({ id: 'T-5', parentId: 'F-3', projectName: 'shop' }),
+    buildArtifact({ id: 'T-6', parentId: 'F-3', projectName: 'web' }),
   ]);
   return store.transaction('c1', work);
 }
@@ -94,7 +97,7 @@ describe('ArtifactRulesService', () => {
 
   it.each([
     ['shop', ['shop', 'web'], undefined],
-    ['', ['shop'], 'An artifact belongs to a project: name its project folder.'],
+    ['', ['shop'], 'A project is a folder of the workspace root: name it.'],
     ['shop/src', ['shop', 'web'], 'Unknown project "shop/src". Use one of the project folders exactly as written: shop, web.'],
     ['shop', [], 'Unknown project "shop": the workspace root has no project folder yet.'],
   ])('should check the project %j among %j', (projectName, folders, expected) => {
@@ -102,12 +105,64 @@ describe('ArtifactRulesService', () => {
   });
 
   it.each([
-    [null, 'web', undefined],
-    ['F-1', 'shop', undefined],
-    ['X-1', 'web', undefined],
-    ['F-1', 'web', 'F-1 belongs to project "shop", so its tasks belong there too, not to "web". Work in another project goes in a feature of that project.'],
-  ])('should check that a task under %s shares the project %s', async (parentId, projectName, expected) => {
-    expect(await check(transaction => rules.checkSameProject(transaction, parentId, projectName))).toBe(expected);
+    [['shop'], undefined],
+    [['shop', 'web'], undefined],
+    [[], 'A feature links at least one project: name its project folders.'],
+    [['shop', 'api'], 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
+  ])('should check the projects %j of a feature', (projectNames, expected) => {
+    expect(rules.checkProjects(projectNames, ['shop', 'web'])).toBe(expected);
+  });
+
+  it.each([
+    ['a feature with one project', 'F-1', 'shop'],
+    ['a feature with several projects', 'F-3', undefined],
+    ['no feature', null, undefined],
+    ['an unknown feature', 'X-1', undefined],
+  ])('should default the project of a task of %s', async (_name, parentId, expected) => {
+    expect(await check(transaction => rules.defaultTaskProject(transaction, parentId))).toBe(expected);
+  });
+
+  it.each([
+    ['a standalone task in a project', null, 'web', undefined],
+    ['a standalone task without a project', null, '', 'A project is a folder of the workspace root: name it.'],
+    ['a task in the only project of its feature', 'F-1', 'shop', undefined],
+    ['a task in one of the projects of its feature', 'F-3', 'web', undefined],
+    ['a task in another project than the only one of its feature', 'F-1', 'web', '"web" is not one of the projects of F-1 ("shop"): a task works in one of them. Add the project to F-1 first.'],
+    ['a task in a project outside its feature\'s', 'F-3', 'docs', 'Unknown project "docs". Use one of the project folders exactly as written: shop, web.'],
+    ['a task without a project under a feature with several', 'F-3', '', 'F-3 links the projects "shop", "web": name the one this task works in.'],
+    ['a task under an unknown feature', 'X-1', 'web', undefined],
+  ])('should check %s', async (_name, parentId, projectName, expected) => {
+    expect(await check(transaction => rules.checkTaskProject(transaction, parentId, projectName, ['shop', 'web']))).toBe(expected);
+  });
+
+  it.each([
+    ['T-1 in a project of F-3', 'F-3', 'shop', undefined],
+    ['T-1 in a project outside F-3', 'F-1', 'web', '"web" is not one of the projects of F-1 ("shop"): a task works in one of them. Add the project to F-1 first.'],
+    ['a standalone task', null, 'web', undefined],
+  ])('should check the project of %s', async (_name, parentId, projectName, expected) => {
+    expect(await check(transaction => rules.checkProjectOfFeature(parentId ? transaction.find(parentId) : undefined, projectName))).toBe(expected);
+  });
+
+  it.each([
+    ['adding a project', 'F-3', ['shop', 'web', 'docs'], ['shop', 'web', 'docs'], undefined],
+    ['dropping a project a task works in', 'F-3', ['shop'], ['shop', 'web'], 'F-3 still has tasks in "web" (T-6), so it keeps that project: move the tasks to another project of the feature first.'],
+    ['adding a project to a feature without tasks in it', 'F-1', ['shop', 'web'], ['shop', 'web'], undefined],
+    ['replacing every project', 'F-3', ['docs'], ['shop', 'web', 'docs'], 'F-3 still has tasks in "shop", "web" (T-5, T-6), so it keeps those projects: move the tasks to another project of the feature first.'],
+    ['an empty list', 'F-3', [], ['shop', 'web'], 'A feature links at least one project: name its project folders.'],
+    ['an unknown project', 'F-3', ['shop', 'web', 'api'], ['shop', 'web'], 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
+  ])('should check %s of %s to %j', async (_name, featureId, projectNames, folders, expected) => {
+    expect(await check(transaction => rules.checkFeatureProjects(transaction, transaction.find(featureId)!, projectNames, folders))).toBe(expected);
+  });
+
+  it.each([
+    ['.', undefined],
+    ['repositories/klist-webservice', undefined],
+    ['/etc', '"/etc" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.'],
+    ['C:/repo', '"C:/repo" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.'],
+    ['../other', '"../other" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.'],
+    ['a/../../b', '"a/../../b" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.'],
+  ])('should check the pull request repository %s', (repository, expected) => {
+    expect(rules.checkPullRequestRepository(repository)).toBe(expected);
   });
 
   it.each([

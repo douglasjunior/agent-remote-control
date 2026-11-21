@@ -7,6 +7,7 @@ import { ARTIFACT_ID_PREFIXES, REFINEMENT_KINDS, DEFAULT_REFINEMENT_STATES } fro
 import type { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import type { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
 import type { ArtifactHistoryEntity } from '../entities/artifact-history.entity.js';
+import type { ArtifactProjectEntity } from '../entities/artifact-project.entity.js';
 import type { ArtifactPullRequestEntity } from '../entities/artifact-pull-request.entity.js';
 import type { ArtifactRefinementEntity } from '../entities/artifact-refinement.entity.js';
 import type { ArtifactSectionEntity } from '../entities/artifact-section.entity.js';
@@ -24,7 +25,8 @@ const SELECT = {
   refinements: 'SELECT "artifact_id" AS "artifactId", "kind", "state" FROM "artifact_refinement"',
   sections: 'SELECT "artifact_id" AS "artifactId", "section", "content" FROM "artifact_section"',
   dependencies: 'SELECT "artifact_id" AS "artifactId", "depends_on_id" AS "dependsOnId" FROM "artifact_dependency"',
-  pullRequests: 'SELECT "artifact_id" AS "artifactId", "url", "title", "state", "added_at" AS "addedAt" FROM "artifact_pull_request"',
+  projects: 'SELECT "artifact_id" AS "artifactId", "project_name" AS "projectName" FROM "artifact_project"',
+  pullRequests: 'SELECT "artifact_id" AS "artifactId", "url", "title", "repository", "state", "added_at" AS "addedAt" FROM "artifact_pull_request"',
   history: `SELECT "artifact_id" AS "artifactId", "position", "event_id" AS "eventId", "at", "actor_kind" AS "actorKind",
     "actor_role" AS "actorRole", "actor_role_name" AS "actorRoleName", "actor_channel" AS "actorChannel", "kind", "summary", "text"
     FROM "artifact_history"`,
@@ -36,6 +38,7 @@ const ORDER = {
   refinements: '',
   sections: '',
   dependencies: 'ORDER BY "artifact_id", "position"',
+  projects: 'ORDER BY "artifact_id", "position"',
   pullRequests: 'ORDER BY "artifact_id", "position"',
   history: 'ORDER BY "artifact_id", "position"',
   changes: 'ORDER BY "artifact_id", "event_position", "position"',
@@ -56,8 +59,9 @@ const DELETE_ARTIFACT = 'DELETE FROM "artifact" WHERE "conversation_id" = ? AND 
 const INSERT_REFINEMENT = 'INSERT INTO "artifact_refinement" ("conversation_id", "artifact_id", "kind", "state") VALUES (?, ?, ?, ?)';
 const INSERT_SECTION = 'INSERT INTO "artifact_section" ("conversation_id", "artifact_id", "section", "content") VALUES (?, ?, ?, ?)';
 const INSERT_DEPENDENCY = 'INSERT INTO "artifact_dependency" ("conversation_id", "artifact_id", "position", "depends_on_id") VALUES (?, ?, ?, ?)';
-const INSERT_PULL_REQUEST = `INSERT INTO "artifact_pull_request" ("conversation_id", "artifact_id", "position", "url", "title", "state", "added_at")
-  VALUES (?, ?, ?, ?, ?, ?, ?)`;
+const INSERT_PROJECT = 'INSERT INTO "artifact_project" ("conversation_id", "artifact_id", "position", "project_name") VALUES (?, ?, ?, ?)';
+const INSERT_PULL_REQUEST = `INSERT INTO "artifact_pull_request" ("conversation_id", "artifact_id", "position", "url", "title", "repository", "state", "added_at")
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 const INSERT_HISTORY = `INSERT INTO "artifact_history" ("conversation_id", "artifact_id", "position", "event_id", "at", "actor_kind", "actor_role",
     "actor_role_name", "actor_channel", "kind", "summary", "text") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 const INSERT_CHANGE = `INSERT INTO "artifact_history_change" ("conversation_id", "artifact_id", "event_position", "position", "field", "from_value",
@@ -70,6 +74,7 @@ const LIST_TABLES = {
   refinements: 'artifact_refinement',
   sections: 'artifact_section',
   dependencies: 'artifact_dependency',
+  projects: 'artifact_project',
   pullRequests: 'artifact_pull_request',
 } as const;
 
@@ -77,7 +82,8 @@ type ArtifactRow = ArtifactEntity;
 type RefinementRow = Pick<ArtifactRefinementEntity, 'artifactId' | 'kind' | 'state'>;
 type SectionRow = Pick<ArtifactSectionEntity, 'artifactId' | 'section' | 'content'>;
 type DependencyRow = Pick<ArtifactDependencyEntity, 'artifactId' | 'dependsOnId'>;
-type PullRequestRow = Pick<ArtifactPullRequestEntity, 'artifactId' | 'url' | 'title' | 'state' | 'addedAt'>;
+type ProjectRow = Pick<ArtifactProjectEntity, 'artifactId' | 'projectName'>;
+type PullRequestRow = Pick<ArtifactPullRequestEntity, 'artifactId' | 'url' | 'title' | 'repository' | 'state' | 'addedAt'>;
 type HistoryRow = Omit<ArtifactHistoryEntity, 'conversationId' | 'artifact'>;
 type ChangeRow = Pick<ArtifactHistoryChangeEntity, 'artifactId' | 'eventPosition' | 'field' | 'fromValue' | 'toValue'>;
 
@@ -225,8 +231,11 @@ export class SqliteArtifactStoreAdapter implements IArtifactStorePort {
       case 'dependencies':
         rows.dependencies.forEach(row => statements.run(INSERT_DEPENDENCY, ...owner, row.position, row.dependsOnId));
         return;
+      case 'projects':
+        rows.projects.forEach(row => statements.run(INSERT_PROJECT, ...owner, row.position, row.projectName));
+        return;
       case 'pullRequests':
-        rows.pullRequests.forEach(row => statements.run(INSERT_PULL_REQUEST, ...owner, row.position, row.url, row.title, row.state, row.addedAt));
+        rows.pullRequests.forEach(row => statements.run(INSERT_PULL_REQUEST, ...owner, row.position, row.url, row.title, row.repository, row.state, row.addedAt));
     }
   }
 
@@ -269,6 +278,7 @@ export class SqliteArtifactStoreAdapter implements IArtifactStorePort {
     const refinements = byArtifact(select<RefinementRow>('refinements'));
     const sections = byArtifact(select<SectionRow>('sections'));
     const dependencies = byArtifact(select<DependencyRow>('dependencies'));
+    const projects = byArtifact(select<ProjectRow>('projects'));
     const pullRequests = byArtifact(select<PullRequestRow>('pullRequests'));
     const history = byArtifact(select<HistoryRow>('history'));
     const changes = this.group(select<ChangeRow>('changes'), row => `${row.artifactId}\n${row.eventPosition}`);
@@ -281,6 +291,7 @@ export class SqliteArtifactStoreAdapter implements IArtifactStorePort {
         status: row.status,
         parentId: row.parentId,
         projectName: row.projectName,
+        projectNames: row.type === 'feature' ? (projects.get(row.id) ?? []).map(project => project.projectName) : [row.projectName],
         dependsOn: (dependencies.get(row.id) ?? []).map(dependency => dependency.dependsOnId),
         refinement: this.toRefinement(refinements.get(row.id) ?? []),
         assignee: row.assigneeRole === null
@@ -290,6 +301,7 @@ export class SqliteArtifactStoreAdapter implements IArtifactStorePort {
         pullRequests: (pullRequests.get(row.id) ?? []).map(link => ({
           url: link.url,
           ...(link.title !== null && { title: link.title }),
+          repository: link.repository,
           state: link.state,
           addedAt: link.addedAt,
         })),

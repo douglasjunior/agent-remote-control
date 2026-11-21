@@ -97,6 +97,47 @@ describe('SqliteArtifactStoreAdapter', () => {
     expect(await count('artifact_history')).toBe(3);
   });
 
+  it('should keep the project of a task in its row and the projects of a feature, in order, in their own rows', async () => {
+    const feature = buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['web', 'shop'] });
+
+    await store.transaction(CONVERSATION, (transaction) => {
+      transaction.save(feature);
+      transaction.save(buildArtifact({ id: 'T-1', parentId: 'F-1', projectName: 'web' }));
+    });
+
+    expect(await storeOver(dataSource).list(CONVERSATION)).toEqual([feature, buildArtifact({ id: 'T-1', parentId: 'F-1', projectName: 'web' })]);
+    expect(await dataSource.query('SELECT "id", "project_name" FROM "artifact" ORDER BY "position"')).toEqual([{ id: 'F-1', project_name: null }, { id: 'T-1', project_name: 'web' }]);
+    expect(await dataSource.query('SELECT "artifact_id", "position", "project_name" FROM "artifact_project" ORDER BY "position"')).toEqual([
+      { artifact_id: 'F-1', position: 0, project_name: 'web' },
+      { artifact_id: 'F-1', position: 1, project_name: 'shop' },
+    ]);
+  });
+
+  it('should rewrite only the project rows of a feature whose projects changed', async () => {
+    const feature = buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['web', 'shop'] });
+    await store.transaction(CONVERSATION, (transaction) => {
+      transaction.save(feature);
+      transaction.save(buildArtifact({ id: 'T-1' }));
+    });
+    const rowIds = () => dataSource.query('SELECT "rowid" FROM "artifact_refinement" WHERE "artifact_id" = \'F-1\'');
+    const before = await rowIds();
+
+    await store.transaction(CONVERSATION, transaction => transaction.save({ ...feature, projectNames: ['shop'] }));
+
+    expect(await store.find(CONVERSATION, 'F-1')).toEqual({ ...feature, projectNames: ['shop'] });
+    expect(await dataSource.query('SELECT "position", "project_name" FROM "artifact_project"')).toEqual([{ position: 0, project_name: 'shop' }]);
+    expect(await rowIds()).toEqual(before);
+  });
+
+  it('should leave out a feature that has no project rows', async () => {
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    await store.transaction(CONVERSATION, transaction => transaction.save(buildArtifact({ id: 'F-1', type: 'feature' })));
+    await dataSource.query('DELETE FROM "artifact_project"');
+
+    expect(await store.list(CONVERSATION)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(`artifacts_invalid_row: F-1 of ${CONVERSATION}`);
+  });
+
   it('should rewrite only what changed, keeping each artifact at its place on the board', async () => {
     const populated = buildPopulatedArtifact({ id: 'T-1' });
     await store.transaction(CONVERSATION, (transaction) => {
@@ -145,11 +186,17 @@ describe('SqliteArtifactStoreAdapter', () => {
   });
 
   it('should drop every row of a removed artifact and never give its id again', async () => {
-    await store.transaction(CONVERSATION, transaction => transaction.save(buildPopulatedArtifact({ id: transaction.allocateId('task') })));
+    await store.transaction(CONVERSATION, (transaction) => {
+      transaction.save(buildPopulatedArtifact({ id: transaction.allocateId('task') }));
+      transaction.save(buildArtifact({ id: transaction.allocateId('feature'), type: 'feature' }));
+    });
 
-    await store.transaction(CONVERSATION, transaction => transaction.remove('T-1'));
+    await store.transaction(CONVERSATION, (transaction) => {
+      transaction.remove('T-1');
+      transaction.remove('F-1');
+    });
 
-    for (const table of ['artifact', 'artifact_refinement', 'artifact_section', 'artifact_dependency', 'artifact_pull_request', 'artifact_history', 'artifact_history_change']) {
+    for (const table of ['artifact', 'artifact_project', 'artifact_refinement', 'artifact_section', 'artifact_dependency', 'artifact_pull_request', 'artifact_history', 'artifact_history_change']) {
       expect(await count(table)).toBe(0);
     }
     expect(await store.conversations()).toEqual([]);

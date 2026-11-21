@@ -273,6 +273,7 @@ export class RunAgentRequestsUseCase {
       title: request.title,
       ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolveRef(request.parent, refs) } : {}),
       ...(request.project ? { projectName: request.project } : {}),
+      ...(request.projects ? { projectNames: request.projects } : {}),
       ...(request.dependsOn ? { dependsOn: request.dependsOn.map(id => this.resolveRef(id, refs)) } : {}),
       ...(request.refinement ? { refinement: request.refinement } : {}),
       sections: Object.fromEntries(request.sections.map(change => [change.section, change.content])),
@@ -283,7 +284,11 @@ export class RunAgentRequestsUseCase {
     if (ref) {
       refs.set(ref, outcome.artifact.id);
     }
-    return { request: 'create', id: outcome.artifact.id, ...(ref ? { ref } : {}), body: `Created ${outcome.artifact.type} ${outcome.artifact.id} "${outcome.artifact.title}" in project ${outcome.artifact.projectName}, status ${outcome.artifact.status}.` };
+    return { request: 'create', id: outcome.artifact.id, ...(ref ? { ref } : {}), body: `Created ${outcome.artifact.type} ${outcome.artifact.id} "${outcome.artifact.title}" in ${this.projectsOf(outcome.artifact)}, status ${outcome.artifact.status}.` };
+  }
+
+  private projectsOf({ projectNames }: Artifact): string {
+    return `${projectNames.length === 1 ? 'project' : 'projects'} ${projectNames.join(', ')}`;
   }
 
   private async update(request: Extract<AgentRequest, { kind: 'update' }>, requester: AgentRequester, access: ArtifactAccess, refs: Map<string, string>): Promise<Result> {
@@ -305,6 +310,7 @@ export class RunAgentRequestsUseCase {
       ...(request.status !== undefined ? { status: request.status } : {}),
       ...(request.parent !== undefined ? { parentId: request.parent === null ? null : this.resolveRef(request.parent, refs) } : {}),
       ...(request.project ? { projectName: request.project } : {}),
+      ...(request.projects ? { projectNames: request.projects } : {}),
       ...(request.dependsOn !== undefined ? { dependsOn: request.dependsOn.map(dependency => this.resolveRef(dependency, refs)) } : {}),
       ...(request.refinement ? { refinement: request.refinement } : {}),
       ...(request.branch !== undefined ? { branch: request.branch } : {}),
@@ -383,7 +389,7 @@ export class RunAgentRequestsUseCase {
       [request.title !== undefined, 'title'],
       [request.status !== undefined, 'status'],
       [request.parent !== undefined, 'parent'],
-      [request.project !== undefined, 'project'],
+      [request.project !== undefined || request.projects !== undefined, 'project'],
       [request.dependsOn !== undefined, 'depends_on'],
       [request.refinement !== undefined, 'refinement'],
       [request.branch !== undefined, 'branch'],

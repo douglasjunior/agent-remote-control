@@ -137,11 +137,13 @@ export class AgentToolRequestService {
   private commonFields(args: Args): {
     readonly parent?: string | null;
     readonly project?: string;
+    readonly projects?: readonly string[];
     readonly dependsOn?: readonly string[];
     readonly refinement?: Partial<ArtifactRefinement>;
   } {
     const parent = this.optional(args, 'parent');
     const project = this.optional(args, 'project');
+    const projects = this.strings(args, 'projects');
     const dependsOn = this.ids(args, 'depends_on');
     const refinement: Partial<Record<RefinementKind, RefinementState>> = {};
     for (const kind of REFINEMENT_KINDS) {
@@ -153,6 +155,7 @@ export class AgentToolRequestService {
     return {
       ...(parent !== undefined ? { parent: readArtifactReference(parent) } : {}),
       ...(project ? { project } : {}),
+      ...(projects ? { projects } : {}),
       ...(dependsOn ? { dependsOn: dependsOn.filter(id => !isNoneValue(id)) } : {}),
       ...(Object.keys(refinement).length > 0 ? { refinement } : {}),
     };
@@ -170,10 +173,12 @@ export class AgentToolRequestService {
   private pullRequests(args: Args): PullRequestInput[] {
     return this.objects(args, 'pull_requests').map((item) => {
       const title = this.optional(item, 'title');
+      const repository = this.optional(item, 'repository');
       const state = this.optional(item, 'state')?.toLowerCase();
       return {
         url: this.required(item, 'url'),
         ...(title ? { title } : {}),
+        ...(repository ? { repository } : {}),
         ...(state ? { state: this.oneOf(state, PULL_REQUEST_STATES, 'pull request state') } : {}),
       };
     });

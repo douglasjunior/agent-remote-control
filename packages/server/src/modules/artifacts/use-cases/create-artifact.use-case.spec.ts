@@ -8,14 +8,14 @@ import { CreateArtifactUseCase } from './create-artifact.use-case.js';
 
 const user = { kind: 'user', channel: 'web' } as const;
 
-function setup(initial = [buildArtifact({ id: 'F-1', type: 'feature', projectName: 'shop' })]) {
+function setup(initial = [buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['shop'] })]) {
   const harness = createArtifactHarness(initial);
   return { ...harness, useCase: new CreateArtifactUseCase(harness.store, harness.workspace, harness.rules, harness.history, harness.events, harness.derivation) };
 }
 
 describe('CreateArtifactUseCase', () => {
-  it('should create a task that owes refinement in the backlog, taking the parent project, and publish it', async () => {
-    const { useCase, store, published } = setup([buildArtifact({ id: 'F-1', type: 'feature', projectName: 'shop' }), buildArtifact({ id: 'T-7', parentId: 'F-1' })]);
+  it('should create a task that owes refinement in the backlog, taking the only project of its feature, and publish it', async () => {
+    const { useCase, store, published } = setup([buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['shop'] }), buildArtifact({ id: 'T-7', parentId: 'F-1' })]);
 
     const outcome = await useCase.execute('c1', {
       type: 'task',
@@ -34,6 +34,7 @@ describe('CreateArtifactUseCase', () => {
         status: 'backlog',
         parentId: 'F-1',
         projectName: 'shop',
+        projectNames: ['shop'],
         dependsOn: ['T-7'],
         refinement: { business: 'done', design: 'skipped', technical: 'pending' },
         assignee: null,
@@ -55,21 +56,53 @@ describe('CreateArtifactUseCase', () => {
     expect(outcome).toMatchObject({ ok: true, artifact: { status: 'ready', projectName: 'web', parentId: null, sections: {} } });
   });
 
-  it('should keep features in the backlog, take an explicit project and treat a blank one as the parent\'s', async () => {
+  it('should keep a feature in the backlog with the projects it links, without a project of its own', async () => {
     const { useCase } = setup();
 
-    const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectName: ' web ', refinement: { business: 'skipped', design: 'skipped', technical: 'skipped' } }, user);
-    const task = await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', projectName: '  ' }, user);
+    const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectNames: [' web ', 'shop', 'web'], refinement: { business: 'skipped', design: 'skipped', technical: 'skipped' } }, user);
 
-    expect(feature).toMatchObject({ ok: true, artifact: { id: 'F-2', status: 'backlog', projectName: 'web' } });
-    expect(task).toMatchObject({ ok: true, artifact: { projectName: 'shop' } });
-    expect(await useCase.execute('c1', { type: 'task', title: 'Screen', parentId: 'F-1', projectName: 'web' }, user)).toEqual({ ok: false, error: 'F-1 belongs to project "shop", so its tasks belong there too, not to "web". Work in another project goes in a feature of that project.' });
+    expect(feature).toMatchObject({ ok: true, artifact: { id: 'F-2', type: 'feature', status: 'backlog', projectName: null, projectNames: ['web', 'shop'] } });
+  });
+
+  it('should take the single project given as projectName for a feature that lists none', async () => {
+    const { useCase } = setup();
+
+    const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectName: ' web ' }, user);
+
+    expect(feature).toMatchObject({ ok: true, artifact: { projectName: null, projectNames: ['web'] } });
+  });
+
+  it('should take the only project of its feature for a task that names none, or a blank one', async () => {
+    const { useCase } = setup();
+
+    const task = await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', projectName: '  ' }, user);
+    const unnamed = await useCase.execute('c1', { type: 'task', title: 'Cart 2', parentId: 'F-1' }, user);
+
+    expect(task).toMatchObject({ ok: true, artifact: { projectName: 'shop', projectNames: ['shop'] } });
+    expect(unnamed).toMatchObject({ ok: true, artifact: { projectName: 'shop', projectNames: ['shop'] } });
+  });
+
+  it('should create the tasks of a feature with several projects in one of them', async () => {
+    const { useCase } = setup([buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['shop', 'web'] })]);
+
+    expect(await useCase.execute('c1', { type: 'task', title: 'Screen', parentId: 'F-1', projectName: 'web' }, user)).toMatchObject({ ok: true, artifact: { projectName: 'web', projectNames: ['web'] } });
+    expect(await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1' }, user)).toEqual({ ok: false, error: 'F-1 links the projects "shop", "web": name the one this task works in.' });
+  });
+
+  it('should refuse a task in a project its feature does not link', async () => {
+    const { useCase } = setup();
+
+    expect(await useCase.execute('c1', { type: 'task', title: 'Screen', parentId: 'F-1', projectName: 'web' }, user))
+      .toEqual({ ok: false, error: '"web" is not one of the projects of F-1 ("shop"): a task works in one of them. Add the project to F-1 first.' });
   });
 
   it.each([
     [{ type: 'task', title: ' ', projectName: 'shop' }, 'An artifact needs a title.'],
     [{ type: 'feature', title: 'Nested', parentId: 'F-1' }, 'A feature is always at the top of the board, so it takes no parent.'],
-    [{ type: 'task', title: 'T' }, 'An artifact belongs to a project: name its project folder.'],
+    [{ type: 'task', title: 'T' }, 'A project is a folder of the workspace root: name it.'],
+    [{ type: 'feature', title: 'F' }, 'A feature links at least one project: name its project folders.'],
+    [{ type: 'feature', title: 'F', projectNames: ['shop', 'api'] }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
+    [{ type: 'task', title: 'T', projectNames: ['shop'] }, 'A task works in one project: give its project, not a list of projects.'],
     [{ type: 'task', title: 'T', projectName: 'api' }, 'Unknown project "api". Use one of the project folders exactly as written: shop, web.'],
     [{ type: 'task', title: 'Docs', parentId: 'X-1' }, 'Unknown parent artifact "X-1".'],
     [{ type: 'task', title: 'T', projectName: 'shop', dependsOn: ['T-9'] }, 'Unknown dependency "T-9".'],
@@ -83,7 +116,7 @@ describe('CreateArtifactUseCase', () => {
 
   it('should reopen a done feature when a task is created under it, recording why', async () => {
     const { useCase, store, published } = setup([
-      buildArtifact({ id: 'F-1', type: 'feature', status: 'done', projectName: 'shop' }),
+      buildArtifact({ id: 'F-1', type: 'feature', status: 'done', projectNames: ['shop'] }),
       buildArtifact({ id: 'T-1', parentId: 'F-1', status: 'done' }),
     ]);
 

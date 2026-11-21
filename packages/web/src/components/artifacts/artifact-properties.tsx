@@ -64,11 +64,11 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
   const now = useNow(true);
   const artifacts = Object.values(byId);
   const parents = parentCandidates(artifact.type, artifacts, artifact);
-  const projectLocked = artifact.parentId !== null || artifacts.some(other => other.parentId === artifact.id);
+  const projectLocked = artifact.parentId !== null || artifacts.some(other => other.parentId === artifact.id) || artifact.projectNames.length > 1;
   const blocks = dependentsOf(artifact.id, artifacts);
   const dependencyChoices = dependencyCandidates(artifact.type, artifact.parentId, artifacts, artifact.id)
     .filter(sibling => !artifact.dependsOn.includes(sibling.id));
-  const projectChoices = [...new Set([...projects, artifact.projectName])];
+  const projectChoices = [...new Set([...projects, artifact.projectNames[0]!])];
 
   return (
     <dl className="flex flex-col gap-5">
@@ -101,17 +101,17 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
       <Property label="Project">
         {projectLocked
           ? (
-            <span className="flex items-center gap-1.5" title={artifact.parentId ? 'The project of its feature' : 'Shared with the tasks of the feature'}>
+            <span className="flex items-center gap-1.5" title={artifact.parentId ? 'A project of its feature' : 'Shared with the tasks of the feature'}>
               <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
-              {artifact.projectName}
+              {artifact.projectNames.join(', ')}
             </span>
           )
           : (
             <ChoiceSelect
               label="Project"
-              value={artifact.projectName}
+              value={artifact.projectNames[0]}
               choices={projectChoices.map(project => ({ value: project, label: project }))}
-              onChange={projectName => onChange({ projectName })}
+              onChange={projectName => onChange(artifact.type === 'feature' ? { projectNames: [projectName] } : { projectName })}
               className="w-full"
             />
           )}
@@ -169,6 +169,7 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
               >
                 <Icon aria-hidden className={cn('size-3.5 shrink-0 text-muted-foreground', pullRequest.state === 'merged' && 'text-(--agent-product-owner)')} />
                 <span className="truncate">{pullRequest.title ?? pullRequest.url}</span>
+                {pullRequest.repository !== '.' && <span className="shrink-0 font-mono text-[11.5px] text-muted-foreground">{pullRequest.repository}</span>}
               </a>
             );
           })}

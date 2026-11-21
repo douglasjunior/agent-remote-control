@@ -8,13 +8,14 @@ import { AT, renderApp, roleProfiles, type AppHarness } from './render-app.js';
 
 export const CONVERSATION_ID = 'c1';
 
-export function summary(overrides: Partial<ArtifactSummary> & Pick<ArtifactSummary, 'id'>): ArtifactSummary {
+/** A task in the project `app`; `projectName` sets a task's project and `projectNames` a feature's, whose `projectName` is `null`. */
+export function summary({ projectName, projectNames, ...overrides }: Partial<ArtifactSummary> & Pick<ArtifactSummary, 'id'>): ArtifactSummary {
+  const projects = projectNames ?? [projectName ?? 'app'];
   return {
     type: 'task',
     title: `Title of ${overrides.id}`,
     status: 'backlog',
     parentId: null,
-    projectName: 'app',
     dependsOn: [],
     refinement: { business: 'pending', design: 'skipped', technical: 'pending' },
     assignee: null,
@@ -23,11 +24,14 @@ export function summary(overrides: Partial<ArtifactSummary> & Pick<ArtifactSumma
     createdAt: AT,
     updatedAt: AT,
     ...overrides,
+    projectName: overrides.type === 'feature' ? null : projects[0]!,
+    projectNames: projects,
   };
 }
 
 export function detail(overrides: Partial<ArtifactDetail> & Pick<ArtifactDetail, 'id'>): ArtifactDetail {
-  return { ...summary(overrides), sections: {}, history: [], ...overrides };
+  const { projectName: _projectName, projectNames: _projectNames, ...rest } = overrides;
+  return { ...summary(overrides), sections: {}, history: [], ...rest };
 }
 
 /** Renders conversation `c1` at `path` with the artifacts and projects the server would list. */

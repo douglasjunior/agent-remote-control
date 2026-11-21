@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES, DEFAULT_PULL_REQUEST_REPOSITORY, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor, ArtifactHistoryEvent, ArtifactSection } from '../../artifacts/models/artifact.model.js';
 import { lastStatusChange } from '../../artifacts/utils/artifact-status.util.js';
 import { formatWordList } from '../utils/word-list.util.js';
@@ -15,7 +15,7 @@ export class ArtifactPromptFormatterService {
     const parts = [
       `- ${artifact.id} [${artifact.type}] "${artifact.title}"`,
       `status: ${artifact.status}`,
-      `project: ${artifact.projectName}`,
+      this.projectLabel(artifact, 'project'),
       ...(artifact.parentId ? [`parent: ${artifact.parentId}`] : []),
       ...(artifact.dependsOn.length > 0 ? [`depends on: ${artifact.dependsOn.map(id => `${id} (${this.find(all, id)?.status ?? 'deleted'})`).join(', ')}`] : []),
       ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
@@ -97,7 +97,7 @@ export class ArtifactPromptFormatterService {
     const facts = [
       `- Type: ${artifact.type}`,
       this.statusFact(artifact),
-      `- Project: ${artifact.projectName}`,
+      `- ${this.projectLabel(artifact, 'Project')}`,
       `- Parent: ${this.ancestry(artifact, all)}`,
       this.dependenciesFact(artifact, all),
       `- Blocks: ${this.references(blocks)}`,
@@ -155,20 +155,26 @@ export class ArtifactPromptFormatterService {
   }
 
   private pullRequestsFact(artifact: Artifact): string {
-    return `- Pull requests: ${artifact.pullRequests.length > 0 ? artifact.pullRequests.map(link => `${link.url} (${link.state})${link.title ? ` "${link.title}"` : ''}`).join('; ') : 'none'}`;
+    return `- Pull requests: ${artifact.pullRequests.length > 0 ? artifact.pullRequests.map(link => `${link.url} (${link.state}${link.repository === DEFAULT_PULL_REQUEST_REPOSITORY ? '' : `, repository ${link.repository}`})${link.title ? ` "${link.title}"` : ''}`).join('; ') : 'none'}`;
+  }
+
+  /** `project: a` for a task, `projects: a, b` for a feature, with the label in the case the line uses. */
+  private projectLabel(artifact: Artifact, label: 'project' | 'Project'): string {
+    return `${artifact.type === 'feature' ? `${label}s` : label}: ${artifact.projectNames.join(', ')}`;
   }
 
   private featureDigestLine(feature: Artifact): string {
-    return `- ${feature.id} [feature] "${feature.title}" · status: ${feature.status} · project: ${feature.projectName}`;
+    return `- ${feature.id} [feature] "${feature.title}" · status: ${feature.status} · ${this.projectLabel(feature, 'project')}`;
   }
 
-  /** A task under a feature runs in the feature's project, so the line names the feature, and the project only for a standalone task. */
+  /** A task names its feature, when it has one, and its own project. */
   private taskDigestLine(task: Artifact, all: readonly Artifact[]): string {
     const waitingOn = this.waitingOn(task, all);
     return [
       `- ${task.id} [task] "${task.title}"`,
       `status: ${task.status}`,
-      task.parentId ? `feature: ${task.parentId}` : `project: ${task.projectName}`,
+      ...(task.parentId ? [`feature: ${task.parentId}`] : []),
+      this.projectLabel(task, 'project'),
       ...(task.assignee ? [`with: ${task.assignee.role}`] : []),
       ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
       ...(task.pullRequests.length > 0 ? [`pull requests: ${task.pullRequests.length}`] : []),

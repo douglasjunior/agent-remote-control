@@ -6142,6 +6142,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       ['a review with neither a pull request nor a branch', [{ id: 'T-1' }], '<delegate role="CODE_REVIEWER" summary="x" artifact="T-1">Go.</delegate>', 'CODE_REVIEWER inspects the work of T-1, which has neither a pull request nor a branch yet.'],
       ['an artifact another role holds', [{ id: 'T-1', assignee: { role: 'TECH_LEAD', roleName: 'TL', delegationId: 'd', since: '2026-01-01T00:00:00.000Z' } }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is with TECH_LEAD right now, and an artifact is with one agent at a time.'],
       ['another project', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1" project="project-a">Go.</delegate>', 'T-1 belongs to project "my-app", so the work on it runs there'],
+      ['another project than the first of a feature', [{ id: 'F-1', type: 'feature', projectNames: ['my-app', 'site'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1" project="site">Plan.</delegate>', 'F-1 belongs to project "my-app", so the work on it runs there'],
       ['the same artifact twice', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate><delegate role="TECH_LEAD" summary="y" artifact="T-1">Plan.</delegate>', 'T-1 appears in more than one delegation.'],
     ] as const)('should reject %s', async (_name, artifactsToSeed, delegation, reason) => {
       seed(...artifactsToSeed);
@@ -6455,7 +6456,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         await useCase.execute(turnRequest({ prompt: 'Build the login' }));
 
-        expect(stubAgentPort.promptCalls[0]).toContain(`${idleTeam}[BOARD]\n- F-1 [feature] "Checkout" · status: in_progress · project: my-app\n- T-1 [task] "Login" · status: in_progress · feature: F-1\n\nBuild the login`);
+        expect(stubAgentPort.promptCalls[0]).toContain(`${idleTeam}[BOARD]\n- F-1 [feature] "Checkout" · status: in_progress · projects: my-app\n- T-1 [task] "Login" · status: in_progress · feature: F-1 · project: my-app\n\nBuild the login`);
         expect(stubAgentPort.promptCalls[1]).not.toContain('[BOARD]');
       });
 

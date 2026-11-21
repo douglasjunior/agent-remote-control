@@ -3,13 +3,15 @@ import type { Artifact } from '../models/artifact.model.js';
 
 export const ARTIFACT_AT = '2026-01-01T00:00:00.000Z';
 
-export function buildArtifact(overrides: Partial<Artifact> & Pick<Artifact, 'id'>): Artifact {
+/** A task in the project `shop`; `projectName` sets a task's project and `projectNames` a feature's, whose `projectName` is `null`. */
+export function buildArtifact({ projectName, projectNames, ...overrides }: Partial<Artifact> & Pick<Artifact, 'id'>): Artifact {
+  const type = overrides.type ?? 'task';
+  const projects = projectNames ?? [projectName ?? 'shop'];
   return {
-    type: 'task',
+    type,
     title: `Artifact ${overrides.id}`,
     status: 'ready',
     parentId: null,
-    projectName: 'shop',
     dependsOn: [],
     refinement: { business: 'done', design: 'done', technical: 'done' },
     assignee: null,
@@ -20,6 +22,8 @@ export function buildArtifact(overrides: Partial<Artifact> & Pick<Artifact, 'id'
     createdAt: ARTIFACT_AT,
     updatedAt: ARTIFACT_AT,
     ...overrides,
+    projectName: type === 'feature' ? null : projects[0]!,
+    projectNames: projects,
   };
 }
 
@@ -33,8 +37,8 @@ export function buildPopulatedArtifact(overrides: Partial<Artifact> & Pick<Artif
     assignee: { role: 'QA', roleName: 'QA Engineer', delegationId: 'd-1', since: '2026-01-02T00:00:00.000Z' },
     branch: 'feat/t-1',
     pullRequests: [
-      { url: 'https://example.com/pr/1', title: 'First', state: 'merged', addedAt: '2026-01-03T00:00:00.000Z' },
-      { url: 'https://example.com/pr/2', state: 'open', addedAt: '2026-01-04T00:00:00.000Z' },
+      { url: 'https://example.com/pr/1', title: 'First', repository: '.', state: 'merged', addedAt: '2026-01-03T00:00:00.000Z' },
+      { url: 'https://example.com/pr/2', repository: 'repositories/api', state: 'open', addedAt: '2026-01-04T00:00:00.000Z' },
     ],
     sections: { overview: 'The **overview**.', test_report: '' },
     history: [

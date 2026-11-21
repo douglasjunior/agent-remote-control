@@ -81,7 +81,7 @@ export class ArtifactRulesService {
   /** `folders` are the project folders of the workspace root, the only values a project takes. */
   checkProject(projectName: string, folders: readonly string[]): string | undefined {
     if (!projectName) {
-      return 'An artifact belongs to a project: name its project folder.';
+      return 'A project is a folder of the workspace root: name it.';
     }
     if (folders.includes(projectName)) {
       return undefined;
@@ -91,16 +91,66 @@ export class ArtifactRulesService {
       : `Unknown project "${projectName}": the workspace root has no project folder yet.`;
   }
 
-  /** A task under a feature always has the feature's project, so a feature groups the work of one project. */
-  checkSameProject(transaction: ArtifactTransaction, parentId: string | null, projectName: string): string | undefined {
+  /** A feature links at least one project, each an existing project folder. */
+  checkProjects(projectNames: readonly string[], folders: readonly string[]): string | undefined {
+    if (projectNames.length === 0) {
+      return 'A feature links at least one project: name its project folders.';
+    }
+    for (const projectName of projectNames) {
+      const error = this.checkProject(projectName, folders);
+      if (error) {
+        return error;
+      }
+    }
+    return undefined;
+  }
+
+  /** The project a task takes when it names none: its feature's, when that links only one. */
+  defaultTaskProject(transaction: ArtifactTransaction, parentId: string | null): string | undefined {
+    const projectNames = (parentId ? transaction.find(parentId) : undefined)?.projectNames;
+    return projectNames?.length === 1 ? projectNames[0] : undefined;
+  }
+
+  /** A task works in one project, and under a feature one the feature links; a feature with several leaves the choice to the task. */
+  checkTaskProject(transaction: ArtifactTransaction, parentId: string | null, projectName: string, folders: readonly string[]): string | undefined {
     const parent = parentId ? transaction.find(parentId) : undefined;
-    return parent && parent.projectName !== projectName
-      ? `${parent.id} belongs to project "${parent.projectName}", so its tasks belong there too, not to "${projectName}". Work in another project goes in a feature of that project.`
+    if (!projectName && parent) {
+      return `${parent.id} links the projects ${this.quoted(parent.projectNames)}: name the one this task works in.`;
+    }
+    return this.checkProject(projectName, folders) ?? this.checkProjectOfFeature(parent, projectName);
+  }
+
+  /** The project of a task under `parent`, when it has one, is one of the parent's. */
+  checkProjectOfFeature(parent: Artifact | undefined, projectName: string): string | undefined {
+    return parent && !parent.projectNames.includes(projectName)
+      ? `"${projectName}" is not one of the projects of ${parent.id} (${this.quoted(parent.projectNames)}): a task works in one of them. Add the project to ${parent.id} first.`
       : undefined;
+  }
+
+  /** The new projects of a feature are valid and keep every project its tasks work in. */
+  checkFeatureProjects(transaction: ArtifactTransaction, feature: Artifact, projectNames: readonly string[], folders: readonly string[]): string | undefined {
+    const error = this.checkProjects(projectNames, folders);
+    if (error) {
+      return error;
+    }
+    const stranded = transaction.list().filter(task => task.parentId === feature.id && task.projectName !== null && !projectNames.includes(task.projectName));
+    if (stranded.length === 0) {
+      return undefined;
+    }
+    const used = [...new Set(stranded.map(task => task.projectName!))];
+    return `${feature.id} still has tasks in ${this.quoted(used)} (${stranded.map(task => task.id).join(', ')}), so it keeps ${used.length === 1 ? 'that project' : 'those projects'}: move the tasks to another project of the feature first.`;
   }
 
   checkPullRequestUrl(url: string): string | undefined {
     return PULL_REQUEST_URL.test(url) ? undefined : `"${url}" is not a pull request URL: use its full http(s) address.`;
+  }
+
+  /** The repository is a path inside the project folder of the task, so it neither starts at the root nor climbs out. */
+  checkPullRequestRepository(repository: string): string | undefined {
+    const climbs = repository.split('/').includes('..');
+    return repository.startsWith('/') || /^[a-z]:/i.test(repository) || climbs
+      ? `"${repository}" is not a repository path: give it relative to the project folder of the task, "." for the folder itself.`
+      : undefined;
   }
 
   owesRefinement(refinement: ArtifactRefinement): boolean {
@@ -137,6 +187,10 @@ export class ArtifactRulesService {
     }
     const underway = tasks.some(task => task.status === 'done' || ACTIVE_TASK_STATUSES.includes(task.status));
     return underway && ['backlog', 'ready', 'done'].includes(feature.status) ? 'in_progress' : undefined;
+  }
+
+  private quoted(names: readonly string[]): string {
+    return names.map(name => `"${name}"`).join(', ');
   }
 
   private siblingRule({ type, parentId }: ArtifactPlace): string {

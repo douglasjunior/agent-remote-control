@@ -39,7 +39,7 @@ function sequenceOf(id: string): number {
 export function matchesFilter(artifact: ArtifactSummary, filter: ArtifactFilter): boolean {
   const text = filter.text.trim().toLowerCase();
   return (!text || artifact.id.toLowerCase().includes(text) || artifact.title.toLowerCase().includes(text))
-    && (filter.project === null || artifact.projectName === filter.project)
+    && (filter.project === null || artifact.projectNames.includes(filter.project))
     && (filter.type === null || artifact.type === filter.type)
     && !(filter.hideClosed && isClosed(artifact.status));
 }
@@ -53,7 +53,7 @@ export type ProjectTree = {
 
 /**
  * The hierarchy of the artifacts that match, with the ancestors that lead to them, one tree per project in
- * alphabetical order. An artifact whose parent is unknown is a root.
+ * alphabetical order. A feature stands under its first project. An artifact whose parent is unknown is a root.
  */
 export function buildTree(artifacts: readonly ArtifactSummary[], filter: ArtifactFilter): readonly ProjectTree[] {
   const byId = new Map(artifacts.map(artifact => [artifact.id, artifact]));
@@ -71,9 +71,9 @@ export function buildTree(artifacts: readonly ArtifactSummary[], filter: Artifac
     return kept.length > 0 || matchesFilter(artifact, filter) ? { artifact, children: kept } : null;
   };
   const nodes = topLevel.map(build).filter(node => node !== null);
-  const projects = [...new Set(nodes.map(node => node.artifact.projectName))].sort((a, b) => a.localeCompare(b));
+  const projects = [...new Set(nodes.map(node => node.artifact.projectNames[0]!))].sort((a, b) => a.localeCompare(b));
   return projects.map((projectName) => {
-    const inProject = nodes.filter(node => node.artifact.projectName === projectName);
+    const inProject = nodes.filter(node => node.artifact.projectNames[0] === projectName);
     return {
       projectName,
       features: inProject.filter(node => node.artifact.type === 'feature'),
@@ -98,18 +98,18 @@ export function childrenOf(id: string, artifacts: readonly ArtifactSummary[]): A
 
 /**
  * Where an artifact of `type` may hang: a feature stands at the top, a task goes under a feature. `self` keeps the
- * candidates in its project.
+ * candidates that link its project.
  */
 export function parentCandidates(
   type: ArtifactType,
   artifacts: readonly ArtifactSummary[],
-  self?: Pick<ArtifactSummary, 'projectName'>,
+  self?: Pick<ArtifactSummary, 'projectNames'>,
 ): ArtifactSummary[] {
   if (type === 'feature') {
     return [];
   }
   return artifacts
-    .filter(artifact => artifact.type === 'feature' && (!self || artifact.projectName === self.projectName))
+    .filter(artifact => artifact.type === 'feature' && (!self || self.projectNames.some(name => artifact.projectNames.includes(name))))
     .sort(compareArtifacts);
 }
 

@@ -8,7 +8,7 @@ import { AT, renderApp } from '../../test/render-app.js';
 
 const at = AT;
 const feature = summary({ id: 'F-1', type: 'feature', title: 'Login', status: 'in_progress' });
-const form = summary({ id: 'T-1', title: 'Login form', parentId: 'F-1', status: 'done', pullRequests: [{ url: 'https://example.com/1', state: 'merged', addedAt: at }] });
+const form = summary({ id: 'T-1', title: 'Login form', parentId: 'F-1', status: 'done', pullRequests: [{ url: 'https://example.com/1', repository: '.', state: 'merged', addedAt: at }] });
 const api = summary({
   id: 'T-2',
   title: 'Login API',
@@ -55,6 +55,18 @@ describe('ArtifactBoard', () => {
     expect(within(site).getByRole('link', { name: 'Fix typo' })).toBeInTheDocument();
     expect(screen.getByText('Standalone tasks')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
+  });
+
+  it('should list a feature linking several projects under its first project, and keep it when filtering by any of them', async () => {
+    const user = userEvent.setup();
+    openBoard([summary({ id: 'F-7', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] })]);
+    expect(within(screen.getByRole('list', { name: 'Features of site' })).getByRole('link', { name: 'Shared' })).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: 'Features of app' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Project' }));
+    await user.click(await screen.findByRole('option', { name: 'app' }));
+
+    expect(screen.getByRole('link', { name: 'Shared' })).toBeInTheDocument();
   });
 
   it('should collapse and expand a feature', async () => {
@@ -260,7 +272,7 @@ describe('ArtifactBoard', () => {
 
   it('should show the features on the board, with their tasks and dependencies, and move them like tasks', async () => {
     const user = userEvent.setup();
-    const reports = summary({ id: 'F-2', type: 'feature', title: 'Reports', status: 'backlog', dependsOn: ['F-1'], projectName: 'site', assignee: { role: 'PRODUCT_OWNER', roleName: 'Product Owner', delegationId: 'd2', since: at } });
+    const reports = summary({ id: 'F-2', type: 'feature', title: 'Reports', status: 'backlog', dependsOn: ['F-1'], projectNames: ['site', 'app'], assignee: { role: 'PRODUCT_OWNER', roleName: 'Product Owner', delegationId: 'd2', since: at } });
     const app = openBoard([...artifacts, reports]);
     expect(screen.queryByRole('combobox', { name: 'Cards' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Kanban' }));
@@ -275,7 +287,7 @@ describe('ArtifactBoard', () => {
     expect(within(reportsCard).getByText('No tasks yet')).toBeInTheDocument();
     expect(within(reportsCard).getByLabelText('Waiting on F-1')).toBeInTheDocument();
     expect(within(reportsCard).getByRole('img', { name: 'Product Owner, working' })).toBeInTheDocument();
-    expect(within(reportsCard).getByText('site')).toBeInTheDocument();
+    expect(within(reportsCard).getByText('site, app')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Move F-2' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Ready' }));

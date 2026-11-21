@@ -31,6 +31,7 @@ describe('artifact-tree', () => {
     [{ text: 'nope' }, false],
     [{ project: 'site' }, false],
     [{ project: 'app' }, true],
+    [{ project: 'site', type: 'feature' as const }, false],
     [{ type: 'task' as const }, false],
     [{ hideClosed: true }, true],
   ])('should filter by %o', (filter, expected) => {
@@ -70,7 +71,17 @@ describe('artifact-tree', () => {
   it('should offer features as the parents of a task, in its project when given', () => {
     expect(parentCandidates('feature', all)).toEqual([]);
     expect(parentCandidates('task', all).map(artifact => artifact.id)).toEqual(['F-1', 'F-2']);
-    expect(parentCandidates('task', all, { projectName: 'site' }).map(artifact => artifact.id)).toEqual(['F-2']);
+    expect(parentCandidates('task', all, { projectNames: ['site'] }).map(artifact => artifact.id)).toEqual(['F-2']);
+  });
+
+  it('should treat a feature linking several projects as part of each of them, under the first in the tree', () => {
+    const shared = summary({ id: 'F-3', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+
+    expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'app' })).toBe(true);
+    expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'site' })).toBe(true);
+    expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'docs' })).toBe(false);
+    expect(buildTree([shared], EMPTY_FILTER).map(tree => [tree.projectName, tree.features.map(node => node.artifact.id)])).toEqual([['site', ['F-3']]]);
+    expect(parentCandidates('task', [...all, shared], { projectNames: ['app'] }).map(artifact => artifact.id)).toEqual(['F-1', 'F-3']);
   });
 
   it('should offer the open siblings of the same type as dependencies', () => {

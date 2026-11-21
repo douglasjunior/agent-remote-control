@@ -145,7 +145,7 @@ function KanbanCard({ conversationId, artifact, artifacts, byId, onMove, onUnfre
         <MoveMenu artifact={artifact} onMove={onMove} onUnfreeze={onUnfreeze} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <ProjectChip projectName={artifact.projectName} />
+        <ProjectChip projectName={artifact.projectNames.join(', ')} />
         <WaitingChip artifact={artifact} byId={byId} />
         <PullRequestChip artifact={artifact} />
         {artifact.assignee && <ArtifactAssignee assignee={artifact.assignee} className="ml-auto" />}

@@ -1,6 +1,7 @@
 import type { ArtifactDependencyEntity } from '../entities/artifact-dependency.entity.js';
 import type { ArtifactHistoryChangeEntity } from '../entities/artifact-history-change.entity.js';
 import type { ArtifactHistoryEntity } from '../entities/artifact-history.entity.js';
+import type { ArtifactProjectEntity } from '../entities/artifact-project.entity.js';
 import type { ArtifactPullRequestEntity } from '../entities/artifact-pull-request.entity.js';
 import type { ArtifactRefinementEntity } from '../entities/artifact-refinement.entity.js';
 import type { ArtifactSectionEntity } from '../entities/artifact-section.entity.js';
@@ -19,11 +20,15 @@ export type ArtifactRows = {
   readonly refinements: readonly ArtifactRefinementEntity[];
   readonly sections: readonly ArtifactSectionEntity[];
   readonly dependencies: readonly ArtifactDependencyEntity[];
+  readonly projects: readonly ArtifactProjectEntity[];
   readonly pullRequests: readonly ArtifactPullRequestEntity[];
   readonly history: readonly ArtifactHistoryRows[];
 };
 
-/** The rows that hold `artifact` at `position` of its conversation's board; an optional field left out is `NULL`. */
+/**
+ * The rows that hold `artifact` at `position` of its conversation's board; an optional field left out is `NULL`. A task
+ * keeps its project in the artifact row and a feature in `artifact_project` rows.
+ */
 export function toArtifactRows(conversationId: string, artifact: Artifact, position: number): ArtifactRows {
   const owner = { conversationId, artifactId: artifact.id };
   return {
@@ -47,11 +52,15 @@ export function toArtifactRows(conversationId: string, artifact: Artifact, posit
     refinements: Object.entries(artifact.refinement).map(([kind, state]) => ({ ...owner, kind, state })),
     sections: Object.entries(artifact.sections).map(([section, content]) => ({ ...owner, section, content })),
     dependencies: artifact.dependsOn.map((dependsOnId, index) => ({ ...owner, position: index, dependsOnId })),
+    projects: artifact.type === 'feature'
+      ? artifact.projectNames.map((projectName, index) => ({ ...owner, position: index, projectName }))
+      : [],
     pullRequests: artifact.pullRequests.map((link, index) => ({
       ...owner,
       position: index,
       url: link.url,
       title: link.title ?? null,
+      repository: link.repository,
       state: link.state,
       addedAt: link.addedAt,
     })),

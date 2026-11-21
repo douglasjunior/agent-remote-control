@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { CLOSED_ARTIFACT_STATUSES, FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import type { Artifact } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
@@ -118,14 +119,20 @@ export class DelegationValidatorService {
     if (artifact.assignee && artifact.assignee.role !== role) {
       return { reason: `${artifactId} is with ${artifact.assignee.role} right now, and an artifact is with one agent at a time. Wait for its result, or redirect that agent.` };
     }
-    if (projectName && projectName !== artifact.projectName) {
-      return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
+    const workProject = this.workProject(artifact);
+    if (projectName && projectName !== workProject) {
+      return { reason: `${artifactId} belongs to project "${workProject}", so the work on it runs there: use project="${workProject}" or leave the project out.` };
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
     if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, delegation)) {
       return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
     }
-    return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
+    return contract.project ? { ...delegation, projectName: workProject } : delegation;
+  }
+
+  /** The project folder a delegation of the artifact runs in: a task's own, and for a feature its first project. */
+  private workProject(artifact: Artifact): string {
+    return artifact.projectName ?? artifact.projectNames[0]!;
   }
 
   /**

@@ -29,6 +29,8 @@ export type ArtifactAssignee = {
 export type PullRequestLink = {
   readonly url: string;
   readonly title?: string;
+  /** Path of the git repository inside the task's project folder: `.` for the folder itself, `repositories/api` for a nested clone. */
+  readonly repository: string;
   readonly state: PullRequestState;
   readonly addedAt: string;
 };
@@ -66,8 +68,10 @@ export type Artifact = {
   readonly title: string;
   readonly status: ArtifactStatus;
   readonly parentId: string | null;
-  /** The project folder of the workspace root; a task under a feature always has the feature's. */
-  readonly projectName: string;
+  /** The one project folder of the workspace root a task works in, always one of its feature's `projectNames`; `null` for a feature. */
+  readonly projectName: string | null;
+  /** The project folders a feature links (at least one), or a task's own project as a one-item list. */
+  readonly projectNames: readonly string[];
   readonly dependsOn: readonly string[];
   readonly refinement: ArtifactRefinement;
   readonly assignee: ArtifactAssignee | null;
@@ -85,6 +89,7 @@ export type ArtifactFilter = {
   readonly statuses?: readonly ArtifactStatus[] | 'all';
   /** Direct children of this artifact; `null` lists only the roots. */
   readonly parentId?: string | null;
+  /** A feature matches when it links the project, a task when it works in it. */
   readonly projectName?: string;
 };
 
@@ -92,8 +97,10 @@ export type CreateArtifactInput = {
   readonly type: ArtifactType;
   readonly title: string;
   readonly parentId?: string | null;
-  /** Required without a parent; a task under a feature has the feature's and may leave it out. */
+  /** The project of a task; a task under a feature may leave it out only when the feature has a single project. */
   readonly projectName?: string;
+  /** The projects of a feature, at least one; `projectName` alone stands for a single one. */
+  readonly projectNames?: readonly string[];
   readonly dependsOn?: readonly string[];
   readonly sections?: ArtifactSections;
   /** Each refinement left out takes its `DEFAULT_REFINEMENT_STATES` entry. */
@@ -110,6 +117,8 @@ export type SectionChange = {
 export type PullRequestInput = {
   readonly url: string;
   readonly title?: string;
+  /** Left out, it keeps the stored one, or `DEFAULT_PULL_REQUEST_REPOSITORY` for a new link. */
+  readonly repository?: string;
   readonly state?: PullRequestState;
 };
 
@@ -117,8 +126,10 @@ export type ArtifactChanges = {
   readonly title?: string;
   readonly status?: ArtifactStatus;
   readonly parentId?: string | null;
-  /** Only an artifact without children moves to another project. */
+  /** Moves a task to another project, which stays one of its feature's. */
   readonly projectName?: string;
+  /** Replaces the projects of a feature; a project still used by its tasks stays. */
+  readonly projectNames?: readonly string[];
   readonly dependsOn?: readonly string[];
   readonly sections?: readonly SectionChange[];
   readonly refinement?: Partial<ArtifactRefinement>;

@@ -10,6 +10,7 @@ import { createInMemoryDataSource } from '../../database/testing/in-memory-data-
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
 import { createNodeLockedFiles } from '../../storage/testing/node-locked-files.js';
 import { StubFileLock } from '../../storage/testing/stub-file-lock.js';
+import type { Artifact } from '../models/artifact.model.js';
 import { buildArtifact, buildPopulatedArtifact } from '../testing/artifact.fixture.js';
 
 import { JsonArtifactsImporterAdapter } from './json-artifacts-importer.adapter.js';
@@ -18,6 +19,12 @@ import { SqliteArtifactStoreAdapter } from './sqlite-artifact-store.adapter.js';
 
 const CONVERSATION = 'channel:thread/1';
 const FILE = join('artifacts', `${encodeURIComponent(CONVERSATION)}.json`);
+
+/** An artifact as the earlier versions wrote it: one `projectName` for every artifact and pull requests without a repository. */
+function legacyArtifact(artifact: Artifact): unknown {
+  const { projectNames, pullRequests, ...rest } = artifact;
+  return { ...rest, projectName: projectNames[0], pullRequests: pullRequests.map(({ repository: _repository, ...link }) => link) };
+}
 
 describe('JsonArtifactsImporterAdapter', () => {
   let dataDir: string;
@@ -48,9 +55,10 @@ describe('JsonArtifactsImporterAdapter', () => {
   });
 
   it('should import each board with its counters, under the lock its store wrote it with', async () => {
-    const populated = buildPopulatedArtifact({ id: 'T-1' });
-    seed(FILE, { counters: { T: 4, F: 1 }, artifacts: [populated, buildArtifact({ id: 'F-1', type: 'feature' })] });
-    seed(join('artifacts', 'web-2.json'), { artifacts: [buildArtifact({ id: 'T-1' })] });
+    const stored = buildPopulatedArtifact({ id: 'T-1' });
+    const populated = { ...stored, pullRequests: stored.pullRequests.map(link => ({ ...link, repository: '.' })) };
+    seed(FILE, { counters: { T: 4, F: 1 }, artifacts: [legacyArtifact(stored), legacyArtifact(buildArtifact({ id: 'F-1', type: 'feature' }))] });
+    seed(join('artifacts', 'web-2.json'), { artifacts: [legacyArtifact(buildArtifact({ id: 'T-1' }))] });
 
     const { importer, legacy } = await importAll();
 
@@ -90,6 +98,21 @@ describe('JsonArtifactsImporterAdapter', () => {
     await importAll();
 
     expect(await dataSource.query('SELECT COUNT(*) AS "count" FROM "artifact_refinement"')).toEqual([{ count: 900 }]);
+  });
+
+  it('should import the single project of an old feature as its only project, and the pull requests of the project folder itself', async () => {
+    seed(FILE, {
+      artifacts: [
+        legacyArtifact(buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['shop'] })),
+        legacyArtifact(buildArtifact({ id: 'T-1', parentId: 'F-1', projectName: 'shop', pullRequests: [{ url: 'https://example.com/pr/1', repository: '.', state: 'open', addedAt: '2026-01-03T00:00:00.000Z' }] })),
+      ],
+    });
+
+    await importAll();
+
+    expect(await store().find(CONVERSATION, 'F-1')).toMatchObject({ projectName: null, projectNames: ['shop'] });
+    expect(await store().find(CONVERSATION, 'T-1')).toMatchObject({ projectName: 'shop', projectNames: ['shop'], pullRequests: [{ repository: '.' }] });
+    expect(await dataSource.query('SELECT "project_name" FROM "artifact" ORDER BY "position"')).toEqual([{ project_name: null }, { project_name: 'shop' }]);
   });
 
   it('should import a board written before the design refinement with the design skipped', async () => {

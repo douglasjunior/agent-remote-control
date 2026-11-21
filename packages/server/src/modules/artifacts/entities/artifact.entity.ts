@@ -28,8 +28,9 @@ export class ArtifactEntity {
   @Column({ name: 'parent_id', type: 'text', nullable: true })
   parentId: string | null;
 
-  @Column({ name: 'project_name', type: 'text' })
-  projectName: string;
+  /** The project of a task; `NULL` for a feature, whose projects are the rows of `artifact_project`. */
+  @Column({ name: 'project_name', type: 'text', nullable: true })
+  projectName: string | null;
 
   /** The holder's columns are all set or all `NULL`. */
   @Column({ name: 'assignee_role', type: 'text', nullable: true })

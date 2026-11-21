@@ -1,5 +1,7 @@
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from 'typeorm';
 
+import { DEFAULT_PULL_REQUEST_REPOSITORY } from '../constants/artifact-catalog.constant.js';
+
 import { ArtifactEntity } from './artifact.entity.js';
 
 
@@ -20,6 +22,9 @@ export class ArtifactPullRequestEntity {
 
   @Column({ type: 'text', nullable: true })
   title: string | null;
+
+  @Column({ type: 'text', default: DEFAULT_PULL_REQUEST_REPOSITORY })
+  repository: string;
 
   @Column({ type: 'text' })
   state: string;
