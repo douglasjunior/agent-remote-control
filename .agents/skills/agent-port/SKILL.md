@@ -106,7 +106,9 @@ The SDK only builds `ActiveSession` for `session/new`. A loaded session uses
 `ResumedSession` (`adapters/resumed-session.ts`), which implements the same `SessionHandle`
 (`sessionId`, `prompt`, `nextUpdate`, `dispose`): it receives updates through the global
 `session/update` handler and sends the prompt directly via `session/prompt`. The handle is only created after
-the `session/load` response, which discards the history the agent replays before it.
+the `session/load` response, which discards the history the agent replays before it, and it keeps only the
+updates that arrive while one of its prompts is pending: Antigravity may answer `session/load` before
+its replay ends, and the rest of that replay belongs to no turn.
 
 After creating or loading the session, the adapter applies the returned `configOptions`, the
 `sessionConfigPresets()` and the `setConfig` preference.
