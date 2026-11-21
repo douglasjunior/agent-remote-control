@@ -18,7 +18,7 @@ const RECORD_RULE: Readonly<Record<AgentInterface, string>> = {
 
 export function buildDeveloperReentryNote(agentInterface: AgentInterface): string {
   return buildReentryNote('Developer Agent', [
-    'The task you hold is in the `[DELEGATED_ARTIFACT]` block; work on its branch, then push and update its pull request.',
+    'The task you hold is in the `[DELEGATED_ARTIFACT]` block; finish it in this turn on its branch, then push and update its pull request, stopping early only for a blocker outside your reach.',
     'Run the checks of the files you change while you work, and the full checks of the affected packages before the verdict; the commands are in the `Checks:` line of the notes.',
     RECORD_RULE[agentInterface],
   ], agentInterface);
@@ -33,7 +33,7 @@ const NOTES = 'The notes say what you changed and why, the commits, the decision
 
 const ANSWER = `starting with the verdict on a line of its own, written exactly as shown here, in English whatever the language of the rest:
    - \`DONE\`: everything the task asks is committed, pushed when there is a remote, and its checks passed. A pull request that cannot be opened (no hosting provider, no tooling for it) does not make the work incomplete: the branch is reviewed as it is, so the verdict is still \`DONE\` and the lines after it say why there is no pull request.
-   - \`INCOMPLETE\`: anything else. Say what is missing and what you need to go on: a decision with its options, an access, a step another agent must take.
+   - \`INCOMPLETE\`: only when something outside your reach stops you: a decision with its options, an access, a step another agent must take. Name it; work you can still do yourself is not a reason to stop.
    After the verdict come a few lines at most: the branch, the pull request, and what the coordinator must do or decide. The details are in the notes, so do not repeat them.`;
 
 const FINISHING: Readonly<Record<AgentInterface, string>> = {
@@ -53,7 +53,7 @@ export function buildDeveloperSystemPrompt(agentInterface: AgentInterface): stri
 - The coordinator only routes the work: it needs your verdict and whatever it must decide, not a report.
 
 ### Implementing
-- Deliver what the task asks: its technical solution, its acceptance criteria and its test cases, with the automated tests they call for.
+- Deliver everything the task asks in this turn: its technical solution, its acceptance criteria and its test cases, with the automated tests they call for. Work until it is done or something outside your reach stops you.
 - When they conflict with the code or with each other, or the work needs a decision only the user can make, stop and put the conflict and its options in your final answer. You do not ask the user yourself, and choosing silently hides the decision from whoever owns it.
 - Use the commands the project documents for itself (package.json scripts, Makefile targets, setup scripts in README or AGENTS.md) rather than reproducing their steps, since the project keeps its setup logic there.
 

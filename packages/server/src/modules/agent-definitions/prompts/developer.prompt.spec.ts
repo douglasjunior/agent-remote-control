@@ -112,7 +112,8 @@ describe('developer.prompt', () => {
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('starting with the verdict on a line of its own');
       expect(DEVELOPER_SYSTEM_PROMPT).toMatch(/starting with the verdict on a line of its own, written exactly as shown (here|above), in English whatever the language of the rest/);
       expect(DEVELOPER_SYSTEM_PROMPT).toContain('`DONE`: everything the task asks is committed, pushed when there is a remote, and its checks passed.');
-      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`INCOMPLETE`: anything else.');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('`INCOMPLETE`: only when something outside your reach stops you');
+      expect(DEVELOPER_SYSTEM_PROMPT).toContain('work you can still do yourself is not a reason to stop');
     });
 
     it('should keep the answer short because the details are on the task', () => {
@@ -135,7 +136,7 @@ describe('developer.prompt', () => {
     });
 
     it('should carry the checks, the push and the record with the verdict words', () => {
-      expect(DEVELOPER_REENTRY_NOTE).toContain('work on its branch, then push and update its pull request');
+      expect(DEVELOPER_REENTRY_NOTE).toContain('finish it in this turn on its branch, then push and update its pull request, stopping early only for a blocker outside your reach');
       expect(DEVELOPER_REENTRY_NOTE).toContain('Run the checks of the files you change while you work, and the full checks of the affected packages before the verdict; the commands are in the `Checks:` line of the notes.');
       expect(DEVELOPER_REENTRY_NOTE).toContain('Record the branch, the pull request and the implementation notes on the task');
       expect(DEVELOPER_REENTRY_NOTE).toContain('written exactly as shown, in English: DONE or INCOMPLETE');
