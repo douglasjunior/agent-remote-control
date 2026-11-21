@@ -16,7 +16,7 @@ export function summary(overrides: Partial<ArtifactSummary> & Pick<ArtifactSumma
     parentId: null,
     projectName: 'app',
     dependsOn: [],
-    refinement: { business: 'pending', technical: 'pending' },
+    refinement: { business: 'pending', design: 'skipped', technical: 'pending' },
     assignee: null,
     branch: null,
     pullRequests: [],
@@ -39,7 +39,7 @@ export function openBoard(
   act(() => {
     app.connection.emitEvent({ type: 'conversation.list', conversations: [{ id: CONVERSATION_ID, title: 'My task', createdAt: AT, updatedAt: AT }] });
     app.connection.emitEvent({ type: 'conversation.history', conversationId: CONVERSATION_ID, entries: [], start: 0, state: 'idle' });
-    app.connection.emitEvent({ type: 'profiles', conversationId: CONVERSATION_ID, configured: true, profiles: roleProfiles });
+    app.connection.emitEvent({ type: 'profiles', conversationId: CONVERSATION_ID, configured: true, profiles: roleProfiles, customized: false });
     app.connection.emitEvent({ type: 'artifacts.list', conversationId: CONVERSATION_ID, artifacts: [...artifacts] });
     app.connection.emitEvent({ type: 'projects.list', projects: [...projects] });
   });
@@ -54,7 +54,7 @@ export function showDetail(app: AppHarness, artifact: ArtifactDetail): void {
 type Command = ClientCommand['type'];
 
 /** The last command of `type` the app sent. */
-export function lastSent<T extends Command>(app: AppHarness, type: T): Extract<ClientCommand, { type: T }> {
+export function lastSent<T extends Command>(app: Pick<AppHarness, 'connection'>, type: T): Extract<ClientCommand, { type: T }> {
   const command = app.connection.sent.filter(sent => sent.type === type).at(-1);
   if (!command) {
     throw new Error(`No ${type} was sent`);
@@ -64,7 +64,7 @@ export function lastSent<T extends Command>(app: AppHarness, type: T): Extract<C
 
 /** Answers the last mutation of `type` the app sent. */
 export async function answer(
-  app: AppHarness,
+  app: Pick<AppHarness, 'connection'>,
   type: 'artifact.create' | 'artifact.update' | 'artifact.comment' | 'artifact.delete',
   result: { ok: true; id: string } | { ok: false; error: string },
 ): Promise<void> {

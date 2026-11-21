@@ -38,7 +38,7 @@ function pageStart(entries: readonly ConversationEntry[], end: number, latest: n
 function segmentStarts(entries: readonly ConversationEntry[], liveDelegations: ReadonlySet<string>): number[] {
   const ends = new Map<string, number>();
   entries.forEach((entry, index) => {
-    if (entry.type === 'delegation' && entry.phase !== 'started') {
+    if (entry.type === 'delegation' && entry.phase !== 'started' && entry.phase !== 'steered') {
       ends.set(entry.delegationId, index);
     }
   });

@@ -46,10 +46,10 @@ describe('OpenWorkService', () => {
   it('should update a known record and ignore an unknown one', async () => {
     const { service, store } = await afterRestart(delegate);
 
-    await service.update('web-1', 'other', { taskSpec: 'x' });
-    await service.update('web-1', 'd', { taskSpec: 'New' });
+    await service.update('web-1', 'other', { summary: 'x' });
+    await service.update('web-1', 'd', { summary: 'New', updates: ['Also test it.'] });
 
-    expect(store.saved['web-1']).toEqual([{ ...delegate, taskSpec: 'New' }]);
+    expect(store.saved['web-1']).toEqual([{ ...delegate, summary: 'New', updates: ['Also test it.'] }]);
   });
 
   it('should close every record of a conversation', async () => {
@@ -69,7 +69,7 @@ describe('OpenWorkService', () => {
 
     await service.close('web-1', 'd');
     await service.closeAll('web-1');
-    await service.update('web-1', 'd', { taskSpec: 'x' });
+    await service.update('web-1', 'd', { summary: 'x' });
     await service.open('web-1', { ...delegate, id: 'new' });
     await service.discardInterruptedRoots('web-1');
 

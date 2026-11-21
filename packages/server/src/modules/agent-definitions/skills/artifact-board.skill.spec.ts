@@ -39,7 +39,7 @@ describe('artifact-board skill', () => {
     });
 
     it('should keep a task ready only while no refinement is pending, and park a refined task with blocked', () => {
-      expect(skill).toContain('keeps a task `ready` exactly while neither refinement is pending (a `ready` task whose refinement is set back to `pending` returns to the `backlog`)');
+      expect(skill).toContain('keeps a task `ready` exactly while no refinement is pending (a `ready` task whose refinement is set back to `pending` returns to the `backlog`)');
       expect(skill).toContain('It is also how a refined task is parked, since `backlog` and `ready` follow its refinements.');
     });
 

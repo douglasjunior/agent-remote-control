@@ -1,6 +1,9 @@
+import { Ban, CheckCheck, Clock3 } from 'lucide-react';
+
 import type { EntryItem } from '../../conversations/group-entries.js';
 import { cn } from '../../lib/utils.js';
 import { AttachmentChip } from '../prompt-input/attachment-chip.js';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip.js';
 
 import { ActivityGroup } from './activity-group.js';
 import { AgentMessage } from './agent-message.js';
@@ -10,6 +13,14 @@ import { Markdown } from './markdown.js';
 import { QuestionCard, type QuestionAnswer } from './question-card.js';
 import { RetryCard } from './retry-card.js';
 
+
+/** How a message sent while a turn ran reached the CEO: a status icon, what it means and its color. */
+const DELIVERY_STATUS = {
+  queued: { Icon: Clock3, description: 'The CEO reads this message with its next prompt.', color: 'text-muted-foreground' },
+  steered: { Icon: CheckCheck, description: 'Sent into the CEO\'s prompt while it was working.', color: 'text-primary' },
+  delivered: { Icon: CheckCheck, description: 'The CEO read this message with the running turn.', color: 'text-muted-foreground' },
+  cancelled: { Icon: Ban, description: 'Stopped before the CEO read it.', color: 'text-muted-foreground' },
+} as const;
 
 const NOTICE_STYLES = {
   info: 'text-muted-foreground',
@@ -33,6 +44,20 @@ interface FeedItemProps {
   readonly onStopRetrying: () => void;
 }
 
+function DeliveryStatus({ delivery }: { readonly delivery: keyof typeof DELIVERY_STATUS }) {
+  const { Icon, description, color } = DELIVERY_STATUS[delivery];
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={<span role="img" aria-label={description} data-delivery={delivery} tabIndex={0} className={cn('rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50', color)} />}
+      >
+        <Icon aria-hidden className="size-3.5" />
+      </TooltipTrigger>
+      <TooltipContent>{description}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded, focus, onFocus, onHover, onExpandedChange, onAnswer, onRetryNow, onStopRetrying }: FeedItemProps) {
   if (item.kind === 'activity') {
     return (
@@ -51,15 +76,18 @@ function FeedItemBody({ item, activityRunning, running, openQuestionId, expanded
   switch (entry.type) {
     case 'user_message':
       return (
-        <div className="ml-auto flex w-fit max-w-[82%] flex-col gap-1 rounded-[18px_18px_5px_18px] bg-primary px-[15px] py-2.5 text-sm [overflow-wrap:anywhere] text-primary-foreground">
-          {entry.text !== '' && <p className="whitespace-pre-wrap">{entry.text}</p>}
-          {entry.attachments && (
-            <ul aria-label="Attachments" className="flex flex-wrap gap-1">
-              {entry.attachments.map(attachment => (
-                <AttachmentChip key={attachment.path} name={attachment.name} className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
-              ))}
-            </ul>
-          )}
+        <div className="ml-auto flex w-fit max-w-[82%] flex-col items-end gap-1">
+          <div className="flex w-fit max-w-full flex-col gap-1 rounded-[18px_18px_5px_18px] bg-primary px-[15px] py-2.5 text-sm [overflow-wrap:anywhere] text-primary-foreground">
+            {entry.text !== '' && <p className="whitespace-pre-wrap">{entry.text}</p>}
+            {entry.attachments && (
+              <ul aria-label="Attachments" className="flex flex-wrap gap-1">
+                {entry.attachments.map(attachment => (
+                  <AttachmentChip key={attachment.path} name={attachment.name} className="border-primary-foreground/30 bg-primary-foreground/15 text-primary-foreground" />
+                ))}
+              </ul>
+            )}
+          </div>
+          {entry.delivery && <DeliveryStatus delivery={entry.delivery} />}
         </div>
       );
     case 'agent_response':

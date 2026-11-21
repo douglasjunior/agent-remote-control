@@ -231,7 +231,7 @@ describe('SendConversationMessageUseCase', () => {
       agentTurn.turnBehavior = async (request) => {
         request.onActivity?.({ kind: 'thought', id: 't1', text: 'thinking' }, 'CEO');
         request.onActivity?.({ kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'in_progress' }, 'CEO');
-        request.onActivity?.({ kind: 'steering', id: 's1', text: 'ignored' }, 'CEO');
+        request.onActivity?.({ kind: 'cancelled', id: 'c1' }, 'CEO');
         request.onDelegation?.({ phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Do the work', summary: 'Doing the work' });
         request.onInterimMessage?.('working');
         request.onQuestion?.({ kind: 'asked', prompt });
@@ -342,7 +342,7 @@ describe('SendConversationMessageUseCase', () => {
     it('should return to running when a draft is the first output after queueing', async () => {
       const { useCase, agentTurn, states } = setup();
       agentTurn.turnBehavior = async (request) => {
-        request.onQueued?.();
+        request.onDelivery?.('queued');
         request.onDraft?.('Hi');
       };
 
@@ -408,7 +408,7 @@ describe('SendConversationMessageUseCase', () => {
     it('should publish queued and return to running once the turn produces output', async () => {
       const { useCase, agentTurn, states } = setup();
       agentTurn.turnBehavior = async (request) => {
-        request.onQueued?.();
+        request.onDelivery?.('queued');
         request.onInterimMessage?.('started');
       };
 
@@ -429,12 +429,14 @@ describe('SendConversationMessageUseCase', () => {
       expect(states()).toEqual(['running', 'idle']);
     });
 
-    it('should leave the state to the running turn when the prompt was steered into it', async () => {
+    it('should leave the state to the running turn when the message joined it, with no response of its own', async () => {
       const { useCase, agentTurn, states, entries, store } = setup();
       const gate = deferred();
       agentTurn.turnBehavior = async (request) => {
         if (request.prompt === 'first') {
           await gate.promise;
+        } else {
+          request.onDelivery?.('steered');
         }
       };
       const first = useCase.execute('web-1', 'first');
@@ -443,11 +445,44 @@ describe('SendConversationMessageUseCase', () => {
 
       await useCase.execute('web-1', 'also this');
 
-      expect(entries().at(-1)).toMatchObject({ type: 'agent_response', status: 'steered' });
+      expect(entries().at(-1)).toMatchObject({ type: 'user_message', text: 'also this', delivery: 'steered' });
+      expect(entries().filter(entry => entry.type === 'agent_response')).toEqual([]);
       expect(states()).toEqual(['running']);
       expect(store.flushed).toEqual([]);
       gate.resolve();
       await first;
+    });
+
+    it('should show on the message how it reached the CEO, in place, through queued, delivered and cancelled', async () => {
+      const { useCase, agentTurn, entries, states } = setup();
+      agentTurn.turnBehavior = async (request) => {
+        request.onDelivery?.('queued');
+        await rs.waitFor(() => expect(entries().at(-1)).toMatchObject({ type: 'user_message', text: request.prompt, delivery: 'queued' }));
+        request.onDelivery?.(request.prompt === 'joins' ? 'delivered' : 'cancelled');
+      };
+      agentTurn.turnResult = { response: '', status: 'steered' };
+      await useCase.execute('web-1', 'joins');
+      agentTurn.turnResult = { response: '', status: 'cancelled' };
+      await useCase.execute('web-1', 'dropped');
+
+      expect(entries()).toEqual([
+        expect.objectContaining({ type: 'user_message', text: 'joins', delivery: 'delivered' }),
+        expect.objectContaining({ type: 'user_message', text: 'dropped', delivery: 'cancelled' }),
+      ]);
+      expect(states()).toEqual(['running', 'queued', 'running', 'idle', 'running', 'queued', 'running', 'idle']);
+    });
+
+    it('should answer a message that waited and then started its own turn', async () => {
+      const { useCase, agentTurn, entries } = setup();
+      agentTurn.turnBehavior = async (request) => {
+        request.onDelivery?.('queued');
+        request.onDelivery?.('delivered');
+      };
+
+      await useCase.execute('web-1', 'later');
+
+      expect(entries().map(entry => entry.type)).toEqual(['user_message', 'agent_response']);
+      expect(entries()[0]).toMatchObject({ delivery: 'delivered' });
     });
 
     it('should publish idle only when the last of two overlapping turns ends', async () => {
@@ -458,7 +493,7 @@ describe('SendConversationMessageUseCase', () => {
         const gate = gates[started];
         started += 1;
         if (started === 2) {
-          request.onQueued?.();
+          request.onDelivery?.('queued');
         }
         await gate.promise;
       };

@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@rstest/core';
 
 import type { ActiveDelegation } from './active-delegation.model.js';
+import { DelegationControl } from './delegation-control.model.js';
 
 
 describe('ActiveDelegation', () => {
@@ -18,7 +19,7 @@ describe('ActiveDelegation', () => {
       startedAt: 1000,
       agentPort: {} as any,
       turn: {} as any,
-      steer: async () => true,
+      control: new DelegationControl({ runId: 'd-1', summary: 'Summary', contextSince: '2026-01-01T00:00:00.000Z' }),
       stop: async () => undefined,
     };
 

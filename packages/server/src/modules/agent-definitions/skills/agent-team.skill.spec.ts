@@ -91,8 +91,8 @@ describe('agent-team skill', () => {
     });
   });
 
-  it('should put discovery before technical planning and keep requirement interviews with the agents', () => {
-    expect(skill).toContain('discovery of what to build before technical planning');
+  it('should put discovery before design and design before technical planning, and keep requirement interviews with the agents', () => {
+    expect(skill).toContain('discovery of what to build before its design, design before technical planning');
     expect(skill).toContain('Different items, and phases that do not depend on each other, overlap across roles');
     expect(skill).toContain('Do not interview the user about requirements yourself');
   });

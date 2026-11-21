@@ -100,8 +100,7 @@ describe('ConversationEntryService', () => {
       expect(failed).not.toHaveProperty('created');
     });
 
-    it('should have no entry for steering or cancellation markers', () => {
-      expect(entries.activity({ kind: 'steering', id: 's', text: 'x' }, 'CEO', 'turn-1')).toBeNull();
+    it('should have no entry for a cancellation marker', () => {
       expect(entries.activity({ kind: 'cancelled', id: 'c' }, 'CEO', 'turn-1')).toBeNull();
     });
   });
@@ -137,6 +136,16 @@ describe('ConversationEntryService', () => {
       expect(entry).toMatchObject({ id: 'delegation:dl-1:started', delegationId: 'dl-1', phase: 'started', projectName: 'app', artifactId: 'T-3', prompt: 'Do the work', summary: 'Adding the login screen' });
       expect(entry).not.toHaveProperty('response');
       expect(valid(entry)).toBe(true);
+    });
+
+    it('should map each new instruction of a running delegation to an entry of its own', () => {
+      const steered = () => entries.delegation({ delegationId: 'dl-1', phase: 'steered', round: 3, role: 'DEVELOPER', roleName: 'Developer', taskSpec: 'Add tests too', summary: 'Adding the tests' });
+      const [first, second] = [steered(), steered()];
+
+      expect(first).toMatchObject({ phase: 'steered', delegationId: 'dl-1', prompt: 'Add tests too', summary: 'Adding the tests' });
+      expect(first.id).toMatch(/^delegation:dl-1:steered:/);
+      expect(second.id).not.toBe(first.id);
+      expect(valid(first)).toBe(true);
     });
 
     it('should map a finished delegation with the response, agent info and duration', () => {

@@ -44,6 +44,7 @@
   --sidebar-ring: oklch(0.723 0.014 214.4);
   --agent-ceo: oklch(0.62 0.14 75);
   --agent-product-owner: oklch(0.52 0.2 300);
+  --agent-ux-designer: oklch(0.58 0.17 25);
   --agent-tech-lead: oklch(0.52 0.17 255);
   --agent-developer: oklch(0.5 0.1 186);
   --agent-code-reviewer: oklch(0.55 0.2 350);
@@ -91,6 +92,7 @@
   --sidebar-ring: oklch(0.56 0.021 213.5);
   --agent-ceo: oklch(0.84 0.13 85);
   --agent-product-owner: oklch(0.76 0.15 300);
+  --agent-ux-designer: oklch(0.78 0.13 28);
   --agent-tech-lead: oklch(0.76 0.13 250);
   --agent-developer: oklch(0.8 0.13 183);
   --agent-code-reviewer: oklch(0.77 0.16 350);
@@ -200,6 +202,7 @@
 @keyframes mark-spin { to { transform: rotate(360deg); } }
 @keyframes mark-twinkle { 50% { transform: scale(0.72) rotate(45deg); } }
 @keyframes mark-seek { 0%, 100% { transform: rotate(-35deg); } 35% { transform: rotate(50deg); } 70% { transform: rotate(10deg); } }
+@keyframes mark-ink { 50% { transform: scale(1.45); opacity: 0.55; } }
 @keyframes mark-nudge-left { 50% { transform: translateX(-2px); } }
 @keyframes mark-nudge-right { 50% { transform: translateX(2px); } }
 @keyframes mark-blink { 50% { opacity: 0; } }
@@ -236,6 +239,7 @@
 @media (prefers-reduced-motion: no-preference) {
   .agent-mark[data-state='working'] .g-orbit { transform-origin: 16px 16px; animation: mark-spin 3.4s linear infinite; }
   .agent-mark[data-state='working'] .g-star { transform-origin: 16px 16px; animation: mark-twinkle 1.9s ease-in-out infinite; }
+  .agent-mark[data-state='working'] .g-ink { transform-origin: 16px 15px; animation: mark-ink 1.5s ease-in-out infinite; }
   .agent-mark[data-state='working'] .g-needle { transform-origin: 16px 16px; animation: mark-seek 2.8s ease-in-out infinite; }
   .agent-mark[data-state='working'] .g-left { animation: mark-nudge-left 1.1s ease-in-out infinite; }
   .agent-mark[data-state='working'] .g-right { animation: mark-nudge-right 1.1s ease-in-out infinite; }

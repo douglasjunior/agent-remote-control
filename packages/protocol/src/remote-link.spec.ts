@@ -1,4 +1,4 @@
-import { buildRemoteLink, deriveInstanceId, instanceIdFromPath, isFingerprintOf } from './remote-link.js';
+import { buildRemoteLink, deriveInstanceId, instanceIdFromPath, isFingerprintOf, trustedSignalingBaseUrl } from './remote-link.js';
 
 
 const FINGERPRINT = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8';
@@ -29,5 +29,18 @@ describe('remote-link', () => {
     ['/i/0123456789abcdef01234', null],
   ])('should read the instance id of %s', (path, expected) => {
     expect(instanceIdFromPath(path)).toBe(expected);
+  });
+
+  it.each([
+    ['an HTTPS URL, without its trailing slash', ' https://arc.example.com/ ', 'https://arc.example.com'],
+    ['an HTTP URL of localhost', 'http://localhost:3100', 'http://localhost:3100'],
+    ['an HTTP URL of 127.0.0.1', 'http://127.0.0.1:3100/', 'http://127.0.0.1:3100'],
+    ['an HTTP URL of [::1]', 'http://[::1]:3100', 'http://[::1]:3100'],
+    ['an HTTP URL of another host', 'http://arc.example.com', null],
+    ['another scheme', 'ftp://arc.example.com', null],
+    ['an empty text', '', null],
+    ['a text that is no URL', 'arc.example.com', null],
+  ])('should trust as a signaling server %s', (_name, text, expected) => {
+    expect(trustedSignalingBaseUrl(text)).toBe(expected);
   });
 });

@@ -1,4 +1,4 @@
-import { ARTIFACT_TYPES, type ArtifactType } from '@agent-remote-control/protocol/artifact';
+import { ARTIFACT_TYPES, REFINEMENT_KINDS, type ArtifactType, type RefinementKind } from '@agent-remote-control/protocol/artifact';
 import { X } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
@@ -19,6 +19,26 @@ import { ChoiceSelect } from './choice-select.js';
 
 const NONE = '';
 
+const REFINEMENT_SWITCHES: Readonly<Record<RefinementKind, { readonly title: string; readonly description: string; readonly owedByDefault: boolean }>> = {
+  business: {
+    title: 'Business refinement by the Product Owner',
+    description: 'Rules, user stories, acceptance criteria and test cases, discussed with you.',
+    owedByDefault: true,
+  },
+  design: {
+    title: 'Design refinement by the UX Designer',
+    description: 'Screens, states and a working prototype to approve before it is built.',
+    owedByDefault: false,
+  },
+  technical: {
+    title: 'Technical refinement by the Tech Lead',
+    description: 'The technical solution, before any code is written.',
+    owedByDefault: true,
+  },
+};
+
+const DEFAULT_REFINEMENTS = Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, REFINEMENT_SWITCHES[kind].owedByDefault])) as Record<RefinementKind, boolean>;
+
 function RefinementSwitch({ id, checked, onChange, title, description }: {
   readonly id: string;
   readonly checked: boolean;
@@ -38,7 +58,7 @@ function RefinementSwitch({ id, checked, onChange, title, description }: {
 }
 
 /**
- * Creates a feature or a task on the board of a conversation. Both refinements off means a simple task the CEO
+ * Creates a feature or a task on the board of a conversation. Every refinement off means a simple task the CEO
  * hands straight to the Developer.
  */
 export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defaultParentId }: {
@@ -55,8 +75,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
   const [chosenProject, setChosenProject] = useState(NONE);
   const [dependsOn, setDependsOn] = useState<readonly string[]>([]);
   const [overview, setOverview] = useState('');
-  const [business, setBusiness] = useState(true);
-  const [technical, setTechnical] = useState(true);
+  const [refinements, setRefinements] = useState(DEFAULT_REFINEMENTS);
   const [saving, setSaving] = useState(false);
 
   const parents = parentCandidates(type, artifacts);
@@ -82,8 +101,7 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
       ...(effectiveParent ? { parentId: effectiveParent } : { projectName }),
       dependsOn: [...dependsOn],
       ...(overview.trim() && { sections: { overview: overview.trim() } }),
-      businessRefinement: business,
-      technicalRefinement: technical,
+      refinements,
     });
     setSaving(false);
     if (result.ok) {
@@ -181,21 +199,17 @@ export function ArtifactCreateDialog({ conversationId, open, onOpenChange, defau
           </div>
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1.5 text-sm font-medium">Refinement</legend>
-            <RefinementSwitch
-              id="artifact-business-refinement"
-              checked={business}
-              onChange={setBusiness}
-              title="Business refinement by the Product Owner"
-              description="Rules, user stories, acceptance criteria and test cases, discussed with you."
-            />
-            <RefinementSwitch
-              id="artifact-technical-refinement"
-              checked={technical}
-              onChange={setTechnical}
-              title="Technical refinement by the Tech Lead"
-              description="The technical solution, before any code is written."
-            />
-            {!business && !technical && (
+            {REFINEMENT_KINDS.map(kind => (
+              <RefinementSwitch
+                key={kind}
+                id={`artifact-${kind}-refinement`}
+                checked={refinements[kind]}
+                onChange={checked => setRefinements({ ...refinements, [kind]: checked })}
+                title={REFINEMENT_SWITCHES[kind].title}
+                description={REFINEMENT_SWITCHES[kind].description}
+              />
+            ))}
+            {REFINEMENT_KINDS.every(kind => !refinements[kind]) && (
               <p className="text-xs text-muted-foreground">A simple item: it goes straight to the Developer.</p>
             )}
           </fieldset>

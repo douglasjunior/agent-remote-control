@@ -5,6 +5,8 @@ import type {
 
 import type { AgentActivity, AgentToolStatus } from '../ports/agent.port.js';
 
+import { type ChunkShape, StreamTrace } from './stream-trace.js';
+
 
 type ToolActivity = AgentActivity & { kind: 'tool' };
 
@@ -23,126 +25,18 @@ type MessageState = {
   isThought: boolean;
 };
 
-export type ParsedToolCallFields = {
+type ParsedToolCallFields = {
   readonly toolCallId: string;
   readonly title?: string;
   readonly status?: AgentToolStatus;
   readonly content?: readonly ToolCallContent[] | null;
 };
 
-export type ParsedAgentMessageChunk = {
+type ParsedAgentMessageChunk = {
   readonly text: string;
   readonly messageId?: string;
   readonly isThought?: boolean;
 };
-
-export function extractToolCallFields(
-  update: SessionNotification,
-): ParsedToolCallFields | null {
-  const { update: payload } = update;
-
-  if (
-    payload.sessionUpdate !== 'tool_call'
-    && payload.sessionUpdate !== 'tool_call_update'
-  ) {
-    return null;
-  }
-
-  return {
-    toolCallId: payload.toolCallId,
-    title: payload.title ?? undefined,
-    status: payload.status ?? undefined,
-    content: payload.content,
-  };
-}
-
-export function extractAgentTextChunk(
-  update: SessionNotification,
-): ParsedAgentMessageChunk | null {
-  const { update: payload } = update;
-
-  if (
-    payload.sessionUpdate !== 'agent_message_chunk'
-    && payload.sessionUpdate !== 'agent_thought_chunk'
-  ) {
-    return null;
-  }
-
-  if (payload.content.type !== 'text') {
-    return null;
-  }
-
-  return {
-    text: payload.content.text,
-    messageId: payload.messageId ?? undefined,
-    isThought: payload.sessionUpdate === 'agent_thought_chunk',
-  };
-}
-
-function meaningfulLines(text: string): string[] {
-  const lines: string[] = [];
-
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-
-    if (line.length === 0 || CODE_FENCE_PATTERN.test(line)) {
-      continue;
-    }
-
-    if (lines.length >= MAX_SUMMARY_LINES) {
-      lines.push(SUMMARY_TRUNCATION_MARKER);
-      break;
-    }
-
-    lines.push(line);
-  }
-
-  return lines;
-}
-
-export function extractToolDetails(
-  content: readonly ToolCallContent[] | null | undefined,
-): string | undefined {
-  if (!content) {
-    return undefined;
-  }
-
-  const parts: string[] = [];
-  for (const item of content) {
-    if (item.type !== 'content' || item.content.type !== 'text') {
-      continue;
-    }
-
-    const text = item.content.text.trim();
-    if (text.length > 0) {
-      parts.push(text);
-    }
-  }
-
-  return parts.length > 0 ? parts.join('\n') : undefined;
-}
-
-export function extractToolResultSummary(
-  content: readonly ToolCallContent[] | null | undefined,
-): string | undefined {
-  if (!content) {
-    return undefined;
-  }
-
-  for (const item of content) {
-    if (item.type !== 'content' || item.content.type !== 'text') {
-      continue;
-    }
-
-    const lines = meaningfulLines(item.content.text);
-
-    if (lines.length > 0) {
-      return lines.join('\n');
-    }
-  }
-
-  return undefined;
-}
 
 export class AgentStreamDemux {
   private readonly messages = new Map<string, MessageState>();
@@ -150,6 +44,7 @@ export class AgentStreamDemux {
   private fallbackId: string | null = null;
   private syntheticSeq = 0;
   private lastText = '';
+  private readonly trace = new StreamTrace();
 
   constructor(
     private readonly emit: (activity: AgentActivity) => void,
@@ -160,17 +55,28 @@ export class AgentStreamDemux {
     return this.lastText;
   }
 
+  /** The events of the round on one line, for the log. */
+  describeTrace(): string {
+    return this.trace.describeEvents();
+  }
+
+  /** The first chunk of each message id of the round, for the log. */
+  describeChunkShapes(): string {
+    return this.trace.describeShapes();
+  }
+
   handle(update: SessionNotification): void {
-    const chunk = extractAgentTextChunk(update);
+    const chunk = this.extractAgentTextChunk(update);
 
     if (chunk) {
       const id = this.resolveMessageId(chunk);
+      this.trace.recordChunk(id, chunk.text, Boolean(chunk.isThought), this.chunkShape(update));
       this.closeIdleBlocks(id);
       this.handleNarration(chunk, id);
       return;
     }
 
-    const toolFields = extractToolCallFields(update);
+    const toolFields = this.extractToolCallFields(update);
 
     if (!toolFields) {
       return;
@@ -179,6 +85,7 @@ export class AgentStreamDemux {
     if (update.update.sessionUpdate === 'tool_call') {
       this.fallbackId = null;
       this.closeIdleBlocks();
+      this.trace.recordToolCall(toolFields.toolCallId, toolFields.title);
     }
 
     this.dispatchTool(toolFields);
@@ -206,6 +113,7 @@ export class AgentStreamDemux {
     this.resetTurn();
     this.lastText = '';
     this.toolState.clear();
+    this.trace.reset();
   }
 
   private resetTurn(): void {
@@ -295,9 +203,9 @@ export class AgentStreamDemux {
   private dispatchTool(toolFields: ParsedToolCallFields): void {
     const previous = this.toolState.get(toolFields.toolCallId);
     const details =
-      extractToolDetails(toolFields.content) ?? previous?.details;
+      this.extractToolDetails(toolFields.content) ?? previous?.details;
     const result =
-      extractToolResultSummary(toolFields.content) ?? previous?.result;
+      this.extractToolResultSummary(toolFields.content) ?? previous?.result;
     const merged: ToolActivity = {
       kind: 'tool',
       toolCallId: toolFields.toolCallId,
@@ -309,5 +217,126 @@ export class AgentStreamDemux {
 
     this.toolState.set(toolFields.toolCallId, merged);
     this.emit(merged);
+  }
+
+  private extractToolCallFields(
+    update: SessionNotification,
+  ): ParsedToolCallFields | null {
+    const { update: payload } = update;
+
+    if (
+      payload.sessionUpdate !== 'tool_call'
+      && payload.sessionUpdate !== 'tool_call_update'
+    ) {
+      return null;
+    }
+
+    return {
+      toolCallId: payload.toolCallId,
+      title: payload.title ?? undefined,
+      status: payload.status ?? undefined,
+      content: payload.content,
+    };
+  }
+
+  private extractAgentTextChunk(
+    update: SessionNotification,
+  ): ParsedAgentMessageChunk | null {
+    const { update: payload } = update;
+
+    if (
+      payload.sessionUpdate !== 'agent_message_chunk'
+      && payload.sessionUpdate !== 'agent_thought_chunk'
+    ) {
+      return null;
+    }
+
+    if (payload.content.type !== 'text') {
+      return null;
+    }
+
+    return {
+      text: payload.content.text,
+      messageId: payload.messageId ?? undefined,
+      isThought: payload.sessionUpdate === 'agent_thought_chunk',
+    };
+  }
+
+  private chunkShape(update: SessionNotification): ChunkShape {
+    const payload = update.update as Extract<
+      SessionNotification['update'],
+      { sessionUpdate: 'agent_message_chunk' | 'agent_thought_chunk' }
+    >;
+
+    return {
+      update: payload.sessionUpdate,
+      hasMessageId: payload.messageId !== undefined && payload.messageId !== null,
+      contentType: payload.content.type,
+    };
+  }
+
+  private meaningfulLines(text: string): string[] {
+    const lines: string[] = [];
+
+    for (const rawLine of text.split('\n')) {
+      const line = rawLine.trim();
+
+      if (line.length === 0 || CODE_FENCE_PATTERN.test(line)) {
+        continue;
+      }
+
+      if (lines.length >= MAX_SUMMARY_LINES) {
+        lines.push(SUMMARY_TRUNCATION_MARKER);
+        break;
+      }
+
+      lines.push(line);
+    }
+
+    return lines;
+  }
+
+  private extractToolDetails(
+    content: readonly ToolCallContent[] | null | undefined,
+  ): string | undefined {
+    if (!content) {
+      return undefined;
+    }
+
+    const parts: string[] = [];
+    for (const item of content) {
+      if (item.type !== 'content' || item.content.type !== 'text') {
+        continue;
+      }
+
+      const text = item.content.text.trim();
+      if (text.length > 0) {
+        parts.push(text);
+      }
+    }
+
+    return parts.length > 0 ? parts.join('\n') : undefined;
+  }
+
+  private extractToolResultSummary(
+    content: readonly ToolCallContent[] | null | undefined,
+  ): string | undefined {
+    if (!content) {
+      return undefined;
+    }
+
+    for (const item of content) {
+      if (item.type !== 'content' || item.content.type !== 'text') {
+        continue;
+      }
+
+      const lines = this.meaningfulLines(item.content.text);
+
+      if (lines.length > 0) {
+        return lines.join('\n');
+      }
+    }
+
+    return undefined;
   }
 }

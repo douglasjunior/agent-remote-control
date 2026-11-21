@@ -13,9 +13,12 @@ import { WebArtifactsService } from '../services/web-artifacts.service.js';
 import { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebFileSearchSessionsService } from '../services/web-file-search-sessions.service.js';
+import { WebSettingsService } from '../services/web-settings.service.js';
 import { WebSkillsService } from '../services/web-skills.service.js';
+import { WebSquadsService } from '../services/web-squads.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
+import { ApplyConversationSquadUseCase } from '../use-cases/apply-conversation-squad.use-case.js';
 import { ArchiveConversationUseCase } from '../use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from '../use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from '../use-cases/create-conversation.use-case.js';
@@ -46,6 +49,12 @@ const LOGGED_COMMANDS: ReadonlySet<ClientCommand['type']> = new Set([
   'artifact.update',
   'artifact.comment',
   'artifact.delete',
+  'settings.set',
+  'settings.reset',
+  'settings.discord.test',
+  'squads.save',
+  'squads.delete',
+  'squads.apply',
 ]);
 
 @Injectable()
@@ -82,6 +91,9 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly renameConversation: RenameConversationUseCase,
     private readonly archiveConversation: ArchiveConversationUseCase,
     private readonly skills: WebSkillsService,
+    private readonly settings: WebSettingsService,
+    private readonly squads: WebSquadsService,
+    private readonly applySquad: ApplyConversationSquadUseCase,
   ) {}
 
   onModuleInit(): void {
@@ -187,6 +199,29 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'skill.delete':
         connection.send({ type: 'skill.result', requestId: command.requestId, ...await this.skills.delete(command.name) });
         return;
+      case 'settings.get':
+        connection.send(await this.settings.settings());
+        return;
+      case 'settings.set':
+        this.reportFailure(connection, await this.settings.set(command.changes));
+        return;
+      case 'settings.reset':
+        this.reportFailure(connection, await this.settings.reset(command.keys));
+        return;
+      case 'settings.discord.test':
+        connection.send(await this.settings.testDiscord({ token: command.token, guildId: command.guildId }));
+        return;
+      case 'squads.list':
+        connection.send({ type: 'squads', squads: await this.squads.list() });
+        return;
+      case 'squads.save': {
+        const { type: _type, ...input } = command;
+        this.reportFailure(connection, await this.squads.save(input));
+        return;
+      }
+      case 'squads.delete':
+        this.reportFailure(connection, await this.squads.delete(command.id));
+        return;
       case 'quota.get':
         return this.answerQuota(connection, command.refresh);
       case 'auth.status':
@@ -270,8 +305,15 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
       case 'retry.stop':
         return this.reportUnless(connection, command.conversationId, 'There is no retry waiting', () => this.retryTurn.stop(command.conversationId));
       case 'profiles.get': {
-        const { configured, profiles } = await this.getProfiles.execute(command.conversationId);
-        connection.send({ type: 'profiles', conversationId: command.conversationId, configured, profiles: [...profiles] });
+        const { profiles, ...state } = await this.getProfiles.execute(command.conversationId);
+        connection.send({ type: 'profiles', conversationId: command.conversationId, ...state, profiles: [...profiles] });
+        return;
+      }
+      case 'squads.apply': {
+        const result = await this.applySquad.execute(command.conversationId, command.squadId);
+        if (!result.ok) {
+          connection.send({ type: 'error', message: result.error, conversationId: command.conversationId });
+        }
         return;
       }
       case 'profiles.set': {
@@ -305,6 +347,13 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         return;
       case 'artifact.delete':
         connection.send(await this.artifacts.remove(command.conversationId, command.requestId, command.id));
+    }
+  }
+
+  /** A refused change answers its requester only; a saved one reaches everybody through the `settings` or `squads` broadcast. */
+  private reportFailure(connection: IClientConnection, outcome: { ok: true } | { ok: false; error: string }): void {
+    if (!outcome.ok) {
+      connection.send({ type: 'error', message: outcome.error });
     }
   }
 

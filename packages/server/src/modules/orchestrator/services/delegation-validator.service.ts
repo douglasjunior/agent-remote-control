@@ -6,11 +6,13 @@ import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { ValidatedDecision, ValidatedDelegation } from '../models/validated-delegation.model.js';
 import { type DelegationContract, IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { buildBusyRoleRepair, type BusyRoleReason } from '../prompts/busy-role.prompt.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
 import { type DelegationResult, DelegationDetectorService } from './delegation-detector.service.js';
 import { DelegationLimitsConfigService } from './delegation-limits-config.service.js';
 import { DelegationStatusService } from './delegation-status.service.js';
+import { SteeringSupportService } from './steering-support.service.js';
 
 
 /** Checks the delegations of a CEO response against the team, the board, the workspace and the agents already running. */
@@ -24,6 +26,7 @@ export class DelegationValidatorService {
     private readonly conversationRuntime: ConversationRuntimeService,
     private readonly delegationStatus: DelegationStatusService,
     private readonly limits: DelegationLimitsConfigService,
+    private readonly steeringSupport: SteeringSupportService,
   ) {}
 
   /** Reads the CEO response and checks every delegation in it, so an invalid one goes back to the CEO before any agent starts. */
@@ -64,7 +67,7 @@ export class DelegationValidatorService {
     if ('reason' in withArtifact) {
       return withArtifact;
     }
-    const violation = this.checkDelegationContract(delegateToRole, contract, withArtifact);
+    const violation = this.checkDelegationContract(delegateToRole, contract, withArtifact) ?? this.checkBusyRole(withArtifact, request.conversationId);
     if (violation) {
       return { reason: violation };
     }
@@ -130,6 +133,33 @@ export class DelegationValidatorService {
    */
   private redirects(conversationId: string, role: string, artifactId: string): boolean {
     return this.conversationRuntime.findActiveDelegation(conversationId, role)?.artifactId === artifactId;
+  }
+
+  /**
+   * A role already at work keeps its work unless the CEO says otherwise: only an instruction on the same work for an
+   * agent known to take it mid-prompt goes in without `on_busy`, since anything else either waits or costs work.
+   */
+  private checkBusyRole(delegation: DelegationResult, conversationId: string): string | undefined {
+    const active = this.conversationRuntime.findActiveDelegation(conversationId, delegation.delegateToRole);
+    if (!active || delegation.onBusy) {
+      return undefined;
+    }
+    const sameWork = active.projectName === (delegation.projectName ?? null) && active.artifactId === (delegation.artifactId ?? null);
+    const steering = this.steeringSupport.supports(active.agentPort.agentName);
+    if (sameWork && steering === true) {
+      return undefined;
+    }
+    let reason: BusyRoleReason = 'other_work';
+    if (sameWork) {
+      reason = steering === false ? 'no_steering' : 'unknown_steering';
+    }
+    let work = 'at the workspaces root';
+    if (active.artifactId) {
+      work = `on ${active.artifactId}`;
+    } else if (active.projectName) {
+      work = `in project folder "${active.projectName}"`;
+    }
+    return buildBusyRoleRepair(active.role, work, reason);
   }
 
   private async resolveDelegationFolder(

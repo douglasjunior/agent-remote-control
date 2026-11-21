@@ -1,20 +1,23 @@
-import { BookOpenText, PanelLeftClose, PanelLeftOpen, Plus } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plus, Settings } from 'lucide-react';
 import { useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 
 import { ArtifactsProvider } from '../artifacts/artifacts-context.js';
 import { useConnection } from '../connection/connection-context.js';
 import { ConversationsProvider, useConversations } from '../conversations/conversations-context.js';
 import { useMediaQuery } from '../lib/use-media-query.js';
 import { useStoredFlag } from '../lib/use-stored-flag.js';
+import { cn } from '../lib/utils.js';
 import { MissingTokenPage } from '../pages/missing-token-page.js';
 
 import { AmbientGlow } from './ambient-glow.js';
-import { AgentAuthController } from './auth/agent-auth-controller.js';
+import type { AppOutletContext } from './app-outlet-context.js';
+import { AgentAuthProvider, useAgentAuth } from './auth/agent-auth-provider.js';
 import { ConnectionBadge } from './connection-badge.js';
 import { ConversationList } from './conversation-list.js';
+import { HOME_PATH, homeFocusState } from './home/home-paths.js';
 import { IconButton } from './icon-button.js';
-import { skillsPath, skillsState } from './skills/skill-paths.js';
+import { SETTINGS_PATH, settingsState } from './settings-hub/settings-paths.js';
 import { ThemeToggle } from './theme-toggle.js';
 import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
@@ -33,9 +36,11 @@ export function AppLayout() {
   return (
     <ConversationsProvider>
       <ArtifactsProvider>
-        <AmbientGlow />
-        <AppShell />
-        <Toaster position="bottom-right" />
+        <AgentAuthProvider>
+          <AmbientGlow />
+          <AppShell />
+          <Toaster position="bottom-right" />
+        </AgentAuthProvider>
       </ArtifactsProvider>
     </ConversationsProvider>
   );
@@ -47,13 +52,20 @@ const CONVERSATION_LIST_ID = 'conversation-list';
 
 function AppShell() {
   const { status, transport } = useConnection();
+  const { needsLogin } = useAgentAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const { createConversation } = useConversations();
   const docked = useMediaQuery(DOCKED_QUERY);
   const [dockOpen, setDockOpen] = useStoredFlag('arc.conversationListOpen', false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const listOpen = docked ? dockOpen : drawerOpen;
   const toggleList = () => (docked ? setDockOpen(!dockOpen) : setDrawerOpen(true));
+  const showConversations = () => (docked ? setDockOpen(true) : setDrawerOpen(true));
+  const outletContext: AppOutletContext = { conversationListVisible: docked && dockOpen, showConversations };
+  const newConversation = () => (location.pathname === HOME_PATH
+    ? void navigate(HOME_PATH, { replace: true, state: homeFocusState() })
+    : createConversation());
 
   return (
     <div className="relative z-10 flex h-dvh">
@@ -74,7 +86,7 @@ function AppShell() {
             >
               {listOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
             </IconButton>
-            <Button size="sm" aria-label="New conversation" className="shrink-0" onClick={createConversation}>
+            <Button size="sm" aria-label="New conversation" className="shrink-0" onClick={newConversation}>
               <Plus />
               <span className="hidden sm:inline">New conversation</span>
             </Button>
@@ -82,19 +94,19 @@ function AppShell() {
           </div>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <Tooltip>
-              <TooltipTrigger render={<Link to={skillsPath()} state={skillsState(location)} aria-label="Skills" className={buttonVariants({ variant: 'ghost', size: 'icon' })} />}>
-                <BookOpenText />
+              <TooltipTrigger render={<Link to={SETTINGS_PATH} state={settingsState(location)} aria-label={needsLogin ? 'Settings, agent login needed' : 'Settings'} className={cn(buttonVariants({ variant: 'ghost', size: 'icon' }), 'relative')} />}>
+                <Settings />
+                {needsLogin && <span aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-destructive" />}
               </TooltipTrigger>
-              <TooltipContent>Skills</TooltipContent>
+              <TooltipContent>Settings</TooltipContent>
             </Tooltip>
-            <AgentAuthController />
             <UsageIndicator />
             <ConnectionBadge status={status} transport={transport} />
             <ThemeToggle />
           </div>
         </header>
         <main className="min-h-0 flex-1">
-          <Outlet />
+          <Outlet context={outletContext} />
         </main>
       </div>
       {!docked && (

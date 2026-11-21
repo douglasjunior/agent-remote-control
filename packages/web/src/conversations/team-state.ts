@@ -32,9 +32,9 @@ const CLOSING_STATE = { finished: 'done', failed: 'failed', cancelled: 'idle' } 
 
 /**
  * The team as the current turn left it: every role of the team in order, then any other role delegated to.
- * A user message ends the turn that precedes it, except for delegations still open while a turn runs: the
- * CEO accepts new messages while delegates keep working, so those stay in the team with their
- * activity. The agent whose question is still open is waiting, whatever was published after the question.
+ * A user message that starts a turn ends the one that precedes it, except for delegations still open while a turn
+ * runs, which stay in the team with their activity; a message that joined a running turn (one with a `delivery`)
+ * ends nothing. The agent whose question is still open is waiting, whatever was published after the question.
  * A delegation still open when no turn runs was stopped by a restart, so its agent is idle. An open
  * question outlives a restart, which leaves its agent waiting with no turn running.
  */
@@ -47,7 +47,7 @@ export function deriveTeam(
   const activity = new Map<string, { steps: number; doing: string }>();
 
   for (const entry of entries) {
-    if (entry.type === 'user_message') {
+    if (entry.type === 'user_message' && entry.delivery === undefined) {
       for (const [role, delegate] of delegates) {
         if (!running || !delegate.open) {
           delegates.delete(role);
@@ -72,6 +72,10 @@ export function deriveTeam(
           delegationId: entry.delegationId,
           open: true,
         });
+      } else if (entry.phase === 'steered') {
+        if (previous?.delegationId === entry.delegationId) {
+          delegates.set(entry.role, { ...previous, member: { ...previous.member, summary: entry.summary } });
+        }
       } else if (previous?.delegationId === entry.delegationId) {
         delegates.set(entry.role, {
           member: {

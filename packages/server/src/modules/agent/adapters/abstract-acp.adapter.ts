@@ -33,6 +33,7 @@ import {
   type AgentSessionOptions,
   type AgentUsage,
   type IAgentPort,
+  type SteeringOutcome,
 } from '../ports/agent.port.js';
 import { buildAgentProcessEnv } from '../utils/agent-env.util.js';
 
@@ -48,6 +49,7 @@ const CANCEL_ESCALATION_MS = 5_000;
 const CANCEL_FORCE_GRACE_MS = 15_000;
 const STEERING_METHOD = '_session/steering';
 const STEERING_INJECTED_OUTCOME = 'injected';
+const STEERING_PROMPT_REQUIRED_OUTCOME = 'promptRequired';
 
 const PERMISSION_ALLOW_PREFERENCE: readonly PermissionOption['kind'][] = [
   'allow_always',
@@ -484,6 +486,8 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
           this.logger.debug(
             `prompt_round_stop: ${this.currentSessionId} (reason=${message.stopReason})`,
           );
+          this.logger.log(`[Stream Trace] Agent=${this.agentName}, Session=${this.currentSessionId}, Events=${this.demux.describeTrace()}`);
+          this.logger.log(`[Stream Chunk Shapes] Agent=${this.agentName}, Session=${this.currentSessionId}, Shapes=${this.demux.describeChunkShapes()}`);
           if (message.stopReason === 'cancelled' || this.cancelPending) {
             thrownError = new PromptCancelledError();
           } else {
@@ -546,7 +550,7 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     this.logger.warn(`cancel_escalation_abort: ${sessionId}`);
 
     if (this.steeringSupported) {
-      void this.sendSteeringPrompt(CANCEL_ABORT_PROMPT_TEXT);
+      void this.injectSteering(CANCEL_ABORT_PROMPT_TEXT);
     } else {
       void this.sendCancelNotification(sessionId);
     }
@@ -582,48 +586,41 @@ export abstract class AbstractAcpAdapter implements IAgentPort {
     }
   }
 
-  async sendSteeringPrompt(text: string): Promise<boolean> {
+  async sendSteeringPrompt(text: string): Promise<SteeringOutcome> {
+    if (!this.steeringSupported) {
+      return 'unsupported';
+    }
+    return this.injectSteering(text);
+  }
+
+  /**
+   * `promptRequired` leaves an idle agent idle, so a text sent between prompts is never delivered as a prompt of its
+   * own and the caller keeps it for the next one.
+   */
+  private async injectSteering(text: string): Promise<SteeringOutcome> {
     if (!this.connection || !this.currentSessionId) {
-      return false;
+      return 'not_running';
     }
     const sessionId = this.currentSessionId;
-
-    if (this.steeringSupported) {
-      this.logger.debug(`steering_inject_sent: ${sessionId}`);
-      try {
-        const response: unknown = await this.connection.agent.request(STEERING_METHOD, {
-          sessionId,
-          prompt: [{ type: 'text', text }],
-          _meta: { steering: { idleBehavior: 'promptRequired' } },
-        });
-        const outcome = (response as { outcome?: string } | undefined)?.outcome;
-        this.logger.debug(`steering_inject_resolved: ${sessionId} outcome=${outcome}`);
-        return outcome === STEERING_INJECTED_OUTCOME;
-      } catch (error) {
-        this.logger.warn(
-          `steering_inject_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-        return false;
-      }
-    }
-
-    this.logger.debug(`steering_prompt_sent: ${sessionId}`);
-    void this.connection.agent
-      .request('session/prompt', {
+    this.logger.debug(`steering_inject_sent: ${sessionId}`);
+    try {
+      const response: unknown = await this.connection.agent.request(STEERING_METHOD, {
         sessionId,
         prompt: [{ type: 'text', text }],
-      })
-      .then((response: unknown) => {
-        this.logger.debug(
-          `steering_prompt_resolved: ${sessionId} stopReason=${(response as { stopReason?: string } | undefined)?.stopReason}`,
-        );
-      })
-      .catch((error: unknown) => {
-        this.logger.warn(
-          `steering_prompt_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
+        _meta: { steering: { idleBehavior: 'promptRequired' } },
       });
-    return true;
+      const outcome = (response as { outcome?: string } | undefined)?.outcome;
+      this.logger.debug(`steering_inject_resolved: ${sessionId} outcome=${outcome}`);
+      if (outcome === STEERING_INJECTED_OUTCOME) {
+        return 'injected';
+      }
+      return outcome === STEERING_PROMPT_REQUIRED_OUTCOME ? 'not_running' : 'failed';
+    } catch (error) {
+      this.logger.warn(
+        `steering_inject_failed (${sessionId}): ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      return 'failed';
+    }
   }
 
   async closeSession(): Promise<void> {

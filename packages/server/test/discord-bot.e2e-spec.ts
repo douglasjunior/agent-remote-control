@@ -5,6 +5,7 @@ import { Events } from 'discord.js';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DataSource } from 'typeorm';
 
 import { AppModule } from '../src/app.module.js';
 import { type AgentProviderInfo, IAgentPortFactory } from '../src/modules/agent/ports/agent-port-factory.port.js';
@@ -192,6 +193,17 @@ class SelectableAgentFake extends E2EAgentFake {
   }
 }
 
+/** The CEO profile of the conversation as the settings store keeps it. */
+async function storedCeoProfile(moduleFixture: TestingModule, conversationId: string): Promise<Record<string, unknown> | undefined> {
+  const rows = await moduleFixture.get(DataSource).query(
+    'SELECT "agent_id" AS "agentId", "agent_name" AS "agentName", "model_id" AS "modelId", "model_name" AS "modelName", '
+    + '"effort_id" AS "effortId", "effort_name" AS "effortName" FROM "agent_profile" WHERE "conversation_id" = ? AND "role" = \'CEO\'',
+    [conversationId],
+  );
+  return rows[0];
+}
+
+/** Written as an earlier version kept it, so the server imports it into the database as it starts. */
 function seedAgentSettings(dataDir: string, conversationId = 'channel-e2e-111:thread-e2e-999'): void {
   const existing = existsSync(join(dataDir, 'agent-settings.json'))
     ? JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))
@@ -345,7 +357,8 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     );
     expect(storedSession).not.toBeNull();
     expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123', projectName: null, artifactId: null }]);
-    expect(readFileSync(join(dataDir, 'sessions.json'), 'utf-8')).toContain('e2e-session-123');
+    expect(await app.get(DataSource).query('SELECT "session_id" FROM "agent_session" WHERE "conversation_id" = ?', ['channel-e2e-111:thread-e2e-999']))
+      .toEqual([{ session_id: 'e2e-session-123' }]);
 
     await app.close();
   });
@@ -436,7 +449,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     mkdirSync(join(workspaceDir, 'my-app'), { recursive: true });
     const ceo = new ScriptedAgentFake([
       '<skill_read name="artifact-board"/>',
-      '<artifact_create type="task" title="Login screen" project="my-app" business_refinement="skipped" technical_refinement="skipped"><section name="overview">Add login to my-app.</section></artifact_create>',
+      '<artifact_create type="task" title="Login screen" project="my-app" business_refinement="skipped" design_refinement="skipped" technical_refinement="skipped"><section name="overview">Add login to my-app.</section></artifact_create>',
       'On it.\n<artifact_update id="T-1" status="in_progress"/>\n<delegate role="DEVELOPER" summary="Doing the work" artifact="T-1">\nImplement T-1.\n</delegate>',
       '<artifact_update id="T-1" status="done"/>',
       'Login delivered.',
@@ -506,8 +519,10 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     );
     expect(threadMessages).toContain('↩️ **Developer Agent finished** in project `my-app` on `T-1` — the CEO is reviewing the result.');
     expect(threadMessages).toContain(`Login delivered.\n${FOOTER}`);
-    const board = JSON.parse(readFileSync(join(dataDir, 'artifacts', `${encodeURIComponent('channel-delegation:thread-delegation')}.json`), 'utf-8'));
-    expect(board.artifacts).toEqual([expect.objectContaining({ id: 'T-1', status: 'done', branch: 'feat/t-1-login', assignee: null, projectName: 'my-app' })]);
+    expect(await app.get(DataSource).query(
+      'SELECT "id", "status", "branch", "assignee_role", "project_name" FROM "artifact" WHERE "conversation_id" = ?',
+      ['channel-delegation:thread-delegation'],
+    )).toEqual([{ id: 'T-1', status: 'done', branch: 'feat/t-1-login', assignee_role: null, project_name: 'my-app' }]);
 
     await app.close();
   });
@@ -564,7 +579,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, '1'));
 
     expect(sent).toContain('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model Two · ⚡ Low');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-select:thread-select'].profiles.CEO).toMatchObject({
+    expect(await storedCeoProfile(moduleFixture, 'channel-select:thread-select')).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'two',
@@ -633,7 +648,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(buildThread('thread-model', 'channel-model', sent), '1'));
 
     expect(sent).toEqual(['✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default']);
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-model:thread-model'].profiles.CEO.modelId).toBe('one');
+    expect((await storedCeoProfile(moduleFixture, 'channel-model:thread-model'))?.modelId).toBe('one');
 
     await app.close();
   });
@@ -690,7 +705,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(selectionThread, '1'));
 
     expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Antigravity · 🧠 Model One · ⚡ default');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-selection'].profiles.CEO.modelId).toBe('one');
+    expect((await storedCeoProfile(moduleFixture, 'channel-general:thread-selection'))?.modelId).toBe('one');
 
     await app.close();
   });
@@ -748,7 +763,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
 
     expect(sent.at(-1)).toBe('✅ **Settings saved for all profiles**: 🤖 Claude Code · 🧠 Model One · ⚡ default');
     expect(createdAgentIds).toContain('claude');
-    expect(JSON.parse(readFileSync(join(dataDir, 'agent-settings.json'), 'utf-8'))['channel-general:thread-agent'].profiles.CEO).toMatchObject({
+    expect(await storedCeoProfile(moduleFixture, 'channel-general:thread-agent')).toMatchObject({
       agentId: 'claude',
       agentName: 'Claude Code',
       modelId: 'one',
@@ -774,7 +789,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     (moduleFixture.get<DiscordClientService>(DiscordClientService).getClient() as any).user = {
       id: 'bot-e2e-id',
     };
-    const readLanguage = () => JSON.parse(readFileSync(join(dataDir, 'preferences.json'), 'utf-8')).language;
+    const readLanguage = async () => (await moduleFixture.get(DataSource).query('SELECT "language" FROM "preferences"'))[0]?.language;
 
     const sent: string[] = [];
     const thread = buildThread('thread-language', 'channel-general', sent);
@@ -783,7 +798,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     expect(agent.prompts[0]).toContain('<user_language>language name in English</user_language>');
     expect(sent.some(message => message.startsWith('Olá!'))).toBe(true);
     expect(sent.join('\n')).not.toContain('<user_language>');
-    expect(readLanguage()).toBe('Brazilian Portuguese');
+    expect(await readLanguage()).toBe('Brazilian Portuguese');
 
     const interaction = {
       isChatInputCommand: rs.fn().mockReturnValue(true),
@@ -808,7 +823,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
     await messageHandler.handleMessage(threadReply(thread, 'Spanish'));
 
     expect(sent.at(-1)).toBe('✅ **Language saved**: Spanish');
-    expect(readLanguage()).toBe('Spanish');
+    expect(await readLanguage()).toBe('Spanish');
 
     await messageHandler.handleMessage(threadReply(thread, 'Hola'));
 

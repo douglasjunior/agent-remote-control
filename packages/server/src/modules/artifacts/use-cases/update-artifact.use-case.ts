@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import { REFINEMENT_KINDS } from '../constants/artifact-catalog.constant.js';
 import type {
   Artifact,
   ArtifactActor,
@@ -139,11 +140,11 @@ export class UpdateArtifactUseCase {
         draft.dependsOn = dependsOn;
       }
     }
-    for (const side of ['business', 'technical'] as const) {
-      const state = changes.refinement?.[side];
-      if (state !== undefined && state !== draft.refinement[side]) {
-        recorded.push({ field: `${side}_refinement`, from: draft.refinement[side], to: state });
-        draft.refinement = { ...draft.refinement, [side]: state };
+    for (const kind of REFINEMENT_KINDS) {
+      const state = changes.refinement?.[kind];
+      if (state !== undefined && state !== draft.refinement[kind]) {
+        recorded.push({ field: `${kind}_refinement`, from: draft.refinement[kind], to: state });
+        draft.refinement = { ...draft.refinement, [kind]: state };
       }
     }
     if (changes.branch !== undefined) {

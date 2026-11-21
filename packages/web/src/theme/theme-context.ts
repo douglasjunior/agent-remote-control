@@ -4,6 +4,7 @@ import { createContext, useContext } from 'react';
 export type Theme = 'light' | 'dark' | 'system';
 
 export const THEMES: readonly Theme[] = ['light', 'dark', 'system'];
+export const THEME_LABELS: Readonly<Record<Theme, string>> = { light: 'Light', dark: 'Dark', system: 'System' };
 export const THEME_STORAGE_KEY = 'arc.theme';
 
 export type ThemeContextValue = {

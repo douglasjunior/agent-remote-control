@@ -2,6 +2,7 @@ import { Injectable, Logger, Inject, type OnModuleInit } from '@nestjs/common';
 import { type ClientUser, Events, type Message } from 'discord.js';
 
 import type { TurnTranscription } from '../../orchestrator/models/audio-transcription.model.js';
+import type { UserMessageDelivery } from '../../orchestrator/models/conversation-turn.model.js';
 import type { DelegationEvent } from '../../orchestrator/models/delegation-event.model.js';
 import type { QuestionEvent } from '../../orchestrator/models/question-event.model.js';
 import type { TurnActivity } from '../../orchestrator/models/turn-activity.model.js';
@@ -23,6 +24,9 @@ import { buildConversationId, type ConversationKey, resolveConversationKey } fro
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 const STEERED_NOTICE = '📨 *Message sent to the running agent. The reply will come with the current task\'s response.*';
+const DELIVERED_NOTICE = '📨 *Message delivered to the CEO with the running task. The reply will come with its response.*';
+const QUEUED_PROGRESS = '⏳ *The CEO is in the middle of a prompt: it reads this message with its next one.*';
+const MESSAGE_CANCELLED_NOTICE = '⚠️ *Message cancelled before the CEO read it.*';
 
 type SendableChannel = {
   send: (options: string | { content?: string; files?: string[] }) => Promise<any>;
@@ -68,11 +72,9 @@ export class DiscordMessageHandler implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.discordClientService
-      .getClient()
-      .on(Events.MessageCreate, (message) => {
-        void this.handleMessage(message);
-      });
+    this.discordClientService.on(Events.MessageCreate, (message) => {
+      void this.handleMessage(message);
+    });
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -214,6 +216,18 @@ export class DiscordMessageHandler implements OnModuleInit {
       }
       if (resolution.kind === 'profiles_closed') {
         await targetChannel.send(this.activityFormatter.formatProfilesClosed());
+        return;
+      }
+      if (resolution.kind === 'squad_applied') {
+        await targetChannel.send(this.activityFormatter.formatSquadApplied(resolution.squadName));
+        return;
+      }
+      if (resolution.kind === 'squad_failed') {
+        await targetChannel.send(this.activityFormatter.formatSquadFailed(resolution.error));
+        return;
+      }
+      if (resolution.kind === 'squad_closed') {
+        await targetChannel.send(this.activityFormatter.formatSquadClosed());
         return;
       }
       if (resolution.configured) {
@@ -388,6 +402,7 @@ export class DiscordMessageHandler implements OnModuleInit {
         }
       };
 
+      let delivery: UserMessageDelivery | undefined;
       let result: TurnResult;
       try {
         result = await this.agentTurn.executeTurn({
@@ -403,10 +418,11 @@ export class DiscordMessageHandler implements OnModuleInit {
           onQuestion,
           onRetry,
           onTranscription,
-          onQueued: () => {
-            void progressMessage
-              .edit('⏳ *Waiting for the previous task in this conversation to finish...*')
-              .catch(() => undefined);
+          onDelivery: (next) => {
+            delivery = next;
+            if (next === 'queued') {
+              void progressMessage.edit(QUEUED_PROGRESS).catch(() => undefined);
+            }
           },
         });
       } finally {
@@ -419,7 +435,7 @@ export class DiscordMessageHandler implements OnModuleInit {
       throttler.destroy();
       await Promise.all(Array.from(toolMessages.values()).map(p => p.catch(() => undefined)));
 
-      await this.sendTurnResult(targetChannel, conversationId, result);
+      await this.sendTurnResult(targetChannel, conversationId, result, delivery);
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
@@ -528,7 +544,13 @@ export class DiscordMessageHandler implements OnModuleInit {
     return { channelId: message.channelId, threadId: thread.id, target: thread };
   }
 
-  private async sendTurnResult(targetChannel: SendableChannel, conversationId: string, result: TurnResult): Promise<void> {
+  /** `delivery` is how the message reached the CEO when it found a turn running. */
+  private async sendTurnResult(
+    targetChannel: SendableChannel,
+    conversationId: string,
+    result: TurnResult,
+    delivery: UserMessageDelivery | undefined,
+  ): Promise<void> {
     const footer = result.agentInfo
       ? this.activityFormatter.formatAgentFooter(result.agentInfo, result.usage)
       : '';
@@ -547,8 +569,14 @@ export class DiscordMessageHandler implements OnModuleInit {
     }
 
     if (result.status === 'steered') {
-      this.logger.log(`[Turn Steered] Prompt joined the running turn of conversation ${conversationId}`);
-      await targetChannel.send(STEERED_NOTICE);
+      this.logger.log(`[Turn Joined] The message joined the running turn of conversation ${conversationId} (${delivery})`);
+      await targetChannel.send(delivery === 'steered' ? STEERED_NOTICE : DELIVERED_NOTICE);
+      return;
+    }
+
+    if (delivery === 'cancelled') {
+      this.logger.warn(`[Message Cancelled] A stop cancelled the message waiting in conversation ${conversationId}`);
+      await targetChannel.send(MESSAGE_CANCELLED_NOTICE);
       return;
     }
 

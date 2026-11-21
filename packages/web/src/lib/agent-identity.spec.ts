@@ -8,7 +8,7 @@ describe('agentIdentity', () => {
     const identities = TEAM_ROLES.map(role => agentIdentity(role));
 
     expect(new Set(identities.map(identity => identity.mark)).size).toBe(TEAM_ROLES.length);
-    expect(identities.map(identity => identity.stage)).toEqual(['Leads', 'Idea', 'Plan', 'Build', 'Review', 'Test', 'Ship', 'Environment']);
+    expect(identities.map(identity => identity.stage)).toEqual(['Leads', 'Idea', 'Design', 'Plan', 'Build', 'Review', 'Test', 'Ship', 'Environment']);
     expect(new Set(identities.map(identity => identity.color)).size).toBe(TEAM_ROLES.length);
   });
 
@@ -18,6 +18,16 @@ describe('agentIdentity', () => {
       label: 'Developer',
       tagline: 'Writes the code',
       responsibility: 'Builds the plan, writes the tests, and fixes what the review finds.',
+    });
+  });
+
+  it('should place the UX designer between the idea and the plan', () => {
+    expect(TEAM_ROLES.slice(1, 4)).toEqual(['PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD']);
+    expect(agentIdentity('UX_DESIGNER')).toMatchObject({
+      mark: 'ux',
+      label: 'UX Designer',
+      tagline: 'Designs how it looks and feels',
+      color: 'var(--agent-ux-designer)',
     });
   });
 

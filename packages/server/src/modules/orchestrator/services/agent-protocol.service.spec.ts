@@ -38,9 +38,9 @@ describe('AgentProtocolService', () => {
       const { read, activities, answers } = reading();
       const tool: AgentActivity = { kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'pending' };
 
-      read(tool, { kind: 'steering', id: 's', text: 'more' }, { kind: 'cancelled', id: 'x' });
+      read(tool, { kind: 'cancelled', id: 'x' });
 
-      expect(activities).toHaveLength(3);
+      expect(activities).toHaveLength(2);
       expect(activities[0]).toBe(tool);
       expect(answers).toEqual([]);
     });

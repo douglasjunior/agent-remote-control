@@ -117,8 +117,21 @@ describe('DelegationDetectorService', () => {
 
     it('should reject an unknown attribute', () => {
       expect(reasonOf('<delegate role="DEVELOPER" summary="Doing it" folder="app">Go.</delegate>')).toBe(
-        'Unknown attribute "folder" in <delegate role="DEVELOPER" summary="Doing it" folder="app">. Use only "role", "project", "session", "summary", "artifact".',
+        'Unknown attribute "folder" in <delegate role="DEVELOPER" summary="Doing it" folder="app">. Use only "role", "project", "session", "summary", "artifact", "on_busy".',
       );
+    });
+
+    it('should reject an on_busy other than wait or interrupt', () => {
+      expect(reasonOf('<delegate role="DEVELOPER" summary="Doing it" on_busy="replace">Go.</delegate>')).toBe(
+        'The on_busy attribute of <delegate role="DEVELOPER"> must be "wait" or "interrupt".',
+      );
+    });
+
+    it.each(['wait', 'Interrupt'])('should read on_busy="%s", in any case', (onBusy) => {
+      expect(service.detect(`<delegate role="DEVELOPER" summary="Doing it" on_busy="${onBusy}">Go.</delegate>`)).toMatchObject({
+        kind: 'delegate',
+        delegations: [{ delegateToRole: 'DEVELOPER', onBusy: onBusy.toLowerCase() }],
+      });
     });
 
     it('should read the artifact the agent works on, normalized to upper case', () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, rs } from '@rstest/core';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { createArtifactHarness } from '../testing/artifact-harness.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';
 import { AssignArtifactUseCase } from '../use-cases/assign-artifact.use-case.js';
@@ -29,7 +30,7 @@ function setup() {
     new UpdateArtifactUseCase(store, workspace, rules, history, events, derivation),
     new CommentOnArtifactUseCase(store, history, events),
     new DeleteArtifactUseCase(store, history, events, derivation),
-    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService()),
+    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService(new StubRuntimeSettings())),
     new ReleaseArtifactUseCase(store, history, events),
     events,
   );

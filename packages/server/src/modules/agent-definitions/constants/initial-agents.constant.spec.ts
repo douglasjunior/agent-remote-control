@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@rstest/core';
 
-import { ARTIFACT_STATUSES } from '../../artifacts/constants/artifact-catalog.constant.js';
+import { ARTIFACT_STATUSES, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { AgentDefinition } from '../models/agent-definition.model.js';
 
 import { INITIAL_AGENT_DEFINITIONS } from './initial-agents.constant.js';
@@ -18,7 +18,7 @@ function flowOf(role: string) {
 }
 
 describe('initial-agents.constant', () => {
-  it('should contain definitions for CEO, GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA and IT_SUPPORT roles', () => {
+  it('should contain definitions for CEO, GIT_OPS, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA and IT_SUPPORT roles', () => {
     const roles = INITIAL_AGENT_DEFINITIONS.map(def => def.role);
     expect(roles).toContain('CEO');
     expect(roles).toContain('GIT_OPS');
@@ -26,9 +26,10 @@ describe('initial-agents.constant', () => {
     expect(roles).toContain('DEVELOPER');
     expect(roles).toContain('CODE_REVIEWER');
     expect(roles).toContain('PRODUCT_OWNER');
+    expect(roles).toContain('UX_DESIGNER');
     expect(roles).toContain('QA');
     expect(roles).toContain('IT_SUPPORT');
-    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(8);
+    expect(INITIAL_AGENT_DEFINITIONS).toHaveLength(9);
   });
 
   describe('structure', () => {
@@ -69,6 +70,7 @@ describe('initial-agents.constant', () => {
       expect(definitionOf('CEO').artifacts.scope).toBe('board');
       expect(definitionOf('PRODUCT_OWNER').artifacts.scope).toBe('tree');
       expect(definitionOf('TECH_LEAD').artifacts.scope).toBe('tree');
+      expect(definitionOf('UX_DESIGNER').artifacts.scope).toBe('tree');
       for (const role of ['DEVELOPER', 'GIT_OPS', 'CODE_REVIEWER', 'QA'] as const) {
         expect(definitionOf(role).artifacts.scope).toBe('task');
       }
@@ -117,8 +119,21 @@ describe('initial-agents.constant', () => {
       expect(owner.description).toContain('interviews the user directly');
     });
 
-    it('should let only the agents that run discovery, planning and environment work ask the user', () => {
-      expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.asksUser).map(def => def.role)).toEqual(['PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT']);
+    it('should let only the agents that run discovery, design, planning and environment work ask the user', () => {
+      expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.asksUser).map(def => def.role)).toEqual(['PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'IT_SUPPORT']);
+    });
+
+    it('should design in or out of a project as a writer, since the prototype changes the project folder', () => {
+      const designer = definitionOf('UX_DESIGNER');
+
+      expect(designer.delegation).toEqual({ project: 'optional', sessionMode: 'overridable', artifact: 'optional', asksUser: true, refines: 'design' });
+      expect(designer.artifacts).toEqual({
+        scope: 'tree',
+        sections: ['ux_design', 'flows', 'acceptance_criteria', 'open_questions', 'pending_decisions'],
+        fields: ['refinement'],
+      });
+      expect(designer.description).toContain('after its business refinement and before its technical planning');
+      expect(designer.description).toContain('never merged');
     });
 
     it('should let the CEO delegate to the IT support agent only on the user\'s decision, with no board and no project required', () => {
@@ -137,15 +152,17 @@ describe('initial-agents.constant', () => {
   });
 
   describe('refinements', () => {
-    it('should let only the product owner and the tech lead settle a refinement, each its own', () => {
+    it('should let one agent settle each refinement kind, in the order the work goes through them', () => {
       expect(INITIAL_AGENT_DEFINITIONS.filter(def => def.delegation.refines).map(def => [def.role, def.delegation.refines])).toEqual([
         ['PRODUCT_OWNER', 'business'],
+        ['UX_DESIGNER', 'design'],
         ['TECH_LEAD', 'technical'],
       ]);
+      expect(INITIAL_AGENT_DEFINITIONS.flatMap(def => def.delegation.refines ?? [])).toEqual([...REFINEMENT_KINDS]);
     });
 
     it('should give the refining agents the access that writes their refinement', () => {
-      for (const role of ['PRODUCT_OWNER', 'TECH_LEAD']) {
+      for (const role of ['PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD']) {
         expect(definitionOf(role).artifacts.fields).toContain('refinement');
       }
     });
@@ -279,7 +296,7 @@ describe('initial-agents.constant', () => {
     });
 
     it('should keep the question grammar for the agents that ask the user, and the delegate tag for the CEO', () => {
-      for (const role of ['PRODUCT_OWNER', 'TECH_LEAD', 'IT_SUPPORT', 'CEO']) {
+      for (const role of ['PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'IT_SUPPORT', 'CEO']) {
         expect(definitionOf(role).buildSystemPrompt([], 'tools')).toContain('<question rationale=');
       }
       expect(definitionOf('CEO').buildSystemPrompt([], 'tools')).toContain('<delegate role="ROLE"');

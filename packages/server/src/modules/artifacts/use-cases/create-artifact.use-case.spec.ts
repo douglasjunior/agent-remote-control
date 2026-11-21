@@ -35,7 +35,7 @@ describe('CreateArtifactUseCase', () => {
         parentId: 'F-1',
         projectName: 'shop',
         dependsOn: ['T-7'],
-        refinement: { business: 'done', technical: 'pending' },
+        refinement: { business: 'done', design: 'skipped', technical: 'pending' },
         assignee: null,
         branch: null,
         pullRequests: [],
@@ -50,7 +50,7 @@ describe('CreateArtifactUseCase', () => {
   it('should make a task that owes no refinement ready for development', async () => {
     const { useCase } = setup();
 
-    const outcome = await useCase.execute('c1', { type: 'task', title: 'Fix typo', projectName: 'web', refinement: { business: 'skipped', technical: 'done' } }, user);
+    const outcome = await useCase.execute('c1', { type: 'task', title: 'Fix typo', projectName: 'web', refinement: { business: 'skipped', design: 'skipped', technical: 'done' } }, user);
 
     expect(outcome).toMatchObject({ ok: true, artifact: { status: 'ready', projectName: 'web', parentId: null, sections: {} } });
   });
@@ -58,7 +58,7 @@ describe('CreateArtifactUseCase', () => {
   it('should keep features in the backlog, take an explicit project and treat a blank one as the parent\'s', async () => {
     const { useCase } = setup();
 
-    const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectName: ' web ', refinement: { business: 'skipped', technical: 'skipped' } }, user);
+    const feature = await useCase.execute('c1', { type: 'feature', title: 'Checkout', projectName: ' web ', refinement: { business: 'skipped', design: 'skipped', technical: 'skipped' } }, user);
     const task = await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', projectName: '  ' }, user);
 
     expect(feature).toMatchObject({ ok: true, artifact: { id: 'F-2', status: 'backlog', projectName: 'web' } });
@@ -103,7 +103,7 @@ describe('CreateArtifactUseCase', () => {
   it('should leave the feature of a new task alone when nothing follows from it', async () => {
     const { useCase, store } = setup();
 
-    await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', refinement: { business: 'done', technical: 'done' } }, user);
+    await useCase.execute('c1', { type: 'task', title: 'Cart', parentId: 'F-1', refinement: { business: 'done', design: 'skipped', technical: 'done' } }, user);
 
     expect(store.artifactsOf().get('F-1')?.status).toBe('ready');
   });

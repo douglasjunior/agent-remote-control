@@ -36,7 +36,7 @@ describe('SquadPanel', () => {
 
     expect(screen.getByRole('heading', { name: 'Your squad' })).toBeInTheDocument();
     expect(screen.getByText('Ready')).toBeInTheDocument();
-    expect(screen.getAllByRole('listitem')).toHaveLength(8);
+    expect(screen.getAllByRole('listitem')).toHaveLength(9);
     expect(stationStates().every(([, state]) => state === 'idle')).toBe(true);
   });
 
@@ -82,28 +82,28 @@ describe('SquadPanel', () => {
 
     const many = renderPanel(Array.from({ length: 200 }, (_, index) => turn(index)).flat(), false);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(8);
-    expect(many.container.querySelectorAll('li')).toHaveLength(8);
+    expect(screen.getAllByRole('listitem')).toHaveLength(9);
+    expect(many.container.querySelectorAll('li')).toHaveLength(9);
     expect(many.container.innerHTML).toBe(small);
   });
 
   it('should add a station only for an unknown role delegated to in the current turn', () => {
-    renderPanel([user('u1'), started('s1', 'DESIGNER', 'Designer')], true);
+    renderPanel([user('u1'), started('s1', 'TRANSLATOR', 'Translator')], true);
 
-    expect(screen.getAllByRole('listitem')).toHaveLength(9);
-    expect(station(/Designer/)).toHaveAttribute('data-state', 'working');
+    expect(screen.getAllByRole('listitem')).toHaveLength(10);
+    expect(station(/Translator/)).toHaveAttribute('data-state', 'working');
   });
 
   it('should start from a clean panel on each new user message', () => {
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer'), finished('f1', 'DEVELOPER', 'Developer'), user('u2')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'idle'], ['IT_SUPPORT', 'idle']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['UX_DESIGNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'idle'], ['IT_SUPPORT', 'idle']]);
   });
 
   it('should leave every station the turn did not involve idle when it delegates only to Git Ops', () => {
     renderPanel([user('u1'), started('s1', 'GIT_OPS', 'Git Ops', 'Open the pull request')], true);
 
-    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'working'], ['IT_SUPPORT', 'idle']]);
+    expect(stationStates()).toEqual([['CEO', 'working'], ['PRODUCT_OWNER', 'idle'], ['UX_DESIGNER', 'idle'], ['TECH_LEAD', 'idle'], ['DEVELOPER', 'idle'], ['CODE_REVIEWER', 'idle'], ['QA', 'idle'], ['GIT_OPS', 'working'], ['IT_SUPPORT', 'idle']]);
     expect(station(/Git Ops/)).toHaveTextContent('Open the pull request');
     expect(station(/Product Owner/)).toHaveTextContent('Figures out what to build');
     expect(screen.getByText('1 working')).toBeInTheDocument();
@@ -197,6 +197,7 @@ describe('SquadPanel', () => {
     rs.useFakeTimers();
     rs.setSystemTime(new Date(AT).getTime());
     renderPanel([user('u1'), started('s1', 'DEVELOPER', 'Developer')], true);
+    act(() => rs.advanceTimersByTime(0));
     expect(station(/Developer/)).toHaveTextContent('0 s');
 
     act(() => rs.advanceTimersByTime(5000));

@@ -18,7 +18,7 @@ import { BOARD_REQUESTS_SKILL, buildBoardRequestsBody } from './board-requests.s
 describe('board-requests skill', () => {
   it('should be read by every executor role, the CEO having the board in its own skill', () => {
     expect(BOARD_REQUESTS_SKILL.name).toBe('board-requests');
-    expect(BOARD_REQUESTS_SKILL.roles).toEqual(['GIT_OPS', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA']);
+    expect(BOARD_REQUESTS_SKILL.roles).toEqual(['GIT_OPS', 'PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA']);
   });
 
   it('should hold the full board protocol, written for the access of the reader', () => {
@@ -75,8 +75,8 @@ describe('board-requests skill', () => {
       const instructions = buildBoardRequestsBody(PRODUCT_OWNER_ARTIFACT_ACCESS, 'tags');
 
       expect(instructions).toContain('`<artifact_read id="F-1" tree="true"/>` reads a feature with the full content of every task under it.');
-      expect(instructions).toContain('<artifact_create type="task" title="Short title" project="my-app" parent="F-1" depends_on="T-1" ref="login-api" business_refinement="pending" technical_refinement="pending">');
-      expect(instructions).toContain('A refinement left out is `pending`.');
+      expect(instructions).toContain('<artifact_create type="task" title="Short title" project="my-app" parent="F-1" depends_on="T-1" ref="login-api" business_refinement="pending" design_refinement="skipped" technical_refinement="pending">');
+      expect(instructions).toContain('A refinement left out takes its default: `business_refinement="pending"`, `design_refinement="skipped"`, `technical_refinement="pending"`.');
       expect(instructions).toContain('Meanwhile you cannot change it; comment instead.');
       expect(instructions).toContain('When you were delegated an artifact, its content opens your prompt');
     });
@@ -143,7 +143,7 @@ describe('board-requests skill', () => {
       expect(instructions).toContain('parent and project: the open ones');
       expect(instructions).toContain('a feature comes with the list of its tasks, and with `tree` with the full content of every task under it.');
       expect(instructions).toContain('- `artifact_create` creates a feature or a task and returns its id, which the `parent` and `depends_on` of the next creations take.');
-      expect(instructions).toContain('A refinement left out is `pending`.');
+      expect(instructions).toContain('A refinement left out takes its default: `business_refinement="pending"`, `design_refinement="skipped"`, `technical_refinement="pending"`.');
       expect(instructions).toContain('Meanwhile you cannot change it; comment instead.');
     });
 

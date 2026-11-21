@@ -17,9 +17,16 @@ describe('user-questions.prompt', () => {
     expect(USER_QUESTIONS_BRIEF).toContain('`status="timed_out"` as provisional');
   });
 
-  it('should keep each question standing on its own and the response free of dependent questions', () => {
+  it('should keep each question standing on its own', () => {
     expect(USER_QUESTIONS_BRIEF).toContain('each question stands on its own');
-    expect(USER_QUESTIONS_BRIEF).toContain('only questions that do not depend on each other\'s answers');
+  });
+
+  it('should leave facts to the agent and ask the whole frontier of decisions per round', () => {
+    expect(USER_QUESTIONS_BRIEF).toContain('A fact is not a question');
+    expect(USER_QUESTIONS_BRIEF).toContain('so only decisions reach the user');
+    expect(USER_QUESTIONS_BRIEF).toContain('Before the first round, map the decisions and which ones depend on others');
+    expect(USER_QUESTIONS_BRIEF).toContain('Each response asks the whole frontier at once');
+    expect(USER_QUESTIONS_BRIEF).toContain('waits for a later round');
   });
 
   it('should send the agent to the skill with the rest of the guide', () => {

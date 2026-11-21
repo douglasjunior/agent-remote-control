@@ -3,7 +3,7 @@ name: artifacts
 description: >
   Board of features and tasks of each conversation: the artifacts module, the IArtifactsPort and its rules
   (two levels, one project per feature, dependencies, statuses, refinements, one holder per artifact, history),
-  the per-conversation JSON store, and how agents read and write the board with artifact requests
+  the board tables of the SQLite store, and how agents read and write the board with artifact requests
   (<artifact_list>, <artifact_read>, <artifact_create>, <artifact_update>, <artifact_comment>) under the access
   of their role. Use when working with tasks, features, the board, artifact delegation or artifact permissions.
 ---
@@ -36,17 +36,23 @@ responses, and every channel (web today, Discord later) reads and changes it thr
   dependencies must fit the new place. Listings show the dependencies still open as `waiting on`.
 - **Fields**: `title`, `status` (`backlog`, `ready`, `in_progress`, `in_review`, `changes_requested`, `approved`,
   `in_testing`, `tested`, `done`, `blocked`, `frozen`, `cancelled`; `done` and `cancelled` are closed; `tested` is a task
-  that passed its practical test and waits for the merge), `refinement.business` / `refinement.technical`
-  (`pending`, `done`, `skipped`), `dependsOn`, `assignee`, `branch`,
+  that passed its practical test and waits for the merge), `refinement` (one state per kind of `REFINEMENT_KINDS`:
+  `business`, `design`, `technical`, each `pending`, `done` or `skipped`), `dependsOn`, `assignee`, `branch`,
   `pullRequests` (`url`, `title?`, `state` `open|merged|closed`, upserted by URL), `sections` and `history`.
 - **Sections** (`ARTIFACT_SECTIONS`, titles in `ARTIFACT_SECTION_TITLES`): `overview`, `user_stories`, `scope`,
   `business_rules`, `flows`, `acceptance_criteria`, `test_cases`, `glossary`, `pending_decisions`,
-  `open_questions`, `technical_solution`, `implementation_notes`, `review_findings`, `test_report`. A section is Markdown; an
-  empty one is absent. `review_findings` holds the verdict and findings of the last review, whether of a pull request or of
+  `open_questions`, `ux_design`, `technical_solution`, `implementation_notes`, `review_findings`, `test_report`. A section is Markdown; an
+  empty one is absent. `ux_design` holds the design of the work: the prototype branch and how to open it, the screens,
+  states and design decisions. `review_findings` holds the verdict and findings of the last review, whether of a pull request or of
   the task's branch reviewed locally, and `test_report` the verdict and results of the last practical test (QA), so whoever
   fixes the task finds them there.
 - **Creation**: a task that owes no refinement starts `ready` (a simple task straight to development); anything
-  else starts in the `backlog`. A refinement left out is `pending`.
+  else starts in the `backlog`. A refinement left out takes its `DEFAULT_REFINEMENT_STATES` entry.
+- **Refinement kinds**: every rule, request attribute, tool property, prompt and channel iterates `REFINEMENT_KINDS`
+  (the protocol exports the same list, checked by `artifact-catalog.constant.spec.ts`), so a new kind is added there, in
+  `DEFAULT_REFINEMENT_STATES` and in the protocol only. `DEFAULT_REFINEMENT_STATES` is the state of a refinement nobody
+  gave, left out of a creation or missing from an artifact stored before its kind existed: `business` and `technical`
+  are owed (`pending`), and `design` is `skipped`, so only work that asks for a design owes one.
 - **Derived statuses** (`ArtifactRulesService.derivedTaskStatus` and `derivedFeatureStatus`, applied by
   `ArtifactDerivationService` inside the transaction of the change, as `system` history events that say why, and
   published like any saved artifact):
@@ -92,22 +98,26 @@ rules shared by create and update live in `ArtifactRulesService`; create, update
   `utils/artifact-status.util.ts` tells who set the current status (`lastStatusChange`) and whether a user set it while
   the holder worked (`statusSetByUserWhileHeld`).
 
-`IArtifactStorePort` (`JsonArtifactStoreAdapter`): one file per conversation,
-`DATA_DIR/artifacts/<encodeURIComponent(conversationId)>.json` (`{ counters, artifacts }`, validated with the protocol
-schema; invalid or missing means empty), read and written through `ILockedFilesPort` (`storage` module).
-`transaction(conversationId, work)` runs `work` synchronously over a staged copy of the board as it is on disk, under the
-board's lock, so transactions of parallel delegations and of other processes never interleave; it commits only after the
-atomic write, and one that changes nothing writes nothing. `conversations()` lists the `.json` files of the folder, so
-the lockfiles and temporary files beside them never count as boards. Specs use `InMemoryArtifactStoreFake`,
-`buildArtifact`, `createArtifactHarness` and `createArtifactsService` from `testing/`.
+`IArtifactStorePort` (`SqliteArtifactStoreAdapter`, see the `database` skill): the board of every conversation lives
+in the `artifact` tables, keyed by conversation and artifact id. `transaction(conversationId, work)` runs, in one
+`SqliteTransactionService.run`, a read of the board, `work` synchronously over a staged copy of it, and the writes of
+the rows that differ from what was read: an artifact saved again unchanged writes nothing, and of a changed one only
+its row and the lists that changed are rewritten (history events by position, so an appended event is one insert).
+Parallel delegations and other processes never interleave, a `work` that throws writes nothing, and the `F`/`T`
+counters of `artifact_counter` outlive deleted artifacts, so ids are never reused. Each artifact keeps the place on the
+board it took when first saved. Rows are validated with the protocol's `artifactDetailSchema` on read; an invalid
+artifact is logged (`artifacts_invalid_row`) and left out. `conversations()` lists the conversations with artifacts.
+Specs use `InMemoryArtifactStoreFake`, `buildArtifact`, `buildPopulatedArtifact`, `createArtifactHarness` and
+`createArtifactsService` from `testing/`.
 
 ## Agents and the board (orchestrator)
 
 - **Requests** go inside the final response and are read by `AgentRequestParserService`, ignoring Markdown code
   and the body of `<delegate>` tags: `<artifact_list type status parent project/>`, `<artifact_read id="T-1,T-2" tree="true"/>`,
-  `<artifact_create type title project parent depends_on ref business_refinement technical_refinement>` with
+  `<artifact_create type title project parent depends_on ref <kind>_refinement>` with
   `<section name>` children, `<artifact_update id title status parent project depends_on branch note
-  business_refinement technical_refinement>` with `<section name mode="replace|append">` and
+  <kind>_refinement>` (one `<kind>_refinement` attribute per refinement kind: `business_refinement`,
+  `design_refinement`, `technical_refinement`) with `<section name mode="replace|append">` and
   `<pull_request url title state/>` children, and `<artifact_comment id>text</artifact_comment>`. `none` clears
   `parent`, `depends_on` and `branch`; `ref` names an artifact created earlier in the same response.
 - **Round trip**: `ExecuteAgentTurnUseCase` resolves the requests of every CEO and delegate response before anything
@@ -125,7 +135,7 @@ the lockfiles and temporary files beside them never count as boards. Specs use `
   messages, one request per call. The tags keep working alongside.
 - **Access** (`ArtifactAccess` from `IAgentRegistryPort.getArtifactAccess`, declared per definition in
   `agent-definitions/constants/artifact-access.constant.ts`): `scope` `board` (CEO: lists everything, reads one
-  artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner and Tech Lead:
+  artifact at a time, changes status and refinements of a held artifact), `tree` (Product Owner, UX/UI Designer and Tech Lead:
   `tree="true"` reads, writes any artifact nobody else holds) or `task` (Developer, Git Ops, Code Reviewer, QA: lists and
   reads tasks only, writes only the task it holds); `create`; writable `sections`; writable `fields` (`title`,
   `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). Comments need only read access.

@@ -136,15 +136,27 @@ describe('conversationsReducer', () => {
     expect(state.byId.other.state).toBe('idle');
   });
 
+  it('should remember the last entry held when the state was set', () => {
+    const loaded: ServerEvent = { type: 'conversation.history', conversationId: 'c', start: 0, entries: [userEntry('a')], state: 'running' };
+    const later: ServerEvent = { type: 'conversation.entry', conversationId: 'c', entry: userEntry('b'), position: 1 };
+
+    expect(reduce([loaded, later]).byId.c.stateAfter).toBe('a');
+    expect(reduce([loaded, later, { type: 'conversation.state', conversationId: 'c', state: 'queued' }]).byId.c.stateAfter).toBe('b');
+  });
+
   it('should store the agents list', () => {
     const state = reduce([{ type: 'agents.list', agents: [{ id: 'codex', name: 'Codex' }] }]);
     expect(state.agents).toEqual([{ id: 'codex', name: 'Codex' }]);
   });
 
-  it('should store profiles and the configured flag', () => {
+  it('should store profiles, the configured flag and the applied squad', () => {
     const profiles = [{ role: 'CEO', roleName: 'CEO' }];
-    const state = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles }]);
-    expect(state.byId.c).toMatchObject({ configured: true, profiles, profilesLoaded: true });
+    const appliedSquad = { id: 's', name: 'Backend team' };
+    const state = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles, appliedSquad, customized: true }]);
+    expect(state.byId.c).toMatchObject({ configured: true, profiles, profilesLoaded: true, appliedSquad, customized: true });
+
+    const custom = reduce([{ type: 'profiles', conversationId: 'c', configured: true, profiles, customized: false }]);
+    expect(custom.byId.c.appliedSquad).toBeUndefined();
   });
 
   it.each<ServerEvent>([
@@ -153,6 +165,7 @@ describe('conversationsReducer', () => {
     { type: 'pong' },
     { type: 'models.list', agentId: 'a', models: [] },
     { type: 'efforts.list', agentId: 'a', modelId: 'm', efforts: [] },
+    { type: 'squads', squads: [] },
     { type: 'error', message: 'boom' },
   ])('should ignore $type', (event) => {
     expect(conversationsReducer(initialConversationsState, event)).toBe(initialConversationsState);

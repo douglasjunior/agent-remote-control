@@ -33,6 +33,13 @@ const GLYPHS: Readonly<Record<MarkId, ReactNode>> = {
     </>
   ),
   po: <path className="g-star" d="M16 4 L18.6 13.4 L28 16 L18.6 18.6 L16 28 L13.4 18.6 L4 16 L13.4 13.4 Z" fill="currentColor" fillOpacity=".22" />,
+  ux: (
+    <>
+      <path d="M16 4 L24.5 14.5 L19.5 27 H12.5 L7.5 14.5 Z" fill="currentColor" fillOpacity=".18" />
+      <path d="M16 4 V12.5" />
+      <circle className="g-ink" cx="16" cy="15" r="2.4" {...DOT} />
+    </>
+  ),
   lead: (
     <>
       <circle cx="16" cy="16" r="12" />

@@ -1,5 +1,5 @@
 import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
-import { Settings } from 'lucide-react';
+import { UserRoundCog } from 'lucide-react';
 import { useRef } from 'react';
 
 import type { TeamMember } from '../../conversations/team-state.js';
@@ -60,7 +60,7 @@ export function SquadPanel({ members, profiles = [], focus, highlight, delivery,
           </span>
           {onSettings && (
             <IconButton variant="ghost" size="icon-sm" label="Agent settings" onClick={onSettings}>
-              <Settings />
+              <UserRoundCog />
             </IconButton>
           )}
         </div>

@@ -45,6 +45,19 @@ describe('product-owner.prompt', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('record it in `pending_decisions` as a divergence to fix');
   });
 
+  it('should interview over the frontier of business decisions, looking up facts and recommending with a business reason', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('keep investigating and asking until no open decision is left, nothing was assumed without the user and the checklist below closes');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Before the first round, map the open business decisions and which ones depend on others');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Each round asks every decision whose prerequisites are settled, all at once');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('how the product works today is a fact to find, never a question');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('the business reason for the option you recommend: what changes for the end user or the business');
+  });
+
+  it('should have the user confirm the summary of the decisions before writing the board', () => {
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('When every item holds, send one last short round');
+    expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('Write the board after the confirmation, or right away when the user insisted on consolidating as it is.');
+  });
+
   it('should keep the board and the files apart', () => {
     expect(PRODUCT_OWNER_SYSTEM_PROMPT).toContain('**Read-only on files.** Everything you write goes to the board through artifact requests');
   });
@@ -82,6 +95,11 @@ describe('product-owner.prompt', () => {
       expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('recorded in `pending_decisions`, neither asked nor decided');
       expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('`business_refinement="done"`');
     });
+
+    it('should carry the frontier per round and the confirmed summary', () => {
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('Each round asks the whole frontier');
+      expect(PRODUCT_OWNER_REENTRY_NOTE).toContain('the user confirms the summary of the decisions in one last `<question>`');
+    });
   });
 
   describe('on the tools interface', () => {
@@ -91,6 +109,8 @@ describe('product-owner.prompt', () => {
     it('should keep every passage that does not depend on the interface', () => {
       expect(prompt).toContain('### Hunt for What Was Not Said');
       expect(prompt).toContain('### Before Writing to the Board');
+      expect(prompt).toContain('Each round asks every decision whose prerequisites are settled, all at once');
+      expect(prompt).toContain('When every item holds, send one last short round');
       expect(prompt).toContain(buildArtifactProtocolBrief(PRODUCT_OWNER_ARTIFACT_ACCESS, 'tools'));
       expect(prompt).toContain(USER_QUESTIONS_BRIEF);
     });
@@ -104,6 +124,7 @@ describe('product-owner.prompt', () => {
 
     it('should keep the interview rules in the re-entry note and name the tools', () => {
       expect(note).toContain('every question is a `<question>` tag');
+      expect(note).toContain('Each round asks the whole frontier');
       expect(note).toContain('the tools of the `arc` MCP server');
     });
   });

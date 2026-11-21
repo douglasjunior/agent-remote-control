@@ -9,6 +9,7 @@ import type {
   AgentSessionOptions,
   AgentUsage,
   IAgentPort,
+  SteeringOutcome,
 } from '../../agent/ports/agent.port.js';
 
 
@@ -31,7 +32,8 @@ export class StubAgentPort implements IAgentPort {
   cancelCalls = 0;
   closeSessionCalls = 0;
   steeringPrompts: string[] = [];
-  steeringResult = true;
+  /** What a steering of an agent with `supportsSteering` comes to; without it the text is not sent. */
+  steeringResult: SteeringOutcome = 'injected';
   configCalls: AgentConfig[] = [];
   usageToReturn: AgentUsage | undefined = undefined;
   quotaToReturn: AgentQuota | undefined = undefined;
@@ -100,7 +102,10 @@ export class StubAgentPort implements IAgentPort {
     this.cancelCalls++;
   }
 
-  async sendSteeringPrompt(text: string): Promise<boolean> {
+  async sendSteeringPrompt(text: string): Promise<SteeringOutcome> {
+    if (!this.supportsSteering) {
+      return 'unsupported';
+    }
     this.steeringPrompts.push(text);
     return this.steeringResult;
   }

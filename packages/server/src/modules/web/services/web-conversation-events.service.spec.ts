@@ -68,12 +68,13 @@ describe('WebConversationEventsService', () => {
   it('should know the delegations that run until they end or the conversation goes idle', async () => {
     const { events, store } = createWebHarness();
     store.seed('web-1');
-    const delegation = (delegationId: string, phase: 'started' | 'finished'): ConversationEntry => ({
+    const delegation = (delegationId: string, phase: 'started' | 'steered' | 'finished'): ConversationEntry => ({
       id: `${delegationId}:${phase}`, at: entry.at, type: 'delegation', delegationId, phase, round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: '', summary: '',
     });
 
     await events.publishEntry('web-1', delegation('a', 'started'));
     await events.publishEntry('web-1', delegation('b', 'started'));
+    await events.publishEntry('web-1', delegation('b', 'steered'));
     await events.publishEntry('web-1', delegation('a', 'finished'));
 
     expect([...events.liveDelegationsOf('web-1')]).toEqual(['b']);
@@ -162,7 +163,7 @@ describe('WebConversationEventsService', () => {
       ['a thought', { id: 't', at: entry.at, type: 'thought', role: 'CEO', text: 'x' }],
       ['a delegation', { id: 'd', at: entry.at, type: 'delegation', phase: 'started', delegationId: 'dl-1', round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: 'Do the work', summary: 'Doing the work' }],
       ['a notice', { id: 'n', at: entry.at, type: 'notice', level: 'info', text: 'x' }],
-      ['a steered prompt', { id: 'r', at: entry.at, type: 'agent_response', status: 'steered', response: '' }],
+      ['a message joining the turn', { id: 'u', at: entry.at, type: 'user_message', text: 'also', delivery: 'steered' }],
     ])('should survive %s', async (_name, other) => {
       const { events, store } = createWebHarness();
       store.seed('web-1');
@@ -201,9 +202,18 @@ describe('WebConversationEventsService', () => {
   it('should broadcast the profiles of a conversation', () => {
     const { events, observer } = createWebHarness();
 
-    events.publishProfiles('web-1', true, [{ role: 'CEO', roleName: 'CEO' }]);
+    events.publishProfiles('web-1', { configured: true, profiles: [{ role: 'CEO', roleName: 'CEO' }], appliedSquad: { id: 's1', name: 'Backend' }, customized: true });
 
-    expect(observer.sent).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO' }] }]);
+    expect(observer.sent).toEqual([
+      {
+        type: 'profiles',
+        conversationId: 'web-1',
+        configured: true,
+        profiles: [{ role: 'CEO', roleName: 'CEO' }],
+        appliedSquad: { id: 's1', name: 'Backend' },
+        customized: true,
+      },
+    ]);
   });
 
   describe('closeOpenQuestions', () => {

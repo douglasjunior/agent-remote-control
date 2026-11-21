@@ -12,6 +12,7 @@ import {
   MAX_UPLOAD_BYTES,
   UPLOAD_CHUNK_BYTES,
 } from './limits.js';
+import { squadDescriptionSchema, squadNameSchema, squadProfileInputSchema } from './squad.js';
 
 
 export const clientCommandSchema = z.discriminatedUnion('type', [
@@ -79,6 +80,16 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('artifact.comment'), conversationId: z.string(), requestId: z.string(), id: z.string(), text: artifactCommentSchema }),
   z.object({ type: z.literal('artifact.delete'), conversationId: z.string(), requestId: z.string(), id: z.string() }),
+  z.object({ type: z.literal('settings.get') }),
+  /** Saves the values, by setting key (`USER_LANGUAGE` included), whole or not at all; the server checks each one. */
+  z.object({
+    type: z.literal('settings.set'),
+    changes: z.record(z.string().max(64), z.union([z.string().max(4096), z.number(), z.boolean()])),
+  }),
+  /** Removes the saved values, so the environment variable or the default applies again. */
+  z.object({ type: z.literal('settings.reset'), keys: z.array(z.string().max(64)).min(1) }),
+  /** Tests a bot token typed in the form before it is saved (the saved one when absent), and the server id given. */
+  z.object({ type: z.literal('settings.discord.test'), token: z.string().max(4096).optional(), guildId: z.string().max(64).optional() }),
   z.object({ type: z.literal('quota.get'), refresh: z.boolean().optional() }),
   z.object({ type: z.literal('auth.status'), refresh: z.boolean().optional() }),
   z.object({ type: z.literal('auth.login'), agentId: z.string() }),
@@ -95,6 +106,19 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     modelId: z.string().optional(),
     effortId: z.string().optional(),
   }),
+  z.object({ type: z.literal('squads.list') }),
+  /** Creates a squad, or replaces the one with `id`; the answer is a `squads` to every connection, or an `error`. */
+  z.object({
+    type: z.literal('squads.save'),
+    id: z.string().optional(),
+    name: squadNameSchema,
+    description: squadDescriptionSchema.optional(),
+    isDefault: z.boolean(),
+    profiles: z.record(z.string(), squadProfileInputSchema),
+  }),
+  z.object({ type: z.literal('squads.delete'), id: z.string() }),
+  /** Copies the squad's profiles into the conversation; the answer is a `profiles` to every connection, or an `error`. */
+  z.object({ type: z.literal('squads.apply'), conversationId: z.string(), squadId: z.string() }),
   z.object({
     type: z.literal('question.answer'),
     conversationId: z.string(),

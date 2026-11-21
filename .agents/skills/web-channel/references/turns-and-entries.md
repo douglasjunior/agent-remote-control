@@ -20,11 +20,12 @@
 `WebConversationTurnsService.run` turns the callbacks of any turn into entries:
 
 - `onActivity` → `thought`, `tool` or `skill` (a skill read or written: `action`, `names`, `status`, `created`, `error`); every one carries the `role` of the agent that produced it, the CEO included.
-- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it because a history file is validated whole; `phase` is `started`, `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
+- `onDelegation` → `delegation`, with the CEO's `summary` and, as `prompt`, the `taskSpec` it wrote for the agent, which reads as empty in an entry stored without it, so the entry stays in the history; `phase` is `started`, `steered` (a new instruction the CEO sent the running agent: `prompt` is that instruction and `summary` replaces the one before), `finished`, `failed` or `cancelled`. A `delegation` entry carries `artifactId` when the agent held one.
 - `onInterimMessage` → `interim`.
 - `onQuestion` → `question`, with `askerRole` besides `askerRoleName`, `closed: false`, and `recommendedIndex` and `timeout` (`expiresAt` in epoch milliseconds plus `durationMs`) while they apply. When a question times out, the open question is closed and a `warning` `notice` tells what was assumed (`No reply in <n> min, <role>: assumed the recommended answer: <option>.` or `no answer assumed`) before the next `question`.
-- The `TurnResult` becomes `agent_response`.
-- Steering and cancellation markers have no entry.
+- `onDelivery` → the `user_message` of the turn's message, published again in place with its `delivery` (`queued`, `steered`, `delivered`, `cancelled`); `queued` marks the web turn queued, the others running.
+- The `TurnResult` becomes `agent_response`, except for a message that joined a running turn (`status: 'steered'`) or was cancelled before the CEO read it: that turn's response answers it, so `agent_response.status` is `completed`, `cancelled` or `failed`.
+- Cancellation markers have no entry.
 
 ## Entry ids
 
@@ -33,13 +34,13 @@
 Entry ids are stable so the store and the client upsert by id, and each carries what makes it unique across the conversation; other entries get a random id:
 
 - `thought:<turnId>:<role>:<id>` and `tool:<turnId>:<role>:<toolCallId>`: the `turnId` is generated for each `SendConversationMessageUseCase` turn execution, because thought and tool ids are unique only within one agent's stream, and a shared id would overwrite another turn's or agent's entry. A step streamed again within its turn updates in place.
-- `delegation:<delegationId>:<phase>`: each delegation reaches the channel with a `delegationId` (UUID), and the `delegation` entry carries it as a required field. The `round` restarts at 1 in each turn, so an id built from it would overwrite the delegation of an earlier turn.
+- `delegation:<delegationId>:<phase>`: each delegation reaches the channel with a `delegationId` (UUID), and the `delegation` entry carries it as a required field. The `round` restarts at 1 in each turn, so an id built from it would overwrite the delegation of an earlier turn. A delegation may be steered several times, so each `steered` entry adds a random part: `delegation:<delegationId>:steered:<uuid>`. A `steered` entry neither closes the delegation nor ends the span of a history page.
 
 ## Conversation state
 
 - Conversation state belongs to the conversation, not to a turn. `WebConversationTurnsService` tracks the active turns of each conversation (`begin`, `markRunning`, `markQueued`, `end`) and derives the published state: `running` when any active turn is running, `queued` only when every active turn is queued, `idle` only when none is active.
 - A state is published only when it changes, so overlapping turns never repeat `running` or `idle`.
-- A turn removes itself when it ends, however it ends: a result (a `steered` one included, which leaves `running` to the turn that absorbed the prompt) or a thrown error, which also becomes a `notice` entry with level `error`.
+- A turn removes itself when it ends, however it ends: a result (a message that joined the running turn included, which leaves `running` to that turn) or a thrown error, which also becomes a `notice` entry with level `error`.
 - When the conversation becomes `idle` the service closes the questions still open, publishes `idle` and flushes the store.
 - `conversation.history` reports the state published by the same events service, so it always matches the stream.
 
@@ -47,6 +48,6 @@ Entry ids are stable so the store and the client upsert by id, and each carries 
 
 - `WebConversationEventsService.publishEntry` places the entry in the store, then broadcasts `conversation.entry` with the `position` the store returned, one entry of a conversation at a time, so the stream follows the order of the history and a client knows where each entry belongs. An entry the store refuses is logged and reaches no client. It keeps the state in memory.
 - It also keeps the draft of each conversation in memory: the user-facing text of the CEO's response being written (`TurnRequest.onDraft`), broadcast as `conversation.draft { conversationId, text }` (whole text at every event, only when it changed) and never stored in the history.
-- The draft is discarded (`text: ''`, sent right before the entry) by the entry that delivers the response (`interim`, `question` or an `agent_response` that is not `steered`) and when the conversation goes `idle`.
+- The draft is discarded (`text: ''`, sent right before the entry) by the entry that delivers the response (`interim`, an open `question` or an `agent_response`) and when the conversation goes `idle`.
 - `conversation.history` carries the current draft in `draft` when there is one, so a conversation opened mid-response resumes it.
 - `WebConversationEventsService` records nothing after `onModuleDestroy`, because what dying turns report during a shutdown did not happen to the conversation.

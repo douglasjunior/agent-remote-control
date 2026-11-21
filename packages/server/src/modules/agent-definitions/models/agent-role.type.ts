@@ -5,6 +5,7 @@ export const AGENT_ROLES = [
   'CODE_REVIEWER',
   'TECH_LEAD',
   'PRODUCT_OWNER',
+  'UX_DESIGNER',
   'QA',
   'IT_SUPPORT',
 ] as const;

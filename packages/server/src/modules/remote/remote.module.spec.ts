@@ -1,3 +1,4 @@
+import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
 import { NodeDataChannelPeerAdapter } from './adapters/node-datachannel-peer.adapter.js';
@@ -9,11 +10,14 @@ import { RemoteModule } from './remote.module.js';
 
 
 describe('RemoteModule', () => {
+  useTemporaryDataDir();
+
   it('should bind the ports to their adapters and resolve the transport', async () => {
     const module = await createTestingModule({ imports: [RemoteModule] }).compile();
 
     expect(module.get(IRemotePeerFactoryPort)).toBeInstanceOf(NodeDataChannelPeerAdapter);
     expect(module.get(ISignalingClientPort)).toBeInstanceOf(WsSignalingClientAdapter);
     expect(module.get(RemoteClientTransportAdapter)).toBeInstanceOf(RemoteClientTransportAdapter);
+    await module.close();
   });
 });

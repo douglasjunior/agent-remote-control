@@ -11,12 +11,14 @@ type DelegationEventBase = {
   readonly projectName?: string;
   readonly artifactId?: string;
   readonly summary: string;
-  /** The task as the CEO wrote it for the agent. */
+  /** The task as the CEO wrote it for the agent; for `steered`, the instruction that reached it at work. */
   readonly taskSpec: string;
 };
 
 export type DelegationEvent =
   | DelegationEventBase & { readonly phase: 'started' }
+  /** The CEO sent the running agent a new instruction, whose summary takes the place of the one before. */
+  | DelegationEventBase & { readonly phase: 'steered' }
   | DelegationEventBase & {
     readonly phase: 'finished';
     readonly response: string;

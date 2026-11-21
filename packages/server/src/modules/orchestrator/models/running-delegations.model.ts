@@ -1,51 +1,55 @@
 export type DelegationOutcome =
   | { readonly kind: 'result'; readonly block: string }
   | { readonly kind: 'cancelled'; readonly reason: unknown }
-  | { readonly kind: 'replaced' };
+  /** A later delegation replaced the agent, and that one gives the result. */
+  | { readonly kind: 'replaced' }
+  /** The instruction joined the run already under way, whose result answers it. */
+  | { readonly kind: 'merged' };
 
 export interface StartedDelegation {
-  readonly role: string;
   readonly outcome: Promise<DelegationOutcome>;
+  /** Stops the work while its outcome is pending, so no agent runs on for a turn that ended. */
+  cancel(): Promise<void>;
 }
+
+type HandedOver = Extract<DelegationOutcome, { readonly kind: 'result' | 'cancelled' }>;
 
 /**
  * Delegations a turn has started and not yet handed to the CEO. Results are handed over in the order the
  * agents finish, and the ones that finish while the CEO is busy come out together in the next batch.
  */
 export class RunningDelegations {
-  private readonly pending = new Map<Promise<void>, string>();
-  private finished: Exclude<DelegationOutcome, { readonly kind: 'replaced' }>[] = [];
+  private readonly pending = new Map<Promise<void>, () => Promise<void>>();
+  private finished: HandedOver[] = [];
 
   get isEmpty(): boolean {
     return this.pending.size === 0 && this.finished.length === 0;
   }
 
-  get pendingRoles(): readonly string[] {
-    return [...this.pending.values()];
-  }
-
   add(started: readonly StartedDelegation[]): void {
-    for (const { role, outcome } of started) {
+    for (const { outcome, cancel } of started) {
       const tracked: Promise<void> = outcome.then((settled) => {
         this.pending.delete(tracked);
-        if (settled.kind !== 'replaced') {
+        if (settled.kind === 'result' || settled.kind === 'cancelled') {
           this.finished.push(settled);
         }
       });
-      this.pending.set(tracked, role);
+      this.pending.set(tracked, cancel);
     }
   }
 
   /**
-   * Waits for at least one result and returns every result finished so far; a cancellation is thrown. Returns
-   * `undefined` when nothing is left to wait for, because a later delegation replaced every agent still running.
+   * Waits for at least one result, or for `wake`, and returns every result finished so far; a cancellation is thrown.
+   * Returns an empty text when woken before any result, or when nothing is left to wait for, because every agent
+   * still running was replaced or took the work into another run.
    */
-  async nextResults(): Promise<string | undefined> {
-    while (this.finished.length === 0) {
-      if (this.pending.size === 0) {
-        return undefined;
-      }
-      await Promise.race(this.pending.keys());
+  async nextResults(wake?: Promise<void>): Promise<string> {
+    let woken = false;
+    const woke = wake?.then(() => {
+      woken = true;
+    });
+    while (this.finished.length === 0 && !woken && this.pending.size > 0) {
+      await Promise.race([...this.pending.keys(), ...(woke ? [woke] : [])]);
     }
     const batch = this.finished;
     this.finished = [];
@@ -57,6 +61,12 @@ export class RunningDelegations {
       blocks.push(outcome.block);
     }
     return blocks.join('\n\n');
+  }
+
+  /** Cancels every delegation whose outcome is still pending and waits for them all to settle. */
+  async cancelPending(): Promise<void> {
+    await Promise.allSettled([...this.pending.values()].map(cancel => cancel()));
+    await this.settled();
   }
 
   async settled(): Promise<void> {

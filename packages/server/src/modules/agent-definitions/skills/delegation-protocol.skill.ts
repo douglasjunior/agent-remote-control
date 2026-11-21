@@ -10,7 +10,7 @@ const FACT_THE_TASK_LACKS: Readonly<Record<AgentInterface, string>> = {
 
 export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.delegationProtocol,
-  description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, redirecting a running agent, failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
+  description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, delegating to an agent already at work (on_busy, steering, waiting, interrupting), failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
   roles: ['CEO'],
   buildContent: ({ workspaceDir, agentInterface }) => `# Delegation Protocol
 
@@ -18,6 +18,7 @@ export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3" project="my-app" session="new">specification</delegate>\`, in the final response block, as plain text without code fences around the tag. \`role\` and \`summary\` are required; use only the other attributes the agent accepts, as listed in Your Team.
 - \`summary\`: one short sentence (up to 120 characters) in the user's language that tells a non-technical user what the agent is doing and why, such as "Planning how to build the login screen". The agent never sees it.
 - \`artifact\`: the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out.
+- \`on_busy="wait|interrupt"\`: what happens to the work of an agent that is already working when you delegate to it again (see Agents at Work). An idle agent ignores it.
 
 ## The Specification
 - With \`artifact\`, name the step in a sentence or two. The task holds everything else, and what it lacks ${FACT_THE_TASK_LACKS[agentInterface]}: a decision the user gave you, an exact path you authorize, a file the user attached (its absolute path, with permission to read it).
@@ -61,7 +62,15 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 - \`[TEAM_PROFILES]\` lists every agent of your team with its coding agent, model and effort, and whether it is idle or working: its project and artifact, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes; a prompt without it means nothing changed.
 - \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Trust it over what your session remembers as sent.
 - \`[BOARD_CHECK]\` arrives when you were about to end a turn leaving tasks it delegated in the middle of the flow with nobody working on them. Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.
-- Delegating to a role that is already working replaces its task with the new specification: it receives the new instructions mid-task when it supports that, or restarts with them otherwise. Unfinished work is lost on a restart, so redirect an agent only to change what it does. Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.
+- Confirmations that a delegation reached an agent already at work arrive as \`<agent_result status="steered|queued|interrupted">\` blocks with your next prompt (the next result or the next user message), never as a prompt of their own; the agent's real result comes later.
+
+## Agents at Work
+A conversation runs one agent per role, so a delegation to a role \`[TEAM_PROFILES]\` shows working goes to that agent. The same work means the same artifact, or the same project folder for work without one; its \`Steering\` says whether its coding agent takes a new instruction in the middle of a prompt.
+- **Same work, \`Steering: supported\`, no \`on_busy\`**: the agent receives your text in its running prompt, or with its next prompt when it is between prompts, and goes on with it. Nothing is lost. Use it to correct or add to what the agent is doing.
+- **\`on_busy="wait"\`**: your delegation waits until the agent's current work delivers its result; on the same work it then runs as the next prompt of the same session, keeping its context, and on other work it starts once that work ended. Nothing is lost, and you get both results, but it waits as long as the current work takes. Use it for a next step that does not change what the agent is doing now.
+- **\`on_busy="interrupt"\`**: on the same work, the running prompt is cancelled and your text is the next prompt of the same session: the agent keeps what it learned, but the step it was in the middle of is cut short. On other work, the agent's current work ends where it stands (its task keeps its status, its changes stay in the project, and you get a receipt saying so) and your delegation starts now. Use it only when the current work is wrong or no longer wanted.
+- Without steering, or on other work, \`on_busy\` is required, and a delegation without it comes back as \`[DELEGATION_ERROR]\`.
+- An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.
 
 ## Access Requests
 Agents never read or write outside their project folder unless the exact path was authorized. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.

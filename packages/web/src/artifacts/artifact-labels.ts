@@ -1,4 +1,4 @@
-import type { ArtifactSection, ArtifactStatus, ArtifactType, RefinementState } from '@agent-remote-control/protocol/artifact';
+import type { ArtifactSection, ArtifactStatus, ArtifactType, RefinementKind, RefinementState } from '@agent-remote-control/protocol/artifact';
 
 
 export const TYPE_LABELS: Readonly<Record<ArtifactType, string>> = {
@@ -51,10 +51,17 @@ export const SECTION_LABELS: Readonly<Record<ArtifactSection, string>> = {
   glossary: 'Glossary',
   pending_decisions: 'Pending decisions',
   open_questions: 'Open questions',
+  ux_design: 'UX design',
   technical_solution: 'Technical solution',
   implementation_notes: 'Implementation notes',
   review_findings: 'Review findings',
   test_report: 'Test report',
+};
+
+export const REFINEMENT_KIND_LABELS: Readonly<Record<RefinementKind, string>> = {
+  business: 'Business',
+  design: 'Design',
+  technical: 'Technical',
 };
 
 export const REFINEMENT_LABELS: Readonly<Record<RefinementState, string>> = {

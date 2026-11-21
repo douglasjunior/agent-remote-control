@@ -20,7 +20,7 @@ const formatElapsed = (seconds: number) => `${Math.floor(seconds / 60)}:${String
  * The field to write to the agents, with attachments, voice, mentions and history. `block` has the tools around the
  * field; `inline` holds them inside one frame, to sit within a card.
  */
-export function PromptInput({ input, layout = 'block', label, placeholder, submitLabel, actions }: {
+export function PromptInput({ input, layout = 'block', label, placeholder, submitLabel, actions, fieldClassName }: {
   readonly input: PromptInputState;
   readonly layout?: 'block' | 'inline';
   readonly label: string;
@@ -28,6 +28,7 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
   readonly submitLabel: string;
   /** Buttons shown before the submit button. */
   readonly actions?: ReactNode;
+  readonly fieldClassName?: string;
 }) {
   const {
     attachments, recorder, microphones, mentions, disabled, registerField, text, setText, canSubmit, submit, onKeyDown, position, attachRecording,
@@ -36,6 +37,7 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
   const recording = recorder.status === 'recording';
   const inline = layout === 'inline';
   const toolClass = inline ? 'size-8' : undefined;
+  const uploads = attachments.enabled;
 
   const attach = (
     <IconButton variant="ghost" label="Attach" className={toolClass} disabled={disabled || recording} onClick={() => pickerRef.current?.click()}>
@@ -108,6 +110,7 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
         className={cn(
           'max-h-48 resize-none',
           inline ? 'min-h-8 min-w-0 flex-1 border-0 bg-transparent py-1.5 shadow-none focus-visible:ring-0 dark:bg-transparent' : 'min-h-10',
+          fieldClassName,
         )}
         value={text}
         disabled={disabled}
@@ -117,7 +120,7 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
         }}
         {...mentions.fieldHandlers}
         onKeyDown={onKeyDown}
-        onPaste={attachments.onPaste}
+        onPaste={uploads ? attachments.onPaste : undefined}
       />
     );
 
@@ -129,7 +132,7 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
 
   return (
     <div
-      {...(disabled ? {} : attachments.dropHandlers)}
+      {...(disabled || !uploads ? {} : attachments.dropHandlers)}
       className={cn('relative flex w-full flex-col gap-2 rounded-lg', attachments.dragging && 'ring-2 ring-primary')}
     >
       {attachments.dragging && (
@@ -184,14 +187,14 @@ export function PromptInput({ input, layout = 'block', label, placeholder, submi
           ? (
             <>
               {field}
-              {attach}
-              {voice}
+              {uploads && attach}
+              {uploads && voice}
             </>
           )
           : (
             <>
-              {attach}
-              {voice}
+              {uploads && attach}
+              {uploads && voice}
               {field}
             </>
           )}

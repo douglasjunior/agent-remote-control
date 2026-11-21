@@ -63,19 +63,18 @@ describe('WebArtifactsService', () => {
       parentId: 'F-1',
       dependsOn: ['T-1'],
       sections: { overview: 'Typo' },
-      businessRefinement: false,
-      technicalRefinement: false,
+      refinements: { business: false },
     });
-    const refined = await service.create('web-1', 'r2', { type: 'feature', title: 'Checkout', projectName: 'web', businessRefinement: true, technicalRefinement: true });
+    const refined = await service.create('web-1', 'r2', { type: 'feature', title: 'Checkout', projectName: 'web', refinements: { business: true, design: true, technical: true } });
 
     expect(result).toEqual({ type: 'artifact.result', conversationId: 'web-1', requestId: 'r1', ok: true, id: 'T-2' });
     expect(refined).toMatchObject({ ok: true, id: 'F-2' });
     expect(await artifacts.service.get('web-1', 'T-2')).toMatchObject({
       status: 'ready',
-      refinement: { business: 'skipped', technical: 'skipped' },
+      refinement: { business: 'skipped', design: 'skipped', technical: 'skipped' },
       history: [{ actor: user }],
     });
-    expect(await artifacts.service.get('web-1', 'F-2')).toMatchObject({ refinement: { business: 'pending', technical: 'pending' } });
+    expect(await artifacts.service.get('web-1', 'F-2')).toMatchObject({ refinement: { business: 'pending', design: 'pending', technical: 'pending' } });
   });
 
   it('should update fields and replace sections, comment and delete, answering failures with their reason', async () => {

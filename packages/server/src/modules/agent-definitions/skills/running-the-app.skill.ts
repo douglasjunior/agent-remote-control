@@ -4,8 +4,8 @@ import type { AgentSkillDefinition } from '../models/agent-skill-definition.mode
 
 export const RUNNING_THE_APP_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.runningTheApp,
-  description: 'Preparing and starting the application of a project to test it - finding the documented commands, environment, services and ports, bringing up local databases with migrations and seeds, changing local data, configuration and code to force a scenario, waiting until it is ready, and undoing everything afterwards. Read before starting any application.',
-  roles: ['QA'],
+  description: 'Preparing and starting the application of a project to test it or look at it running - finding the documented commands, environment, services and ports, bringing up local databases with migrations and seeds, changing local data, configuration and code to force a scenario, waiting until it is ready, and undoing everything afterwards. Read before starting any application.',
+  roles: ['QA', 'UX_DESIGNER'],
   buildContent: () => `# Running the Application
 
 ## Find How the Project Runs

@@ -3,9 +3,9 @@ name: web-channel
 description: >
   Web interface channel: the IClientTransportPort WebSocket transport, access token and origin
   check, authenticated connections, web conversations (store, history, entry mapping, turn state),
-  stateless agent configuration, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
-  (auth.* commands and events), uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
-  access token or web conversations.
+  stateless agent configuration and squads, structured question answers, the artifacts.* commands of each conversation board, the skills.* commands, the combined local and remote transports, agent CLI login
+  (auth.* commands and events), the settings.* commands, uploads, file search, /health and the WEB_* variables. Use when working with the web module, WebSocket connections, the
+  access token, web conversations or the settings commands.
 ---
 
 # Web channel
@@ -37,7 +37,8 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 ## Origin check
 
 - The upgrade is accepted when the `Origin` host equals the request `Host`, or when the origin is listed
-  in `WEB_ALLOWED_ORIGINS` (comma-separated, compared without a trailing slash).
+  in the `WEB_ALLOWED_ORIGINS` setting (comma-separated, compared without a trailing slash, set only by its environment
+  variable), read on every upgrade.
 - A missing or malformed `Origin` is rejected. Rejection answers `403` and destroys the socket.
 - When the web app reaches the server directly (no proxy), its origin goes in `WEB_ALLOWED_ORIGINS`.
 
@@ -71,21 +72,35 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
   archived conversation still opens and takes messages.
 - Every command carrying a `conversationId` for an unknown conversation answers an `error` event before reaching a use case.
 - `message.send` returns immediately while the turn streams: `SendConversationMessageUseCase` never rejects,
-  records the `user_message` and runs the turn as the CEO only when the conversation is configured.
+  records the `user_message` and runs the turn as the CEO only when the conversation is configured. A message sent
+  while a turn runs joins it in the orchestrator: its `user_message` shows how it reached the CEO (`delivery`) and it
+  gets no `agent_response` of its own.
 - Turn callbacks become entries with stable ids (`thought:<turnId>:<role>:<id>`, `tool:<turnId>:<role>:<toolCallId>`,
-  `delegation:<delegationId>:<phase>`) so the store and the client upsert by id. `ConversationEntryService` builds
+  `delegation:<delegationId>:<phase>`, `delegation:<delegationId>:steered:<uuid>` for each new instruction) so the store and the client upsert by id. `ConversationEntryService` builds
   every entry and owns the clock and the random ids.
 - The conversation state (`running`, `queued`, `idle`) belongs to the conversation, not to a turn, and is
   published only when it changes. `WebConversationEventsService` places each entry in the history, then broadcasts it
   with its position, and keeps the CEO's response being written as an in-memory draft (`conversation.draft`), never
   stored.
-- `JsonConversationStoreAdapter` writes `<DATA_DIR>/web/conversations.json` and
-  `<DATA_DIR>/web/history/<id>.json` through `ILockedFilesPort` (`storage` module), debounced by 1 s per file,
-  and flushes at the end of every turn and on module destroy. Changes wait in memory, each as a value to set (a
-  summary field, an entry by id), and every read applies them over the file; a write applies them to the file as it is
-  on disk under its lock and drops only those it wrote, so a failed write is logged and its changes go with the next
-  flush. An id reaches a file path only after it is found among the known conversations. Files that do not match the
-  protocol schemas are ignored.
+- `SqliteConversationStoreAdapter` keeps the summaries in the `conversation` table and the entries in
+  `conversation_entry` of the server database, each entry stored whole as JSON beside its id, type, time and position.
+  Every call writes its change before it resolves, so `flush`, called at the end of every turn, has nothing left to
+  write. `upsertEntry` is one statement: a new entry takes the next position of its conversation, a stored one keeps
+  its own, and an unknown conversation is rejected. An entry whose payload does not match the protocol schema is left out of
+  the history and logged.
+
+- `LegacyConversationEntryUpgraderService` (injected with `IAgentRegistryPort`, used by the `web-histories` legacy
+  importer of the database skill) turns each raw entry of a history file written by an earlier version into a
+  `ConversationEntry`, so one invalid entry never costs a conversation its history. An entry that is valid passes
+  through. Otherwise: an `id` missing takes the fallback the importer gives (`legacy-<place in the file>`) and a time
+  missing or unreadable the time of the entry before (the creation of the conversation for the first); an
+  `agent_response` with status `steered` becomes an `info` notice "The CEO took a message into the work in progress."
+  with its `id` and `at`, or a `completed` response when it has text; `thought` and `tool` without `role` get `CEO`;
+  `delegation` without `delegationId` gets `legacy-<entry id>` and without `summary` an empty one; `question` without
+  `closed` is closed, and without `askerRole` takes the role whose display name (or identifier) is `askerRoleName`
+  in `IAgentRegistryPort`, else `CEO`. An entry still invalid (unknown type, broken data) becomes a `warning` notice
+  that names the original type and quotes up to 200 characters of its `text`, `response`, `title` or `message`.
+  Nothing is dropped. A change to the entry schema that adds a required field adds its rule here.
 
 - The history is read in pages. Every entry keeps its position in the history for good (`upsertEntry` replaces in
   place or appends, and returns the position). `conversation.history` (`GetConversationHistoryUseCase`) answers the
@@ -115,9 +130,12 @@ Each area has a reference with the exact commands, events, limits and edge cases
 - **Skills**: `skills.list`, `skill.get` and `skill.delete` over `IAgentSkillsPort`; the web never writes a skill.
   Read [references/skills.md](references/skills.md).
 - **Agents**: the stateless configuration API (`agents.list`, `models.list`, `efforts.list`, `profiles.get`,
-  `profiles.set`), the cached `quota.get` and `auth.status` queries that answer `quota.failed`/`auth.status.failed`
+  `profiles.set`, `squads.list`, `squads.save`, `squads.delete`, `squads.apply`), the cached `quota.get` and `auth.status` queries that answer `quota.failed`/`auth.status.failed`
   (never `error`), and the CLI login (`auth.login`, `auth.input`, `auth.cancel`) broadcast to every connection.
   Read [references/agents.md](references/agents.md).
+- **Settings**: `settings.get`, `settings.set`, `settings.reset` over the runtime settings and the user language,
+  the `settings` broadcast after a change, refusals as `error`, and `settings.discord.test`. Secrets travel only as
+  `{ set }`. Read [references/settings.md](references/settings.md).
 - **Composer**: `prompts.history`, the per-connection `files.search` session for `@` mentions and the framed
   `upload.*` protocol into `.arc-uploads/<conversationId>/`. Read [references/composer-commands.md](references/composer-commands.md).
 
@@ -141,5 +159,5 @@ a proxy in front of both makes the upgrade same-origin.
 ## Environment
 
 `WEB_ENABLED` (default `true`; `false` leaves `WebModule` out of `AppModule`, remote access included), `WEB_ACCESS_TOKEN`,
-`WEB_ALLOWED_ORIGINS`, `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
+`WEB_ALLOWED_ORIGINS` (a setting only its variable sets, shown read-only on the settings page), `WEB_STATIC_DIR`, and `REMOTE_ENABLED` and `REMOTE_URL` of the remote module that `WebModule` imports. The agent login commands follow `AGENT_AUTH_ENABLED`, `AGENT_AUTH_LOGIN_TIMEOUT_MS` and
 `AGENT_AUTH_STATUS_TIMEOUT_MS`.

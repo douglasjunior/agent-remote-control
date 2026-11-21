@@ -5,8 +5,11 @@ import { escapeTagAttribute } from '../utils/protocol-tag.util.js';
 
 /** What a result says about the agent that produced it, besides its role and project. */
 export type AgentResultDetails = {
-  /** `stopped`: the user ended the work on its artifact before the agent finished. */
-  readonly status?: 'failed' | 'stopped';
+  /**
+   * `stopped`: the user ended the work on its artifact before the agent finished. `steered`, `queued` and
+   * `interrupted` are receipts of a delegation to an agent already at work, whose result comes later.
+   */
+  readonly status?: 'failed' | 'stopped' | 'steered' | 'queued' | 'interrupted';
   readonly agentInfo?: TurnAgentInfo;
   readonly artifactId?: string;
   /** The verdict that opens the agent's final answer, as the status flow of its role writes it. */

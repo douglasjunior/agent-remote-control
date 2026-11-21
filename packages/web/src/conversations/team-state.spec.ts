@@ -27,7 +27,7 @@ describe('deriveTeam', () => {
   it('should list the whole team, idle, when nothing happened', () => {
     const team = deriveTeam([], false);
 
-    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS', 'IT_SUPPORT']);
+    expect(team.map(member => member.role)).toEqual(['CEO', 'PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA', 'GIT_OPS', 'IT_SUPPORT']);
     expect(team.every(member => member.state === 'idle')).toBe(true);
   });
 
@@ -48,6 +48,18 @@ describe('deriveTeam', () => {
     const team = deriveTeam([user, delegation('started', 'DEVELOPER', { projectName: 'app' }), delegation('finished', 'DEVELOPER', { durationMs: 5000 })], true);
 
     expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 5000, projectName: 'app' });
+  });
+
+  it('should give a working delegate the summary of its new instruction, and ignore one for another delegation', () => {
+    const team = deriveTeam([
+      user,
+      delegation('started', 'DEVELOPER'),
+      delegation('steered', 'DEVELOPER', { summary: 'Adding the tests too' }),
+      delegation('steered', 'CODE_REVIEWER', { summary: 'Not running' }),
+    ], true);
+
+    expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'working', summary: 'Adding the tests too' });
+    expect(stateOf(team, 'CODE_REVIEWER').state).toBe('idle');
   });
 
   it('should mark a delegate that failed', () => {
@@ -138,6 +150,13 @@ describe('deriveTeam', () => {
       const team = deriveTeam([user, delegation('started', 'QA'), step], true);
 
       expect(stateOf(team, 'QA')).toMatchObject({ state: 'working', steps: 1, doing: 'Reading a skill' });
+    });
+
+    it('should keep a closed delegation at a message that joined the running turn', () => {
+      const joined: ConversationEntry = { ...next, delivery: 'delivered' };
+      const team = deriveTeam([user, delegation('started', 'DEVELOPER'), delegation('finished', 'DEVELOPER', { durationMs: 5 }), joined], true);
+
+      expect(stateOf(team, 'DEVELOPER')).toMatchObject({ state: 'done', durationMs: 5 });
     });
 
     it('should drop a closed delegation at a new user message', () => {

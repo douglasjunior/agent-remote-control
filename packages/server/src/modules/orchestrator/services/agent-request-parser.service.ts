@@ -5,6 +5,7 @@ import {
   ARTIFACT_STATUSES,
   ARTIFACT_TYPES,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type {
@@ -12,6 +13,7 @@ import type {
   ArtifactSection,
   PullRequestInput,
   PullRequestState,
+  RefinementKind,
   RefinementState,
   SectionChange,
 } from '../../artifacts/models/artifact.model.js';
@@ -32,11 +34,13 @@ const REQUEST_TAG = /<(\/?)(artifact_list|artifact_read|artifact_create|artifact
 const CHILD_TAG = /<(\/?)(section|pull_request)\b([^>]*)>/gi;
 const DELEGATE_BLOCK = /<delegate\b[^>]*>[\s\S]*?<\/delegate>/gi;
 
+const REFINEMENT_ATTRIBUTES = REFINEMENT_KINDS.map(kind => `${kind}_refinement`);
+
 const ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   artifact_list: ['type', 'status', 'parent', 'project'],
   artifact_read: ['id', 'tree'],
-  artifact_create: ['ref', 'type', 'title', 'parent', 'project', 'depends_on', 'business_refinement', 'technical_refinement'],
-  artifact_update: ['id', 'title', 'status', 'parent', 'project', 'depends_on', 'business_refinement', 'technical_refinement', 'branch', 'note'],
+  artifact_create: ['ref', 'type', 'title', 'parent', 'project', 'depends_on', ...REFINEMENT_ATTRIBUTES],
+  artifact_update: ['id', 'title', 'status', 'parent', 'project', 'depends_on', ...REFINEMENT_ATTRIBUTES, 'branch', 'note'],
   artifact_comment: ['id'],
   skill_read: ['name'],
   skill_list: [],
@@ -239,15 +243,15 @@ export class AgentRequestParserService {
     readonly dependsOn?: readonly string[];
     readonly refinement?: Partial<ArtifactRefinement>;
   } {
-    const refinement: { business?: RefinementState; technical?: RefinementState } = {};
-    for (const side of ['business', 'technical'] as const) {
-      const raw = attributes.get(`${side}_refinement`)?.toLowerCase();
+    const refinement: Partial<Record<RefinementKind, RefinementState>> = {};
+    for (const kind of REFINEMENT_KINDS) {
+      const raw = attributes.get(`${kind}_refinement`)?.toLowerCase();
       const state = this.oneOf(raw, REFINEMENT_STATES);
       if (raw !== undefined && !state) {
-        return { fail: `The ${side}_refinement attribute is one of: ${REFINEMENT_STATES.join(', ')}.` };
+        return { fail: `The ${kind}_refinement attribute is one of: ${REFINEMENT_STATES.join(', ')}.` };
       }
       if (state) {
-        refinement[side] = state;
+        refinement[kind] = state;
       }
     }
     const parent = attributes.get('parent');

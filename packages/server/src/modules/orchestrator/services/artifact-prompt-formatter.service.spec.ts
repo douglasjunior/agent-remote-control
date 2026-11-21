@@ -34,10 +34,10 @@ const all = [feature, api, cart];
 describe('ArtifactPromptFormatterService', () => {
   it('should write one line per artifact with what routes the work', () => {
     expect(formatter.summaryLine(api, all)).toBe(
-      '- T-1 [task] "API" · status: in_review · project: shop · parent: F-1 · depends on: T-2 (done), T-9 (deleted) · refinement: business done, technical done · with: CODE_REVIEWER · pull requests: 2',
+      '- T-1 [task] "API" · status: in_review · project: shop · parent: F-1 · depends on: T-2 (done), T-9 (deleted) · refinement: business done, design done, technical done · with: CODE_REVIEWER · pull requests: 2',
     );
     expect(formatter.summaryLine(buildArtifact({ id: 'T-3', dependsOn: ['T-1', 'T-2'] }), all)).toContain('· depends on: T-1 (in_review), T-2 (done) · waiting on: T-1 ·');
-    expect(formatter.summaryLine(feature, all)).toBe('- F-1 [feature] "Checkout" · status: in_progress · project: shop · refinement: business done, technical done');
+    expect(formatter.summaryLine(feature, all)).toBe('- F-1 [feature] "Checkout" · status: in_progress · project: shop · refinement: business done, design done, technical done');
     expect(formatter.list([], all)).toBe('No artifact matches.');
     expect(formatter.list([feature, cart], all).split('\n')).toHaveLength(2);
   });
@@ -52,7 +52,7 @@ describe('ArtifactPromptFormatterService', () => {
         '- Parent: F-1 "Checkout" (feature)',
         '- Depends on: T-2 "Cart" (done); T-9 (deleted)',
         '- Blocks: none',
-        '- Refinement: business done, technical done',
+        '- Refinement: business done, design done, technical done',
         `- With: Code Reviewer (CODE_REVIEWER) since ${ARTIFACT_AT}`,
         '- Branch: feat/t-1',
         '- Pull requests: https://x/pull/1 (open) "T-1: API"; https://x/pull/2 (merged)',
@@ -121,16 +121,16 @@ describe('ArtifactPromptFormatterService', () => {
         buildArtifact({ id: 'T-5', parentId: 'F-1', status: 'ready' }),
         buildArtifact({ id: 'T-12', parentId: 'F-2', status: 'ready' }),
         buildArtifact({ id: 'T-10', status: 'ready' }),
-        buildArtifact({ id: 'T-8', status: 'backlog', refinement: { business: 'pending', technical: 'pending' } }),
-        buildArtifact({ id: 'T-7', parentId: 'F-1', status: 'backlog', refinement: { business: 'done', technical: 'pending' } }),
-        buildArtifact({ id: 'T-11', parentId: 'F-1', status: 'backlog', refinement: { business: 'pending', technical: 'skipped' } }),
+        buildArtifact({ id: 'T-8', status: 'backlog', refinement: { business: 'pending', design: 'pending', technical: 'pending' } }),
+        buildArtifact({ id: 'T-7', parentId: 'F-1', status: 'backlog', refinement: { business: 'done', design: 'skipped', technical: 'pending' } }),
+        buildArtifact({ id: 'T-11', parentId: 'F-1', status: 'backlog', refinement: { business: 'pending', design: 'pending', technical: 'skipped' } }),
         buildArtifact({ id: 'T-13', status: 'backlog' }),
         buildArtifact({ id: 'T-14', parentId: 'F-2', status: 'backlog' }),
       ];
 
       expect(formatter.digest(board).split('\n').slice(2)).toEqual([
         'Ready: T-5, T-6 (F-1); T-12 (F-2); T-9, T-10',
-        'Backlog: T-7 (F-1, owes technical); T-8 (owes business and technical); T-11 (F-1, owes business); T-13; T-14 (F-2)',
+        'Backlog: T-7 (F-1, owes technical refinement); T-8 (owes business, design and technical refinement); T-11 (F-1, owes business and design refinement); T-13; T-14 (F-2)',
       ]);
     });
 
@@ -152,7 +152,7 @@ describe('ArtifactPromptFormatterService', () => {
       title: 'Login',
       status: 'changes_requested',
       dependsOn: ['T-2'],
-      refinement: { business: 'done', technical: 'skipped' },
+      refinement: { business: 'done', design: 'skipped', technical: 'skipped' },
       branch: 'feat/t-5',
       assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: ARTIFACT_AT },
       pullRequests: [{ url: 'https://x/pull/5', state: 'open', addedAt: ARTIFACT_AT }],
@@ -164,7 +164,7 @@ describe('ArtifactPromptFormatterService', () => {
       '',
       '- Status: changes_requested',
       '- Depends on: T-2 "Cart" (done)',
-      '- Refinement: business done, technical skipped',
+      '- Refinement: business done, design skipped, technical skipped',
       `- With: Developer (DEVELOPER) since ${ARTIFACT_AT}`,
       '- Branch: feat/t-5',
       '- Pull requests: https://x/pull/5 (open)',

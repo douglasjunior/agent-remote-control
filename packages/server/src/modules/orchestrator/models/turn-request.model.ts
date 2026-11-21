@@ -1,4 +1,5 @@
 import type { TurnTranscription } from './audio-transcription.model.js';
+import type { UserMessageDelivery } from './conversation-turn.model.js';
 import type { DelegationEvent } from './delegation-event.model.js';
 import type { QuestionEvent } from './question-event.model.js';
 import type { TurnActivity } from './turn-activity.model.js';
@@ -29,7 +30,12 @@ export type TurnRequest = {
   onQuestion?: (event: QuestionEvent) => void;
   /** A failed round of the CEO waits to be tried again, or that wait ended. */
   onRetry?: (event: RetryEvent) => void;
-  onQueued?: () => void;
+  /**
+   * How the message reached the CEO when a turn was already running: `queued` first while it waits, then `steered`,
+   * `delivered` or `cancelled`. A message that starts a turn of its own hears nothing; one that waited and then starts
+   * the next turn hears `delivered` when the CEO reads it.
+   */
+  onDelivery?: (delivery: UserMessageDelivery) => void;
   /** Called before the agents run, when audio attachments were transcribed or could not be. */
   onTranscription?: (transcription: TurnTranscription) => void;
 };

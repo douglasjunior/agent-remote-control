@@ -7,9 +7,12 @@ export class FakeSignalingClient implements ISignalingClientPort {
   options?: SignalingClientOptions;
   readonly sent: HostSignal[] = [];
   stopped = false;
+  starts = 0;
 
   start(options: SignalingClientOptions): void {
     this.options = options;
+    this.starts += 1;
+    this.stopped = false;
   }
 
   send(signal: HostSignal): void {

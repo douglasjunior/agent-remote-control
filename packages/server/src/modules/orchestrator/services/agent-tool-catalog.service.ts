@@ -3,11 +3,13 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   ARTIFACT_STATUSES,
   ARTIFACT_TYPES,
+  DEFAULT_REFINEMENT_STATES,
   FROZEN_STATUS,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
-import type { ArtifactSection } from '../../artifacts/models/artifact.model.js';
+import type { ArtifactSection, RefinementKind } from '../../artifacts/models/artifact.model.js';
 import type { AgentToolCatalog, AgentToolDefinition, JsonSchema } from '../models/agent-tool.model.js';
 import { type ArtifactAccess, type ArtifactField, IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
@@ -106,7 +108,7 @@ export class AgentToolCatalogService {
         parent: string('The feature a task belongs to.'),
         project: string('The project folder; a task under a feature takes the feature\'s.'),
         depends_on: stringList('Ids of the artifacts this one waits on.'),
-        ...this.refinementProperties(access),
+        ...this.refinementProperties(access, kind => `Left out: ${DEFAULT_REFINEMENT_STATES[kind]}.`),
         sections: this.sectionsSchema(sections, false),
       }, ['type', 'title']),
     };
@@ -170,12 +172,9 @@ export class AgentToolCatalogService {
     };
   }
 
-  private refinementProperties(access: ArtifactAccess): Record<string, JsonSchema> {
+  private refinementProperties(access: ArtifactAccess, describe?: (kind: RefinementKind) => string): Record<string, JsonSchema> {
     return access.fields.includes('refinement')
-      ? {
-        business_refinement: { type: 'string', enum: REFINEMENT_STATES },
-        technical_refinement: { type: 'string', enum: REFINEMENT_STATES },
-      }
+      ? Object.fromEntries(REFINEMENT_KINDS.map(kind => [`${kind}_refinement`, { type: 'string', enum: REFINEMENT_STATES, ...(describe && { description: describe(kind) }) }]))
       : {};
   }
 

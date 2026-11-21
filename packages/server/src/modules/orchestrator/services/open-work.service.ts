@@ -42,7 +42,7 @@ export class OpenWorkService implements OnModuleDestroy {
     return this.persist(conversationId);
   }
 
-  update(conversationId: string, id: string, changes: Partial<Pick<OpenWork, 'taskSpec' | 'questions'>>): Promise<void> {
+  update(conversationId: string, id: string, changes: Partial<Pick<OpenWork, 'summary' | 'updates' | 'questions'>>): Promise<void> {
     const records = this.work.get(conversationId);
     const record = records?.get(id);
     if (this.frozen || !records || !record) {

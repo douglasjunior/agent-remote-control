@@ -19,7 +19,7 @@ describe('ConversationView and the mission board', () => {
         summary({ id: 'T-3', status: 'done' }),
       ],
     }));
-    expect(screen.getByLabelText('2 open')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Tasks, 2 open' })).toHaveAttribute('href', '/c/c1/tasks');
   });
 
   it('should switch between the chat and the board, keeping the chat in place', async () => {

@@ -1,9 +1,9 @@
-import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { ConversationState, ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import { Inject, Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 
 import type { InterruptedWork } from '../../orchestrator/models/open-work.model.js';
+import type { ConversationProfiles } from '../models/conversation-profiles.model.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 
 import { ConversationEntryService } from './conversation-entry.service.js';
@@ -138,8 +138,8 @@ export class WebConversationEventsService implements OnModuleDestroy {
     return this.states.get(conversationId) ?? 'idle';
   }
 
-  publishProfiles(conversationId: string, configured: boolean, profiles: readonly RoleProfile[]): void {
-    this.registry.broadcast({ type: 'profiles', conversationId, configured, profiles: [...profiles] });
+  publishProfiles(conversationId: string, { profiles, ...state }: ConversationProfiles): void {
+    this.registry.broadcast({ type: 'profiles', conversationId, ...state, profiles: [...profiles] });
   }
 
   publishInterrupted(conversationId: string, interrupted: readonly InterruptedWork[]): void {
@@ -183,7 +183,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
     const live = this.liveDelegations.get(conversationId) ?? new Set<string>();
     if (entry.phase === 'started') {
       live.add(entry.delegationId);
-    } else {
+    } else if (entry.phase !== 'steered') {
       live.delete(entry.delegationId);
     }
     this.liveDelegations.set(conversationId, live);
@@ -215,10 +215,7 @@ export class WebConversationEventsService implements OnModuleDestroy {
     this.openQuestions.set(conversationId, open);
   }
 
-  /** A steered prompt is absorbed by the running turn, whose response is still being written. */
   private deliversResponse(entry: ConversationEntry): boolean {
-    return entry.type === 'interim'
-      || (entry.type === 'question' && !entry.closed)
-      || (entry.type === 'agent_response' && entry.status !== 'steered');
+    return entry.type === 'interim' || entry.type === 'agent_response' || (entry.type === 'question' && !entry.closed);
   }
 }

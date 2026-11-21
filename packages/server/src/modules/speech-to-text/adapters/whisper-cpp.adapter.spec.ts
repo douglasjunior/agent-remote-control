@@ -1,27 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it } from '@rstest/core';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 import { availableParallelism } from 'node:os';
 
 import type { IProcessRunnerPort, ProcessRunResult } from '../../agent/ports/process-runner.port.js';
 import { StubFileSystem } from '../../agent/testing/stub-file-system.port.js';
 import { dataDirectoryAt } from '../../paths/testing/fixed-directories.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 
 import { WhisperCppAdapter } from './whisper-cpp.adapter.js';
 
-
-const ENV_KEYS = ['STT_FFMPEG_BIN', 'STT_WHISPER_BIN', 'STT_MODEL_PATH', 'STT_MODEL', 'STT_LANGUAGE', 'STT_THREADS', 'STT_TIMEOUT_MS'];
 
 describe('WhisperCppAdapter', () => {
   let runs: { command: string; args: readonly string[]; signal?: AbortSignal }[];
   let results: ProcessRunResult[];
   let fileSystem: StubFileSystem;
   let adapter: WhisperCppAdapter;
-  const saved: Record<string, string | undefined> = {};
+  let settings: StubRuntimeSettings;
 
   beforeEach(() => {
-    for (const key of ENV_KEYS) {
-      saved[key] = process.env[key];
-      delete process.env[key];
-    }
+    settings = new StubRuntimeSettings();
     runs = [];
     results = [];
     fileSystem = new StubFileSystem();
@@ -32,17 +28,7 @@ describe('WhisperCppAdapter', () => {
         return results.shift() ?? { exitCode: 0, output: '' };
       },
     } as unknown as IProcessRunnerPort;
-    adapter = new WhisperCppAdapter(runner, fileSystem, dataDirectoryAt('/data'));
-  });
-
-  afterEach(() => {
-    for (const key of ENV_KEYS) {
-      if (saved[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = saved[key];
-      }
-    }
+    adapter = new WhisperCppAdapter(runner, fileSystem, dataDirectoryAt('/data'), settings);
   });
 
   it('should be enabled', () => {
@@ -68,24 +54,25 @@ describe('WhisperCppAdapter', () => {
       '-otxt', '-of', base,
     ]);
     expect(ffmpeg!.signal).toBeInstanceOf(AbortSignal);
+    expect(ffmpeg!.signal!.aborted).toBe(false);
     expect(fileSystem.deletedFiles).toEqual([wavPath, `${base}.txt`]);
   });
 
   it('should derive the model file from STT_MODEL', async () => {
-    process.env.STT_MODEL = 'large-v3-turbo-q5_0';
+    settings.set('STT_MODEL', 'large-v3-turbo-q5_0');
 
     await adapter.transcribe('/tmp/a.mp3');
 
     expect(runs[1]!.args).toEqual(expect.arrayContaining(['-m', '/data/models/ggml-large-v3-turbo-q5_0.bin']));
   });
 
-  it('should honor the environment configuration and the language option', async () => {
-    process.env.STT_FFMPEG_BIN = '/opt/ffmpeg';
-    process.env.STT_WHISPER_BIN = '/opt/whisper';
-    process.env.STT_MODEL_PATH = '/models/large.bin';
-    process.env.STT_LANGUAGE = 'pt';
-    process.env.STT_THREADS = '3';
-    process.env.STT_TIMEOUT_MS = '1000';
+  it('should honor the settings and the language option', async () => {
+    settings.set('STT_FFMPEG_BIN', '/opt/ffmpeg');
+    settings.set('STT_WHISPER_BIN', '/opt/whisper');
+    settings.set('STT_MODEL_PATH', '/models/large.bin');
+    settings.set('STT_LANGUAGE', 'pt');
+    settings.set('STT_THREADS', 3);
+    settings.set('STT_TIMEOUT_MS', 1000);
 
     await adapter.transcribe('/tmp/a.mp3');
     await adapter.transcribe('/tmp/a.mp3', { language: 'en' });
@@ -94,15 +81,6 @@ describe('WhisperCppAdapter', () => {
     expect(runs[1]!.command).toBe('/opt/whisper');
     expect(runs[1]!.args).toEqual(expect.arrayContaining(['-m', '/models/large.bin', '-l', 'pt', '-t', '3']));
     expect(runs[3]!.args).toEqual(expect.arrayContaining(['-l', 'en']));
-  });
-
-  it('should fall back to defaults for invalid numeric settings', async () => {
-    process.env.STT_THREADS = 'abc';
-    process.env.STT_TIMEOUT_MS = '-5';
-
-    await adapter.transcribe('/tmp/a.mp3');
-
-    expect(runs[1]!.args).toEqual(expect.arrayContaining(['-t', String(availableParallelism())]));
   });
 
   it('should return an empty text when whisper writes no transcript', async () => {

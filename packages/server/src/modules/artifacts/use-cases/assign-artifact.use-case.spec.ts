@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, rs } from '@rstest/core';
+import { beforeEach, describe, expect, it } from '@rstest/core';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { ArtifactHistoryEvent } from '../models/artifact.model.js';
 import { ArtifactLimitsConfigService } from '../services/artifact-limits-config.service.js';
 import { createArtifactHarness } from '../testing/artifact-harness.js';
@@ -19,18 +20,20 @@ const unfrozen: ArtifactHistoryEvent = {
   id: 'u', at, actor: { kind: 'user', channel: 'web' }, kind: 'updated', summary: 'Status frozen → ready', changes: [{ field: 'status', from: 'frozen', to: 'ready' }],
 };
 
+let settings = new StubRuntimeSettings();
+
 function setup(extra: ReturnType<typeof buildArtifact>[] = []) {
   const harness = createArtifactHarness([buildArtifact({ id: 'T-1' }), buildArtifact({ id: 'T-2', assignee: held }), ...extra]);
-  return { ...harness, useCase: new AssignArtifactUseCase(harness.store, harness.history, harness.events, new ArtifactLimitsConfigService()) };
+  return { ...harness, useCase: new AssignArtifactUseCase(harness.store, harness.history, harness.events, new ArtifactLimitsConfigService(settings)) };
 }
 
 describe('AssignArtifactUseCase', () => {
-  afterEach(() => {
-    rs.unstubAllEnvs();
+  beforeEach(() => {
+    settings = new StubRuntimeSettings();
   });
 
   it('should freeze an artifact that reached the maximum of delegations instead of handing it over', async () => {
-    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
+    settings.set('ARTIFACT_MAX_DELEGATIONS', 3);
     const { useCase, store, published } = setup([buildArtifact({ id: 'T-3', status: 'in_progress', history: assigned(3) })]);
 
     const outcome = await useCase.execute('c1', 'T-3', developer);
@@ -45,7 +48,7 @@ describe('AssignArtifactUseCase', () => {
   });
 
   it('should refuse a frozen artifact and count again from when the user unfroze it', async () => {
-    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '3');
+    settings.set('ARTIFACT_MAX_DELEGATIONS', 3);
     const { useCase, published } = setup([
       buildArtifact({ id: 'T-3', status: 'frozen', history: assigned(3) }),
       buildArtifact({ id: 'T-4', status: 'ready', history: [...assigned(3), unfrozen, ...assigned(2)] }),
@@ -57,7 +60,7 @@ describe('AssignArtifactUseCase', () => {
   });
 
   it('should never freeze when the limit is disabled', async () => {
-    rs.stubEnv('ARTIFACT_MAX_DELEGATIONS', '0');
+    settings.set('ARTIFACT_MAX_DELEGATIONS', 0);
     const { useCase } = setup([buildArtifact({ id: 'T-3', history: assigned(50) })]);
 
     expect(await useCase.execute('c1', 'T-3', developer)).toMatchObject({ ok: true });

@@ -38,11 +38,11 @@ class UploadingConnection extends FakeServerConnection {
 
 type Api = ReturnType<typeof usePromptAttachments>;
 
-function setup() {
+function setup(conversationId: string | null = 'c1') {
   const connection = new UploadingConnection();
   const api: { current: Api } = { current: undefined as unknown as Api };
   function Harness() {
-    api.current = usePromptAttachments(connection, 'c1');
+    api.current = usePromptAttachments(connection, conversationId);
     return (
       <div data-testid="drop" {...api.current.dropHandlers} onPaste={api.current.onPaste}>
         {api.current.items.map(item => <span key={item.id}>{`${item.name}:${item.status}${item.error ? `:${item.error}` : ''}`}</span>)}
@@ -60,6 +60,16 @@ const file = (name: string, content = 'data') => new File([content], name);
 const dragData = (types: string[] = ['Files'], files: File[] = []) => ({ dataTransfer: { types, files } });
 
 describe('usePromptAttachments', () => {
+  it('should ignore added files and report itself disabled without a conversation', async () => {
+    const { connection, api, add } = setup(null);
+
+    await add(file('a.txt'));
+
+    expect(api.current.enabled).toBe(false);
+    expect(api.current.items).toEqual([]);
+    expect(connection.sent).toEqual([]);
+  });
+
   it('should upload each added file and expose the stored attachments', async () => {
     const { api, add, settle } = setup();
 

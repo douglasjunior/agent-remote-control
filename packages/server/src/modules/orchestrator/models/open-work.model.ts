@@ -18,6 +18,8 @@ export type OpenWork = {
   readonly summary: string;
   /** The delegated task or, for the root agent, the prompt of its turn. */
   readonly taskSpec: string;
+  /** The instructions the agent received after its task, in order. */
+  readonly updates?: readonly string[];
   readonly cwd: string;
   readonly round: number;
   /** Whether this is the agent the turn started on, whose round follows from the results of the others. */

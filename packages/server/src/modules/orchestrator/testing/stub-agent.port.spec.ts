@@ -8,12 +8,20 @@ import { StubAgentPort } from './stub-agent.port.js';
 describe('StubAgentPort', () => {
   it('should record steering prompts and answer with the configured result', async () => {
     const stub = new StubAgentPort();
+    stub.supportsSteering = true;
 
-    await expect(stub.sendSteeringPrompt('Steer instruction')).resolves.toBe(true);
-    stub.steeringResult = false;
-    await expect(stub.sendSteeringPrompt('Second instruction')).resolves.toBe(false);
+    await expect(stub.sendSteeringPrompt('Steer instruction')).resolves.toBe('injected');
+    stub.steeringResult = 'not_running';
+    await expect(stub.sendSteeringPrompt('Second instruction')).resolves.toBe('not_running');
 
     expect(stub.steeringPrompts).toEqual(['Steer instruction', 'Second instruction']);
+  });
+
+  it('should send nothing to an agent without steering', async () => {
+    const stub = new StubAgentPort();
+
+    await expect(stub.sendSteeringPrompt('Steer instruction')).resolves.toBe('unsupported');
+    expect(stub.steeringPrompts).toEqual([]);
   });
 
   it('should support activity listeners', () => {

@@ -27,12 +27,11 @@ describe('AppLayout', () => {
     expect(connection.sent).toContainEqual({ type: 'conversation.list' });
   });
 
-  it('should show the empty state at / and create a conversation from it', async () => {
+  it('should create a conversation from the header outside the home screen', async () => {
     const user = userEvent.setup();
-    const { connection, router } = renderApp();
-    const [, emptyAction] = screen.getAllByRole('button', { name: 'New conversation' });
+    const { connection, router } = renderApp('/settings/general');
 
-    await user.click(emptyAction);
+    await user.click(screen.getByRole('button', { name: 'New conversation' }));
     const create = connection.sent.find(command => command.type === 'conversation.create');
     expect(create).toBeDefined();
 
@@ -44,6 +43,18 @@ describe('AppLayout', () => {
     expect(router.state.location.pathname).toBe('/c/new');
     expect(connection.sent).toContainEqual({ type: 'conversation.history', conversationId: 'new' });
     expect(connection.sent).toContainEqual({ type: 'profiles.get', conversationId: 'new' });
+  });
+
+  it('should focus the home composer from the header instead of creating a conversation at /', async () => {
+    const user = userEvent.setup();
+    const { connection, router } = renderApp();
+    expect(screen.getByLabelText('Message')).not.toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'New conversation' }));
+
+    expect(screen.getByLabelText('Message')).toHaveFocus();
+    expect(connection.sent.some(command => command.type === 'conversation.create')).toBe(false);
+    expect(router.state.location.pathname).toBe('/');
   });
 
   it('should not navigate for conversations created by another request', () => {
@@ -158,6 +169,36 @@ describe('AppLayout', () => {
       expect(dock()).not.toBeVisible();
     });
 
+    it('should open the docked list from See all', async () => {
+      const user = userEvent.setup();
+      const { connection } = renderApp();
+      act(() => connection.emitEvent({
+        type: 'conversation.list',
+        conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+      }));
+      expect(dock()).not.toBeVisible();
+
+      await user.click(screen.getByRole('button', { name: 'See all' }));
+
+      expect(dock()).toBeVisible();
+    });
+
+    it('should not offer See all while the docked list is open', async () => {
+      const user = userEvent.setup();
+      const { connection } = renderApp();
+      act(() => connection.emitEvent({
+        type: 'conversation.list',
+        conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+      }));
+      expect(screen.getByRole('button', { name: 'See all' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Show conversations' }));
+      expect(screen.queryByRole('button', { name: 'See all' })).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Hide conversations' }));
+      expect(screen.getByRole('button', { name: 'See all' })).toBeInTheDocument();
+    });
+
     it('should stay open after picking a conversation', async () => {
       const user = userEvent.setup();
       const { connection, router } = renderApp();
@@ -202,10 +243,23 @@ describe('AppLayout', () => {
     });
   });
 
-  it('should put New conversation in the header, before the title, and not in the drawer', async () => {
+  it('should open the drawer from See all on the home screen', async () => {
     const user = userEvent.setup();
     const { connection } = renderApp();
-    const header = screen.getByRole('banner');
+    act(() => connection.emitEvent({
+      type: 'conversation.list',
+      conversations: [{ id: 'a', title: 'Alpha', createdAt: AT, updatedAt: AT }],
+    }));
+
+    await user.click(screen.getByRole('button', { name: 'See all' }));
+
+    expect(within(screen.getByRole('dialog')).getByRole('navigation', { name: 'Conversations' })).toBeInTheDocument();
+  });
+
+  it('should put New conversation in the header, before the title, and not in the drawer', async () => {
+    const user = userEvent.setup();
+    const { connection } = renderApp('/c/c1');
+    const header = screen.getAllByRole('banner')[0]!;
     const create = within(header).getByRole('button', { name: 'New conversation' });
     const title = within(header).getByRole('heading', { name: 'Agent Remote Control' });
 
@@ -218,5 +272,55 @@ describe('AppLayout', () => {
 
     await user.click(screen.getByRole('button', { name: 'Show conversations' }));
     expect(within(screen.getByRole('dialog')).queryByRole('button', { name: /New conversation/ })).not.toBeInTheDocument();
+  });
+  describe('below sm', () => {
+    it('should keep the settings gear, the indicators and the theme in the header, with no Skills link, logins button or More menu', () => {
+      renderApp();
+      const header = screen.getByRole('banner');
+
+      expect(within(header).getByRole('link', { name: 'Settings' })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: 'Theme' })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: /usage/i })).not.toHaveClass('hidden');
+      expect(within(header).getByRole('button', { name: /over/ })).not.toHaveClass('hidden');
+      expect(within(header).queryByRole('link', { name: 'Skills' })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('button', { name: /Agent logins/ })).not.toBeInTheDocument();
+      expect(within(header).queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
+    });
+
+    it('should open the settings hub from the gear, remembering the page it left', async () => {
+      const user = userEvent.setup();
+      const { router } = renderApp('/c/c1');
+
+      await user.click(screen.getByRole('link', { name: 'Settings' }));
+
+      expect(router.state.location.pathname).toBe('/settings');
+      expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
+    });
+
+    it('should mark the gear while an agent needs a login, and not otherwise', () => {
+      const { connection } = renderApp();
+      const status = (state: 'authenticated' | 'unauthenticated') => act(() => connection.emitEvent({
+        type: 'auth.status',
+        fetchedAt: AT,
+        agents: [{ agentId: 'claude', displayName: 'Claude Code', status: state }],
+      }));
+
+      status('authenticated');
+      expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+
+      status('unauthenticated');
+      expect(screen.getByRole('link', { name: 'Settings, agent login needed' })).toBeInTheDocument();
+    });
+
+    it('should change the theme from the header', async () => {
+      const user = userEvent.setup();
+      renderApp();
+
+      await user.click(screen.getByRole('button', { name: 'Theme' }));
+      await user.click(await screen.findByRole('menuitemradio', { name: 'Dark' }));
+
+      expect(document.documentElement).toHaveClass('dark');
+      expect(localStorage.getItem('arc.theme')).toBe('dark');
+    });
   });
 });

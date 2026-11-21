@@ -139,9 +139,19 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.');
     });
 
-    it('should explain that delegating to a running role replaces its task', () => {
-      expect(skill).toContain('Delegating to a role that is already working replaces its task with the new specification');
-      expect(skill).toContain('Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.');
+    it('should say that the confirmations of a delegation to an agent at work come with the next prompt', () => {
+      expect(skill).toContain('`<agent_result status="steered|queued|interrupted">` blocks with your next prompt');
+    });
+  });
+
+  describe('agents at work', () => {
+    it('should explain the on_busy attribute and what steering, waiting and interrupting cost', () => {
+      expect(skill).toContain('`on_busy="wait|interrupt"`: what happens to the work of an agent that is already working');
+      expect(skill).toContain('**Same work, `Steering: supported`, no `on_busy`**');
+      expect(skill).toContain('Nothing is lost, and you get both results, but it waits as long as the current work takes.');
+      expect(skill).toContain('the step it was in the middle of is cut short');
+      expect(skill).toContain('Without steering, or on other work, `on_busy` is required');
+      expect(skill).toContain('An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.');
     });
   });
 

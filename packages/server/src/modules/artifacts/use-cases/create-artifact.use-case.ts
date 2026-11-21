@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import { DEFAULT_REFINEMENT_STATES, REFINEMENT_KINDS } from '../constants/artifact-catalog.constant.js';
 import type {
   Artifact,
   ArtifactActor,
@@ -48,10 +49,9 @@ export class CreateArtifactUseCase {
         return { ok: false, error };
       }
 
-      const refinement: ArtifactRefinement = {
-        business: input.refinement?.business ?? 'pending',
-        technical: input.refinement?.technical ?? 'pending',
-      };
+      const refinement = Object.fromEntries(
+        REFINEMENT_KINDS.map(kind => [kind, input.refinement?.[kind] ?? DEFAULT_REFINEMENT_STATES[kind]]),
+      ) as ArtifactRefinement;
       const id = transaction.allocateId(input.type);
       const now = this.history.now();
       const artifact: Artifact = {

@@ -6,7 +6,7 @@ import { earlierPageStart, latestPageStart } from './history-page.util.js';
 const at = '2026-01-01T00:00:00.000Z';
 const user = (id: string): ConversationEntry => ({ id, at, type: 'user_message', text: id });
 const step = (id: string): ConversationEntry => ({ id, at, type: 'tool', role: 'DEVELOPER', title: id, status: 'completed' });
-const delegation = (delegationId: string, phase: 'started' | 'finished'): ConversationEntry => ({
+const delegation = (delegationId: string, phase: 'started' | 'steered' | 'finished'): ConversationEntry => ({
   id: `${delegationId}:${phase}`, at, type: 'delegation', delegationId, phase, round: 1, role: 'DEVELOPER', roleName: 'Developer', prompt: '', summary: '',
 });
 const question = (id: string, closed: boolean): ConversationEntry => ({
@@ -47,6 +47,13 @@ describe('latestPageStart', () => {
 
     expect(latestPageStart(entries, { size: 3, liveDelegations: none })).toBe(5);
     expect(latestPageStart(entries, { size: 7, liveDelegations: none })).toBe(0);
+  });
+
+  it('should keep a delegation spanning past a new instruction it received', () => {
+    const entries = [user('u1'), delegation('d', 'started'), user('u2'), delegation('d', 'steered'), user('u3'), step('a'), delegation('d', 'finished'), user('u4'), step('b')];
+
+    expect(latestPageStart(entries, { size: 3, liveDelegations: none })).toBe(7);
+    expect(latestPageStart(entries, { size: 8, liveDelegations: none })).toBe(7);
   });
 
   it('should keep a delegation still running with everything after it', () => {

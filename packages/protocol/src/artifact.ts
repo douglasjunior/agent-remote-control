@@ -39,6 +39,7 @@ export const ARTIFACT_SECTIONS = [
   'glossary',
   'pending_decisions',
   'open_questions',
+  'ux_design',
   'technical_solution',
   'implementation_notes',
   'review_findings',
@@ -47,17 +48,18 @@ export const ARTIFACT_SECTIONS = [
 export const artifactSectionSchema = z.enum(ARTIFACT_SECTIONS);
 export type ArtifactSection = z.infer<typeof artifactSectionSchema>;
 
-/** Whether the business (Product Owner) or technical (Tech Lead) refinement of an artifact is still owed. */
+/** The refinements an artifact may owe before its work moves on, each settled by the agent whose role refines it. */
+export const REFINEMENT_KINDS = ['business', 'design', 'technical'] as const;
+export const refinementKindSchema = z.enum(REFINEMENT_KINDS);
+export type RefinementKind = z.infer<typeof refinementKindSchema>;
+
 export const refinementStateSchema = z.enum(['pending', 'done', 'skipped']);
 export type RefinementState = z.infer<typeof refinementStateSchema>;
 
 export const pullRequestStateSchema = z.enum(['open', 'merged', 'closed']);
 export type PullRequestState = z.infer<typeof pullRequestStateSchema>;
 
-export const artifactRefinementSchema = z.object({
-  business: refinementStateSchema,
-  technical: refinementStateSchema,
-});
+export const artifactRefinementSchema = z.record(refinementKindSchema, refinementStateSchema);
 export type ArtifactRefinement = z.infer<typeof artifactRefinementSchema>;
 
 /** The agent holding the artifact; an artifact is with one agent at a time. */
@@ -143,10 +145,8 @@ export const artifactCreateInputSchema = z.object({
   projectName: z.string().optional(),
   dependsOn: z.array(z.string()).optional(),
   sections: sectionsInputSchema.optional(),
-  /** Whether the Product Owner must refine the business side before the work moves on. */
-  businessRefinement: z.boolean(),
-  /** Whether the Tech Lead must refine the technical side before the work moves on. */
-  technicalRefinement: z.boolean(),
+  /** The refinements owed before the work moves on; a kind left out is not needed. */
+  refinements: z.partialRecord(refinementKindSchema, z.boolean()),
 });
 export type ArtifactCreateInput = z.infer<typeof artifactCreateInputSchema>;
 
@@ -157,7 +157,7 @@ export const artifactUpdateInputSchema = z.object({
   projectName: z.string().optional(),
   dependsOn: z.array(z.string()).optional(),
   sections: sectionsInputSchema.optional(),
-  refinement: artifactRefinementSchema.partial().optional(),
+  refinement: z.partialRecord(refinementKindSchema, refinementStateSchema).optional(),
   branch: z.string().nullable().optional(),
 });
 export type ArtifactUpdateInput = z.infer<typeof artifactUpdateInputSchema>;

@@ -23,7 +23,7 @@ describe('SetConversationProfilesUseCase', () => {
 
     expect(result).toEqual({ ok: true });
     expect(configuration.configureCalls).toEqual([{ conversationId: 'web-1', roles: ['CEO'], agentId: 'codex', modelId: 'gpt' }]);
-    expect(observer.sent).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array) }]);
+    expect(observer.sent).toEqual([{ type: 'profiles', conversationId: 'web-1', configured: true, profiles: expect.any(Array), customized: false }]);
   });
 
   it('should return the refusal and broadcast nothing', async () => {

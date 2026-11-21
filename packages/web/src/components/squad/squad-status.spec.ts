@@ -9,17 +9,17 @@ const member = (role: string, state: TeamMember['state']): TeamMember => ({ role
 
 describe('squadStatus', () => {
   it('should be ready when everyone is idle', () => {
-    expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'idle')])).toEqual({ live: false, text: 'Ready', tab: 'Squad' });
+    expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'idle')])).toEqual({ live: false, text: 'Ready', working: 0 });
   });
 
   it('should tally the agents at work', () => {
     expect(squadStatus([member('CEO', 'idle'), member('DEVELOPER', 'working'), member('GIT_OPS', 'working')]))
-      .toEqual({ live: true, text: '2 working', tab: 'Squad · 2 working' });
+      .toEqual({ live: true, text: '2 working', working: 2 });
   });
 
-  it('should put the question first on the tab', () => {
+  it('should tell a question for the user after the tally', () => {
     expect(squadStatus([member('DEVELOPER', 'working'), member('PRODUCT_OWNER', 'waiting')]))
-      .toEqual({ live: true, text: '1 working · needs your answer', tab: 'Squad · needs your answer' });
+      .toEqual({ live: true, text: '1 working · needs your answer', working: 1 });
   });
 
   it('should say the answer was delivered once the CEO is done', () => {
@@ -33,7 +33,7 @@ describe('squadStatus', () => {
   it('should say how many agents stopped, without counting as live', () => {
     const stopped = { ...member('DEVELOPER', 'idle'), interruptedWorkId: 'w' };
 
-    expect(squadStatus([member('CEO', 'idle'), stopped])).toEqual({ live: false, text: '1 stopped', tab: 'Squad' });
+    expect(squadStatus([member('CEO', 'idle'), stopped])).toEqual({ live: false, text: '1 stopped', working: 0 });
     expect(squadStatus([member('CEO', 'working'), stopped]).text).toBe('1 working · 1 stopped');
   });
 });

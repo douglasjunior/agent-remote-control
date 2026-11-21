@@ -3,14 +3,15 @@ import { cn } from '../../lib/utils.js';
 import { AgentMark } from '../agent/agent-mark.js';
 
 
-/** The roles that read a skill: colored dots in a list, marks with names in the detail. */
-export function SkillRoles({ roles, detailed = false, className }: {
+/** Roles as colored dots in a list, or marks with names in a detail: those that read a skill, or that a squad sets. */
+export function SkillRoles({ roles, detailed = false, className, label = 'Read by' }: {
   readonly roles: readonly string[];
   readonly detailed?: boolean;
   readonly className?: string;
+  readonly label?: string;
 }) {
   return (
-    <ul aria-label="Read by" className={cn('flex flex-wrap items-center', detailed ? 'gap-3' : 'gap-x-2.5 gap-y-1', className)}>
+    <ul aria-label={label} className={cn('flex flex-wrap items-center', detailed ? 'gap-3' : 'gap-x-2.5 gap-y-1', className)}>
       {roles.map((role) => {
         const { label, color } = agentIdentity(role);
         return (

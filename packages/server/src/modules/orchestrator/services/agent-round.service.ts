@@ -34,6 +34,7 @@ import { AgentProtocolService } from './agent-protocol.service.js';
 import { AgentRequestParserService } from './agent-request-parser.service.js';
 import { AgentToolSessionsService } from './agent-tool-sessions.service.js';
 import { OpenWorkService } from './open-work.service.js';
+import { SteeringSupportService } from './steering-support.service.js';
 
 
 /** A prompt that depends on the session the agent reached, built once the round knows it. */
@@ -90,6 +91,7 @@ export class AgentRoundService {
     @Inject(IAgentSkillsPort) private readonly agentSkills: IAgentSkillsPort,
     private readonly requestParser: AgentRequestParserService,
     private readonly toolSessions: AgentToolSessionsService,
+    private readonly steeringSupport: SteeringSupportService,
   ) {}
 
   /**
@@ -124,6 +126,7 @@ export class AgentRoundService {
     try {
       turn.throwIfCancelled();
       await agentPort.connect();
+      this.steeringSupport.record(agentPort.agentName, agentPort.supportsSteering);
       turn.throwIfCancelled();
 
       const toolSession: AgentToolSession = { requester, onSkill: activity => request.onActivity?.(activity, requester.role) };
@@ -142,7 +145,7 @@ export class AgentRoundService {
         systemPromptPending ? await this.buildSystemPrompt(role, agentInterface) : '',
         sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role, agentInterface) : '',
         sessionState === 'resumed' && !systemPromptPending ? await this.buildSkillCatalog(role, agentInterface) : '',
-        sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
+        sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec, answerDelivery.updates) : '',
         typeof prompt === 'string' ? prompt : await prompt(opened),
         await this.buildLanguagePrompt(role, request.agentRole),
       ].filter(Boolean).join('\n\n');
@@ -195,6 +198,7 @@ export class AgentRoundService {
       const finalResponse = this.agentProtocol.finalResponse(written.last);
       const response = strayRequests ? `${strayRequests}\n\n${finalResponse}` : finalResponse;
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${previewForLog(response)}"`);
+      this.logger.log(`[Agent Response Text] Role=${role}, Length=${response.length}:\n${response}`);
       return response;
     } finally {
       unsubscribeActivity?.();

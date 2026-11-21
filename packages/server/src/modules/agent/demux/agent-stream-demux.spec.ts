@@ -3,16 +3,11 @@ import type {
   ToolCallStatus,
 } from '@agentclientprotocol/sdk';
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
+import { createHash } from 'node:crypto';
 
 import type { AgentActivity } from '../ports/agent.port.js';
 
-import {
-  AgentStreamDemux,
-  extractAgentTextChunk,
-  extractToolCallFields,
-  extractToolDetails,
-  extractToolResultSummary,
-} from './agent-stream-demux.js';
+import { AgentStreamDemux } from './agent-stream-demux.js';
 
 
 function textNotif(text: string, messageId?: string): SessionNotification {
@@ -544,201 +539,273 @@ describe('AgentStreamDemux protocol tags', () => {
   });
 });
 
-describe('extractToolCallFields', () => {
-  it('should extract fields from a tool_call', () => {
-    const result = extractToolCallFields({
+function toolNotifWithContent(content: unknown[]): SessionNotification {
+  return {
+    sessionId: 's',
+    update: { sessionUpdate: 'tool_call', toolCallId: 'call-1', title: 'tool', content },
+  } as unknown as SessionNotification;
+}
+
+function textContent(text: string) {
+  return { type: 'content', content: { type: 'text', text } };
+}
+
+function lastTool(emitted: AgentActivity[]) {
+  return emitted.filter((a): a is AgentActivity & { kind: 'tool' } => a.kind === 'tool').at(-1);
+}
+
+describe('AgentStreamDemux tool call fields', () => {
+  it('should emit the fields of a tool_call', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolCallNotif({ toolCallId: 'call-1', title: 'Read states.md', status: 'pending' }));
+
+    expect(emitted).toEqual([{ kind: 'tool', toolCallId: 'call-1', title: 'Read states.md', status: 'pending', result: undefined, details: undefined }]);
+  });
+
+  it('should emit a tool_call_update without a title under the tool call id', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolUpdateNotif({ toolCallId: 'call-1', status: 'completed' }));
+
+    expect(emitted).toEqual([{ kind: 'tool', toolCallId: 'call-1', title: 'call-1', status: 'completed', result: undefined, details: undefined }]);
+  });
+
+  it('should emit nothing for an update that is neither a tool call nor text', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(planNotif());
+
+    expect(emitted).toEqual([]);
+  });
+});
+
+describe('AgentStreamDemux text chunk fields', () => {
+  it('should ignore a chunk that is not from the agent', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle({
+      sessionId: 's',
+      update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'hi' } },
+    } as unknown as SessionNotification);
+
+    expect(emitted).toEqual([]);
+    expect(demux.takeFinalText()).toBe('');
+  });
+
+  it('should ignore a chunk whose content is not text', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle({
       sessionId: 's',
       update: {
-        sessionUpdate: 'tool_call',
-        toolCallId: 'call-1',
-        title: 'Read states.md',
-        status: 'pending',
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'image', data: 'abc', mimeType: 'image/png' },
       },
     } as unknown as SessionNotification);
 
-    expect(result).toEqual({
-      toolCallId: 'call-1',
-      title: 'Read states.md',
-      status: 'pending',
-      content: undefined,
-    });
+    expect(emitted).toEqual([]);
   });
 
-  it('should extract fields from a tool_call_update', () => {
-    const result = extractToolCallFields({
-      sessionId: 's',
-      update: {
-        sessionUpdate: 'tool_call_update',
-        toolCallId: 'call-1',
-        status: 'completed',
-      },
-    } as unknown as SessionNotification);
+  it('should take the text and message id of an agent_message_chunk', () => {
+    const { demux, emitted } = createDemux();
 
-    expect(result).toEqual({
-      toolCallId: 'call-1',
-      title: undefined,
-      status: 'completed',
-      content: undefined,
-    });
+    demux.handle(textNotif('response', 'msg-1'));
+
+    expect(emitted).toEqual([{ kind: 'thought', id: 'msg-1', text: 'response' }]);
   });
 
-  it('should return null for non tool updates', () => {
-    expect(extractToolCallFields(textNotif('Hello'))).toBeNull();
+  it('should mark an agent_thought_chunk as reasoning', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(thoughtNotif('thinking'));
+
+    expect(emitted).toEqual([{ kind: 'thought', id: 'synthetic:0:thought', text: 'thinking', reasoning: true }]);
   });
 });
 
-describe('extractAgentTextChunk', () => {
-  it('should return null when update is not agent text chunk', () => {
-    expect(
-      extractAgentTextChunk({
-        sessionId: 's',
-        update: {
-          sessionUpdate: 'user_message_chunk',
-          content: { type: 'text', text: 'hi' },
-        },
-      } as unknown as SessionNotification),
-    ).toBeNull();
+describe('AgentStreamDemux tool result and details', () => {
+  it('should leave the result and details undefined when the content is empty or null', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolNotifWithContent([]));
+    expect(lastTool(emitted)).toMatchObject({ result: undefined, details: undefined });
+
+    demux.handle(toolCallNotif({ toolCallId: 'call-2', title: 'tool' }));
+    expect(lastTool(emitted)).toMatchObject({ result: undefined, details: undefined });
   });
 
-  it('should return null when content type is not text', () => {
-    expect(
-      extractAgentTextChunk({
-        sessionId: 's',
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'image', data: 'abc', mimeType: 'image/png' },
-        },
-      } as unknown as SessionNotification),
-    ).toBeNull();
+  it('should ignore content items that are not text', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolNotifWithContent([{ type: 'diff', path: 'a.txt', newText: 'b' }]));
+
+    expect(lastTool(emitted)).toMatchObject({ result: undefined, details: undefined });
   });
 
-  it('should extract text and messageId for agent_message_chunk', () => {
-    expect(
-      extractAgentTextChunk({
-        sessionId: 's',
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: 'response' },
-          messageId: 'msg-1',
-        },
-      } as unknown as SessionNotification),
-    ).toEqual({
-      text: 'response',
-      messageId: 'msg-1',
-      isThought: false,
-    });
+  it('should summarize the result with meaningful lines, skipping code fences and empty lines', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolNotifWithContent([textContent('```ts\nline 1\n\nline 2\n```')]));
+
+    expect(lastTool(emitted)?.result).toBe('line 1\nline 2');
   });
 
-  it('should extract text and mark isThought for agent_thought_chunk', () => {
-    expect(
-      extractAgentTextChunk({
-        sessionId: 's',
-        update: {
-          sessionUpdate: 'agent_thought_chunk',
-          content: { type: 'text', text: 'thinking' },
-        },
-      } as unknown as SessionNotification),
-    ).toEqual({
-      text: 'thinking',
-      messageId: undefined,
-      isThought: true,
-    });
-  });
-});
+  it('should cut a result of more than five lines with an ellipsis', () => {
+    const { demux, emitted } = createDemux();
 
-describe('extractToolResultSummary', () => {
-  it('should return undefined when content is empty or null', () => {
-    expect(extractToolResultSummary(null)).toBeUndefined();
-    expect(extractToolResultSummary([])).toBeUndefined();
+    demux.handle(toolNotifWithContent([textContent('l1\nl2\nl3\nl4\nl5\nl6\nl7')]));
+
+    expect(lastTool(emitted)?.result).toBe('l1\nl2\nl3\nl4\nl5\n...');
   });
 
-  it('should ignore non-text content items', () => {
-    expect(
-      extractToolResultSummary([{ type: 'diff', path: 'a.txt', newText: 'b' } as unknown as any]),
-    ).toBeUndefined();
+  it('should skip a text item without meaningful lines when summarizing the result', () => {
+    const { demux, emitted } = createDemux();
+
+    demux.handle(toolNotifWithContent([textContent('```\n```'), textContent('second')]));
+
+    expect(lastTool(emitted)?.result).toBe('second');
   });
 
-  it('should extract meaningful lines and skip code fences and empty lines', () => {
-    const summary = extractToolResultSummary([
-      {
-        type: 'content',
-        content: {
-          type: 'text',
-          text: '```ts\nline 1\n\nline 2\n```',
-        },
-      },
-    ]);
-
-    expect(summary).toBe('line 1\nline 2');
-  });
-
-  it('should truncate lines exceeding MAX_SUMMARY_LINES with ellipsis', () => {
-    const summary = extractToolResultSummary([
-      {
-        type: 'content',
-        content: {
-          type: 'text',
-          text: 'l1\nl2\nl3\nl4\nl5\nl6\nl7',
-        },
-      },
-    ]);
-
-    expect(summary).toBe('l1\nl2\nl3\nl4\nl5\n...');
-  });
-});
-
-describe('extractToolDetails', () => {
-  it('should return undefined when content is empty, null or undefined', () => {
-    expect(extractToolDetails(null)).toBeUndefined();
-    expect(extractToolDetails(undefined)).toBeUndefined();
-    expect(extractToolDetails([])).toBeUndefined();
-  });
-
-  it('should ignore non-text content items', () => {
-    expect(
-      extractToolDetails([{ type: 'diff', path: 'a.txt', newText: 'b' } as unknown as any]),
-    ).toBeUndefined();
-  });
-
-  it('should extract full details without truncating lines', () => {
+  it('should give the details in full, without cutting lines', () => {
+    const { demux, emitted } = createDemux();
     const lines = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join('\n');
-    const details = extractToolDetails([
-      {
-        type: 'content',
-        content: {
-          type: 'text',
-          text: lines,
-        },
-      },
-    ]);
 
-    expect(details).toBe(lines);
+    demux.handle(toolNotifWithContent([textContent(lines)]));
+
+    expect(lastTool(emitted)?.details).toBe(lines);
   });
 
-  it('should concatenate multiple text items separated by newline', () => {
-    const details = extractToolDetails([
-      {
-        type: 'content',
-        content: { type: 'text', text: 'first part' },
-      },
-      {
-        type: 'content',
-        content: { type: 'text', text: 'second part' },
-      },
-    ]);
+  it('should join the text items of the details with a newline', () => {
+    const { demux, emitted } = createDemux();
 
-    expect(details).toBe('first part\nsecond part');
+    demux.handle(toolNotifWithContent([textContent('first part'), textContent('second part')]));
+
+    expect(lastTool(emitted)?.details).toBe('first part\nsecond part');
   });
 
-  it('should skip whitespace-only text items', () => {
-    const details = extractToolDetails([
-      {
-        type: 'content',
-        content: { type: 'text', text: '   ' },
-      },
-    ]);
+  it('should skip whitespace-only text items in the details', () => {
+    const { demux, emitted } = createDemux();
 
-    expect(details).toBeUndefined();
+    demux.handle(toolNotifWithContent([textContent('   ')]));
+
+    expect(lastTool(emitted)?.details).toBeUndefined();
   });
 });
 
+describe('AgentStreamDemux trace', () => {
+  const sha = (text: string): string => createHash('sha1').update(text).digest('hex').slice(0, 8);
+  let demux: AgentStreamDemux;
+
+  beforeEach(() => {
+    demux = new AgentStreamDemux(() => undefined);
+  });
+
+  it('should describe a message by its id, chunks, characters and hash', () => {
+    demux.handle(textNotif('Hello ', 'abc'));
+    demux.handle(textNotif('world', 'abc'));
+
+    expect(demux.describeTrace()).toBe(`msg(id=abc,chunks=2,chars=11,sha=${sha('Hello world')})`);
+  });
+
+  it('should name the messages without an id synthetic, a new one after each tool call', () => {
+    demux.handle(textNotif('One'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'artifact_update' }));
+    demux.handle(textNotif('Two'));
+
+    expect(demux.describeTrace()).toBe(
+      `msg(id=synthetic:0,chunks=1,chars=3,sha=${sha('One')}) tool(id=t1,title="artifact_update") msg(id=synthetic:1,chunks=1,chars=3,sha=${sha('Two')})`,
+    );
+  });
+
+  it('should give identical copies the same hash', () => {
+    const paragraph = 'Same paragraph.';
+    demux.handle(textNotif(paragraph, 'a'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif(`\n${paragraph}\n`, 'b'));
+
+    const hashes = [...demux.describeTrace().matchAll(/sha=(\w+)/g)].map(match => match[1]);
+    expect(hashes).toEqual([sha(paragraph), sha(paragraph)]);
+  });
+
+  it('should mark a message id that receives chunks again after a tool call', () => {
+    demux.handle(textNotif('Part one. ', 'abc'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif('Part two.', 'abc'));
+
+    expect(demux.describeTrace()).toBe(
+      `msg(id=abc,chunks=1,chars=9,sha=${sha('Part one.')}) tool(id=t1,title="tool") msg(id=abc,chunks=1,chars=9,sha=${sha('Part two.')},again)`,
+    );
+  });
+
+  it('should tell reasoning apart and not take it for a repeat of the message with the same id', () => {
+    demux.handle(thoughtNotif('Thinking', 'abc'));
+    demux.handle(textNotif('Answer', 'abc'));
+
+    expect(demux.describeTrace()).toBe(
+      `thought(id=abc:thought,chunks=1,chars=8,sha=${sha('Thinking')}) msg(id=abc,chunks=1,chars=6,sha=${sha('Answer')})`,
+    );
+  });
+
+  it('should leave tool call updates out and flatten the title of a tool call', () => {
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'run\n  the   tool' }));
+    demux.handle(toolUpdateNotif({ toolCallId: 't1', status: 'completed' }));
+    demux.handle(toolCallNotif({ toolCallId: 't2' }));
+    demux.handle(toolCallNotif({ toolCallId: 't3', title: 'x'.repeat(100) }));
+
+    expect(demux.describeTrace()).toBe(
+      `tool(id=t1,title="run the tool") tool(id=t2,title="") tool(id=t3,title="${'x'.repeat(60)}...")`,
+    );
+  });
+
+  it('should keep the first 200 events and count the rest', () => {
+    for (let index = 0; index < 205; index++) {
+      demux.handle(toolCallNotif({ toolCallId: `t${index}`, title: 'tool' }));
+    }
+
+    const trace = demux.describeTrace();
+    expect(trace.match(/tool\(/g)).toHaveLength(200);
+    expect(trace.endsWith('... +5 more')).toBe(true);
+  });
+
+  it('should say none when nothing happened', () => {
+    expect(demux.describeTrace()).toBe('none');
+    expect(demux.describeChunkShapes()).toBe('none');
+  });
+
+  it('should survive takeFinalText and start over on reset', () => {
+    demux.handle(textNotif('Hi', 'abc'));
+    demux.takeFinalText();
+
+    expect(demux.describeTrace()).toContain('msg(id=abc');
+
+    demux.reset();
+
+    expect(demux.describeTrace()).toBe('none');
+    expect(demux.describeChunkShapes()).toBe('none');
+  });
+
+  it('should sample the shape of the first chunk of each message id only', () => {
+    demux.handle(textNotif('a', 'abc'));
+    demux.handle(textNotif('b', 'abc'));
+    demux.handle(toolCallNotif({ toolCallId: 't1', title: 'tool' }));
+    demux.handle(textNotif('c'));
+    demux.handle(thoughtNotif('d', 'abc'));
+    demux.handle(textNotif('e', 'abc'));
+
+    expect(demux.describeChunkShapes()).toBe([
+      'shape(id=abc,update=agent_message_chunk,messageId=present,content=text)',
+      'shape(id=synthetic:0,update=agent_message_chunk,messageId=absent,content=text)',
+      'shape(id=abc:thought,update=agent_thought_chunk,messageId=present,content=text)',
+    ].join(' '));
+  });
+
+  it('should treat a null message id as absent', () => {
+    demux.handle({
+      sessionId: 's',
+      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'a' }, messageId: null },
+    } as unknown as SessionNotification);
+
+    expect(demux.describeChunkShapes()).toBe('shape(id=synthetic:0,update=agent_message_chunk,messageId=absent,content=text)');
+  });
+});

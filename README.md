@@ -37,11 +37,11 @@ AI coding agents are incredible, as long as you are sitting in front of the term
 
 - 📱 **Code from anywhere.** On the couch, on the train or in the coffee line: if you can open a browser or Discord, you can ship.
 - 🛰️ **Your machine, one link away.** Turn on [remote access](#️-remote-access) and the server prints a link: open it on your phone and the browser talks to your machine over an end-to-end encrypted WebRTC channel, with no port to open and no VPN.
-- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, Tech Lead, Developer, Code Reviewer, QA and Git Ops agent, and, only when you agree, to an IT Support agent, in parallel when it can.
-- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, and every agent keeps its own session.
+- 👥 **A team, not a single agent.** A CEO agent talks to you, scopes the request and delegates to a Product Owner, UX/UI Designer, Tech Lead, Developer, Code Reviewer, QA and Git Ops agent, and, only when you agree, to an IT Support agent, in parallel when it can.
+- 🔌 **Bring your own agent.** Five agent CLIs supported out of the box. Switch with `/agent`, pick the model and effort with `/model`, tune each persona separately with `/profiles`, save the whole team as a **squad** and apply it to a conversation in one go (`/squad`), and every agent keeps its own session.
 - 🏠 **Self-hosted, your credentials.** Repositories, SSH keys and CLI logins stay on your machine. No hosted middleman and no extra API keys: it reuses the subscriptions you already have.
 - 👀 **Watch it work, live.** Reasoning and tool calls stream into the web feed and the Discord thread as they happen.
-- 📋 **A board per mission.** Every conversation keeps a board of features and tasks, as a tree or a kanban in the web interface. The Product Owner writes the business side, the Tech Lead the technical solution, the Developer implements, Git Ops links the pull request, the Code Reviewer reviews it and QA tests it in practice, each agent reading and writing the task itself, one agent per task at a time, with the full history of every change. You can create tasks yourself too, and send simple ones straight to development.
+- 📋 **A board per mission.** Every conversation keeps a board of features and tasks, as a tree or a kanban in the web interface. The Product Owner writes the business side, the UX/UI Designer the design with a working prototype, the Tech Lead the technical solution, the Developer implements, Git Ops links the pull request, the Code Reviewer reviews it and QA tests it in practice, each agent reading and writing the task itself, one agent per task at a time, with the full history of every change. You can create tasks yourself too, and send simple ones straight to development.
 - 🙋 **Agents ask, you answer.** When something is ambiguous, agents ask you questions one at a time, right in the chat.
 - 🧵 **One thread, one task.** Each server thread is an isolated session; DMs keep a continuous one. Sessions survive restarts and resume where they stopped.
 - 🛑 **Steer or stop anytime.** Send a follow-up while Claude Code works to steer it, or `/cancel` to abort the turn.
@@ -73,7 +73,9 @@ A browser interface to chat with the agents without Discord. It is a separate ap
 2. **Copy the access token** from the server log (`Web interface access token: ...`), or from `DATA_DIR/web/access-token`. In Docker, run `docker logs <container>`.
 3. **Open the web app** and paste the token on first use. A `#token=<token>` fragment in the URL also works; it is stored and removed from the address bar.
 
-Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open. The book icon in the header opens the **skills** the agents read, with the roles that read each one and its full content; a custom skill has an "Ask the CEO" button that opens a conversation asking for a change to it, and a Delete button. Each skill an agent reads or writes shows in its activity, in the web feed and in the Discord thread, and the squad panel shows the agent, model and effort of each role.
+Conversations are listed in the left sidebar, where each one can be renamed or archived from its menu; archived ones move to a collapsed group at the end of the list and still open. The book icon in the header opens the **skills** the agents read, with the roles that read each one and its full content; a custom skill has an "Ask the CEO" button that opens a conversation asking for a change to it, and a Delete button. Each skill an agent reads or writes shows in its activity, in the web feed and in the Discord thread, and the squad panel shows the agent, model and effort of each role. The gear icon opens the **settings**: the Discord bot token (with a button that tests it before saving), the remote access, the timeouts and limits, the speech-to-text and the language agents write to you in, each showing whether its value was saved there, comes from an environment variable or is the default (see [Environment Variables](#️-environment-variables)).
+
+The **Settings** button of a conversation (the gear in its squad panel) sets the agent, model and effort of every role, or of one role at a time. A **squad** saves those choices for the whole team: pick one in "Apply squad" and every role it sets takes its agent, model and effort, while the roles it leaves out stay as they are; you can still change any role afterwards, and the sheet then shows the squad as customized. "Save as squad" turns the conversation's choices into a new squad, and "Manage squads" (also on the settings page) opens the squads page, where each squad is created, edited or deleted. The squad marked "Default for new conversations" is what every new conversation starts with; without one, a new conversation takes the choices of the most recently configured one. Editing a squad later leaves the conversations that applied it as they are.
 
 | Mode | Command | URL |
 |---|---|---|
@@ -122,7 +124,7 @@ server {
 
 ## 🛰️ Remote access
 
-Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_ENABLED=true` and `REMOTE_URL`, and the server prints a link at startup:
+Reach your server from any browser in the world, with no port to open on your router and no VPN. Remote access is **off by default**: set `REMOTE_URL` in the environment and `REMOTE_ENABLED=true`, or turn `REMOTE_ENABLED` on from the settings page of the web interface, and the server prints a link:
 
 ```text
 Remote access link: <REMOTE_URL>/i/<instance id>#fp=<certificate fingerprint>&token=<access token>
@@ -178,6 +180,7 @@ Every conversation is handled by a **CEO** agent that never touches the code its
 |---|---|
 | 🧭 **CEO** | Talks with you, scopes requests, delegates all hands-on work and reviews the results. |
 | 🧑‍💼 **Product Owner** | Product discovery: requirements, business rules, flows and acceptance criteria. Interviews you until no loose end is left, then writes them as a feature and its tasks on the board. |
+| 🎨 **UX/UI Designer** | Visual direction, screens, flows and every interaction state, responsive and accessible, proven in a working prototype on a `design/` branch that is never merged: in the project's own stack and design system, or a self-contained HTML page for a new idea. Writes the design on the task for the developer to follow. |
 | 🧠 **Tech Lead** | Architecture analysis, investigations, trade-offs and the technical solution of each task, splitting large work into dependent tasks. |
 | 🛠️ **Developer** | Implementation, refactoring, bug fixing, tests and local commits, following the target project's own conventions. |
 | 🔍 **Code Reviewer** | Unbiased review in a fresh session of the task's pull request, or of its branch locally when there is no PR, against the task, project conventions, security and correctness. Relies on the PR pipeline instead of running the project, records its findings on the task (and publishes them on the PR when there is one) and approves or requests changes. |
@@ -211,12 +214,13 @@ flowchart LR
     D --> O
     O --> CEO{{"🧭 CEO"}}
     CEO --> PO["Product Owner"]
+    CEO --> UX["UX/UI Designer"]
     CEO --> TL["Tech Lead"]
     CEO --> DEV["Developer"]
     CEO --> CR["Code Reviewer"]
     CEO --> QA["QA"]
     CEO --> GIT["Git Ops"]
-    PO & TL & DEV & CR & QA & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
+    PO & UX & TL & DEV & CR & QA & GIT --> CLI["Agent CLI over ACP<br/>Claude Code · Codex<br/>Copilot · Cursor<br/>Antigravity · OpenCode"]
     CLI --> WS[("Workspace<br/>your repositories")]
     O -.->|live activity<br/>+ final answer| W & D
 ```
@@ -298,38 +302,41 @@ Copy the example file to `.env` at the project root and configure your credentia
 cp .env.example .env
 ```
 
-| Variable | Description | Where to Get It in Discord | Default |
-|---|---|---|---|
-| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* |
-| `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* |
-| `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` |
-| `DATA_DIR` | Directory for persisted data (`sessions.json` with the ACP session ids of each conversation, `agent-settings.json` with the agent, model and effort of each profile, `preferences.json` with global preferences such as the user language, `artifacts/` with the board of each conversation, and `skills/` with your own agent skills) | Local machine configuration | `./data` |
-| `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | `14` |
-| `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) |
-| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) |
-| `TURN_RETRY_BASE_DELAY_MS` | Wait (ms) before the first retry of a turn whose CEO failed; each retry after it waits twice as long. While it waits, the failure shows a countdown, with the choice to retry now or stop retrying (on Discord, any message retries now). `0` in this or the next two disables the retries | Local machine configuration | `15000` |
-| `TURN_RETRY_MAX_DELAY_MS` | The longest a single wait before a retry gets (ms) | Local machine configuration | `7200000` (2 h) |
-| `TURN_RETRY_MAX_TOTAL_MS` | How long after the first failure the retries last (ms); after it the failure stands and you take over | Local machine configuration | `18000000` (5 h) |
-| `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` |
-| `DELEGATION_SPEC_MAX_CHARS` | Longest specification (characters) the CEO may write for a delegation that names a task of the board, except to redirect the agent already working on it; the details belong in the task. `0` disables the limit | Local machine configuration | `600` |
-| `AGENT_RESULT_MAX_CHARS` | Longest result (characters) whose verdict moved its task on that reaches the CEO whole; a longer one is cut. `0` disables the cut | Local machine configuration | `2000` |
-| `AGENT_MCP_ENABLED` | Gives each agent whose CLI takes an HTTP MCP server the board and the skills as tools it calls during its turn, served at `/mcp` on `PORT` and open only to a credential the server hands that agent while it works. `false` leaves every agent on the requests it writes as tags in its answers, which also work with the tools on, for when an agent CLI misbehaves with MCP | Local machine configuration | `true` |
-| `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` |
-| `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` |
-| `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` |
-| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` |
-| `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` |
-| `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` |
-| `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` |
-| `STT_MODEL` | whisper.cpp model name; the file `ggml-<name>.bin` is read from `DATA_DIR/models` (the Docker image downloads it on startup) | [whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp) | `small` |
-| `STT_MODEL_PATH` | Explicit path to a whisper.cpp model file; overrides `STT_MODEL` | Local machine configuration | *(Optional)* |
-| `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` |
-| `STT_THREADS` | CPU threads used by the transcription | Local machine configuration | Number of CPUs |
-| `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) |
-| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` |
-| `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` |
-| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* |
-| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* |
+The variables marked **Yes** in the last column are also changed from the **settings page** of the web interface (the gear icon in the header), live, without editing `.env`: a value saved there takes precedence over the variable, which takes precedence over the default, and "Reset to default" brings the variable or the default back. Those marked **Read-only** widen what the server exposes or name a program it runs, so only their environment variable sets them: the page shows their value and where it comes from, and a saved value has no effect. A variable set to an empty value counts as set: `DISCORD_BOT_TOKEN=` in the environment keeps the bot off whatever `.env` says. `STT_PROVIDER` applies when the server restarts; every other one applies at once.
+
+| Variable | Description | Where to Get It in Discord | Default | Web |
+|---|---|---|---|---|
+| `DISCORD_BOT_TOKEN` | Bot secret token | **Bot** tab > *Token* section > **Reset Token** button | *(Required for the Discord bot)* | Yes |
+| `DISCORD_ENABLED` | Set to `false` to keep the bot off while keeping its token | — | `true` | Yes |
+| `DISCORD_GUILD_ID` | Discord server ID | Right-click your server > **Copy Server ID** *(Developer Mode enabled)* | *(Optional)* | Yes |
+| `WORKSPACE_DIR` | Root directory where repositories are cloned, one project per direct subfolder | Local machine configuration | `./workspaces` | No |
+| `DATA_DIR` | Directory for persisted data (`arc.sqlite`, the SQLite database with the web conversations, the prompt history, the agent, model and effort of each role of each conversation, the ACP session ids of its agents, its board and the work a restart interrupted, global preferences such as the user language and the settings saved from the web interface, and `skills/` with your own agent skills). JSON files of earlier versions that moved to the database are imported on the first boot and kept in `legacy-json-backup/` | Local machine configuration | `./data` | No |
+| `LOG_RETENTION_DAYS` | Days the log files in `DATA_DIR/logs` (`server-YYYY-MM-DD.jsonl`, one JSON record per line with `conversationId` when there is one) are kept | Local machine configuration | `14` | Yes |
+| `SESSION_IDLE_TIMEOUT_MS` | Idle time (ms) until a conversation's agent session is closed | Local machine configuration | `1800000` (30 min) | Yes |
+| `QUESTION_TIMEOUT_MS` | Time (ms) the user has to answer an agent's question; afterwards the recommended answer is assumed and the agent is told the user was absent. `0` disables the timeout | Local machine configuration | `300000` (5 min) | Yes |
+| `TURN_RETRY_BASE_DELAY_MS` | Wait (ms) before the first retry of a turn whose CEO failed; each retry after it waits twice as long. While it waits, the failure shows a countdown, with the choice to retry now or stop retrying (on Discord, any message retries now). `0` in this or the next two disables the retries | Local machine configuration | `15000` | Yes |
+| `TURN_RETRY_MAX_DELAY_MS` | The longest a single wait before a retry gets (ms) | Local machine configuration | `7200000` (2 h) | Yes |
+| `TURN_RETRY_MAX_TOTAL_MS` | How long after the first failure the retries last (ms); after it the failure stands and you take over | Local machine configuration | `18000000` (5 h) | Yes |
+| `ARTIFACT_MAX_DELEGATIONS` | Delegations a task of the board goes through before the next one freezes it, the guard against agents looping on a task; only you take a task out of `frozen`. `0` disables it | Local machine configuration | `25` | Yes |
+| `DELEGATION_SPEC_MAX_CHARS` | Longest specification (characters) the CEO may write for a delegation that names a task of the board, except to redirect the agent already working on it; the details belong in the task. `0` disables the limit | Local machine configuration | `600` | Yes |
+| `AGENT_RESULT_MAX_CHARS` | Longest result (characters) whose verdict moved its task on that reaches the CEO whole; a longer one is cut. `0` disables the cut | Local machine configuration | `2000` | Yes |
+| `AGENT_MCP_ENABLED` | Gives each agent whose CLI takes an HTTP MCP server the board and the skills as tools it calls during its turn, served at `/mcp` on `PORT` and open only to a credential the server hands that agent while it works. `false` leaves every agent on the requests it writes as tags in its answers, which also work with the tools on, for when an agent CLI misbehaves with MCP | Local machine configuration | `true` | No |
+| `AGENT_AUTH_ENABLED` | Enables logging the agent CLIs in from the web interface and `/agent-auth` on Discord. The login runs the CLI on the host and hands its login link to whoever asks, so keep it disabled when you do not trust everyone who can reach the bot or the web access token | Local machine configuration | `true` | Yes |
+| `AGENT_AUTH_LOGIN_TIMEOUT_MS` | Time (ms) after which a login that was not finished in the browser is stopped | Local machine configuration | `900000` | Yes |
+| `AGENT_AUTH_STATUS_TIMEOUT_MS` | Time (ms) a login-state check may take before the agent is shown as unknown | Local machine configuration | `10000` | Yes |
+| `SHELL_COMMAND_ENABLED` | Enables running shell commands directly on the host, bypassing the agents (`/shell` on Discord). **Disabled by default**: when `true`, anyone who can reach the bot can execute arbitrary commands, so enable it only on a private server | Local machine configuration | `false` | Read-only |
+| `SHELL_COMMAND_TIMEOUT_MS` | Time (ms) after which a shell command is aborted | Local machine configuration | `60000` | Yes |
+| `SHELL_COMMAND_MAX_OUTPUT_CHARS` | Maximum characters of output kept (the end is kept) | Local machine configuration | `8000` | Yes |
+| `STT_PROVIDER` | Speech-to-text provider for audio attachments and voice messages: `whisper-cpp` (CPU, needs `whisper-cli` and `ffmpeg` on the `PATH`) or `none` (audio is sent to the agent as a regular attachment) | Local machine configuration | `whisper-cpp` | Yes (on restart) |
+| `STT_MODEL` | whisper.cpp model name; the file `ggml-<name>.bin` is read from `DATA_DIR/models` (the Docker image downloads it on startup) | [whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp) | `small` | Yes |
+| `STT_MODEL_PATH` | Explicit path to a whisper.cpp model file; overrides `STT_MODEL` | Local machine configuration | *(Optional)* | Yes |
+| `STT_LANGUAGE` | ISO 639-1 language code of the speech, or `auto` to detect it | Local machine configuration | `auto` | Yes |
+| `STT_THREADS` | CPU threads used by the transcription; `0` uses every CPU | Local machine configuration | `0` | Yes |
+| `STT_TIMEOUT_MS` | Maximum time (ms) of each transcription step | Local machine configuration | `300000` (5 min) | Yes |
+| `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` | Read-only |
+| `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` | No |
+| `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* | `WEB_ALLOWED_ORIGINS`: Read-only |
+| `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* | `REMOTE_ENABLED`: Yes; `REMOTE_URL`: Read-only |
 
 ## 🐳 Docker
 
@@ -356,7 +363,7 @@ Claude Code, Codex, Cursor and Antigravity keep their login in files, so mountin
 
 GitHub Copilot may keep its login in the system keychain of the host, which the container cannot read. When you log Copilot in from the web interface or `/agent-auth` on a machine without a keychain (the container and WSL, for instance), the login keeps the token in a plain file under `~/.copilot/` (readable only by its owner), because Copilot has nowhere else to store it. Use `COPILOT_GITHUB_TOKEN` instead if you do not want a token on disk. Pass a token instead: `COPILOT_GITHUB_TOKEN` for Copilot and `GH_TOKEN` for the `gh` and `git` of the agents, for example `-e COPILOT_GITHUB_TOKEN="$(gh auth token)"`. The variables are read when the container is created.
 
-The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
+The mounted files must be readable and writable by the container user, UID `1000` (`node`) by default. `/app/data` (the database, sessions and settings) and `/app/workspaces` (cloned repositories) hold the state worth keeping.
 
 <details>
 <summary><b><code>docker run</code></b></summary>
@@ -481,7 +488,7 @@ For the Discord bot to authenticate, listen to messages, reply in direct message
 2. Enable **Developer Mode**.
 3. Close the settings.
 4. In Discord's left sidebar, **right-click** your server icon and select **Copy Server ID**.
-5. Paste the value into `DISCORD_GUILD_ID` in `.env`. *(With the variable set, the `/agent`, `/model`, `/profiles`, `/usage`, `/cancel` and `/language` commands are registered only in this server, taking effect immediately; without it, registration is global.)*
+5. Paste the value into `DISCORD_GUILD_ID` in `.env`. *(With the variable set, the `/agent`, `/model`, `/profiles`, `/squad`, `/usage`, `/cancel` and `/language` commands are registered only in this server, taking effect immediately; without it, registration is global.)*
 
 ### Step 4: Invite the Bot to the Server
 1. In the Developer Portal, go to **OAuth2 > URL Generator**.
@@ -514,9 +521,10 @@ The Discord bot connects to your development environment. You can talk to it in 
   - In any text channel the bot has access to, mention it: `@BotName Create a healthcheck route`.
   - The bot automatically opens an isolated **Thread** for that task, keeping the history organized and streaming progress with anti-rate-limit throttling.
 - **Choosing Agent, Model and Effort**:
-  - On the first message, if there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex, Cursor and OpenCode). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
+  - On the first message, a conversation without settings takes the default squad, if one is marked in the web interface, or the settings of the most recently configured conversation. If there is no saved configuration yet, the bot lists the numbered agents whose CLI is on the `PATH` (any of Antigravity, Claude Code, GitHub Copilot, OpenAI Codex, Cursor and OpenCode). Reply with the agent number, then with the model number and, if the model has effort levels, with the effort number. The task you sent runs right after.
   - Type `/agent` to switch agents (followed by choosing its model and effort) and `/model` to change only the model and effort of the current agent. `/agent` and `/model` apply to every profile. Each conversation keeps the session of each agent, so going back to an agent resumes the conversation it already had.
-  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, Tech Lead, Developer, Code Reviewer, QA, Git Ops and IT Support): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
+  - Type `/profiles` to configure agent, model and effort per profile (CEO, Product Owner, UX/UI Designer, Tech Lead, Developer, Code Reviewer, QA, Git Ops and IT Support): reply with one or more numbers separated by commas, choose the agent, model and effort, and repeat for other profiles; `0` exits. A profile whose saved agent is not on the `PATH` is listed with `(not installed)`; its turns fail until the agent is installed again or another one is chosen. Changes apply to the next turn or delegation without interrupting work in progress.
+  - Type `/squad` to apply a squad saved in the web interface to the conversation: reply with its number, or `0` to close. Every role the squad sets takes its agent, model and effort; `/profiles` still changes any role afterwards.
   - Type `/usage` to see the usage limits of every available agent, one section per agent.
   - Type `/shell <command>` (e.g. `/shell df -h`) to run a command directly on the host, in the workspace directory, without going through the agents. The answer is visible only to you and shows the output and exit code. The command is only available when `SHELL_COMMAND_ENABLED=true`; `/cancel` stops it.
   - Every answer ends with a footer showing the role, agent, model and effort used, for example: `🤖 CEO (claude) · 🧠 Opus 5.5 · ⚡ high`.
@@ -584,7 +592,7 @@ A NestJS application built on **Clean Architecture with Ports & Adapters** and *
 
 - **`agent`** (`packages/server/src/modules/agent`): integration layer with AI agents over ACP. Provides the `IAgentPort` port, the `AbstractAcpAdapter` base adapter, the real-time stream demultiplexer `AgentStreamDemux`, the `AcpAgentPortFactoryAdapter` factory and the concrete adapters `AntigravityAdapter` (Google Antigravity CLI through its native ACP mode `agy acp`), `ClaudeCodeAdapter` (Claude Code CLI through the official ACP adapter `@agentclientprotocol/claude-agent-acp`), `CodexAdapter` (OpenAI Codex CLI through `@agentclientprotocol/codex-acp`), `CopilotAdapter` (GitHub Copilot CLI through its native ACP mode `copilot --acp`) `CursorAdapter` (Cursor CLI through its native ACP mode) and `OpenCodeAdapter` (OpenCode CLI through its native ACP mode `opencode acp`).
 - **`orchestrator`** (`packages/server/src/modules/orchestrator`): channel-agnostic orchestration engine. Contains the `ExecuteAgentTurnUseCase` and `CancelAgentTurnUseCase` use cases, session persistence management (`ISessionStorePort`) and reactive event coordination.
-- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **Tech Lead**, **Developer**, **Code Reviewer**, **QA**, **Git Ops** and **IT Support**, with the skills each one reads on demand.
+- **`agent-definitions`** (`packages/server/src/modules/agent-definitions`): registry and parameterization of agent personas (`AgentRegistryService`): **CEO**, **Product Owner**, **UX/UI Designer**, **Tech Lead**, **Developer**, **Code Reviewer**, **QA**, **Git Ops** and **IT Support**, with the skills each one reads on demand.
 - **`workspace`** (`packages/server/src/modules/workspace`): repository and workspace management (`IGitPort`, `IWorkspacePort`, `PrepareWorkspaceUseCase`).
 - **`web`** (`packages/server/src/modules/web`): primary input adapter of the web interface. Authenticates every connection with the access token, local over WebSocket or remote over WebRTC, and serves the conversations, the board, the skills and the agent login.
 - **`remote`** (`packages/server/src/modules/remote`): remote access. Keeps the host's certificate, registers it with the signaling server and answers browsers that prove the access token with a WebRTC data channel handed to the web channel.

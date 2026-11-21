@@ -95,6 +95,11 @@ describe('ceo.prompt', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('The files, logs and source code of the server that runs you are not a source');
     });
 
+    it('should say when a delegation to an agent already at work needs on_busy', () => {
+      expect(CEO_SYSTEM_PROMPT).toContain('Only on its same work, with `Steering: supported`, does it reach the agent mid-task by itself; otherwise add `on_busy="wait"`');
+      expect(CEO_SYSTEM_PROMPT).toContain('`on_busy="interrupt"` (the current work stops now)');
+    });
+
     it('should answer every request, reporting each agent result despite a newer message', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('Answer every request the user made');
       expect(CEO_SYSTEM_PROMPT).toContain('A newer message never replaces an earlier request');
@@ -188,8 +193,8 @@ describe('ceo.prompt', () => {
     it('should add a new request to an open artifact that still allows it and otherwise create one', () => {
       expect(CEO_SYSTEM_PROMPT).toContain('A new request joins an open artifact that still allows it (`backlog`, `ready`, or `changes_requested` for a correction)');
       expect(CEO_SYSTEM_PROMPT).toContain('Otherwise create a task, or a feature for an initiative');
-      expect(CEO_SYSTEM_PROMPT).toContain('`business_refinement="pending"`');
-      expect(CEO_SYSTEM_PROMPT).toContain('`technical_refinement="pending"`');
+      expect(CEO_SYSTEM_PROMPT).toContain('`business_refinement="pending"` when what to build or why is open, `design_refinement="pending"` when it has screens or interactions whose look and flow are not settled, `technical_refinement="pending"` when how to build it needs planning, every refinement `skipped`');
+      expect(CEO_SYSTEM_PROMPT).toContain('project="my-app" business_refinement="skipped" design_refinement="skipped" technical_refinement="skipped">');
     });
 
     it('should let the server move the statuses from the verdicts and keep the user\'s own', () => {
@@ -231,11 +236,19 @@ describe('ceo.prompt', () => {
       );
     });
 
-    it('should route a pending refinement to the agent that settles it', () => {
-      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } })], 'tags');
+    it('should route each pending refinement to the agent that settles it, in the order of the kinds', () => {
+      const prompt = buildCeoSystemPrompt([planner, agent('ANALYST', { delegation: { refines: 'business' } }), agent('DESIGNER', { delegation: { refines: 'design' } })], 'tags');
 
-      expect(prompt).toContain('  - `backlog` with the technical refinement pending: delegate PLANNER, which settles it.');
-      expect(prompt).toContain('  - `backlog` with the business refinement pending: delegate ANALYST, which settles it.');
+      expect(prompt).toContain([
+        '  - `backlog` with the business refinement pending: delegate ANALYST, which settles it.',
+        '  - `backlog` with the design refinement pending: delegate DESIGNER, which settles it.',
+        '  - `backlog` with the technical refinement pending: delegate PLANNER, which settles it.',
+        '  - A task that owes several refinements goes through them in the order above.',
+      ].join('\n'));
+    });
+
+    it('should give no refinement order with a single agent that refines', () => {
+      expect(buildCeoSystemPrompt([planner], 'tags')).not.toContain('goes through them in the order above');
     });
 
     it('should route the statuses an agent accepts, the status the task takes on start and each verdict', () => {

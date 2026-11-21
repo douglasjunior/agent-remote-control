@@ -1,17 +1,14 @@
 import type { SkillSummary } from '@agent-remote-control/protocol/skill';
-import { MessageSquarePlus, Search, Sparkles, X } from 'lucide-react';
+import { Search, Sparkles } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { NavLink, useLocation } from 'react-router';
 
-import { useConversations } from '../../conversations/conversations-context.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { cn } from '../../lib/utils.js';
 import { ChoiceSelect } from '../artifacts/choice-select.js';
-import { IconButton } from '../icon-button.js';
-import { Button } from '../ui/button.js';
+import { settingsState, skillsPath } from '../settings-hub/settings-paths.js';
 import { Input } from '../ui/input.js';
 
-import { CREATE_SKILL_PROMPT, skillsPath } from './skill-paths.js';
 import { SkillRoles } from './skill-roles.js';
 
 
@@ -29,7 +26,7 @@ function SkillGroup({ title, hint, skills, state }: {
   return (
     <section aria-label={title} className="flex flex-col gap-1">
       <header className="flex items-baseline justify-between px-2 pt-2 pb-1">
-        <h3 className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{`${title} · ${skills.length}`}</h3>
+        <h4 className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{`${title} · ${skills.length}`}</h4>
         <span className="text-[11px] text-muted-foreground/80">{hint}</span>
       </header>
       <ul className="flex flex-col gap-0.5">
@@ -54,10 +51,9 @@ function SkillGroup({ title, hint, skills, state }: {
   );
 }
 
-/** Every skill, the user's own first, filtered by text and by the role that reads it; a new one is asked of the CEO. */
-export function SkillList({ skills, onClose }: { readonly skills: readonly SkillSummary[]; readonly onClose: () => void }) {
-  const { state } = useLocation();
-  const { startConversation } = useConversations();
+/** Every skill, the user's own first, filtered by text and by the role that reads it. */
+export function SkillList({ skills }: { readonly skills: readonly SkillSummary[] }) {
+  const state = settingsState(useLocation());
   const [query, setQuery] = useState('');
   const [role, setRole] = useState(ALL_ROLES);
   const roles = useMemo(() => [...new Set(skills.flatMap(skill => skill.roles))], [skills]);
@@ -70,32 +66,17 @@ export function SkillList({ skills, onClose }: { readonly skills: readonly Skill
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-col gap-2 border-b p-3">
-        <div className="flex items-center justify-between gap-2 pl-0.5">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <h2 className="font-heading text-sm font-semibold">Skills</h2>
-            <span className="truncate text-xs text-muted-foreground">What the agents read on demand</span>
-          </div>
-          <IconButton variant="ghost" size="icon-sm" label="Close skills" onClick={onClose}>
-            <X />
-          </IconButton>
-        </div>
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input aria-label="Search skills" placeholder="Search skills" value={query} onChange={event => setQuery(event.target.value)} className="pl-8" />
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <ChoiceSelect
-            label="Filter by role"
-            size="sm"
-            value={role}
-            onChange={setRole}
-            choices={[{ value: ALL_ROLES, label: 'Every role' }, ...roles.map(value => ({ value, label: agentIdentity(value).label }))]}
-          />
-          <Button variant="outline" size="sm" title="Ask the CEO for a new skill" onClick={() => startConversation(CREATE_SKILL_PROMPT)}>
-            <MessageSquarePlus />
-            New skill
-          </Button>
-        </div>
+        <ChoiceSelect
+          label="Filter by role"
+          size="sm"
+          value={role}
+          onChange={setRole}
+          choices={[{ value: ALL_ROLES, label: 'Every role' }, ...roles.map(value => ({ value, label: agentIdentity(value).label }))]}
+        />
       </div>
       <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-2">
         {visible.length === 0

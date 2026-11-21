@@ -1,7 +1,9 @@
 import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 
 import { openConversation, roleProfiles, type AppHarness } from '../test/render-app.js';
+import { squad } from '../test/squad-fixtures.js';
 
 
 type User = ReturnType<typeof userEvent.setup>;
@@ -33,6 +35,10 @@ async function pick(user: User, scope: HTMLElement, combobox: string, option: st
 
 const sentOf = (app: AppHarness, type: string) => app.connection.sent.filter(command => command.type === type);
 
+afterEach(() => {
+  act(() => toast.dismiss());
+});
+
 describe('SettingsSheet', () => {
   it('should show each role with its identity, its setup and an agent that is not installed', async () => {
     const app = openConversation();
@@ -44,6 +50,7 @@ describe('SettingsSheet', () => {
         { ...roleProfiles[0], agent: { id: 'codex', name: 'Codex', available: false }, model: { id: 'm', name: 'GPT' }, effort: { id: 'e', name: 'High' } },
         roleProfiles[1],
       ],
+      customized: false,
     });
     await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
 
@@ -86,7 +93,7 @@ describe('SettingsSheet', () => {
     });
     expect(within(developer).getByRole('button', { name: 'Saving…' })).toHaveAttribute('aria-busy', 'true');
 
-    emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles });
+    emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles, customized: false });
     expect(within(dialog()).queryByRole('group', { name: 'Developer' })).not.toBeInTheDocument();
     expect(await screen.findByText('Developer saved')).toBeInTheDocument();
     expect(dialog()).toBeInTheDocument();
@@ -191,7 +198,7 @@ describe('SettingsSheet', () => {
     const app = await openSettings();
     await app.user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
 
-    emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles });
+    emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles, customized: false });
 
     expect(editor('Developer')).toBeInTheDocument();
   });
@@ -210,5 +217,78 @@ describe('SettingsSheet', () => {
     const { user } = await openSettings();
     await user.click(within(dialog()).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  describe('squads', () => {
+    const squadSection = () => within(dialog()).getByRole('region', { name: 'Squad' });
+
+    it.each([
+      [undefined, false, 'Custom'],
+      [{ id: 's1', name: 'Backend team' }, false, 'Squad Backend team'],
+      [{ id: 's1', name: 'Backend team' }, true, 'Squad Backend team · customized'],
+    ])('should tell which squad the roles come from (%j, customized %s)', async (appliedSquad, customized, text) => {
+      const app = await openSettings();
+      emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles, appliedSquad, customized });
+
+      expect(squadSection()).toHaveTextContent(`Now: ${text}`);
+    });
+
+    it('should ask for the squads when it opens and apply the one picked', async () => {
+      const app = await openSettings();
+      const { user, connection } = app;
+      expect(connection.sent).toContainEqual({ type: 'squads.list' });
+      expect(within(squadSection()).getByRole('combobox', { name: 'Apply squad' })).toBeDisabled();
+      expect(within(squadSection()).getByRole('combobox', { name: 'Apply squad' })).toHaveTextContent('No squad yet');
+
+      emit(app, { type: 'squads', squads: [squad(), squad({ id: 's2', name: 'Frontend team' })] });
+      await pick(user, squadSection(), 'Apply squad', 'Frontend team');
+
+      expect(connection.sent).toContainEqual({ type: 'squads.apply', conversationId: 'c1', squadId: 's2' });
+      expect(within(squadSection()).getByRole('combobox', { name: 'Apply squad' })).toBeDisabled();
+      emit(app, { type: 'profiles', conversationId: 'c1', configured: true, profiles: roleProfiles, appliedSquad: { id: 's2', name: 'Frontend team' }, customized: false });
+
+      expect(await screen.findByText('Squad Frontend team applied')).toBeInTheDocument();
+      expect(squadSection()).toHaveTextContent('Now: Squad Frontend team');
+      expect(within(squadSection()).getByRole('combobox', { name: 'Apply squad' })).toBeEnabled();
+    });
+
+    it('should show why a squad was not applied', async () => {
+      const app = await openSettings();
+      emit(app, { type: 'squads', squads: [squad()] });
+      await pick(app.user, squadSection(), 'Apply squad', 'Backend team');
+
+      emit(app, { type: 'error', message: 'Unknown squad', conversationId: 'c1' });
+
+      expect(within(squadSection()).getByRole('combobox', { name: 'Apply squad' })).toBeEnabled();
+      expect(within(squadSection()).getByRole('alert')).toHaveTextContent('Unknown squad');
+      await app.user.click(within(dialog()).getByRole('button', { name: 'Change Developer' }));
+      expect(within(dialog()).queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('should save the roles that have a setup as a new squad', async () => {
+      const { user, router } = await openSettings();
+
+      await user.click(within(squadSection()).getByRole('button', { name: 'Save as squad' }));
+
+      expect(router.state.location.pathname).toBe('/settings/squads/new');
+      expect(router.state.location.state).toEqual({ returnTo: '/c/c1', draft: { profiles: { CEO: { agentId: 'codex', modelId: undefined, effortId: undefined } } } });
+    });
+
+    it('should ask for the profiles again when the squads change, since the conversation may not match its squad', () => {
+      const app = openConversation();
+      const before = sentOf(app, 'profiles.get').length;
+
+      emit(app, { type: 'squads', squads: [] });
+
+      expect(sentOf(app, 'profiles.get')).toHaveLength(before + 1);
+    });
+
+    it('should open the squads, coming back to the conversation', async () => {
+      const { user, router } = await openSettings();
+
+      await user.click(within(squadSection()).getByRole('link', { name: 'Manage squads' }));
+
+      expect(router.state.location.pathname).toBe('/settings/squads');
+      expect(router.state.location.state).toEqual({ returnTo: '/c/c1' });
+    });
   });
 });

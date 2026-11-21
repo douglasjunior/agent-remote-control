@@ -1,3 +1,4 @@
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { StubWorkspacePort } from '../../workspace/testing/stub-workspace.port.js';
 import type { Artifact } from '../models/artifact.model.js';
 import { ArtifactDerivationService } from '../services/artifact-derivation.service.js';
@@ -30,7 +31,7 @@ export function createArtifactsService(options: { readonly initial?: readonly Ar
     new UpdateArtifactUseCase(store, workspace, rules, history, events, derivation),
     new CommentOnArtifactUseCase(store, history, events),
     new DeleteArtifactUseCase(store, history, events, derivation),
-    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService()),
+    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService(new StubRuntimeSettings())),
     new ReleaseArtifactUseCase(store, history, events),
     events,
   );
