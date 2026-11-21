@@ -4829,6 +4829,25 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(developer.port.promptCalls[1]).toMatch(/<user_answers>[\s\S]*Postgres[\s\S]*\[INSTRUCTION_UPDATE\][\s\S]*Add tests too\./);
       });
 
+      it('should tell the agent steered on a feature the projects it may change as they stand now', async () => {
+        withTasks();
+        agentRegistry.getArtifactAccess.mockReturnValue({ scope: 'tree', sections: [], fields: [] });
+        workspacePort.listProjectFolders.mockResolvedValue(['my-app', 'web']);
+        artifactStore.artifactsOf('conv-1').set('F-1', buildArtifact({ id: 'F-1', type: 'feature', projectNames: ['my-app'] }));
+        const developer = scriptedDelegate(true);
+        ceoAnswers([['FIRST', onTask('F-1', 'Plan F-1.')], ['SECOND', onTask('F-1', 'Cover the site too.')], ['RESULT-ONE', 'Done.']]);
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
+        await artifacts.update('conv-1', 'F-1', { projectNames: ['my-app', 'web'] }, { kind: 'user', channel: 'web' });
+        await sendDuringTurn('SECOND');
+        await developer.respond('RESULT-ONE', 1);
+        await first;
+
+        expect(developer.port.promptCalls[0]).toContain('you may change files only in this project folder: my-app.');
+        expect(developer.port.steeringPrompts[0]).toContain('Your artifact as it stands now:\nYou work from the workspace root and may read all of it; you may change files only in these project folders: my-app, web.\n\n# F-1 · Artifact F-1');
+      });
+
       it('should tell the agent steered on its task what changed on the task since it was sent', async () => {
         withTasks('T-1');
         const developer = scriptedDelegate(true);
@@ -5444,12 +5463,14 @@ describe('ExecuteAgentTurnUseCase', () => {
       DEVELOPER: { project: 'required', sessionMode: 'overridable', artifact: 'required' },
       CODE_REVIEWER: { project: 'required', sessionMode: 'overridable', readOnly: true, artifact: 'required', needsReviewableWork: true },
       TECH_LEAD: { project: 'optional', readOnly: true, artifact: 'optional', asksUser: true },
+      UX_DESIGNER: { project: 'optional', sessionMode: 'overridable', artifact: 'optional', asksUser: true },
       GIT_OPS: { project: 'optional' },
     };
     const accesses: Record<string, ArtifactAccess> = {
       CEO: { scope: 'board', create: true, sections: ['overview'], fields: ['status', 'refinement', 'title'] },
       DEVELOPER: { scope: 'task', sections: ['implementation_notes'], fields: ['branch'] },
       TECH_LEAD: { scope: 'tree', create: true, sections: ['technical_solution'], fields: ['refinement'] },
+      UX_DESIGNER: { scope: 'tree', sections: ['ux_design'], fields: ['refinement'] },
     };
     const seed = (...artifacts: Parameters<typeof buildArtifact>[0][]) =>
       artifacts.forEach(artifact => artifactStore.artifactsOf('conv-1').set(artifact.id, buildArtifact({ projectName: 'my-app', ...artifact })));
@@ -5457,7 +5478,7 @@ describe('ExecuteAgentTurnUseCase', () => {
     beforeEach(() => {
       agentRegistry.getDelegationContract.mockImplementation((role: string) => contracts[role] ?? {});
       agentRegistry.getArtifactAccess.mockImplementation((role: string) => accesses[role] ?? { scope: 'task', sections: [], fields: [] });
-      agentRegistry.hasRole.mockImplementation((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'GIT_OPS'].includes(role));
+      agentRegistry.hasRole.mockImplementation((role: string) => ['CEO', 'DEVELOPER', 'CODE_REVIEWER', 'TECH_LEAD', 'UX_DESIGNER', 'GIT_OPS'].includes(role));
     });
 
     it('should answer the artifact requests of the CEO in the same turn, discarding the draft, before it decides', async () => {
@@ -5786,6 +5807,140 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect((await useCase.execute(turnRequest())).status).toBe('completed');
     });
 
+    describe('a delegation of a feature', () => {
+      it.each([
+        ['one project', ['my-app'], 'this project folder: my-app'],
+        ['several projects', ['my-app', 'project-a'], 'these project folders: my-app, project-a'],
+      ])('should run with %s from the workspaces root, telling the agent which folders it may change', async (_name, projectNames, folders) => {
+        seed({ id: 'F-1', type: 'feature', title: 'Checkout', projectNames });
+        stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Plan F-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Planned.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(workspacePort.resolveRepositoryPath).not.toHaveBeenCalled();
+        expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace']);
+        expect(delegateStubPort.promptCalls[0]).toContain(
+          `[DELEGATED_ARTIFACT]\nYou hold F-1 while you work on it.\nYou work from the workspace root and may read all of it; you may change files only in ${folders}.\n\n# F-1 · Checkout`,
+        );
+        expect(stubAgentPort.promptCalls[1]).toContain('<agent_result role="TECH_LEAD" artifact="F-1"');
+        expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+      });
+
+      it('should keep a task in its project folder and show the repository of each pull request not at its root', async () => {
+        seed({
+          id: 'T-1',
+          title: 'Login',
+          pullRequests: [
+            { url: 'https://example.com/pr/1', repository: '.', state: 'open', addedAt: '2026-01-01T00:00:00.000Z' },
+            { url: 'https://example.com/pr/2', repository: 'repositories/api', state: 'open', addedAt: '2026-01-01T00:00:00.000Z' },
+          ],
+        });
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Fix T-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Fixed.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace/my-app']);
+        expect(delegateStubPort.promptCalls[0]).toContain('- Pull requests: https://example.com/pr/1 (open); https://example.com/pr/2 (open, repository repositories/api)');
+        expect(delegateStubPort.promptCalls[0]).not.toContain('You work from the workspace root');
+      });
+    });
+
+    describe('one agent that modifies files per project folder', () => {
+      const runningIn = (role: string, projectName: string | null, artifactId: string | null = null) => {
+        const delegationControl = control();
+        const running = {
+          delegationId: `${role}-${artifactId ?? projectName}`,
+          role,
+          roleName: role,
+          agentInfo: { roleName: role, agentName: 'stub' },
+          projectName,
+          artifactId,
+          summary: 'Summary',
+          taskSpec: 'Running task',
+          cwd: projectName ? `/mock/workspace/${projectName}` : '/mock/workspace',
+          startedAt: Date.now(),
+          agentPort: new StubAgentPort(),
+          turn: { cancel: rs.fn(async () => delegationControl.finish('replaced')) } as any,
+          control: delegationControl,
+          stop: rs.fn(),
+        };
+        runtime.registerDelegation('conv-1', running);
+        return running;
+      };
+      const conflict = (role: string, folder: string, other: string) => `${role} cannot work in project folder "${folder}" at the same time as ${other}`;
+
+      beforeEach(() => {
+        seed(
+          { id: 'F-1', type: 'feature', projectNames: ['my-app', 'project-b'] },
+          { id: 'T-1', parentId: 'F-1', projectName: 'project-b' },
+        );
+      });
+
+      it('should refuse a feature to a writer while another agent modifies one of its projects', async () => {
+        runningIn('DEVELOPER', 'project-b', 'T-9');
+        stubAgentPort.mockResponses = ['<delegate role="UX_DESIGNER" summary="Designing" artifact="F-1">Design F-1.</delegate>', 'Sorry.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[1]).toContain(`${conflict('UX_DESIGNER', 'project-b', 'DEVELOPER')}, which is already working there`);
+      });
+
+      it('should refuse a task to a writer while the agent of its feature occupies all the projects of the feature', async () => {
+        runningIn('UX_DESIGNER', null, 'F-1');
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Sorry.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[1]).toContain(`${conflict('DEVELOPER', 'project-b', 'UX_DESIGNER')}, which is already working there`);
+      });
+
+      it('should refuse a feature and a task of one of its projects in one response', async () => {
+        stubAgentPort.mockResponses = [
+          '<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate><delegate role="UX_DESIGNER" summary="Designing" artifact="F-1">Design F-1.</delegate>',
+          'Sorry.',
+        ];
+
+        await useCase.execute(turnRequest());
+
+        expect(stubAgentPort.promptCalls[1]).toContain(`${conflict('UX_DESIGNER', 'project-b', 'DEVELOPER')}: only one agent that modifies files may work in a folder at a time.`);
+      });
+
+      it('should count the folder of an agent whose artifact is not on the board, and the workspaces root for one without a project', async () => {
+        runningIn('UX_DESIGNER', 'project-a', 'F-9');
+        runningIn('GIT_OPS', null);
+        stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Built.'];
+
+        const result = await useCase.execute(turnRequest());
+
+        expect(result.status).toBe('completed');
+        expect(workspacePort.resolveRepositoryPath).toHaveBeenCalledWith('project-b');
+      });
+
+      it('should let a feature run alongside writers in other projects than its own', async () => {
+        runningIn('DEVELOPER', 'project-a', 'T-9');
+        stubAgentPort.mockResponses = ['<delegate role="UX_DESIGNER" summary="Designing" artifact="F-1">Design F-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Designed.'];
+
+        const result = await useCase.execute(turnRequest());
+
+        expect(result.status).toBe('completed');
+        expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace']);
+      });
+
+      it('should let a read-only agent take a feature while another agent modifies its projects', async () => {
+        runningIn('DEVELOPER', 'project-b', 'T-9');
+        stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Plan F-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Planned.'];
+
+        const result = await useCase.execute(turnRequest());
+
+        expect(result.status).toBe('completed');
+      });
+    });
+
     describe('a session per task', () => {
       const storedAgentSessions = async () => (await sessionStore.findSession('conv-1'))?.agentSessions;
       const developerSession = (sessionId: string, artifactId: string | null) =>
@@ -5947,7 +6102,7 @@ describe('ExecuteAgentTurnUseCase', () => {
 
       it('should give a feature whole to a resumed session, since what changed in its tasks is not in its own history', async () => {
         sessionStore.seed(buildSessionContext({
-          agentSessions: [{ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-f1', projectName: 'my-app', artifactId: 'F-1', workEndedAt: '2026-01-01T00:00:00.000Z' }],
+          agentSessions: [{ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-f1', projectName: null, artifactId: 'F-1', workEndedAt: '2026-01-01T00:00:00.000Z' }],
         }));
         seed({
           id: 'F-1',
@@ -5961,9 +6116,35 @@ describe('ExecuteAgentTurnUseCase', () => {
 
         await useCase.execute(turnRequest());
 
-        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace/my-app', sessionId: 'tl-f1' }]);
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'tl-f1' }]);
         expect(delegateStubPort.promptCalls[0]).toContain('- Type: feature');
         expect(delegateStubPort.promptCalls[0]).toContain('## Overview\nSell online.');
+      });
+
+      it('should key the session of a feature to the workspaces root, whatever its projects', async () => {
+        seed({ id: 'F-1', type: 'feature', projectNames: ['my-app', 'project-a'] });
+        stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Plan F-1.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Planned.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.createSessionCalls).toEqual(['/mock/workspace']);
+        expect(await storedAgentSessions()).toContainEqual({ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'session-1', projectName: null, artifactId: 'F-1', workEndedAt: expect.any(String), ...mockPrompt });
+      });
+
+      it('should resume the session of a feature after its projects changed, with the projects as they stand now', async () => {
+        sessionStore.seed(buildSessionContext({
+          agentSessions: [{ role: 'TECH_LEAD', agentId: 'stub', sessionId: 'tl-f1', projectName: null, artifactId: 'F-1', workEndedAt: '2026-01-01T00:00:00.000Z', ...mockPrompt }],
+        }));
+        seed({ id: 'F-1', type: 'feature', projectNames: ['project-a', 'project-b'] });
+        stubAgentPort.mockResponses = ['<delegate role="TECH_LEAD" summary="Planning" artifact="F-1">Plan F-1 again.</delegate>', 'Done.'];
+        delegateStubPort.mockResponses = ['Planned.'];
+
+        await useCase.execute(turnRequest());
+
+        expect(delegateStubPort.loadSessionCalls).toEqual([{ cwd: '/mock/workspace', sessionId: 'tl-f1' }]);
+        expect(delegateStubPort.createSessionCalls).toEqual([]);
+        expect(delegateStubPort.promptCalls[0]).toContain('you may change files only in these project folders: project-a, project-b.');
       });
 
       it('should record no end of work for a delegation that never reached a session', async () => {
@@ -6142,7 +6323,10 @@ describe('ExecuteAgentTurnUseCase', () => {
       ['a review with neither a pull request nor a branch', [{ id: 'T-1' }], '<delegate role="CODE_REVIEWER" summary="x" artifact="T-1">Go.</delegate>', 'CODE_REVIEWER inspects the work of T-1, which has neither a pull request nor a branch yet.'],
       ['an artifact another role holds', [{ id: 'T-1', assignee: { role: 'TECH_LEAD', roleName: 'TL', delegationId: 'd', since: '2026-01-01T00:00:00.000Z' } }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate>', 'T-1 is with TECH_LEAD right now, and an artifact is with one agent at a time.'],
       ['another project', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1" project="project-a">Go.</delegate>', 'T-1 belongs to project "my-app", so the work on it runs there'],
-      ['another project than the first of a feature', [{ id: 'F-1', type: 'feature', projectNames: ['my-app', 'site'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1" project="site">Plan.</delegate>', 'F-1 belongs to project "my-app", so the work on it runs there'],
+      ['a project for a feature', [{ id: 'F-1', type: 'feature', projectNames: ['my-app', 'site'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1" project="site">Plan.</delegate>', 'F-1 is a feature, so its projects (my-app, site) define where the work runs: leave the project attribute out.'],
+      ['the first project of a feature', [{ id: 'F-1', type: 'feature', projectNames: ['my-app', 'site'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1" project="my-app">Plan.</delegate>', 'F-1 is a feature, so its projects (my-app, site) define where the work runs: leave the project attribute out.'],
+      ['a feature with a project folder missing from the workspace', [{ id: 'F-1', type: 'feature', projectNames: ['my-app', 'gone'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1">Plan.</delegate>', 'F-1 links a project folder missing from the workspaces root: gone. Correct its projects on the board before delegating it.'],
+      ['a feature with several project folders missing from the workspace', [{ id: 'F-1', type: 'feature', projectNames: ['lost', 'gone'] }], '<delegate role="TECH_LEAD" summary="x" artifact="F-1">Plan.</delegate>', 'F-1 links project folders missing from the workspaces root: lost, gone.'],
       ['the same artifact twice', [{ id: 'T-1' }], '<delegate role="DEVELOPER" summary="x" artifact="T-1">Go.</delegate><delegate role="TECH_LEAD" summary="y" artifact="T-1">Plan.</delegate>', 'T-1 appears in more than one delegation.'],
     ] as const)('should reject %s', async (_name, artifactsToSeed, delegation, reason) => {
       seed(...artifactsToSeed);

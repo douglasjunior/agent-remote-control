@@ -63,7 +63,21 @@ describe('StopArtifactWorkUseCase', () => {
     await artifacts.update(CONVERSATION, 'T-1', { status }, USER);
     await settle();
 
-    expect(stops).toEqual([buildStoppedWorkPrompt('T-1', status, 'shop')]);
+    expect(stops).toEqual([buildStoppedWorkPrompt('T-1', status, ['shop'])]);
+  });
+
+  it('should name every project of a feature whose agent it stops', async () => {
+    const feature = buildArtifact({
+      id: 'F-1',
+      type: 'feature',
+      projectNames: ['shop', 'api'],
+      assignee: { role: 'DEVELOPER', roleName: 'Developer Agent', delegationId: 'd-1', since: '2026-01-01T00:00:00.000Z' },
+      history: [{ id: 'e', at: '2026-01-01T01:00:00.000Z', actor: USER, kind: 'updated', summary: 'Status', changes: [{ field: 'status', from: 'in_progress', to: 'done' }] }],
+    });
+
+    await expect(useCase.execute(CONVERSATION, feature)).resolves.toBe(true);
+
+    expect(stops).toEqual([buildStoppedWorkPrompt('F-1', 'done', ['shop', 'api'])]);
   });
 
   it('should leave the agent working when the user moves the artifact to a status that keeps the work going', async () => {

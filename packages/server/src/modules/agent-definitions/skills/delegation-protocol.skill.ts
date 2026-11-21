@@ -17,7 +17,7 @@ export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
 ## The Delegate Tag
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3" project="my-app" session="new">specification</delegate>\`, in the final response block, as plain text without code fences around the tag. \`role\` and \`summary\` are required; use only the other attributes the agent accepts, as listed in Your Team.
 - \`summary\`: one short sentence (up to 120 characters) in the user's language that tells a non-technical user what the agent is doing and why, such as "Planning how to build the login screen". The agent never sees it.
-- \`artifact\`: the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out.
+- \`artifact\`: the agent holds that artifact while it runs and receives its content. A task's agent works in the task's project folder, so \`project\` may be left out. A feature's agent works from the workspaces root and changes files only in the projects of the feature, so \`project\` is refused there.
 - \`on_busy="wait|interrupt"\`: what happens to the work of an agent that is already working when you delegate to it again (see Agents at Work). An idle agent ignores it.
 
 ## The Specification
@@ -47,11 +47,11 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 ## Pipelines
 - Several items that each go through planning, development and review form a pipeline: each response moves every item one stage forward, with a different role per item.
 - A role appears once per response, and several pieces of work for the same role without an artifact go into a single delegation.
-- Only one agent that modifies files works in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it; Your Team says which agents are read-only in the \`${SKILL_NAMES.agentTeam}\` skill.
+- Only one agent that modifies files works in a project folder at a time, counting agents still running from earlier messages; the agent of a feature takes every project of the feature. Read-only agents may work alongside it; Your Team says which agents are read-only in the \`${SKILL_NAMES.agentTeam}\` skill.
 - Results of agents that finish while you are working arrive together. Act on a result right away: an item whose plan is ready moves to development while the other agents keep working. The turn ends with your answer once no agent is left running.
 
 ## Agent Results
-- \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
+- \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none, and \`project\` also for a feature, whose agent runs at the workspaces root; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
 - A result whose verdict moved its task on is a short receipt, cut when it runs long: the report is on the task, in the section that agent writes. Read the task when you need it. A verdict that keeps the task where it was (more work to do, a block) comes whole, with the decision or what the agent needs.
 - \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the work again when the error looks transient, or report it to the user.
 - \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it.

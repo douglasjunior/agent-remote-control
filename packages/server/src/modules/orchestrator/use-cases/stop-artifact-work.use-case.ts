@@ -43,7 +43,7 @@ export class StopArtifactWorkUseCase implements OnModuleInit, OnModuleDestroy {
       return false;
     }
     this.logger.log(`[Artifact Work Stopped] Conversation=${conversationId}, Artifact=${artifact.id}, Role=${holder.role}, Status=${change.to}`);
-    await delegation.stop(buildStoppedWorkPrompt(artifact.id, change.to, artifact.projectNames.join(', ')));
+    await delegation.stop(buildStoppedWorkPrompt(artifact.id, change.to, artifact.projectNames));
     return true;
   }
 

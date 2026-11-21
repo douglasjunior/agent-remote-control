@@ -20,6 +20,7 @@ import type { AnswerDelivery, ValidatedDelegation } from '../models/validated-de
 import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { type AgentReceiptKind, buildAgentReceipt, buildUnrunFollowUpPrompt } from '../prompts/agent-receipt.prompt.js';
 import { type AgentResultDetails, buildAgentResult } from '../prompts/agent-result.prompt.js';
+import { buildFeatureScopePrompt } from '../prompts/feature-scope.prompt.js';
 import { buildFollowUpPrompt, buildInstructionUpdatePrompt } from '../prompts/instruction-update.prompt.js';
 import { describeDelegation } from '../prompts/previous-turn.prompt.js';
 import { type AgentPrompt, type AgentPromptCost, AgentRoundService } from '../services/agent-round.service.js';
@@ -676,7 +677,7 @@ export class RunDelegationUseCase {
     return context;
   }
 
-  /** A feature comes whole, since what changed in its tasks is not in its own history. */
+  /** A feature comes whole, with the projects it limits its agent to as they stand now, since what changed in its tasks is not in its own history. */
   private async artifactContext(busy: ActiveDelegation, conversationId: string, since: string): Promise<string | undefined> {
     if (!busy.artifactId) {
       return undefined;
@@ -688,7 +689,7 @@ export class RunDelegationUseCase {
     }
     return artifact.type === 'task'
       ? this.artifactFormatter.changesSince(artifact, all, since, 'received')
-      : this.artifactFormatter.detail(artifact, all);
+      : `${buildFeatureScopePrompt(artifact.projectNames)}\n\n${this.artifactFormatter.detail(artifact, all)}`;
   }
 
   private async cancelLive(busy: ActiveDelegation, conversationKey: string): Promise<void> {
@@ -761,7 +762,8 @@ export class RunDelegationUseCase {
    * The agent starts from the artifact it holds, so the specification only says what to do with it. A session new to
    * the task gets its whole content; one whose work on the task ended before gets what changed since. A session that
    * carries on from where it stopped (a `firstPrompt`) was holding the task until then, so it gets the prompt alone. A
-   * feature always comes whole, since what changed in its tasks is not in its own history.
+   * feature always comes whole, since what changed in its tasks is not in its own history, and says which of its
+   * projects the agent may change from the workspaces root.
    */
   private async openingPrompt(
     opened: OpenedAgentSession,
@@ -778,7 +780,8 @@ export class RunDelegationUseCase {
     const content = !newSession && opened.workEndedAt && artifact.type === 'task'
       ? this.artifactFormatter.changesSince(artifact, all, opened.workEndedAt)
       : this.artifactFormatter.detail(artifact, all);
-    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.\n\n${content}\n[/DELEGATED_ARTIFACT]\n\n${text}`;
+    const scope = artifact.type === 'feature' ? `\n${buildFeatureScopePrompt(artifact.projectNames)}` : '';
+    return `[DELEGATED_ARTIFACT]\nYou hold ${artifactId} while you work on it.${scope}\n\n${content}\n[/DELEGATED_ARTIFACT]\n\n${text}`;
   }
 
   /**

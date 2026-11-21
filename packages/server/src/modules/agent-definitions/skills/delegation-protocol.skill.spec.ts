@@ -21,8 +21,10 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('The agent never sees it.');
     });
 
-    it('should hold the artifact while the agent runs and work in its project', () => {
-      expect(skill).toContain('the agent holds that artifact while it runs, receives its content, and works in its project folder');
+    it('should hold the artifact while the agent runs, in the project of a task and from the root for a feature', () => {
+      expect(skill).toContain('the agent holds that artifact while it runs and receives its content.');
+      expect(skill).toContain('A task\'s agent works in the task\'s project folder, so `project` may be left out.');
+      expect(skill).toContain('A feature\'s agent works from the workspaces root and changes files only in the projects of the feature, so `project` is refused there.');
     });
   });
 
@@ -88,6 +90,7 @@ describe('delegation-protocol skill', () => {
 
     it('should allow one agent that modifies files per project folder, read-only agents alongside it', () => {
       expect(skill).toContain('Only one agent that modifies files works in a project folder at a time, counting agents still running');
+      expect(skill).toContain('the agent of a feature takes every project of the feature');
       expect(skill).toContain('Read-only agents may work alongside it');
     });
 
@@ -100,7 +103,7 @@ describe('delegation-protocol skill', () => {
   describe('agent results', () => {
     it('should describe the result block and its optional attributes', () => {
       expect(skill).toContain('`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review"');
-      expect(skill).toContain('`project`, `artifact`, `verdict` and `artifact_status` are absent when the delegation had none');
+      expect(skill).toContain('`project`, `artifact`, `verdict` and `artifact_status` are absent when the delegation had none, and `project` also for a feature, whose agent runs at the workspaces root');
       expect(skill).toContain('`artifact_status_by="user"`');
     });
 

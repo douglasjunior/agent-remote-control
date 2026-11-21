@@ -70,9 +70,9 @@ export type AgentRole =
 - `defaultModel`: optional default language model associated with the persona;
 - `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`); the registry falls back to `'resume'`, so a definition declares it only for `'new'`, and none of the initial ones does. A delegation with an artifact runs in the role's session for that task unless it sets `session="new"`, so this default never applies to it and a role with `artifact: 'required'` declares no `defaultSessionMode`;
 - `delegation`: the `DelegationContract` of `orchestrator/ports/agent-registry.port.ts`, declaring which `<delegate>` attributes the agent accepts and how a delegation moves the task. A new parameter is added there:
-  - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder;
+  - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder. A delegation with a feature (roles whose `ArtifactAccess.scope` is `tree`) never takes one: its agent runs at the workspaces root;
   - `sessionMode`: `'overridable'` (every role but the CEO); the `session` attribute of the `<delegate>` is accepted: without an artifact it chooses between the project's session and a new one, with one `new` starts a fresh session for the task, replacing the binding of the task, and `resume` or no attribute keeps its session. When absent, the mode of a delegation without an artifact is fixed to `defaultSessionMode` and passing the `session` attribute is rejected, with or without an artifact;
-  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test, and so is UX_DESIGNER, which commits its prototype on a branch of its own;
+  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. a writer occupies its task's project, or every project of its feature, and no other writer works in a folder meanwhile (`DelegationValidatorService`). PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test, and so is UX_DESIGNER, which commits its prototype on a branch of its own;
   - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
   - `asksUser: true` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
@@ -160,6 +160,9 @@ Every agent writes its deliverable to the board of the conversation, never to a 
   stops and returns in its final response an access request with path, reason and mode. The request is the response to
   the caller, never a direct question to the user, so that the CEO can assess the risk first. GIT_OPS has `$HOME/.ssh`
   authorized in its own prompt for SSH key setup.
+  The agent of a feature has the workspaces root as its CWD, so the whole root is readable; the projects it may change come
+  in its `[DELEGATED_ARTIFACT]` block (`buildFeatureScopePrompt`), never in the system prompt, whose text and fingerprint stay
+  the same for every feature.
 - **Project orientation**: DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA, PRODUCT_OWNER and UX_DESIGNER include
   `PROJECT_ORIENTATION_INSTRUCTIONS` (`prompts/project-orientation.prompt.ts`). Before its first action on a project
   in a session, the agent reads the guidance the project keeps at its root that is not in its context yet (`AGENTS.md`,

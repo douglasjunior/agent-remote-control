@@ -157,15 +157,16 @@ Specs use `InMemoryArtifactStoreFake`, `buildArtifact`, `buildPopulatedArtifact`
   An unknown role reads tasks only.
 - **Delegation**: `<delegate ... artifact="T-1">` (contract `artifact: 'required' | 'optional'`, plus `needsReviewableWork`)
   is validated before it starts: known artifact, a task for a `task` scope, not closed, in a status the role takes (its
-  `statusFlow.from`), a pull request or a branch when required, no holder of another role, the artifact's project (for a
-  feature, its first project; the `project` attribute may be left out; another one is refused), and a specification within `DELEGATION_SPEC_MAX_CHARS`
+  `statusFlow.from`), a pull request or a branch when required, no holder of another role, the scope (a task's agent runs in the
+  task's project, which the `project` attribute may leave out and another one is refused; a feature's agent runs at the workspaces root and
+  changes files only in the feature's projects, which must all exist, and the attribute is refused), and a specification within `DELEGATION_SPEC_MAX_CHARS`
   (no limit to redirect the agent of that role already working on that artifact, which receives only the new text).
   One artifact appears in one delegation per response. The delegate holds it from start to end (`assign`
   before the port is created, `release` in `finally` with `finished|failed|cancelled|replaced|stopped|stopped by the user`), starts from a
   `[DELEGATED_ARTIFACT]` block before the task, and is steered only when the artifact is the same. Each role keeps one session
   per task and coding agent: a session new to the task gets the full content, and a resumed one the facts (status,
   dependencies, refinements, holder, branch, pull requests) plus the sections changed and comments added since its own work
-  on the task ended, which its session binding records (the full content when it records none, and always for a feature).
+  on the task ended, which its session binding records (the full content when it records none, and always for a feature). A feature's session is keyed to the workspaces root, so it survives changes to the feature's projects, and its block says which projects the agent may change.
 - **Statuses of a delegated task**: the server moves them, as `system` history events (`DelegationStatusService` in the
   orchestrator). Once assigned, a task in one of the role's `statusFlow.from` takes its `statusFlow.start`, and the
   delegation works in that status; a task somewhere the role does not take (restored work skips the validator) is left

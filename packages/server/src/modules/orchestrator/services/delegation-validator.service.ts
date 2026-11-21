@@ -47,7 +47,7 @@ export class DelegationValidatorService {
       delegations.push(validated);
     }
 
-    const conflict = this.findParallelConflict(delegations, request.conversationId);
+    const conflict = await this.findParallelConflict(delegations, request.conversationId);
     return conflict ? { kind: 'invalid', reason: conflict } : { kind: 'delegate', message: decision.message, delegations };
   }
 
@@ -77,10 +77,12 @@ export class DelegationValidatorService {
   }
 
   /**
-   * A delegation names the artifact its agent works on and then runs in that artifact's project: the folder may be
-   * left out, and a different one is a mistake. The artifact must be open, of a type the agent works on, in a status
-   * the agent takes, ready for it and with no agent of another role holding it, because an artifact is with one agent
-   * at a time. The agent receives the artifact in full, so the specification only names the step.
+   * A delegation names the artifact its agent works on. A task's agent runs in the task's project: the folder may be
+   * left out, and a different one is a mistake. A feature's agent runs at the workspaces root and changes files in the
+   * feature's projects, which are its scope, so a folder is a mistake too. The artifact must be open, of a type the
+   * agent works on, in a status the agent takes, ready for it and with no agent of another role holding it, because an
+   * artifact is with one agent at a time. The agent receives the artifact in full, so the specification only names the
+   * step.
    */
   private async applyArtifact(
     delegation: DelegationResult,
@@ -119,20 +121,31 @@ export class DelegationValidatorService {
     if (artifact.assignee && artifact.assignee.role !== role) {
       return { reason: `${artifactId} is with ${artifact.assignee.role} right now, and an artifact is with one agent at a time. Wait for its result, or redirect that agent.` };
     }
-    const workProject = this.workProject(artifact);
-    if (projectName && projectName !== workProject) {
-      return { reason: `${artifactId} belongs to project "${workProject}", so the work on it runs there: use project="${workProject}" or leave the project out.` };
+    if (artifact.type === 'feature') {
+      if (projectName) {
+        return { reason: `${artifactId} is a feature, so its projects (${artifact.projectNames.join(', ')}) define where the work runs: leave the project attribute out.` };
+      }
+      const missing = await this.missingProjectFolders(artifact);
+      if (missing) {
+        return { reason: missing };
+      }
+    } else if (projectName && projectName !== artifact.projectName) {
+      return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
     if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, delegation)) {
       return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
     }
-    return contract.project ? { ...delegation, projectName: workProject } : delegation;
+    return contract.project && artifact.projectName ? { ...delegation, projectName: artifact.projectName } : delegation;
   }
 
-  /** The project folder a delegation of the artifact runs in: a task's own, and for a feature its first project. */
-  private workProject(artifact: Artifact): string {
-    return artifact.projectName ?? artifact.projectNames[0]!;
+  /** A project folder of the feature that left the workspaces root since it was linked is a place its agent cannot work in. */
+  private async missingProjectFolders({ id, projectNames }: Artifact): Promise<string | undefined> {
+    const folders = await this.workspacePort.listProjectFolders();
+    const missing = projectNames.filter(name => !folders.includes(name));
+    return missing.length > 0
+      ? `${id} links ${missing.length === 1 ? 'a project folder' : 'project folders'} missing from the workspaces root: ${missing.join(', ')}. Correct its projects on the board before delegating it.`
+      : undefined;
   }
 
   /**
@@ -207,9 +220,10 @@ export class DelegationValidatorService {
   /**
    * A conversation runs one agent per role, so a role appears once per response and a delegation to a role
    * already working replaces that agent. Agents of different roles that modify files would overwrite each
-   * other's work in the same folder.
+   * other's work in the same project folder, so each folder has one such agent: a task's agent occupies its project, a
+   * feature's agent every project of the feature, and an agent without either the workspaces root.
    */
-  private findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): string | undefined {
+  private async findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): Promise<string | undefined> {
     const roles = new Set<string>();
     const artifacts = new Set<string>();
     for (const { delegateToRole, artifactId } of delegations) {
@@ -225,33 +239,46 @@ export class DelegationValidatorService {
       }
     }
 
-    const writers = new Map<string, string>();
+    const writers = new Map<string | null, string>();
     for (const active of this.conversationRuntime.getActiveDelegations(conversationKey)) {
       const redirected = delegations.some(delegation => delegation.delegateToRole === active.role.toUpperCase());
       if (!redirected && !this.isReadOnly(active.role)) {
-        writers.set(active.cwd, `${active.role}, which is already working there`);
+        for (const folder of await this.occupiedFolders(conversationKey, active)) {
+          writers.set(folder, `${active.role}, which is already working there`);
+        }
       }
     }
 
-    for (const { delegateToRole, projectName, cwd } of delegations) {
-      if (this.isReadOnly(delegateToRole)) {
+    for (const delegation of delegations) {
+      if (this.isReadOnly(delegation.delegateToRole)) {
         continue;
       }
-      const other = writers.get(cwd);
-      if (other) {
-        return `${delegateToRole} cannot work in ${this.describeTarget(projectName)} at the same time as ${other}: only one agent that modifies files may work in a folder at a time. Run them in sequence, or delegate to that same agent to redirect it.`;
+      for (const folder of await this.occupiedFolders(conversationKey, delegation)) {
+        const other = writers.get(folder);
+        if (other) {
+          return `${delegation.delegateToRole} cannot work in ${this.describeTarget(folder)} at the same time as ${other}: only one agent that modifies files may work in a folder at a time. Run them in sequence, or delegate to that same agent to redirect it.`;
+        }
+        writers.set(folder, delegation.delegateToRole);
       }
-      writers.set(cwd, delegateToRole);
     }
     return undefined;
+  }
+
+  /** The project folders an agent works in, `null` for the workspaces root. A feature's are read from the board as it stands, which may differ from when its agent started. */
+  private async occupiedFolders(
+    conversationKey: string,
+    { artifactId, projectName }: { readonly artifactId?: string | null; readonly projectName?: string | null },
+  ): Promise<readonly (string | null)[]> {
+    const artifact = artifactId ? await this.artifacts.get(conversationKey, artifactId) : undefined;
+    return artifact?.type === 'feature' ? artifact.projectNames : [projectName ?? null];
   }
 
   private isReadOnly(role: string): boolean {
     return this.agentRegistry.getDelegationContract(role).readOnly === true;
   }
 
-  private describeTarget(projectName: string | undefined): string {
-    return projectName ? `project folder "${projectName}"` : 'the workspaces root';
+  private describeTarget(folder: string | null): string {
+    return folder ? `project folder "${folder}"` : 'the workspaces root';
   }
 
   private describeProjectFolders(folders: readonly string[]): string {

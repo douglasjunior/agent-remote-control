@@ -43,10 +43,11 @@ function formatArtifactUse(agent: AgentDefinition): string {
     return 'Takes no artifact.';
   }
   const kind = agent.artifacts.scope === 'task' ? 'a task' : 'a task or a feature';
+  const where = agent.artifacts.scope === 'task' ? 'its project' : 'the project of a task, or from the workspaces root for a feature, where it changes files only in the feature\'s projects';
   const pullRequest = needsReviewableWork ? ' The task must already have work to inspect: a linked pull request or a recorded branch.' : '';
   return artifact === 'required'
-    ? `Always works on ${kind} of the board and runs in its project.${pullRequest}`
-    : `May work on ${kind} of the board, then running in its project.${pullRequest}`;
+    ? `Always works on ${kind} of the board and runs in ${where}.${pullRequest}`
+    : `May work on ${kind} of the board, then running in ${where}.${pullRequest}`;
 }
 
 function formatProjectAccess(agent: AgentDefinition): string {

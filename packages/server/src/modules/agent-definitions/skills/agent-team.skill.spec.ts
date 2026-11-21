@@ -64,7 +64,7 @@ describe('agent-team skill', () => {
       '- Always works on a task of the board and runs in its project. The task must already have work to inspect: a linked pull request or a recorded branch.',
     );
     expect(contentFor({ delegation: { artifact: 'optional' }, artifacts: { scope: 'tree', sections: [], fields: [] } })).toContain(
-      '- May work on a task or a feature of the board, then running in its project.',
+      '- May work on a task or a feature of the board, then running in the project of a task, or from the workspaces root for a feature, where it changes files only in the feature\'s projects.',
     );
     expect(contentFor({ delegation: { readOnly: true } })).toContain('- Read-only, so it may work alongside an agent that modifies the same project.');
     expect(contentFor({ delegation: {}, defaultSessionMode: 'new' })).toContain('- Always runs in "new" session mode, so never set the session attribute.');
