@@ -18,7 +18,7 @@ import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
-import { buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
+import { buildFinalResponseCountRepairPrompt, buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
 import { buildLostSessionTaskPrompt } from '../prompts/resumed-work.prompt.js';
 import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
@@ -101,7 +101,7 @@ export class AgentRoundService {
    * session it creates or loads gets the agent tools of the requester when the agent takes them, and the system prompt,
    * re-entry note and skill catalog are written for the interface of the session. Requests
    * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
-   * other protocol tag written there gets one repair prompt.
+   * other protocol tag written there, or more than one final response block, gets one repair prompt.
    */
   async run({
     agentPort,
@@ -181,18 +181,28 @@ export class AgentRoundService {
       let written = await this.promptAgent(agentPort, fullPrompt, role, onPrompt);
       hearAnswer();
       await answerRecorded;
-      const stray = this.agentProtocol.strayTags(written.all);
       let strayRequests = '';
-      if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
-        this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
-        strayRequests = this.strayRequests(written.all, this.agentProtocol.finalResponse(written.last));
-      } else if (stray.length > 0) {
-        this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
+      let repairPrompt: string | undefined;
+      const blocks = this.agentProtocol.finalResponseBlocks(written.last);
+      if (blocks > 1) {
+        this.logger.warn(`[Protocol Repair] Role=${role}: ${blocks} final response blocks`);
+        repairPrompt = buildFinalResponseCountRepairPrompt(blocks);
+      } else {
+        const stray = this.agentProtocol.strayTags(written.all);
+        if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
+          this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
+          strayRequests = this.strayRequests(written.all, this.agentProtocol.finalResponse(written.last));
+        } else if (stray.length > 0) {
+          this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
+          repairPrompt = buildProtocolRepairPrompt(stray);
+        }
+      }
+      if (repairPrompt !== undefined) {
         if (role === request.agentRole) {
           request.onDraft?.('');
         }
         turn.throwIfCancelled();
-        written = await this.promptAgent(agentPort, buildProtocolRepairPrompt(stray), role, onPrompt);
+        written = await this.promptAgent(agentPort, repairPrompt, role, onPrompt);
       }
 
       const finalResponse = this.agentProtocol.finalResponse(written.last);

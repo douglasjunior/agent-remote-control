@@ -5416,6 +5416,57 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(onDraft).toHaveBeenCalledWith('');
     });
 
+    it('should ask the CEO again when its response has more than one final response block, and use the single block it answers with', async () => {
+      stubAgentPort.mockResponses = [
+        '<final_response>Checking.<artifact_list status="all"/></final_response>\nInvented continuation.\n<final_response>Checking again.<artifact_list status="all"/></final_response>',
+        '<final_response><artifact_list status="all"/></final_response>',
+        '<final_response>Nothing on the board yet.</final_response>',
+      ];
+      const onDraft = rs.fn();
+      const warn = rs.spyOn(Logger.prototype, 'warn');
+
+      const result = await useCase.execute(turnRequest({ onDraft }));
+      const messages = warn.mock.calls.map(([message]) => message);
+      warn.mockRestore();
+
+      expect(stubAgentPort.promptCalls[1]).toBe('[PROTOCOL_ERROR]\nYour previous response had 2 <final_response> blocks, but a turn has exactly one, so nothing was done with it.\nAnswer again with the whole answer, every protocol tag included, in a single <final_response>...</final_response> block at the end of the turn.');
+      expect(stubAgentPort.promptCalls[2]).toContain('No artifact matches.');
+      expect(result).toMatchObject({ status: 'completed', response: 'Nothing on the board yet.' });
+      expect(onDraft).toHaveBeenCalledWith('');
+      expect(messages).toContain('[Protocol Repair] Role=CEO: 2 final response blocks');
+    });
+
+    it('should repair a delegate whose response has more than one final response block, without touching the draft of the CEO', async () => {
+      seed({ id: 'T-1' });
+      stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];
+      delegateStubPort.mockResponses = ['<final_response>Built.</final_response>\n<final_response>Built again.</final_response>', '<final_response>Built.</final_response>'];
+      const onDraft = rs.fn();
+
+      await useCase.execute(turnRequest({ onDraft }));
+
+      expect(delegateStubPort.promptCalls[1]).toContain('Your previous response had 2 <final_response> blocks');
+      expect(stubAgentPort.promptCalls[1]).toContain('>\nBuilt.\n</agent_result>');
+      expect(onDraft).not.toHaveBeenCalledWith('');
+    });
+
+    it('should take the content of the only final response block, with narration before it and text after it, without asking again', async () => {
+      stubAgentPort.mockResponses = ['Looking at it.\n<final_response>All done.</final_response>\nThis text is discarded.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+      expect(result).toMatchObject({ status: 'completed', response: 'All done.' });
+    });
+
+    it('should take the whole text of a response without a final response block, without asking again', async () => {
+      stubAgentPort.mockResponses = ['Just an answer.'];
+
+      const result = await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
+      expect(result).toMatchObject({ status: 'completed', response: 'Just an answer.' });
+    });
+
     it('should carry out the requests a delegate wrote outside its final response along with that response', async () => {
       seed({ id: 'T-1' });
       stubAgentPort.mockResponses = ['<delegate role="DEVELOPER" summary="Building" artifact="T-1">Implement T-1.</delegate>', 'Done.'];

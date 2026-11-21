@@ -235,7 +235,7 @@ inside the turn:
 
 Reads the response protocol agents follow, the `<final_response>` envelope (`constants/final-response.constant.ts`),
 over the raw text the agent port hands over: `stream(handlers)` for the activities of a prompt as they arrive and
-`finalResponse(written)` for the finished text. Everything about the envelope lives here, so the agent module
+`finalResponse(written)` for the finished text and `finalResponseBlocks(written)` for how many envelopes it holds. Everything about the envelope lives here, so the agent module
 stays unaware of it.
 
 ### 4. `DelegationDetectorService` (`services/delegation-detector.service.ts`)

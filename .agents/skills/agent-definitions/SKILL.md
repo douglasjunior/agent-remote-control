@@ -145,9 +145,11 @@ Every agent writes its deliverable to the board of the conversation, never to a 
 ## Shared prompt blocks
 
 - **Final response**: every agent prompt ends with `FINAL_RESPONSE_INSTRUCTIONS` (`prompts/final-response.prompt.ts`):
-  the turn's final response comes exactly once inside `<final_response>…</final_response>`
-  (`orchestrator/constants/final-response.constant.ts`), and text outside it is only progress narration. A new agent
-  must include this block, because the orchestrator uses the envelope to separate the response from the narration.
+  the turn has exactly one `<final_response>…</final_response>` block
+  (`orchestrator/constants/final-response.constant.ts`), the last thing of the turn: text before it is progress
+  narration and text after it is discarded. A response with more than one block is answered again
+  (`buildFinalResponseCountRepairPrompt`). A new agent must include this block, because the orchestrator uses the
+  envelope to separate the response from the narration.
   The block also requires every subagent and background task the agent started to have finished, and its result read,
   before the answer, because ending the turn delivers the answer and discards what is still running.
 - **CWD boundary**: every executor agent but IT_SUPPORT includes `CWD_BOUNDARY_INSTRUCTIONS`
