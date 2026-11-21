@@ -356,7 +356,7 @@ describe('Discord Bot Driving Adapter (e2e)', () => {
       'channel-e2e-111:thread-e2e-999',
     );
     expect(storedSession).not.toBeNull();
-    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123', projectName: null, artifactId: null }]);
+    expect(storedSession?.agentSessions).toEqual([{ role: 'CEO', agentId: 'agy', sessionId: 'e2e-session-123', projectName: null, artifactId: null, promptHash: expect.stringMatching(/^[0-9a-f]{16}$/) }]);
     expect(await app.get(DataSource).query('SELECT "session_id" FROM "agent_session" WHERE "conversation_id" = ?', ['channel-e2e-111:thread-e2e-999']))
       .toEqual([{ session_id: 'e2e-session-123' }]);
 

@@ -34,6 +34,9 @@ export class AgentSessionEntity {
   @Column({ type: 'boolean', nullable: true })
   unanswered: boolean | null;
 
+  @Column({ name: 'prompt_hash', type: 'text', nullable: true })
+  promptHash: string | null;
+
   @ManyToOne(() => SessionEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'conversation_id', foreignKeyConstraintName: 'FK_agent_session_session' })
   session?: SessionEntity;

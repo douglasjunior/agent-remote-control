@@ -9,12 +9,12 @@ import type { ISessionStorePort, SessionChange } from '../ports/session-store.po
 
 const SELECT_SESSION = 'SELECT 1 FROM "session" WHERE "conversation_id" = ?';
 const SELECT_AGENT_SESSIONS = `SELECT "role", "agent_id" AS "agentId", "session_id" AS "sessionId", "project_name" AS "projectName",
-    "artifact_id" AS "artifactId", "work_ended_at" AS "workEndedAt", "unanswered"
+    "artifact_id" AS "artifactId", "work_ended_at" AS "workEndedAt", "unanswered", "prompt_hash" AS "promptHash"
   FROM "agent_session" WHERE "conversation_id" = ? ORDER BY "position"`;
 const INSERT_SESSION = 'INSERT INTO "session" ("conversation_id") VALUES (?) ON CONFLICT ("conversation_id") DO NOTHING';
 const DELETE_AGENT_SESSIONS = 'DELETE FROM "agent_session" WHERE "conversation_id" = ?';
 const INSERT_AGENT_SESSION = `INSERT INTO "agent_session" ("conversation_id", "position", "role", "agent_id", "session_id", "project_name", "artifact_id",
-    "work_ended_at", "unanswered") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    "work_ended_at", "unanswered", "prompt_hash") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 type AgentSessionRow = Omit<AgentSessionEntity, 'conversationId' | 'position' | 'unanswered' | 'session'> & { readonly unanswered: number | null };
 
@@ -47,6 +47,7 @@ export class SqliteSessionStoreAdapter implements ISessionStorePort {
         session.artifactId,
         session.workEndedAt ?? null,
         session.unanswered ? 1 : null,
+        session.promptHash ?? null,
       ));
       return updated;
     });
@@ -64,6 +65,7 @@ export class SqliteSessionStoreAdapter implements ISessionStorePort {
       artifactId: row.artifactId,
       ...(row.workEndedAt !== null && { workEndedAt: row.workEndedAt }),
       ...(row.unanswered ? { unanswered: true as const } : {}),
+      ...(row.promptHash !== null && { promptHash: row.promptHash }),
     }));
     return { conversationId, agentSessions };
   }

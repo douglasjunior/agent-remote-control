@@ -68,6 +68,7 @@ describe('JsonSessionsImporterAdapter', () => {
     });
     await expect(store().findSession('conv-2')).resolves.toEqual({ conversationId: 'conv-2', agentSessions: [] });
     await expect(store().findSession('conv-3')).resolves.toEqual({ conversationId: 'conv-3', agentSessions: [] });
+    expect(await dataSource.query('SELECT "prompt_hash" FROM "agent_session"')).toEqual([{ prompt_hash: null }, { prompt_hash: null }]);
   });
 
   it('should read the list format, keyed by conversation or by channel and thread, the later item winning', async () => {

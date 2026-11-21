@@ -40,7 +40,7 @@ describe('SqliteSessionStoreAdapter', () => {
   it('should read back every field of each binding, in order, and an empty session as empty', async () => {
     const session = buildSessionContext({
       agentSessions: [
-        { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-t1', projectName: 'my-app', artifactId: 'T-1', workEndedAt: '2026-01-02T00:00:00.000Z' },
+        { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev-t1', projectName: 'my-app', artifactId: 'T-1', workEndedAt: '2026-01-02T00:00:00.000Z', promptHash: '0123456789abcdef' },
         { role: 'CEO', agentId: 'agy', sessionId: 'ceo', projectName: null, artifactId: null, unanswered: true },
       ],
     });
@@ -50,9 +50,9 @@ describe('SqliteSessionStoreAdapter', () => {
 
     await expect(storeOver(dataSource).findSession('conv-1')).resolves.toEqual(session);
     await expect(storeOver(dataSource).findSession('conv-2')).resolves.toEqual({ conversationId: 'conv-2', agentSessions: [] });
-    expect(await dataSource.query('SELECT "position", "work_ended_at", "unanswered" FROM "agent_session" ORDER BY "position"')).toEqual([
-      { position: 0, work_ended_at: '2026-01-02T00:00:00.000Z', unanswered: null },
-      { position: 1, work_ended_at: null, unanswered: 1 },
+    expect(await dataSource.query('SELECT "position", "work_ended_at", "unanswered", "prompt_hash" FROM "agent_session" ORDER BY "position"')).toEqual([
+      { position: 0, work_ended_at: '2026-01-02T00:00:00.000Z', unanswered: null, prompt_hash: '0123456789abcdef' },
+      { position: 1, work_ended_at: null, unanswered: 1, prompt_hash: null },
     ]);
   });
 

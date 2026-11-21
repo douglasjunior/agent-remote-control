@@ -122,8 +122,9 @@ every text of this module: `buildSystemPrompt`, `buildReentryNote`, `SkillContex
 Every instruction sits in one of four layers, chosen so that context stays small and the information is there when
 the agent needs it:
 
-1. **Core** (the system prompt): what the role uses in nearly every task. The executors get it once per session; the
-   CEO with every user message, so its core is written to be sufficient for a request without reading a skill.
+1. **Core** (the system prompt): what the role uses in nearly every task. The executors get it once per session, and
+   again in a resumed session whose recorded copy differs from the current one (the session binding keeps a hash of the
+   text it was sent); the CEO with every user message, so its core is written to be sufficient for a request without reading a skill.
 2. **Re-entry note** (`buildReentryNote`): the rules nothing else enforces, for a prompt that reaches a session the agent
    already has, ending with the pointer to the `role-guide` skill. It is built by `buildReentryNote(roleName, rules, agentInterface)`
    (`prompts/reentry-note.prompt.ts`): a `[RE-ENTRY]` header, on the tools interface the tools of the `arc` server, the role's rules and the rule to finish only after every
@@ -172,7 +173,7 @@ Every agent writes its deliverable to the board of the conversation, never to a 
 
 Know-how an agent needs only for some tasks lives in skills, outside its system prompt. The orchestrator sends the
 catalog (`[SKILLS]`, the name and description of each skill the role may read) with the system prompt and again after the
-re-entry note of a resumed session, so a skill created since its start is listed, and the agent
+re-entry note of a resumed session whose system prompt is unchanged. A skill created since a session's system prompt changes the text it would be sent (the catalog is part of it), so that session gets the system prompt again, with the current catalog. The agent
 reads a skill's full content when the task calls for it: with `<skill_read name="a,b"/>` in its final response, or the
 `skill_read` tool on the tools interface. The
 description is all the agent sees before reading, so it says what the skill covers and when to read it.

@@ -63,6 +63,7 @@ export class JsonSessionsImporterAdapter implements ILegacyJsonImporterPort {
           artifactId: session.artifactId,
           workEndedAt: session.workEndedAt ?? null,
           unanswered: session.unanswered ?? null,
+          promptHash: null,
         })));
         await this.insert(manager, SessionEntity, imported.map(([conversationId]) => ({ conversationId })));
         await this.insert(manager, AgentSessionEntity, rows);
