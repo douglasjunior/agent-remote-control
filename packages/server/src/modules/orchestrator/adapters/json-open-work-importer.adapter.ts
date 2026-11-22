@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { basename, dirname } from 'node:path';
 import type { EntityManager } from 'typeorm';
 import { z } from 'zod';
 
@@ -7,6 +8,7 @@ import { LegacyJsonFilesService } from '../../database/services/legacy-json-file
 import { openWorkSchema } from '../constants/open-work-schema.constant.js';
 import { OpenWorkEntity } from '../entities/open-work.entity.js';
 import type { OpenWork } from '../models/open-work.model.js';
+import { featureKey, readImportedFeatureKeys } from '../utils/imported-feature-keys.util.js';
 
 
 const OPEN_WORK_FILE = 'open-work.json';
@@ -15,7 +17,7 @@ const ROWS_PER_INSERT = 500;
 /** The records of each conversation by its id; each record is checked on its own. */
 const openWorkFileSchema = z.record(z.string(), z.array(z.unknown()));
 
-/** `DATA_DIR/open-work.json`. A record that is not a valid `OpenWork` is logged and dropped. */
+/** `DATA_DIR/open-work.json`. A record that is not a valid `OpenWork` is logged and dropped; one of a feature is keyed to the workspaces root. */
 @Injectable()
 export class JsonOpenWorkImporterAdapter implements ILegacyJsonImporterPort {
   readonly name = 'open-work';
@@ -32,7 +34,8 @@ export class JsonOpenWorkImporterAdapter implements ILegacyJsonImporterPort {
       counts: { records: rows.length },
       write: async (manager: EntityManager) => {
         const existing = new Set((await manager.find(OpenWorkEntity, { select: { conversationId: true } })).map(row => row.conversationId));
-        const imported = rows.filter(row => !existing.has(row.conversationId));
+        const features = await readImportedFeatureKeys(manager);
+        const imported = rows.filter(row => !existing.has(row.conversationId)).map(row => this.keyFeatureToRoot(row, features));
         for (let start = 0; start < imported.length; start += ROWS_PER_INSERT) {
           await manager.insert(OpenWorkEntity, imported.slice(start, start + ROWS_PER_INSERT));
         }
@@ -49,6 +52,15 @@ export class JsonOpenWorkImporterAdapter implements ILegacyJsonImporterPort {
       }
       return [parsed.data];
     });
+  }
+
+  /** A feature's work runs at the workspaces root, the parent of the project folder the legacy record points at. */
+  private keyFeatureToRoot(row: OpenWorkEntity, features: ReadonlySet<string>): OpenWorkEntity {
+    if (!features.has(featureKey(row.conversationId, row.artifactId))) {
+      return row;
+    }
+    const inProjectFolder = row.projectName !== null && basename(row.cwd) === row.projectName;
+    return { ...row, projectName: null, cwd: inProjectFolder ? dirname(row.cwd) : row.cwd };
   }
 
   private toRow(conversationId: string, record: OpenWork, position: number): OpenWorkEntity {

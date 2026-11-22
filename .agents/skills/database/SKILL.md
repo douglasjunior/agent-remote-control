@@ -25,6 +25,9 @@ versions left in `DATA_DIR`. Every module whose adapters read or write the datab
   `DATA_DIR/arc.sqlite` (from `DataDirectoryService`), `enableWAL: true`, `synchronize: false` and
   `migrationsRun: true`. TypeORM turns `foreign_keys` on. The module exports `TypeOrmModule`, so adapters inject
   `DataSource` by its class.
+- Migrations run when the `DataSource` initializes, before `LegacyJsonImportService` imports any JSON file, so on the
+  first boot after an upgrade a migration that rewrites data sees empty tables: the importer of that data applies the
+  same rule to the rows it writes.
 - Entities and migrations are classes listed in `constants/database-schema.constant.ts` (`DATABASE_ENTITIES`,
   `DATABASE_MIGRATIONS`). Never configure them with globs: the server runs as ESM from the `nest build` output and from
   source under Rstest, and a glob resolves the same files in neither.
@@ -149,8 +152,8 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 | `preferences` | `preferences.json` | a field of another type is left out; a row already in the database is kept |
 | `agent-settings` | `agent-settings.json` | a flat entry of the earliest format gives its profile to every role of `IAgentRegistryPort.listRoles()` (so `DatabaseModule` imports `AgentDefinitionsModule`); profiles without a text `agentId` and entries left without profiles are dropped; a conversation already in the database is kept |
 | `artifacts` | `artifacts/<encodeURIComponent(conversationId)>.json` | validated with the protocol's `artifactDetailSchema` (counters default to none, and a refinement kind the file lacks takes its `DEFAULT_REFINEMENT_STATES` entry, so `design` imports as `skipped`); an id listed twice keeps its first place and its last content; the files hold a single `projectName` per artifact, which a feature imports as `projectNames: [it]` (and `projectName` `null`) and a task keeps; pull requests without `repository` import as `.`; a conversation with artifacts or counters in the database is kept |
-| `sessions` | `sessions.json` | the map by conversation or the earlier array of items keyed by `conversationId` or `channelId:threadId` (the later item wins); agent sessions without a text `agentId` are dropped, a missing `projectName`/`artifactId` is `null`, a field of another type is left out; a conversation already in the database is kept |
-| `open-work` | `open-work.json` | the records of each conversation by its id; a record that does not match `openWorkSchema` is logged (`legacy_record_skipped`) and dropped; a conversation already in the database is kept |
+| `sessions` | `sessions.json` | the map by conversation or the earlier array of items keyed by `conversationId` or `channelId:threadId` (the later item wins); agent sessions without a text `agentId` are dropped, a missing `projectName`/`artifactId` is `null`, a field of another type is left out; the session of a feature (an `artifact` row of type `feature` with that conversation and id, read by raw SQL, which the `artifacts` importer filled before) is keyed to the workspaces root with `projectName` `null`, like `KeyFeatureSessionsToRoot1795250000000` does for rows already in the database; a conversation already in the database is kept |
+| `open-work` | `open-work.json` | the records of each conversation by its id; a record that does not match `openWorkSchema` is logged (`legacy_record_skipped`) and dropped; a record of a feature (found as for `sessions`) is keyed to the workspaces root: `projectName` `null` and, when `cwd` ends with the project folder, `cwd` its parent; a conversation already in the database is kept |
 
 ### Adding a store and its importer
 

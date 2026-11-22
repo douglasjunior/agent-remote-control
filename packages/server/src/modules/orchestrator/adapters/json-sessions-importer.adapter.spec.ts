@@ -28,6 +28,10 @@ describe('JsonSessionsImporterAdapter', () => {
     await dataSource.transaction(manager => legacy.write(manager));
     return { importer, legacy };
   };
+  const seedArtifact = (conversationId: string, id: string, type: 'feature' | 'task') => dataSource.query(
+    'INSERT INTO "artifact" ("conversation_id", "id", "position", "type", "title", "status", "created_at", "updated_at") VALUES (?, ?, 0, ?, \'Title\', \'ready\', \'2026-01-01T00:00:00.000Z\', \'2026-01-01T00:00:00.000Z\')',
+    [conversationId, id, type],
+  );
   const store = () => new SqliteSessionStoreAdapter(new SqliteTransactionService(dataSource));
 
   beforeEach(async () => {
@@ -69,6 +73,33 @@ describe('JsonSessionsImporterAdapter', () => {
     await expect(store().findSession('conv-2')).resolves.toEqual({ conversationId: 'conv-2', agentSessions: [] });
     await expect(store().findSession('conv-3')).resolves.toEqual({ conversationId: 'conv-3', agentSessions: [] });
     expect(await dataSource.query('SELECT "prompt_hash" FROM "agent_session"')).toEqual([{ prompt_hash: null }, { prompt_hash: null }]);
+  });
+
+  it('should key the sessions of a feature without a project and keep the project of the others', async () => {
+    await seedArtifact('conv-1', 'F-1', 'feature');
+    await seedArtifact('conv-1', 'T-1', 'task');
+    await seedArtifact('conv-2', 'F-1', 'task');
+    seed({
+      'conv-1': {
+        agentSessions: [
+          { role: 'TECH_LEAD', agentId: 'claude', sessionId: 'lead', projectName: 'api', artifactId: 'F-1' },
+          { role: 'DEVELOPER', agentId: 'claude', sessionId: 'dev', projectName: 'api', artifactId: 'T-1' },
+          { role: 'QA', agentId: 'claude', sessionId: 'qa', projectName: 'api', artifactId: null },
+          { role: 'CODE_REVIEWER', agentId: 'claude', sessionId: 'rev', projectName: 'api', artifactId: 'F-9' },
+        ],
+      },
+      'conv-2': { agentSessions: [{ role: 'TECH_LEAD', agentId: 'claude', sessionId: 'lead-2', projectName: 'api', artifactId: 'F-1' }] },
+    });
+
+    await importAll();
+
+    expect(await dataSource.query('SELECT "conversation_id", "session_id", "project_name" FROM "agent_session" ORDER BY "conversation_id", "position"')).toEqual([
+      { conversation_id: 'conv-1', session_id: 'lead', project_name: null },
+      { conversation_id: 'conv-1', session_id: 'dev', project_name: 'api' },
+      { conversation_id: 'conv-1', session_id: 'qa', project_name: 'api' },
+      { conversation_id: 'conv-1', session_id: 'rev', project_name: 'api' },
+      { conversation_id: 'conv-2', session_id: 'lead-2', project_name: 'api' },
+    ]);
   });
 
   it('should read the list format, keyed by conversation or by channel and thread, the later item winning', async () => {

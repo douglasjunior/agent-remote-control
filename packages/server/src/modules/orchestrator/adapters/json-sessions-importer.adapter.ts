@@ -7,6 +7,7 @@ import { LegacyJsonFilesService } from '../../database/services/legacy-json-file
 import { AgentSessionEntity } from '../entities/agent-session.entity.js';
 import { SessionEntity } from '../entities/session.entity.js';
 import type { AgentSession } from '../models/agent-session.model.js';
+import { featureKey, readImportedFeatureKeys } from '../utils/imported-feature-keys.util.js';
 
 
 const SESSIONS_FILE = 'sessions.json';
@@ -34,7 +35,11 @@ const storedAgentSessionSchema = z.object({
 
 type StoredSession = z.infer<typeof storedSessionSchema>;
 
-/** `DATA_DIR/sessions.json`. An agent session without an agent is dropped; when items share a conversation, the later wins. */
+/**
+ * `DATA_DIR/sessions.json`. An agent session without an agent is dropped; when items share a conversation, the later wins.
+ * The session of a feature is keyed without a project, as the agent of a feature works from the workspaces root; the
+ * artifacts importer runs first, so the features are in the database.
+ */
 @Injectable()
 export class JsonSessionsImporterAdapter implements ILegacyJsonImporterPort {
   readonly name = 'sessions';
@@ -53,13 +58,14 @@ export class JsonSessionsImporterAdapter implements ILegacyJsonImporterPort {
       write: async (manager: EntityManager) => {
         const existing = new Set((await manager.find(SessionEntity)).map(row => row.conversationId));
         const imported = [...sessions].filter(([conversationId]) => !existing.has(conversationId));
+        const features = await readImportedFeatureKeys(manager);
         const rows = imported.flatMap(([conversationId, agentSessions]) => agentSessions.map((session, position): AgentSessionEntity => ({
           conversationId,
           position,
           role: session.role,
           agentId: session.agentId,
           sessionId: session.sessionId,
-          projectName: session.projectName,
+          projectName: features.has(featureKey(conversationId, session.artifactId)) ? null : session.projectName,
           artifactId: session.artifactId,
           workEndedAt: session.workEndedAt ?? null,
           unanswered: session.unanswered ?? null,

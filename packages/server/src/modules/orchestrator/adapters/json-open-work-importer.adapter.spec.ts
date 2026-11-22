@@ -36,6 +36,10 @@ describe('JsonOpenWorkImporterAdapter', () => {
     await dataSource.transaction(manager => legacy.write(manager));
     return { importer, legacy };
   };
+  const seedArtifact = (conversationId: string, id: string, type: 'feature' | 'task') => dataSource.query(
+    'INSERT INTO "artifact" ("conversation_id", "id", "position", "type", "title", "status", "created_at", "updated_at") VALUES (?, ?, 0, ?, \'Title\', \'ready\', \'2026-01-01T00:00:00.000Z\', \'2026-01-01T00:00:00.000Z\')',
+    [conversationId, id, type],
+  );
   const store = () => new SqliteOpenWorkStoreAdapter(new SqliteTransactionService(dataSource));
 
   beforeEach(async () => {
@@ -59,6 +63,28 @@ describe('JsonOpenWorkImporterAdapter', () => {
     expect(legacy).toMatchObject({ files: ['open-work.json'], counts: { records: 3 } });
     expect(lock.lockPaths).toEqual([`${join(dataDir, 'open-work.json')}.lock`]);
     await expect(store().load()).resolves.toEqual({ 'web-1': [asked, record], 'web-2': [record] });
+  });
+
+  it('should key the work of a feature to the workspaces root and leave the rest as it is', async () => {
+    await seedArtifact('web-1', 'F-1', 'feature');
+    await seedArtifact('web-1', 'T-1', 'task');
+    const feature: OpenWork = { ...record, id: 'f', artifactId: 'F-1', projectName: 'api', cwd: '/w/api' };
+    const foreign: OpenWork = { ...feature, id: 'g', cwd: '/elsewhere' };
+    const rootFeature: OpenWork = { ...feature, id: 'h', projectName: null, cwd: '/w' };
+    const task: OpenWork = { ...record, id: 't', artifactId: 'T-1', projectName: 'api', cwd: '/w/api' };
+    seed({ 'web-1': [feature, foreign, rootFeature, task, record] });
+
+    await importAll();
+
+    await expect(store().load()).resolves.toEqual({
+      'web-1': [
+        { ...feature, projectName: null, cwd: '/w' },
+        { ...foreign, projectName: null },
+        rootFeature,
+        task,
+        record,
+      ],
+    });
   });
 
   it('should drop a record that is not valid open work', async () => {
