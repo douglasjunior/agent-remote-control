@@ -70,6 +70,9 @@ type Arrival =
 
 type SetCancel = (cancel: () => Promise<void>) => void;
 
+/** Whether a stop reached the delegation, which no cancel handler may be in place to receive. */
+type IsCancelled = () => boolean;
+
 const RELEASE_OUTCOMES: Readonly<Record<DelegationEnd, string>> = {
   finished: 'finished',
   failed: 'failed',
@@ -130,16 +133,23 @@ export class RunDelegationUseCase {
   ): readonly StartedDelegation[] {
     return delegations.map((delegation) => {
       let cancel: (() => Promise<void>) | undefined;
+      let cancelled = false;
       const outcome = this.delegate(session, delegation, request, round, conversationKey, (next) => {
         cancel = next;
-      }).catch((error: unknown): DelegationOutcome => {
+      }, () => cancelled).catch((error: unknown): DelegationOutcome => {
         if (isPromptCancellation(error)) {
           return { kind: 'cancelled', reason: error };
         }
         const { delegateToRole, projectName, artifactId } = delegation;
         return { kind: 'result', block: this.formatFailedResult(session, round, delegateToRole, projectName, error, { artifactId }) };
       });
-      return { outcome, cancel: async () => cancel?.() };
+      return {
+        outcome,
+        cancel: async () => {
+          cancelled = true;
+          await cancel?.();
+        },
+      };
     });
   }
 
@@ -158,15 +168,16 @@ export class RunDelegationUseCase {
     round: number,
     conversationKey: string,
     setCancel: SetCancel,
+    isCancelled: IsCancelled,
   ): Promise<DelegationOutcome> {
     let waited = false;
     for (;;) {
       const arrival = await this.exclusive(`${conversationKey}\u0000${delegation.delegateToRole}`, async (): Promise<Arrival> => {
         const busy = this.conversationRuntime.findActiveDelegation(conversationKey, delegation.delegateToRole);
         if (!busy) {
-          return { kind: 'done', ...await this.open(session, delegation, request, round, conversationKey, setCancel) };
+          return { kind: 'done', ...await this.open(session, delegation, request, round, conversationKey, setCancel, isCancelled) };
         }
-        return this.reachBusy(busy, session, delegation, request, round, conversationKey, setCancel, waited);
+        return this.reachBusy(busy, session, delegation, request, round, conversationKey, setCancel, isCancelled, waited);
       });
       if (arrival.kind === 'done') {
         return arrival.outcome;
@@ -191,6 +202,7 @@ export class RunDelegationUseCase {
     round: number,
     conversationKey: string,
     setCancel: SetCancel,
+    isCancelled: IsCancelled,
     waited: boolean,
   ): Promise<Arrival> {
     const sameWork = busy.projectName === (delegation.projectName ?? null)
@@ -212,7 +224,7 @@ export class RunDelegationUseCase {
       }
     } else if (delegation.onBusy === 'interrupt') {
       await this.replace(busy, conversationKey);
-      return { kind: 'done', ...await this.open(session, delegation, request, round, conversationKey, setCancel) };
+      return { kind: 'done', ...await this.open(session, delegation, request, round, conversationKey, setCancel, isCancelled) };
     }
     if (!waited) {
       this.receipt(busy, conversationKey, 'waiting');
@@ -368,11 +380,17 @@ export class RunDelegationUseCase {
     round: number,
     conversationKey: string,
     setCancel: SetCancel,
+    isCancelled: IsCancelled,
   ): Promise<{ readonly outcome: Promise<DelegationOutcome> }> {
     await this.replaceInterruptedWork(conversationKey, role, workId);
 
     const delegationId = workId ?? randomUUID();
     const roleName = this.agentRegistry.getDisplayName(role);
+    const agentPort = this.agentPortFactory.create(await this.agentRound.resolveAgentId(request.conversationId, role));
+    const agentInfo = await this.agentRound.buildAgentInfo(agentPort, role, request.conversationId);
+    if (isCancelled()) {
+      throw new PromptCancelledError();
+    }
     if (artifactId) {
       const assigned = await this.artifacts.assign(request.conversationId, artifactId, { role, roleName, delegationId });
       if (!assigned.ok) {
@@ -382,10 +400,14 @@ export class RunDelegationUseCase {
         });
         return { outcome: Promise.resolve({ kind: 'result', block }) };
       }
+      if (isCancelled()) {
+        await this.artifacts.release(request.conversationId, artifactId, delegationId, RELEASE_OUTCOMES.cancelled).catch((error: unknown) => {
+          this.logger.error(`[Artifact Release Failed] ${artifactId}: ${error instanceof Error ? error.message : String(error)}`);
+        });
+        throw new PromptCancelledError();
+      }
     }
 
-    const agentPort = this.agentPortFactory.create(await this.agentRound.resolveAgentId(request.conversationId, role));
-    const agentInfo = await this.agentRound.buildAgentInfo(agentPort, role, request.conversationId);
     const startedAt = Date.now();
     const turn = new ActiveTurn(agentPort);
     const control = new DelegationControl({ runId: delegationId, summary, updates, contextSince: new Date(startedAt).toISOString() });
@@ -418,6 +440,7 @@ export class RunDelegationUseCase {
     };
 
     this.conversationRuntime.registerDelegation(conversationKey, live);
+    setCancel(() => this.cancelLive(live, conversationKey));
     if (live.openWorkId) {
       await this.openWork.open(conversationKey, {
         id: live.openWorkId,
@@ -445,7 +468,6 @@ export class RunDelegationUseCase {
       ...(answerDelivery ? { answerDelivery } : {}),
       settle,
     };
-    setCancel(() => this.cancelLive(live, conversationKey));
     void this.drive(live, first, conversationKey);
     return { outcome: promise };
   }

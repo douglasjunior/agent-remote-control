@@ -4729,8 +4729,8 @@ describe('ExecuteAgentTurnUseCase', () => {
       ids.forEach(id => artifactStore.artifactsOf('conv-1').set(id, buildArtifact({ id, projectName: 'my-app' })));
     };
     /** Holds the next call of a method of the board, from the moment `arm` is called, until `release`. */
-    const holdBoard = (method: 'get' | 'release') => {
-      const original = artifacts[method].bind(artifacts) as (...args: unknown[]) => Promise<unknown>;
+    const holdCall = (target: object, method: string) => {
+      const original = (target as Record<string, (...args: unknown[]) => Promise<unknown>>)[method]!.bind(target);
       let armed = false;
       let reached!: () => void;
       const held = new Promise<void>((resolve) => {
@@ -4740,7 +4740,7 @@ describe('ExecuteAgentTurnUseCase', () => {
       const gate = new Promise<void>((resolve) => {
         release = resolve;
       });
-      (artifacts as unknown as Record<string, unknown>)[method] = async (...args: unknown[]) => {
+      (target as Record<string, unknown>)[method] = async (...args: unknown[]) => {
         if (armed) {
           armed = false;
           reached();
@@ -4755,6 +4755,18 @@ describe('ExecuteAgentTurnUseCase', () => {
         held,
         release,
       };
+    };
+    const holdBoard = (method: 'get' | 'release' | 'assign') => holdCall(artifacts, method);
+
+    /** Lets the stop reach what the turn that ended on it cancels, so a delegation held in `holdCall` finds it done once released. */
+    const stopAndLetItReach = async () => {
+      rs.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        await runtime.cancel('conv-1');
+        await rs.advanceTimersByTimeAsync(0);
+      } finally {
+        rs.useRealTimers();
+      }
     };
 
     beforeEach(() => {
@@ -5248,6 +5260,24 @@ describe('ExecuteAgentTurnUseCase', () => {
         expect(stubAgentPort.promptCalls[1]).toContain(resultOf('Unknown agent "dev".', ' status="failed"').replace(' agent="dev" model="default" effort="default"', ''));
       });
 
+      it('should leave the artifact free when the agent of its delegation cannot be created', async () => {
+        portFactory = new StubAgentPortFactory((agentId) => {
+          if (agentId === 'dev') {
+            throw new Error('Unknown agent "dev".');
+          }
+          return stubAgentPort;
+        });
+        wire(portFactory);
+        withTasks('T-1');
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')], ['Unknown agent', 'Told the user.']]);
+
+        await expect(useCase.execute(turnRequest({ prompt: 'FIRST' }))).resolves.toMatchObject({ status: 'completed', response: 'Told the user.' });
+
+        expect(stubAgentPort.promptCalls[1]).toContain('artifact="T-1"');
+        expect(stubAgentPort.promptCalls[1]).toContain('status="failed"');
+        expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null });
+      });
+
       it('should hand the CEO a failed result when the board fails while the result is written', async () => {
         withTasks('T-1');
         const developer = scriptedDelegate();
@@ -5361,6 +5391,117 @@ describe('ExecuteAgentTurnUseCase', () => {
         const order = (spy: typeof release | typeof assign, nth: number) => spy.mock.invocationCallOrder[nth]!;
         expect(order(release, 0)).toBeLessThan(order(assign, 1));
         expect(stubAgentPort.promptCalls[2]).toContain('status="interrupted"');
+      });
+    });
+
+    describe('a stop that reaches a delegation before it runs', () => {
+      it('should not start a delegation, and release its artifact, when the stop arrives while it is assigned', async () => {
+        withTasks('T-1');
+        const developer = scriptedDelegate();
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')]]);
+        const board = holdBoard('assign');
+        board.arm();
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await board.held;
+        await stopAndLetItReach();
+        board.release();
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        expect(developer.port.promptCalls).toEqual([]);
+        expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null });
+        expect((await artifacts.get('conv-1', 'T-1'))?.history.at(-1)).toMatchObject({ kind: 'released', summary: 'DEVELOPER released it: cancelled' });
+        expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
+      });
+
+      it('should not start a delegation, nor take its artifact, when the stop arrives while its agent is chosen', async () => {
+        withTasks('T-1');
+        const developer = scriptedDelegate();
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')]]);
+        const load = settingsStore.load.bind(settingsStore);
+        let reached!: () => void;
+        const held = new Promise<void>((resolve) => {
+          reached = resolve;
+        });
+        let release!: () => void;
+        const gate = new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        settingsStore.load = async (conversationId: string) => {
+          if (new Error().stack?.includes('resolveAgentId') && runtime.getActiveDelegations('conv-1').length === 0 && stubAgentPort.promptCalls.length > 0) {
+            reached();
+            await gate;
+          }
+          return load(conversationId);
+        };
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await held;
+        await stopAndLetItReach();
+        release();
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        expect(developer.port.promptCalls).toEqual([]);
+        expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null, history: [] });
+      });
+
+      it('should still end as cancelled when releasing the artifact of a delegation the stop reached fails', async () => {
+        withTasks('T-1');
+        const developer = scriptedDelegate();
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')]]);
+        artifacts.release = () => Promise.reject(new Error('disk full'));
+        const board = holdBoard('assign');
+        board.arm();
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await board.held;
+        await stopAndLetItReach();
+        board.release();
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        expect(developer.port.promptCalls).toEqual([]);
+      });
+
+      it('should not start a delegation that stopped waiting for the agent at work when the stop arrives while it is assigned', async () => {
+        withTasks('T-1', 'T-2');
+        const developer = scriptedDelegate();
+        const next = scriptedDelegate();
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')], ['SECOND', onTask('T-2', 'Build T-2.', ' on_busy="wait"')]]);
+        const board = holdBoard('assign');
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST' }));
+        await rs.waitFor(() => expect(developer.port.promptCalls).toHaveLength(1));
+        const second = useCase.execute(turnRequest({ prompt: 'SECOND' }));
+        await rs.waitFor(() => expect(runtime.findActiveDelegation('conv-1', 'DEVELOPER')?.control.queued).toBe(1));
+        board.arm();
+        await developer.respond('RESULT-ONE', 1);
+        await board.held;
+        await stopAndLetItReach();
+        board.release();
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        await expect(second).resolves.toMatchObject({ status: 'steered' });
+        expect(next.port.promptCalls).toEqual([]);
+        expect(await artifacts.get('conv-1', 'T-2')).toMatchObject({ assignee: null });
+        expect((await artifacts.get('conv-1', 'T-2'))?.history.at(-1)).toMatchObject({ kind: 'released', summary: 'DEVELOPER released it: cancelled' });
+      });
+
+      it('should end a resumable delegation as cancelled, and release its artifact, when the stop arrives while its work is opened', async () => {
+        withTasks('T-1');
+        const developer = scriptedDelegate();
+        ceoAnswers([['FIRST', onTask('T-1', 'Build T-1.')]]);
+        const opening = holdCall(openWork, 'open');
+        opening.arm();
+
+        const first = useCase.execute(turnRequest({ prompt: 'FIRST', resumable: true }));
+        await opening.held;
+        await stopAndLetItReach();
+        opening.release();
+
+        await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+        expect(developer.port.promptCalls).toEqual([]);
+        expect(await artifacts.get('conv-1', 'T-1')).toMatchObject({ assignee: null });
+        expect(runtime.getActiveDelegations('conv-1')).toEqual([]);
       });
     });
 
