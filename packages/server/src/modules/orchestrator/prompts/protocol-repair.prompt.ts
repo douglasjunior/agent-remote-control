@@ -11,7 +11,7 @@ export function buildProtocolRepairPrompt(tags: readonly string[]): string {
   ].join('\n');
 }
 
-/** A turn has exactly one final response block, so a response with several is answered again instead of joined. */
+/** A turn has exactly one final response block, so a response with several is answered again; its blocks are never joined. */
 export function buildFinalResponseCountRepairPrompt(blocks: number): string {
   return [
     '[PROTOCOL_ERROR]',
