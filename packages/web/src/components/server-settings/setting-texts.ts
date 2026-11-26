@@ -5,7 +5,7 @@ import type { SettingsSectionId } from '../settings-hub/settings-sections.js';
 export type SettingText = {
   readonly label: string;
   readonly description: string;
-  readonly unit?: 'days' | 'characters';
+  readonly unit?: 'days' | 'characters' | 'MB' | 'files';
 };
 
 export const GROUP_TITLES: Readonly<Record<string, string>> = {
@@ -44,6 +44,16 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   WEB_ALLOWED_ORIGINS: {
     label: 'Allowed origins',
     description: 'Other browser origins that may open the WebSocket, separated by commas. The page\'s own origin always may.',
+  },
+  WEB_UPLOAD_MAX_MB: {
+    label: 'Largest attachment',
+    description: 'The biggest file a message from the web may attach, up to 100 MB.',
+    unit: 'MB',
+  },
+  WEB_MAX_ATTACHMENTS: {
+    label: 'Attachments per message',
+    description: 'How many files a message from the web may attach, up to 50.',
+    unit: 'files',
   },
   REMOTE_ENABLED: {
     label: 'Remote access',

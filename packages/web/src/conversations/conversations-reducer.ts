@@ -171,6 +171,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         profilesLoaded: true,
       }));
     case 'auth.ok':
+    case 'upload.limits':
     case 'auth.failed':
     case 'pong':
     case 'prompts.list':

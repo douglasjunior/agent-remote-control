@@ -31,6 +31,8 @@ const entryPositionSchema = z.number().int().min(0);
 
 export const serverEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('auth.ok') }),
+  /** What a connection may attach, sent after `auth.ok` and to every connection when the settings behind it change. */
+  z.object({ type: z.literal('upload.limits'), maxBytes: z.number().int().positive(), maxAttachments: z.number().int().positive() }),
   z.object({ type: z.literal('auth.failed') }),
   z.object({ type: z.literal('pong') }),
   z.object({

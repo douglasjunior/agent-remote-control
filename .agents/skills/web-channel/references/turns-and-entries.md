@@ -9,7 +9,7 @@
 
 ## Attachments of a message
 
-- `message.send` may carry `attachments` (`{ path, name }`, at most `MAX_ATTACHMENTS`) and then `text` may be empty.
+- `message.send` may carry `attachments` (`{ path, name }`, at most `MAX_ATTACHMENTS` in the protocol) and then `text` may be empty. More than `WEB_MAX_ATTACHMENTS` records the `error` notice `A message takes at most N attachments. Remove some and send it again.` and runs no turn.
 - Every path must be a file of `.arc-uploads/<conversationId>/` that exists (`isUploadPathOf` rejects any other or climbing path); otherwise an `error` notice is recorded and no turn runs. The `user_message` entry keeps the attachments.
 - The use case resolves the files through `WebConversationUploadsService`, which reads each file's size and derives its `contentType` from the extension, and hands the files to `executeTurn` as `TurnRequest.attachments` (absolute path under the workspace base directory) next to the text exactly as typed: like every channel, it does not rewrite the prompt for them.
 - What the orchestrator transcribed, and what it could not, arrives through `onTranscription` and is recorded as `notice` entries (`🎙️ <name>: <text>` at `info`, the warnings at `warning`).

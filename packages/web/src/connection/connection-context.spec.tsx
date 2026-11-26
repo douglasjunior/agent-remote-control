@@ -6,9 +6,10 @@ import { ConnectionProvider, useConnection } from './connection-context.js';
 
 
 function Probe() {
-  const { status, transport, hasToken, submitToken } = useConnection();
+  const { status, transport, hasToken, uploadLimits, submitToken } = useConnection();
   return (
     <div>
+      <span data-testid="limits">{JSON.stringify(uploadLimits)}</span>
       <span data-testid="status">{status}</span>
       <span data-testid="transport">{transport}</span>
       <span data-testid="token">{String(hasToken)}</span>
@@ -26,6 +27,17 @@ describe('ConnectionProvider', () => {
     expect(screen.getByTestId('transport')).toHaveTextContent('webrtc');
     act(() => connection.emitTransport('turn'));
     expect(screen.getByTestId('transport')).toHaveTextContent('turn');
+  });
+
+  it('should keep the upload limits the server last told', () => {
+    const connection = new FakeServerConnection();
+    render(<ConnectionProvider connection={connection}><Probe /></ConnectionProvider>);
+    expect(screen.getByTestId('limits')).toHaveTextContent('null');
+
+    act(() => connection.emitEvent({ type: 'upload.limits', maxBytes: 1024, maxAttachments: 3 }));
+    act(() => connection.emitEvent({ type: 'pong' }));
+
+    expect(screen.getByTestId('limits')).toHaveTextContent('{"maxBytes":1024,"maxAttachments":3}');
   });
 
   it('should connect when a token is stored and disconnect on unmount', () => {

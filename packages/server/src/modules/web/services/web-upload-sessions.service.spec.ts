@@ -1,21 +1,24 @@
-import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
+import { UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
 
 import { FakeClientConnection } from '../testing/fake-client-connection.js';
 import { FakeWorkspaceUpload } from '../testing/fake-workspace-upload.js';
+import { createUploadLimits } from '../testing/upload-limits.fixture.js';
 
 import { MAX_CONCURRENT_UPLOADS, UPLOAD_IDLE_TIMEOUT_MS, WebUploadSessionsService } from './web-upload-sessions.service.js';
 
 
 const base64 = (text: string) => Buffer.from(text).toString('base64');
+const MAX_BYTES = 2 * 1024 * 1024;
 
 function setup() {
   const files = new FakeWorkspaceUpload();
-  const service = new WebUploadSessionsService(files);
+  const { limits, settings } = createUploadLimits({ WEB_UPLOAD_MAX_MB: 2 });
+  const service = new WebUploadSessionsService(files, limits);
   const connection = new FakeClientConnection('c1');
   const start = (uploadId = 'u1', size = 11, name = 'notes.txt') =>
     service.start(connection, { uploadId, conversationId: 'web-1', name, size });
   const last = () => connection.sent.at(-1);
-  return { files, service, connection, start, last };
+  return { files, service, connection, start, last, settings };
 }
 
 describe('WebUploadSessionsService', () => {
@@ -58,13 +61,18 @@ describe('WebUploadSessionsService', () => {
     expect(last()).toMatchObject({ type: 'upload.done' });
   });
 
-  it('should refuse a file above the limit', async () => {
-    const { start, last, files } = setup();
+  it('should refuse a file above the limit of the settings as they are when it starts', async () => {
+    const { start, last, files, settings } = setup();
 
-    await start('u1', MAX_UPLOAD_BYTES + 1);
+    await start('u1', MAX_BYTES + 1);
 
-    expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'File is too large' });
+    expect(last()).toEqual({ type: 'upload.failed', uploadId: 'u1', reason: 'File is larger than 2 MB' });
     expect(files.writers).toHaveLength(0);
+
+    settings.set('WEB_UPLOAD_MAX_MB', 3);
+    await start('u2', MAX_BYTES + 1);
+
+    expect(last()).toEqual({ type: 'upload.ready', uploadId: 'u2' });
   });
 
   it('should refuse an id that is already in use without touching the running upload', async () => {
@@ -114,7 +122,7 @@ describe('WebUploadSessionsService', () => {
 
   it('should discard the upload on a chunk above the chunk limit', async () => {
     const { service, connection, start, last } = setup();
-    await start('u1', MAX_UPLOAD_BYTES);
+    await start('u1', MAX_BYTES);
 
     await service.chunk(connection, { uploadId: 'u1', index: 0, dataBase64: base64('x'.repeat(UPLOAD_CHUNK_BYTES + 1)) });
 

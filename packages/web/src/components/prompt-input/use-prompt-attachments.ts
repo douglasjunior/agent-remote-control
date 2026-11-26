@@ -1,8 +1,9 @@
 import type { Attachment } from '@agent-remote-control/protocol/attachment';
-import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
+import { BYTES_PER_MB, MAX_ATTACHMENTS, MAX_UPLOAD_MB, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
 import type { ClipboardEvent, DragEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import type { UploadLimits } from '../../connection/connection-context.js';
 import type { IServerConnection } from '../../connection/server-connection.js';
 
 
@@ -100,13 +101,17 @@ function uploadFile(
 
 const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files');
 
+/** Before the server tells its limits, the protocol's bounds limit what the composer takes. */
+const PROTOCOL_LIMITS: UploadLimits = { maxBytes: MAX_UPLOAD_MB * BYTES_PER_MB, maxAttachments: MAX_ATTACHMENTS };
+
 /**
  * Files attached to the message being written. Each file uploads as soon as it is added (picked,
  * dropped on the frame or pasted); the message may be sent once none is still uploading, and carries
  * the ones that are `ready`. Leaving the conversation cancels the uploads still running. Without a conversation
  * there is nowhere to upload to: `enabled` is false and added files are ignored.
  */
-export function usePromptAttachments(connection: IServerConnection, conversationId: string | null) {
+export function usePromptAttachments(connection: IServerConnection, conversationId: string | null, limits: UploadLimits | null) {
+  const { maxBytes, maxAttachments } = limits ?? PROTOCOL_LIMITS;
   const [items, setItems] = useState<readonly AttachmentItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const running = useRef(new Map<string, AbortController>());
@@ -139,21 +144,21 @@ export function usePromptAttachments(connection: IServerConnection, conversation
     if (conversationId === null) {
       return;
     }
-    const accepted = files.slice(0, Math.max(0, MAX_ATTACHMENTS - count.current));
+    const accepted = files.slice(0, Math.max(0, maxAttachments - count.current));
     count.current += accepted.length;
     const added = accepted.map((file) => {
-      const tooLarge = file.size > MAX_UPLOAD_BYTES;
+      const tooLarge = file.size > maxBytes;
       const item: AttachmentItem = {
         id: crypto.randomUUID(),
         name: file.name,
         status: tooLarge ? 'error' : 'uploading',
-        ...(tooLarge && { error: 'File is too large' }),
+        ...(tooLarge && { error: `File is larger than ${Number((maxBytes / BYTES_PER_MB).toFixed(2))} MB` }),
       };
       return { item, file };
     });
     setItems(current => [...current, ...added.map(({ item }) => item)]);
     added.filter(({ item }) => item.status === 'uploading').forEach(({ item, file }) => start(item.id, file, conversationId));
-  }, [start, conversationId]);
+  }, [start, conversationId, maxAttachments, maxBytes]);
 
   const remove = useCallback((id: string) => {
     running.current.get(id)?.abort();

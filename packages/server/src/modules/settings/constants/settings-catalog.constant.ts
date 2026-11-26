@@ -21,6 +21,8 @@ export const SETTINGS_CATALOG: { readonly [Key in SettingKey]: SettingDefinition
   DISCORD_BOT_TOKEN: define('DISCORD_BOT_TOKEN', { kind: 'secret', group: 'discord', apply: 'live', defaultValue: '' }),
   DISCORD_GUILD_ID: define('DISCORD_GUILD_ID', { kind: 'text', group: 'discord', apply: 'live', defaultValue: '' }),
   WEB_ALLOWED_ORIGINS: define('WEB_ALLOWED_ORIGINS', { envOnly: true, kind: 'text', group: 'web', apply: 'live', defaultValue: '' }),
+  WEB_UPLOAD_MAX_MB: define('WEB_UPLOAD_MAX_MB', { kind: 'integer', group: 'web', apply: 'live', defaultValue: 10 }),
+  WEB_MAX_ATTACHMENTS: define('WEB_MAX_ATTACHMENTS', { kind: 'integer', group: 'web', apply: 'live', defaultValue: 10 }),
   REMOTE_ENABLED: define('REMOTE_ENABLED', { kind: 'boolean', group: 'remote', apply: 'live', defaultValue: false }),
   REMOTE_URL: define('REMOTE_URL', { envOnly: true, kind: 'text', group: 'remote', apply: 'live', defaultValue: '' }),
   SESSION_IDLE_TIMEOUT_MS: define('SESSION_IDLE_TIMEOUT_MS', { kind: 'integer', group: 'general', apply: 'live', defaultValue: 1_800_000 }),

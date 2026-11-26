@@ -24,10 +24,10 @@ export function usePromptInput({ conversationId, initialText = '', disabled = fa
   readonly disabled?: boolean;
   readonly onSubmit: (text: string, attachments: readonly Attachment[]) => void;
 }) {
-  const { connection } = useConnection();
+  const { connection, uploadLimits } = useConnection();
   const [text, setText] = useState(initialText);
   const history = usePromptHistory(connection, setText);
-  const attachments = usePromptAttachments(connection, conversationId);
+  const attachments = usePromptAttachments(connection, conversationId, uploadLimits);
   const recorder = useVoiceRecorder();
   const microphones = useMicrophones();
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);

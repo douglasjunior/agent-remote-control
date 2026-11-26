@@ -9,7 +9,8 @@ import {
   MAX_CONVERSATION_TITLE_LENGTH,
   MAX_MENTION_QUERY_LENGTH,
   MAX_MESSAGE_LENGTH,
-  MAX_UPLOAD_BYTES,
+  BYTES_PER_MB,
+  MAX_UPLOAD_MB,
   UPLOAD_CHUNK_BYTES,
 } from './limits.js';
 import { squadDescriptionSchema, squadNameSchema, squadProfileInputSchema } from './squad.js';
@@ -44,7 +45,7 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
     uploadId: z.string(),
     conversationId: z.string(),
     name: z.string().min(1).max(MAX_ATTACHMENT_NAME_LENGTH),
-    size: z.number().int().min(0).max(MAX_UPLOAD_BYTES),
+    size: z.number().int().min(0).max(MAX_UPLOAD_MB * BYTES_PER_MB),
   }),
   z.object({
     type: z.literal('upload.chunk'),
