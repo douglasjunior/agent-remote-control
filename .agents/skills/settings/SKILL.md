@@ -38,7 +38,8 @@ Every module that reads a setting imports `SettingsModule`.
   `CODEX_*`, `PATH`).
 - A new setting is an entry in `SETTING_SCHEMAS` and in `SETTINGS_CATALOG`, a reader through `IRuntimeSettingsPort`,
   its label and description on the web settings page (it opens in the Advanced section unless `settings-sections.ts` places it
-  elsewhere; an integer whose key ends in `_MS` is edited in minutes, or in seconds when its default is under a minute), and
+  elsewhere; an integer whose key ends in `_MS` is edited in minutes, or in seconds when its default is under a minute, and takes a
+  `positiveDuration` or `nonNegativeDuration` schema, capped at 2^31 - 1 ms because Node's timers fire at once above it), and
   a row in the README and `.env.example`.
 
 ## Resolution

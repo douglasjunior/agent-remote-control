@@ -6,6 +6,10 @@ import { trustedSignalingBaseUrl } from './remote-link.js';
 const positiveInteger = z.number().int('Use a whole number').min(1, 'Use a number above 0').max(Number.MAX_SAFE_INTEGER);
 /** `0` turns off the limit or the feature the setting bounds. */
 const nonNegativeInteger = z.number().int('Use a whole number').min(0, 'Use 0 or more').max(Number.MAX_SAFE_INTEGER);
+/** Node's timers fire at once for a delay above 2^31 - 1 ms, so a duration a timer waits stays below it. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+const positiveDuration = positiveInteger.max(MAX_TIMER_DELAY_MS, 'Use at most about 24 days');
+const nonNegativeDuration = nonNegativeInteger.max(MAX_TIMER_DELAY_MS, 'Use at most about 24 days');
 const executable = z.string().trim().min(1, 'Name the executable or its path');
 
 const origins = z.string().trim().refine(
@@ -33,18 +37,18 @@ export const SETTING_SCHEMAS = {
     text => text === '' || trustedSignalingBaseUrl(text) !== null,
     'Use the HTTPS URL of a signaling server (HTTP only for localhost)',
   ),
-  SESSION_IDLE_TIMEOUT_MS: positiveInteger,
-  QUESTION_TIMEOUT_MS: nonNegativeInteger,
+  SESSION_IDLE_TIMEOUT_MS: positiveDuration,
+  QUESTION_TIMEOUT_MS: nonNegativeDuration,
   LOG_RETENTION_DAYS: positiveInteger,
   AGENT_AUTH_ENABLED: z.boolean(),
-  AGENT_AUTH_LOGIN_TIMEOUT_MS: positiveInteger,
-  AGENT_AUTH_STATUS_TIMEOUT_MS: positiveInteger,
+  AGENT_AUTH_LOGIN_TIMEOUT_MS: positiveDuration,
+  AGENT_AUTH_STATUS_TIMEOUT_MS: positiveDuration,
   SHELL_COMMAND_ENABLED: z.boolean(),
-  SHELL_COMMAND_TIMEOUT_MS: positiveInteger,
+  SHELL_COMMAND_TIMEOUT_MS: positiveDuration,
   SHELL_COMMAND_MAX_OUTPUT_CHARS: positiveInteger,
-  TURN_RETRY_BASE_DELAY_MS: nonNegativeInteger,
-  TURN_RETRY_MAX_DELAY_MS: nonNegativeInteger,
-  TURN_RETRY_MAX_TOTAL_MS: nonNegativeInteger,
+  TURN_RETRY_BASE_DELAY_MS: nonNegativeDuration,
+  TURN_RETRY_MAX_DELAY_MS: nonNegativeDuration,
+  TURN_RETRY_MAX_TOTAL_MS: nonNegativeDuration,
   ARTIFACT_MAX_DELEGATIONS: nonNegativeInteger,
   DELEGATION_SPEC_MAX_CHARS: nonNegativeInteger,
   AGENT_RESULT_MAX_CHARS: nonNegativeInteger,
@@ -54,7 +58,7 @@ export const SETTING_SCHEMAS = {
   STT_LANGUAGE: z.string().trim().regex(/^(auto|[a-z]{2})$/, 'Use auto or a two-letter language code such as en'),
   /** `0` uses every CPU. */
   STT_THREADS: nonNegativeInteger,
-  STT_TIMEOUT_MS: positiveInteger,
+  STT_TIMEOUT_MS: positiveDuration,
   STT_WHISPER_BIN: executable,
   STT_FFMPEG_BIN: executable,
 };

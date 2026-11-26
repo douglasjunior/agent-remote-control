@@ -14,6 +14,7 @@ describe('settings', () => {
     ['STT_LANGUAGE', 'auto', 'auto'],
     ['STT_MODEL', 'large-v3-turbo-q5_0', 'large-v3-turbo-q5_0'],
     ['QUESTION_TIMEOUT_MS', 0, 0],
+    ['SESSION_IDLE_TIMEOUT_MS', 2_147_483_647, 2_147_483_647],
   ] as const)('should accept %s = %j', (key, value, parsed) => {
     expect(SETTING_SCHEMAS[key].parse(value)).toEqual(parsed);
   });
@@ -29,6 +30,8 @@ describe('settings', () => {
     ['SESSION_IDLE_TIMEOUT_MS', 0, 'Use a number above 0'],
     ['QUESTION_TIMEOUT_MS', -1, 'Use 0 or more'],
     ['QUESTION_TIMEOUT_MS', 1.5, 'Use a whole number'],
+    ['SESSION_IDLE_TIMEOUT_MS', 2_147_483_648, 'Use at most about 24 days'],
+    ['TURN_RETRY_MAX_DELAY_MS', 2_147_483_648, 'Use at most about 24 days'],
   ] as const)('should refuse %s = %j with a message for the user', (key, value, message) => {
     expect(SETTING_SCHEMAS[key].safeParse(value).error?.issues[0]?.message).toBe(message);
   });
