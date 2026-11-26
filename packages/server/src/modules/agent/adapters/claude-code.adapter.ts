@@ -27,7 +27,7 @@ const DAY_MS = 86_400_000;
  */
 const SKILL_LISTING_CHAR_BUDGET = '100000';
 
-/** Value of `CLAUDE_CODE_ARTIFACT` that enables Claude Code artifacts in Clovis sessions. */
+/** Value of `CLAUDE_CODE_ARTIFACT` that enables Claude Code artifacts in the sessions the server starts. */
 const ARTIFACT_ENABLED = '1';
 
 /**
