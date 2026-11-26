@@ -120,8 +120,8 @@ server {
 | `WEB_ENABLED` | Set to `false` to leave the web channel out of the server | `true` |
 | `WEB_ACCESS_TOKEN` | Access token; generated into `DATA_DIR/web/access-token` when empty | *(generated)* |
 | `WEB_ALLOWED_ORIGINS` | Extra browser origins (comma-separated) allowed to open the WebSocket | *(same origin only)* |
-| `WEB_UPLOAD_MAX_MB` | Largest file a message from the web may attach, in MB (up to `100`) | `10` |
-| `WEB_MAX_ATTACHMENTS` | Files a message from the web may attach (up to `50`) | `10` |
+| `WEB_UPLOAD_MAX_MB` | Largest file a message from the web may attach, in MB (up to `1024`) | `10` |
+| `WEB_MAX_ATTACHMENTS` | Files a message from the web may attach (up to `100`) | `10` |
 | `WEB_STATIC_DIR` | Directory with the built web app (`packages/web/dist`); the server serves it on `PORT`, at the same origin as `/ws`. The Docker image sets it | *(not served)* |
 
 ## 🛰️ Remote access
@@ -338,7 +338,7 @@ The variables marked **Yes** in the last column are also changed from the **sett
 | `STT_WHISPER_BIN` / `STT_FFMPEG_BIN` | Executables used by the `whisper-cpp` provider | Local machine configuration | `whisper-cli` / `ffmpeg` | Read-only |
 | `PORT` | Port for the NestJS HTTP server | Local machine configuration | `3000` | No |
 | `WEB_ENABLED` / `WEB_ACCESS_TOKEN` / `WEB_ALLOWED_ORIGINS` | Web interface settings; see [Web interface](#-web-interface) | Local machine configuration | `true` / *(generated)* / *(same origin only)* | `WEB_ALLOWED_ORIGINS`: Read-only |
-| `WEB_UPLOAD_MAX_MB` / `WEB_MAX_ATTACHMENTS` | Largest attachment (MB, up to `100`) and attachments per message (up to `50`) of the web interface | Local machine configuration | `10` / `10` | Yes |
+| `WEB_UPLOAD_MAX_MB` / `WEB_MAX_ATTACHMENTS` | Largest attachment (MB, up to `1024`) and attachments per message (up to `100`) of the web interface | Local machine configuration | `10` / `10` | Yes |
 | `REMOTE_ENABLED` / `REMOTE_URL` | Remote access settings; see [Remote access](#️-remote-access) | Local machine configuration | `false` / *(required with remote access)* | `REMOTE_ENABLED`: Yes; `REMOTE_URL`: Read-only |
 
 ## 🐳 Docker

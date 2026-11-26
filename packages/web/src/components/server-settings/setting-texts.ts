@@ -47,12 +47,12 @@ export const SETTING_TEXTS: Readonly<Record<string, SettingText>> = {
   },
   WEB_UPLOAD_MAX_MB: {
     label: 'Largest attachment',
-    description: 'The biggest file a message from the web may attach, up to 100 MB.',
+    description: 'The biggest file a message from the web may attach, up to 1024 MB.',
     unit: 'MB',
   },
   WEB_MAX_ATTACHMENTS: {
     label: 'Attachments per message',
-    description: 'How many files a message from the web may attach, up to 50.',
+    description: 'How many files a message from the web may attach, up to 100.',
     unit: 'files',
   },
   REMOTE_ENABLED: {
