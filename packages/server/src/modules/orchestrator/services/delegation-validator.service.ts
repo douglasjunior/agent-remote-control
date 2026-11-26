@@ -218,10 +218,12 @@ export class DelegationValidatorService {
   }
 
   /**
-   * A conversation runs one agent per role, so a role appears once per response and a delegation to a role
-   * already working replaces that agent. Agents of different roles that modify files would overwrite each
-   * other's work in the same project folder, so each folder has one such agent: a task's agent occupies its project, a
-   * feature's agent every project of the feature, and an agent without either the workspaces root.
+   * A conversation runs one agent per role, so a role appears once per response, and a delegation to a role already
+   * working goes to that agent or runs after or in place of its work, never beside it. Agents of different roles that
+   * modify files would overwrite each other's work in the same project folder, so each folder has one such agent: a
+   * task's agent occupies its project, a feature's agent every project of the feature, and an agent without either the
+   * workspaces root. An agent at work keeps its folders until it ends, even when a delegation interrupts it, since the
+   * other delegations of the response start while it stops.
    */
   private async findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): Promise<string | undefined> {
     const roles = new Set<string>();
@@ -239,12 +241,11 @@ export class DelegationValidatorService {
       }
     }
 
-    const writers = new Map<string | null, string>();
+    const writers = new Map<string | null, { readonly role: string; readonly description: string }>();
     for (const active of this.conversationRuntime.getActiveDelegations(conversationKey)) {
-      const redirected = delegations.some(delegation => delegation.delegateToRole === active.role.toUpperCase());
-      if (!redirected && !this.isReadOnly(active.role)) {
+      if (!this.isReadOnly(active.role)) {
         for (const folder of await this.occupiedFolders(conversationKey, active)) {
-          writers.set(folder, `${active.role}, which is already working there`);
+          writers.set(folder, { role: active.role.toUpperCase(), description: `${active.role}, which is already working there` });
         }
       }
     }
@@ -255,10 +256,10 @@ export class DelegationValidatorService {
       }
       for (const folder of await this.occupiedFolders(conversationKey, delegation)) {
         const other = writers.get(folder);
-        if (other) {
-          return `${delegation.delegateToRole} cannot work in ${this.describeTarget(folder)} at the same time as ${other}: only one agent that modifies files may work in a folder at a time. Run them in sequence, or delegate to that same agent to redirect it.`;
+        if (other && other.role !== delegation.delegateToRole) {
+          return `${delegation.delegateToRole} cannot work in ${this.describeTarget(folder)} at the same time as ${other.description}: only one agent that modifies files may work in a folder at a time. Run them in sequence: delegate ${delegation.delegateToRole} after the result of ${other.role}.`;
         }
-        writers.set(folder, delegation.delegateToRole);
+        writers.set(folder, { role: delegation.delegateToRole, description: delegation.delegateToRole });
       }
     }
     return undefined;

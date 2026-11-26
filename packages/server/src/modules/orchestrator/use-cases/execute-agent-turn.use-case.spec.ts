@@ -3406,6 +3406,20 @@ describe('ExecuteAgentTurnUseCase', () => {
       );
     });
 
+    it.each(['wait', 'interrupt'])('should keep the folder of a running agent that a delegation of its role reaches with on_busy="%s"', async (onBusy) => {
+      runtime.registerDelegation('conv-1', activeDelegation('DEVELOPER', 'project-a'));
+      stubAgentPort.mockResponses = [
+        `<delegate role="DEVELOPER" summary="Working on it" project="project-b" on_busy="${onBusy}">B.</delegate>\n<delegate role="CODE_REVIEWER" summary="Working on it" project="project-a">A.</delegate>`,
+        'Sorry.',
+      ];
+
+      await useCase.execute(turnRequest());
+
+      expect(stubAgentPort.promptCalls[1]).toContain(
+        'CODE_REVIEWER cannot work in project folder "project-a" at the same time as DEVELOPER, which is already working there',
+      );
+    });
+
     it('should replace the running agent of the same role in another project and ignore running read-only agents', async () => {
       readOnlyRoles('TECH_LEAD');
       const running = activeDelegation('DEVELOPER', 'project-a');
