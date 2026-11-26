@@ -3,6 +3,7 @@ import type { RoleProfile } from '@agent-remote-control/protocol/agent-profile';
 import type { ConversationState, ConversationSummary } from '@agent-remote-control/protocol/conversation';
 import type { ConversationEntry } from '@agent-remote-control/protocol/conversation-entry';
 import type { InterruptedWork, ServerEvent } from '@agent-remote-control/protocol/server-event';
+import type { AppliedSquad } from '@agent-remote-control/protocol/squad';
 
 
 export type ConversationView = {
@@ -15,11 +16,20 @@ export type ConversationView = {
   /** The response being written, shown after the entries until the entry that delivers it arrives. */
   readonly draft: string;
   readonly state: ConversationState;
+  /**
+   * The last entry held when the state was last set. A response after it was published before the state changed, so
+   * it ended the turn that the state still reports.
+   */
+  readonly stateAfter?: string;
   readonly interrupted: readonly InterruptedWork[];
   readonly loaded: boolean;
   readonly configured: boolean;
   readonly profilesLoaded: boolean;
   readonly profiles: readonly RoleProfile[];
+  /** The squad the profiles were last copied from. */
+  readonly appliedSquad?: AppliedSquad;
+  /** Whether a role differs from the applied squad as it is saved now, or the squad was deleted. */
+  readonly customized: boolean;
 };
 
 export type ConversationsState = {
@@ -46,6 +56,7 @@ export const emptyConversationView: ConversationView = {
   configured: false,
   profilesLoaded: false,
   profiles: [],
+  customized: false,
 };
 
 function sortByUpdatedAt(list: readonly ConversationSummary[]): readonly ConversationSummary[] {
@@ -127,13 +138,17 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'conversation.updated':
       return { ...state, list: upsertSummary(state.list, event.conversation) };
     case 'conversation.history':
-      return updateView(state, event.conversationId, view => ({
-        ...withEntries(view, event.start, event.entries),
-        draft: event.draft ?? '',
-        state: event.state,
-        interrupted: event.interrupted ?? [],
-        loaded: true,
-      }));
+      return updateView(state, event.conversationId, (view) => {
+        const withPage = withEntries(view, event.start, event.entries);
+        return {
+          ...withPage,
+          draft: event.draft ?? '',
+          state: event.state,
+          stateAfter: withPage.entryIds.at(-1),
+          interrupted: event.interrupted ?? [],
+          loaded: true,
+        };
+      });
     case 'conversation.entries':
       return updateView(state, event.conversationId, view => withEarlierEntries(view, event.start, event.entries));
     case 'conversation.entry':
@@ -143,7 +158,7 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'conversation.interrupted':
       return updateView(state, event.conversationId, view => ({ ...view, interrupted: event.interrupted }));
     case 'conversation.state':
-      return updateView(state, event.conversationId, view => ({ ...view, state: event.state }));
+      return updateView(state, event.conversationId, view => ({ ...view, state: event.state, stateAfter: view.entryIds.at(-1) }));
     case 'agents.list':
       return { ...state, agents: event.agents };
     case 'profiles':
@@ -151,6 +166,8 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
         ...view,
         configured: event.configured,
         profiles: event.profiles,
+        appliedSquad: event.appliedSquad,
+        customized: event.customized,
         profilesLoaded: true,
       }));
     case 'auth.ok':
@@ -174,6 +191,10 @@ export function conversationsReducer(state: ConversationsState, event: ServerEve
     case 'skill.detail':
     case 'skill.result':
     case 'skill.deleted':
+    case 'settings':
+    case 'settings.result':
+    case 'settings.discord.test.result':
+    case 'squads':
     case 'artifacts.list':
     case 'artifact.detail':
     case 'artifact.updated':

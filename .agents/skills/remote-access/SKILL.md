@@ -91,8 +91,10 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
 
 ## Host (`packages/server/src/modules/remote`)
 
-- `RemoteIdentityService`: `isEnabled()` (only `REMOTE_ENABLED=true`), `baseUrl()` (`REMOTE_URL`, with no default
-  since choosing it is trusting its operator; null unless HTTPS, or HTTP to `localhost`, `127.0.0.1` or `[::1]`),
+- `RemoteIdentityService`: `isEnabled()` (the `REMOTE_ENABLED` setting), `baseUrl()` (the `REMOTE_URL` setting, which only its
+  environment variable sets, through `trustedSignalingBaseUrl` of the protocol's `remote-link`, with no default since choosing it is trusting its
+  operator; null unless HTTPS, or HTTP to `localhost`, `127.0.0.1` or `[::1]`), both read from `IRuntimeSettingsPort`
+  on every call,
   `signalingUrl(baseUrl)`, `identity()`, created once in `<DATA_DIR>/remote`
   (`0o700`): a self-signed ECDSA P-256 `certificate.pem` and `key.pem`, both `0o600`, whose fingerprint derives the
   instance id, and `signChallenge(nonce)`. The pair is created under the key's lock (`storage` module), so hosts that
@@ -107,7 +109,10 @@ of `REMOTE_URL`, documented in the README and in `docs/remote-access.md`.
   objects, since a username holds a colon. A channel closes only after its buffered messages leave.
 - `RemoteClientTransportAdapter` implements `IClientTransportPort`. On bootstrap it stays off when remote access is off,
   the access token holds fewer than 32 characters or `REMOTE_URL` is missing or untrusted (both logged as errors), and
-  otherwise logs `Remote access link: …` from the console-only context `RemoteAccessLink`. On `session.request` it
+  otherwise logs `Remote access link: …` from the console-only context `RemoteAccessLink`. A change of `REMOTE_ENABLED`
+  (`ISettingsChangeNotifierPort`) restarts it live: it stops the signaling client, ends every remote
+  session and its peer, so turning remote access off drops the browsers it let in, and starts again with the settings
+  of now. Restarts run one after the other, so two quick changes never leave two signaling sockets open. On `session.request` it
   checks the proof with `timingSafeEqual` before spending anything: a valid one is `host.accept`, a wrong one
   `host.reject`, after which requests get `host.close` unchecked for 1 s, doubled per rejection in a row up to 30 s. The
   backoff counts per `source`, so whoever guesses never locks out other addresses; the host remembers the 1 024 sources

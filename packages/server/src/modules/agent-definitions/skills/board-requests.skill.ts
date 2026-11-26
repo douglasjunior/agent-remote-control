@@ -2,7 +2,9 @@ import {
   ARTIFACT_SECTION_TITLES,
   ARTIFACT_SECTIONS,
   ARTIFACT_STATUSES,
+  DEFAULT_REFINEMENT_STATES,
   FROZEN_STATUS,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import { AGENT_TOOLS_SERVER_NAME } from '../../orchestrator/constants/agent-tools.constant.js';
@@ -17,19 +19,21 @@ const STATUS_RULE = 'the server sets the status a delegation or a verdict leaves
 const FIELD_ATTRIBUTES: Readonly<Record<ArtifactField, string>> = {
   title: 'title="..."',
   parent: 'parent="F-1" (or "none")',
-  project: 'project="<project-folder>"',
+  project: 'project="<project-folder>" for a task, projects="<project-folder>,<project-folder>" for a feature',
   depends_on: 'depends_on="T-1,T-2" (or "none")',
   status: `status="${ARTIFACT_STATUSES.filter(status => status !== FROZEN_STATUS).join('|')}" (${STATUS_RULE})`,
-  refinement: `business_refinement="${REFINEMENT_STATES.join('|')}" and technical_refinement="${REFINEMENT_STATES.join('|')}"`,
+  refinement: REFINEMENT_KINDS.map(kind => `${kind}_refinement="${REFINEMENT_STATES.join('|')}"`).join(', '),
   branch: 'branch="<branch name>" (or "none")',
-  pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed"/> inside the tag, one per pull request',
+  pull_requests: '<pull_request url="https://..." title="..." state="open|merged|closed" repository="<path inside the project folder, . by default>"/> inside the tag, one per pull request',
 };
+
+const REFINEMENT_DEFAULTS = `A refinement left out takes its default: ${REFINEMENT_KINDS.map(kind => `\`${kind}_refinement="${DEFAULT_REFINEMENT_STATES[kind]}"\``).join(', ')}.`;
 
 /** The board and how the reader works on it, written for its access and interface; its system prompt carries it in brief. */
 export const BOARD_REQUESTS_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.boardRequests,
   description: 'The board in full, written for your role: listing, dependencies, statuses, refinements, creating several artifacts at once and what each field holds. Your instructions already cover reading, updating and commenting on the task you hold. Read it only for something beyond them.',
-  roles: ['GIT_OPS', 'PRODUCT_OWNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA'],
+  roles: ['GIT_OPS', 'PRODUCT_OWNER', 'UX_DESIGNER', 'TECH_LEAD', 'DEVELOPER', 'CODE_REVIEWER', 'QA'],
   buildContent: ({ artifacts, agentInterface }) => `# Board Requests\n\n${buildBoardRequestsBody(artifacts, agentInterface)}`,
 };
 
@@ -47,7 +51,7 @@ ${buildRules(access)}`;
 }
 
 function buildModel(): string {
-  return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. Every artifact belongs to one project folder of the workspace root, and a task inside a feature always belongs to the feature's: work that spans several repositories is one feature per project, with dependencies between the features. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the business and technical refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
+  return `The work of this conversation lives on a board of artifacts. A feature groups the tasks of one initiative; a task is the unit one agent works on, inside a feature or on its own. A feature links one or more project folders of the workspace root, and a task works in exactly one of them. A project folder may hold several nested git repositories, and a task in it may change any of them. An initiative across several projects, such as a separate backend and frontend, is one feature linking them, never one feature per project. Every artifact has an id such as \`F-1\` or \`T-3\`, a status (${ARTIFACT_STATUSES.join(', ')}), the ${REFINEMENT_KINDS.join(', ')} refinement states (${REFINEMENT_STATES.join(', ')}), dependencies on its siblings (a feature on other features, a task on the other tasks of its feature, a standalone task on other standalone tasks), a branch, pull requests, comments, and content split in sections:
 ${ARTIFACT_SECTIONS.map(section => `- \`${section}\`: ${ARTIFACT_SECTION_TITLES[section]}`).join('\n')}`;
 }
 
@@ -76,7 +80,7 @@ function buildRequests(access: ArtifactAccess): string {
 
 function buildCreateRequest(access: ArtifactAccess): string {
   const refinement = access.fields.includes('refinement')
-    ? ` business_refinement="pending" technical_refinement="pending"`
+    ? REFINEMENT_KINDS.map(kind => ` ${kind}_refinement="${DEFAULT_REFINEMENT_STATES[kind]}"`).join('')
     : '';
   return `- Create an artifact, with the sections you write as children:
   \`\`\`text
@@ -84,7 +88,7 @@ function buildCreateRequest(access: ArtifactAccess): string {
   <section name="overview">Markdown content</section>
   </artifact_create>
   \`\`\`
-  \`type\` (\`feature\` or \`task\`) and \`title\` are required, and the \`overview\` of an artifact is yours to write when you create it. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
+  \`type\` (\`feature\` or \`task\`) and \`title\` are required, and the \`overview\` of an artifact is yours to write when you create it. \`projects\` (a comma-separated list on the tags) is required for a feature; a task takes one \`project\`, left out only inside a feature that links a single project. \`ref\` names the new artifact so a later request of the same response can use it in \`parent\` or \`depends_on\` before its id exists; the result gives the id. ${access.fields.includes('refinement') ? `${REFINEMENT_DEFAULTS} ` : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
 }
 
 function buildUpdateRequest(access: ArtifactAccess): string {
@@ -115,7 +119,7 @@ function buildTools(access: ArtifactAccess): string {
 }
 
 function buildCreateTool(access: ArtifactAccess): string {
-  return `- \`artifact_create\` creates a feature or a task and returns its id, which the \`parent\` and \`depends_on\` of the next creations take. The \`overview\` of what you create is yours to write. \`project\` is required for a feature and for a task outside a feature; a task inside a feature takes the feature's. ${access.fields.includes('refinement') ? 'A refinement left out is `pending`. ' : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
+  return `- \`artifact_create\` creates a feature or a task and returns its id, which the \`parent\` and \`depends_on\` of the next creations take. The \`overview\` of what you create is yours to write. \`projects\` is required for a feature; a task takes one \`project\`, left out only inside a feature that links a single project. ${access.fields.includes('refinement') ? `${REFINEMENT_DEFAULTS} ` : ''}A task that owes no refinement starts \`ready\`; anything else starts in the \`backlog\`.`;
 }
 
 function buildUpdateTool(access: ArtifactAccess): string {

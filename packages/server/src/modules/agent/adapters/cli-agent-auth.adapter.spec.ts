@@ -4,6 +4,7 @@ import { delimiter } from 'node:path';
 
 import { StubAgentPortFactory } from '../../orchestrator/testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../../orchestrator/testing/stub-agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { AgentLoginEvent } from '../models/agent-auth.model.js';
 import { AgentAuthRequiredError } from '../ports/agent.port.js';
 import { AgentAuthConfigService } from '../services/agent-auth-config.service.js';
@@ -16,6 +17,8 @@ import { CliAgentAuthAdapter } from './cli-agent-auth.adapter.js';
 const CLAUDE_LOGGED_IN = '{"loggedIn": true, "email": "me@example.com"}';
 const CLAUDE_LOGGED_OUT = '{"loggedIn": false}';
 
+let settings = new StubRuntimeSettings();
+
 function setup() {
   const factory = new StubAgentPortFactory();
   factory.agents = [
@@ -26,17 +29,18 @@ function setup() {
   ];
   const runner = new StubProcessRunner();
   const fileSystem = new StubFileSystem().addBinary('claude').addBinary('codex').addBinary('agy');
-  const adapter = new CliAgentAuthAdapter(factory, runner, fileSystem, new AgentAuthConfigService());
+  const adapter = new CliAgentAuthAdapter(factory, runner, fileSystem, new AgentAuthConfigService(settings));
   const events: AgentLoginEvent[] = [];
   return { adapter, factory, runner, fileSystem, events, record: (event: AgentLoginEvent) => events.push(event) };
 }
 
 describe('CliAgentAuthAdapter', () => {
+  beforeEach(() => {
+    settings = new StubRuntimeSettings();
+  });
+
   afterEach(() => {
     rs.useRealTimers();
-    delete process.env.AGENT_AUTH_ENABLED;
-    delete process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS;
-    delete process.env.AGENT_AUTH_STATUS_TIMEOUT_MS;
   });
 
   describe('status', () => {
@@ -57,7 +61,7 @@ describe('CliAgentAuthAdapter', () => {
     });
 
     it('should list nothing when the feature is disabled', async () => {
-      process.env.AGENT_AUTH_ENABLED = 'false';
+      settings.set('AGENT_AUTH_ENABLED', false);
       const { adapter, runner } = setup();
 
       expect(adapter.isEnabled()).toBe(false);
@@ -149,7 +153,7 @@ describe('CliAgentAuthAdapter', () => {
 
       it('should be unknown when the probe outlasts the timeout', async () => {
         rs.useFakeTimers();
-        process.env.AGENT_AUTH_STATUS_TIMEOUT_MS = '500';
+        settings.set('AGENT_AUTH_STATUS_TIMEOUT_MS', 500);
         const { adapter, factory } = setup();
         const port = new StubAgentPort();
         port.connect = () => new Promise<void>(() => undefined);
@@ -179,7 +183,7 @@ describe('CliAgentAuthAdapter', () => {
 
   describe('login', () => {
     it('should refuse to start while the feature is disabled', () => {
-      process.env.AGENT_AUTH_ENABLED = 'false';
+      settings.set('AGENT_AUTH_ENABLED', false);
       const { adapter, record } = setup();
 
       expect(() => adapter.startLogin('claude', record)).toThrow('Agent authentication is disabled.');
@@ -535,7 +539,7 @@ describe('CliAgentAuthAdapter', () => {
     describe('timeout', () => {
       beforeEach(() => {
         rs.useFakeTimers();
-        process.env.AGENT_AUTH_LOGIN_TIMEOUT_MS = '60000';
+        settings.set('AGENT_AUTH_LOGIN_TIMEOUT_MS', 60000);
       });
 
       it('should stop a login that takes too long', async () => {

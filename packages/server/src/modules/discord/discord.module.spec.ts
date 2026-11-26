@@ -1,6 +1,7 @@
 import { type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from '@rstest/core';
 
+import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
 import { DiscordModule } from './discord.module.js';
@@ -11,9 +12,12 @@ import { AgentAuthRequestService } from './services/agent-auth-request.service.j
 import { DiscordAgentAuthNotifierService } from './services/discord-agent-auth-notifier.service.js';
 import { DiscordAttachmentService } from './services/discord-attachment.service.js';
 import { DiscordClientService } from './services/discord-client.service.js';
+import { TestDiscordConnectionUseCase } from './use-cases/test-discord-connection.use-case.js';
 
 
 describe('DiscordModule', () => {
+  useTemporaryDataDir();
+
   it('should compile the module and resolve all discord providers', async () => {
     const module: TestingModule = await createTestingModule({
       imports: [DiscordModule],
@@ -40,5 +44,7 @@ describe('DiscordModule', () => {
     expect(activityFormatter).toBeInstanceOf(DiscordActivityFormatter);
     expect(messageHandler).toBeInstanceOf(DiscordMessageHandler);
     expect(interactionHandler).toBeInstanceOf(DiscordInteractionHandler);
+    expect(module.get(TestDiscordConnectionUseCase)).toBeInstanceOf(TestDiscordConnectionUseCase);
+    await module.close();
   });
 });

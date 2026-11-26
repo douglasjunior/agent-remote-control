@@ -72,6 +72,11 @@ export class AgentProtocolService {
     return this.answerOf([written], false);
   }
 
+  /** How many `<final_response>` blocks the text holds; a turn has exactly one. */
+  finalResponseBlocks(written: string): number {
+    return this.splitEnvelopes(written).answers.length;
+  }
+
   /**
    * The protocol tags an agent wrote outside the `<final_response>` envelope of a text that has one. Text outside the
    * envelope is narration, so such a tag would be dropped without a word; tags inside Markdown code are quoted markup.

@@ -1,6 +1,6 @@
 import type { ArtifactStatus, ArtifactSummary, ArtifactType } from '@agent-remote-control/protocol/artifact';
 import { ArrowRightLeft, Layers, Snowflake } from 'lucide-react';
-import { useState, type CSSProperties, type DragEvent } from 'react';
+import { useId, useState, type CSSProperties, type DragEvent } from 'react';
 import { Link } from 'react-router';
 
 import { STATUS_LABELS, STATUS_TONES } from '../../artifacts/artifact-labels.js';
@@ -145,7 +145,7 @@ function KanbanCard({ conversationId, artifact, artifacts, byId, onMove, onUnfre
         <MoveMenu artifact={artifact} onMove={onMove} onUnfreeze={onUnfreeze} />
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <ProjectChip projectName={artifact.projectName} />
+        <ProjectChip projectNames={artifact.projectNames} />
         <WaitingChip artifact={artifact} byId={byId} />
         <PullRequestChip artifact={artifact} />
         {artifact.assignee && <ArtifactAssignee assignee={artifact.assignee} className="ml-auto" />}
@@ -154,9 +154,35 @@ function KanbanCard({ conversationId, artifact, artifacts, byId, onMove, onUnfre
   );
 }
 
+/** One chip per column, each scrolling its column into view, for a board too narrow to show more than one. */
+function ColumnChips({ columns, columnId }: {
+  readonly columns: readonly { readonly status: ArtifactStatus; readonly count: number }[];
+  readonly columnId: (status: ArtifactStatus) => string;
+}) {
+  return (
+    <div role="group" aria-label="Columns" className="-mx-4 flex shrink-0 gap-1.5 overflow-x-auto px-4 pb-1 @2xl:hidden">
+      {columns.map(({ status, count }) => (
+        <button
+          key={status}
+          type="button"
+          aria-label={`${STATUS_LABELS[status]}, ${count}`}
+          aria-controls={columnId(status)}
+          onClick={() => document.getElementById(columnId(status))?.scrollIntoView({ block: 'nearest', inline: 'start' })}
+          style={{ '--tone': STATUS_TONES[status] } as CSSProperties}
+          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[12px] whitespace-nowrap transition-colors outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
+        >
+          <span aria-hidden className="size-1.5 rounded-full bg-(--tone)" />
+          {STATUS_LABELS[status]}
+          <span className="font-mono text-[11px] text-muted-foreground tabular-nums">{count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * The tasks, or the features, one column per status; dropping a card on a column, or picking it in the card's menu,
- * moves it there.
+ * moves it there. A narrow board snaps one column at a time, with the next one peeking in, and jumps by its chips.
  */
 export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, onMove }: {
   readonly conversationId: string;
@@ -169,7 +195,11 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
   const [target, setTarget] = useState<ArtifactStatus | null>(null);
   const [unfreezing, setUnfreezing] = useState<{ readonly artifact: ArtifactSummary; readonly status?: ArtifactStatus } | null>(null);
   const [stopping, setStopping] = useState<{ readonly artifact: ArtifactSummary; readonly status: ArtifactStatus } | null>(null);
+  const idPrefix = useId();
   const visible = artifacts.filter(artifact => artifact.type === type && matchesFilter(artifact, filter)).sort(compareArtifacts);
+  const columns = columnsFor(filter, visible.some(artifact => artifact.status === 'frozen'))
+    .map(status => ({ status, cards: visible.filter(artifact => artifact.status === status) }));
+  const columnId = (status: ArtifactStatus) => `${idPrefix}-${status}`;
 
   /** Leaving Frozen, and stopping the agent working on a card, each go through their own dialog, wherever the card is moved from. */
   const move = (artifact: ArtifactSummary, status: ArtifactStatus) => {
@@ -192,12 +222,13 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
   };
 
   return (
-    <div className="-mx-4 flex min-h-0 flex-1 snap-x gap-3 overflow-x-auto px-4 pb-4">
-      {columnsFor(filter, visible.some(artifact => artifact.status === 'frozen')).map((status) => {
-        const cards = visible.filter(artifact => artifact.status === status);
-        return (
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      <ColumnChips columns={columns.map(({ status, cards }) => ({ status, count: cards.length }))} columnId={columnId} />
+      <div className="-mx-4 flex min-h-0 flex-1 snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-4 motion-safe:scroll-smooth @2xl:snap-proximity">
+        {columns.map(({ status, cards }) => (
           <section
             key={status}
+            id={columnId(status)}
             aria-label={STATUS_LABELS[status]}
             data-drop-target={target === status}
             onDragOver={(event) => {
@@ -207,7 +238,7 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
             onDragLeave={() => setTarget(current => (current === status ? null : current))}
             onDrop={drop(status)}
             style={{ '--tone': STATUS_TONES[status] } as CSSProperties}
-            className="flex w-72 shrink-0 snap-start flex-col rounded-2xl border border-transparent bg-muted/45 transition-colors duration-200 data-[drop-target=true]:border-[color-mix(in_oklab,var(--tone)_55%,transparent)] data-[drop-target=true]:bg-[color-mix(in_oklab,var(--tone)_9%,var(--muted))]"
+            className="flex w-[min(18rem,calc(100cqw-3rem))] shrink-0 snap-start flex-col rounded-2xl border border-transparent bg-muted/45 transition-colors duration-200 data-[drop-target=true]:border-[color-mix(in_oklab,var(--tone)_55%,transparent)] data-[drop-target=true]:bg-[color-mix(in_oklab,var(--tone)_9%,var(--muted))]"
           >
             <header className="flex items-center gap-2 px-3 pt-3 pb-2">
               <span aria-hidden className="size-2 rounded-full bg-(--tone)" />
@@ -220,8 +251,8 @@ export function ArtifactKanban({ conversationId, type, artifacts, byId, filter, 
               ))}
             </ul>
           </section>
-        );
-      })}
+        ))}
+      </div>
       {stopping && (
         <ArtifactStopWorkDialog
           artifact={stopping.artifact}

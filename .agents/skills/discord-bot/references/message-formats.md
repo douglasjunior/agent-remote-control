@@ -38,7 +38,8 @@ response footer and each turn outcome.
 ## Delegation and interim messages
 
 - **`formatDelegation(event)`**: on `started`, the notice says which agent took over, with name and role (e.g.
-  `DEVELOPER`), the project and the artifact it holds (``on `T-3` ``); on `finished`, the notice says the CEO is
+  `DEVELOPER`), the project and the artifact it holds (``on `T-3` ``); on `steered`, that the agent got new
+  instructions, with the new summary; on `finished`, the notice says the CEO is
   reviewing. `cancelled` announces nothing, because the turn's own result reports the cancellation.
 - **`formatDelegateResult(event)`**: the delegate's response on `finished`, naming the project to distinguish parallel
   delegations of the same role, with the footer `formatDelegateFooter(event)` (the same as `formatAgentFooter` with the
@@ -54,14 +55,16 @@ Every turn outcome with `TurnResult.agentInfo` gets the footer `formatAgentFoote
 
 - **Completed**: the text is the response; with no text, `✅ *Task completed with no response message.*`.
 - **Cancelled**: `⚠️ **Turn cancelled by the user.**`.
-- **Steered** (`status: 'steered'`):
-  `📨 *Message sent to the running agent. The reply will come with the current task's response.*`, with no footer and
-  no splitting.
+- **Joined** (`status: 'steered'`), with no footer and no splitting: steered into the CEO's prompt running (`onDelivery('steered')`),
+  `📨 *Message sent to the running agent. The reply will come with the current task's response.*`; read with a later
+  prompt of the running turn, `📨 *Message delivered to the CEO with the running task. The reply will come with its response.*`.
+- **Cancelled before the CEO read it** (`onDelivery('cancelled')`): `⚠️ *Message cancelled before the CEO read it.*`.
 - **Failure**: `❌ **Execution error**: <errorMessage>`.
 - **Exception while processing the message**: `❌ **An error occurred while processing your request:** <message>`,
   also split.
-- **Queued** (`onQueued`): the progress message shows
-  `⏳ *Waiting for the previous task in this conversation to finish...*`.
+- **Queued** (`onDelivery('queued')`): the progress message shows
+  `⏳ *The CEO is in the middle of a prompt: it reads this message with its next one.*`; a message that then starts the
+  next turn streams it like any other.
 
 ## Retry of a Failed Turn
 

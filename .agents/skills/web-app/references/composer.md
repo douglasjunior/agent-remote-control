@@ -4,6 +4,7 @@
 
 - The composer is disabled while the connection is not `open` or the conversation is not `configured` (the settings sheet then opens by itself). It stays enabled while a turn runs, next to a Stop button that sends `turn.cancel`.
 - `ConversationView` keys the `Composer` by conversation id, so attachments and the draft never cross conversations.
+- `usePromptInput` takes `conversationId: string | null`. `null` writes a message before its conversation exists (the home screen): uploads need a conversation, so the attachments report `enabled: false`, ignore added files, and `PromptInput` hides the paperclip, the microphone and the drop and paste handlers. History and mentions work without a conversation. `focus()` gives the field the focus.
 - `usePromptInput` holds all of the below (text, attachments, recording, mentions, history) and `PromptInput` renders it, in two layouts: `block` with the tools around the field, used by `Composer`, and `inline` with field and tools in one frame, used inside the question card.
 - The answer state lives apart from the field because the feed unmounts off-screen rows: `AnswerInputProvider` keeps it above `FeedList`, so a recording or an upload survives scrolling, and only the card reads the context, so typing does not render the feed. It resets when the open question changes.
 

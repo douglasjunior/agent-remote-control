@@ -12,6 +12,8 @@ export interface AgentSession {
    * says the instructions of an unanswered session reached the agent.
    */
   readonly unanswered?: true;
+  /** Fingerprint of the system prompt this session was last sent; absent when unknown, as in sessions stored before it was recorded. */
+  readonly promptHash?: string;
 }
 
 /**
@@ -20,8 +22,10 @@ export interface AgentSession {
  */
 export type AgentSessionState = 'live' | 'resumed' | 'new';
 
-/** The session a prompt reached, with the moment its work on the artifact last ended when it was resumed and records one. */
+/** The session a prompt reached, with the moment its work on the artifact last ended and the fingerprint of its system prompt when it was resumed and records them. */
 export type OpenedAgentSession = {
   readonly state: AgentSessionState;
   readonly workEndedAt?: string;
+  /** The `promptHash` the resumed session's binding records. */
+  readonly promptHash?: string;
 };

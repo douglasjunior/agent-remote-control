@@ -93,6 +93,13 @@ describe('DiscordConversationService', () => {
     expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({ conversationId: 'conv-th-1', step: 'profile' });
   });
 
+  it('should start the squad selection at the squad step', async () => {
+    rs.mocked(mockStartSelectionUseCase.execute).mockResolvedValue({ kind: 'unavailable' });
+
+    await expect(service.startSquadSelection('conv-th-1')).resolves.toEqual({ kind: 'unavailable' });
+    expect(mockStartSelectionUseCase.execute).toHaveBeenCalledWith({ conversationId: 'conv-th-1', step: 'squad' });
+  });
+
   it('should report whether a configuration selection is active', async () => {
     await expect(service.hasActiveConfigSelection('conv-1')).resolves.toBe(false);
 

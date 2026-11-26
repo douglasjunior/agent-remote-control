@@ -55,6 +55,10 @@ export class DiscordConversationService {
     return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'profile' });
   }
 
+  startSquadSelection(conversationId: string): Promise<StartAgentConfigSelectionResult> {
+    return this.startAgentConfigSelectionUseCase.execute({ conversationId, step: 'squad' });
+  }
+
   cancelConfigSelection(conversationId: string): Promise<boolean> {
     return this.cancelAgentConfigSelectionUseCase.execute(conversationId);
   }

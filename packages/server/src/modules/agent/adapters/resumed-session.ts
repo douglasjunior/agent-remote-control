@@ -23,12 +23,15 @@ type MessageWaiter = {
 };
 
 // The SDK builds ActiveSession only for session/new (attachSession is private), so a loaded
-// session gets its own handle fed by the global session/update handler. It is created only
-// after the session/load response, which discards the history replayed before it.
+// session gets its own handle fed by the global session/update handler. Only the updates that
+// arrive while a prompt is pending reach it: an agent may still be replaying the history after
+// its session/load response (Antigravity does when the replay is slow), and that replay belongs
+// to no turn.
 export class ResumedSession implements SessionHandle {
   private readonly queued: QueuedMessage[] = [];
   private readonly waiters: MessageWaiter[] = [];
   private failure: Error | null = null;
+  private pendingPrompts = 0;
 
   constructor(
     readonly sessionId: string,
@@ -36,20 +39,27 @@ export class ResumedSession implements SessionHandle {
   ) {}
 
   route(notification: SessionNotification): void {
-    if (notification.sessionId !== this.sessionId) {
+    if (notification.sessionId !== this.sessionId || this.pendingPrompts === 0) {
       return;
     }
     this.settle({ ok: true, message: { kind: 'session_update', notification, update: notification.update } });
   }
 
   prompt(text: string): Promise<PromptResponse> {
+    this.pendingPrompts += 1;
     const response = this.connection.agent.request('session/prompt', {
       sessionId: this.sessionId,
       prompt: [{ type: 'text', text }],
     });
     void response.then(
-      value => this.settle({ ok: true, message: { kind: 'stop', response: value, stopReason: value.stopReason } }),
-      (error: unknown) => this.settle({ ok: false, error }),
+      (value) => {
+        this.pendingPrompts -= 1;
+        this.settle({ ok: true, message: { kind: 'stop', response: value, stopReason: value.stopReason } });
+      },
+      (error: unknown) => {
+        this.pendingPrompts -= 1;
+        this.settle({ ok: false, error });
+      },
     );
     return response;
   }

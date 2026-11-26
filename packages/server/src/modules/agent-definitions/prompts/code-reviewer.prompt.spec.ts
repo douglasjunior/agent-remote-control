@@ -17,11 +17,11 @@ describe('code-reviewer.prompt', () => {
   describe('what it reviews', () => {
     it('should review the open pull request of the task it holds', () => {
       expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('You are the Code Reviewer Agent');
-      expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('**Pull request review**: when the task links an open pull request');
+      expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('**Pull request review**: when the task links open pull requests (one per repository it changes, or the one the instruction names), review each');
     });
 
     it('should review the branch locally against its base when the task links no open pull request', () => {
-      expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('**Local review**: when the task links no open pull request, review its branch against its base');
+      expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('**Local review**: when the task links no open pull request, review its branch in each repository that has it against its base');
       expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('`git diff <base>...<branch>`');
       expect(CODE_REVIEWER_SYSTEM_PROMPT).toContain('you do not check out, commit, merge, reset or switch branches');
     });

@@ -1,3 +1,8 @@
+import { FINAL_RESPONSE_CLOSE, FINAL_RESPONSE_OPEN } from '../constants/final-response.constant.js';
+
+
+const FINAL_RESPONSE_BLOCK = `${FINAL_RESPONSE_OPEN}...${FINAL_RESPONSE_CLOSE} block`;
+
 export function buildQuestionRepairPrompt(reason: string): string {
   return [
     '[QUESTION_ERROR]',
@@ -6,7 +11,7 @@ export function buildQuestionRepairPrompt(reason: string): string {
     'Reason (fix exactly this):',
     reason,
     '',
-    'Answer again inside the final response block. Write each question as <question rationale="why the answer matters">question text, followed by one <option>choice</option> per plausible answer</question>, or answer without any <question> tag if you no longer need the user.',
+    `Answer again inside one ${FINAL_RESPONSE_BLOCK}. Write each question as <question rationale="why the answer matters">question text, followed by one <option>choice</option> per plausible answer</question>, or answer without any <question> tag if you no longer need the user.`,
   ].join('\n');
 }
 
@@ -14,6 +19,6 @@ export function buildQuestionRepairPrompt(reason: string): string {
 export function buildQuestionNotAllowedPrompt(): string {
   return [
     '[QUESTION_ERROR]',
-    'You do not ask the user. Answer again inside the final response block, without any <question> tag: end your turn with the decision you need and the options you see, for whoever delegated the work to take to the user.',
+    `You do not ask the user. Answer again inside one ${FINAL_RESPONSE_BLOCK}, without any <question> tag: end your turn with the decision you need and the options you see, for whoever delegated the work to take to the user.`,
   ].join('\n');
 }

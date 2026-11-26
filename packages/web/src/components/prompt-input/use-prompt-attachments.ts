@@ -103,9 +103,10 @@ const hasFiles = (event: DragEvent) => event.dataTransfer.types.includes('Files'
 /**
  * Files attached to the message being written. Each file uploads as soon as it is added (picked,
  * dropped on the frame or pasted); the message may be sent once none is still uploading, and carries
- * the ones that are `ready`. Leaving the conversation cancels the uploads still running.
+ * the ones that are `ready`. Leaving the conversation cancels the uploads still running. Without a conversation
+ * there is nowhere to upload to: `enabled` is false and added files are ignored.
  */
-export function usePromptAttachments(connection: IServerConnection, conversationId: string) {
+export function usePromptAttachments(connection: IServerConnection, conversationId: string | null) {
   const [items, setItems] = useState<readonly AttachmentItem[]>([]);
   const [dragging, setDragging] = useState(false);
   const running = useRef(new Map<string, AbortController>());
@@ -121,10 +122,10 @@ export function usePromptAttachments(connection: IServerConnection, conversation
     setItems(current => current.map(item => (item.id === id ? { ...item, ...changes } : item)));
   }, []);
 
-  const start = useCallback((id: string, file: File) => {
+  const start = useCallback((id: string, file: File, target: string) => {
     const controller = new AbortController();
     running.current.set(id, controller);
-    uploadFile(connection, conversationId, file, controller.signal)
+    uploadFile(connection, target, file, controller.signal)
       .then(attachment => update(id, { status: 'ready', attachment }))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
@@ -132,9 +133,12 @@ export function usePromptAttachments(connection: IServerConnection, conversation
         }
       })
       .finally(() => running.current.delete(id));
-  }, [connection, conversationId, update]);
+  }, [connection, update]);
 
   const addFiles = useCallback((files: readonly File[]) => {
+    if (conversationId === null) {
+      return;
+    }
     const accepted = files.slice(0, Math.max(0, MAX_ATTACHMENTS - count.current));
     count.current += accepted.length;
     const added = accepted.map((file) => {
@@ -148,8 +152,8 @@ export function usePromptAttachments(connection: IServerConnection, conversation
       return { item, file };
     });
     setItems(current => [...current, ...added.map(({ item }) => item)]);
-    added.filter(({ item }) => item.status === 'uploading').forEach(({ item, file }) => start(item.id, file));
-  }, [start]);
+    added.filter(({ item }) => item.status === 'uploading').forEach(({ item, file }) => start(item.id, file, conversationId));
+  }, [start, conversationId]);
 
   const remove = useCallback((id: string) => {
     running.current.get(id)?.abort();
@@ -203,6 +207,7 @@ export function usePromptAttachments(connection: IServerConnection, conversation
   };
 
   return {
+    enabled: conversationId !== null,
     items,
     uploading: items.some(item => item.status === 'uploading'),
     ready: items.flatMap(item => (item.attachment ? [item.attachment] : [])),

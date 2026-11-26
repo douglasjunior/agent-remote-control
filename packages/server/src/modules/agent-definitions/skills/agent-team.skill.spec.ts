@@ -35,6 +35,14 @@ describe('agent-team skill', () => {
     expect(skill).toContain('- Never asks the user: a decision it needs comes back in its result, for you to take to the user.');
   });
 
+  it('should show the session attribute in the forms of an agent that works on a task and takes a session mode', () => {
+    const developer: AgentDefinition = { ...gitOps, role: 'DEVELOPER', delegation: { project: 'required', sessionMode: 'overridable', artifact: 'required' } };
+
+    expect(AGENT_TEAM_SKILL.buildContent(skillContext({ team: [developer] }))).toContain(
+      '- Delegate as <delegate role="DEVELOPER" summary="<summary>" artifact="<task id>"> or <delegate role="DEVELOPER" summary="<summary>" artifact="<task id>" session="new">.',
+    );
+  });
+
   it('should tell which agents ask the user directly', () => {
     const owner = { ...gitOps, role: 'PRODUCT_OWNER' as const, delegation: { ...gitOps.delegation, asksUser: true as const } };
 
@@ -56,7 +64,7 @@ describe('agent-team skill', () => {
       '- Always works on a task of the board and runs in its project. The task must already have work to inspect: a linked pull request or a recorded branch.',
     );
     expect(contentFor({ delegation: { artifact: 'optional' }, artifacts: { scope: 'tree', sections: [], fields: [] } })).toContain(
-      '- May work on a task or a feature of the board, then running in its project.',
+      '- May work on a task or a feature of the board, then running in the project of a task, or from the workspaces root for a feature, where it changes files only in the feature\'s projects.',
     );
     expect(contentFor({ delegation: { readOnly: true } })).toContain('- Read-only, so it may work alongside an agent that modifies the same project.');
     expect(contentFor({ delegation: {}, defaultSessionMode: 'new' })).toContain('- Always runs in "new" session mode, so never set the session attribute.');
@@ -64,18 +72,21 @@ describe('agent-team skill', () => {
 
   describe('session mode', () => {
     const sessionLine = (overrides: Partial<AgentDefinition>) =>
-      AGENT_TEAM_SKILL.buildContent(skillContext({ team: [{ ...gitOps, ...overrides }] })).split('\n').find(line => /session/.test(line) && line.startsWith('- '));
+      AGENT_TEAM_SKILL.buildContent(skillContext({ team: [{ ...gitOps, ...overrides }] })).split('\n').find(line => /^- (Keeps|Runs|Always runs)/.test(line));
 
-    it('should keep one session per task for an agent that always works on one, whether or not the mode is overridable', () => {
+    it('should keep one session per task for an agent that always works on one, and tell where session="new" applies', () => {
       const line = '- Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.';
 
       expect(sessionLine({ delegation: { artifact: 'required' } })).toBe(line);
-      expect(sessionLine({ delegation: { artifact: 'required', sessionMode: 'overridable' } })).toBe(line);
+      expect(sessionLine({ delegation: { artifact: 'required', sessionMode: 'overridable' } })).toBe(
+        `${line} Setting session="new" with the artifact replaces that session with a fresh one, which the next delegations of the task continue.`,
+      );
     });
 
     it('should keep one session per artifact and let the mode be set without one when the session is overridable', () => {
       expect(sessionLine({ delegation: { artifact: 'optional', sessionMode: 'overridable' }, defaultSessionMode: 'new' })).toBe(
-        '- Keeps one session per artifact it is delegated; without an artifact it runs in "new" session mode unless you set session="new" or session="resume".',
+        '- Keeps one session per artifact it is delegated; without an artifact it runs in "new" session mode unless you set session="new" or session="resume".'
+        + ' Setting session="new" with the artifact replaces that session with a fresh one, which the next delegations of the task continue.',
       );
     });
 
@@ -91,8 +102,8 @@ describe('agent-team skill', () => {
     });
   });
 
-  it('should put discovery before technical planning and keep requirement interviews with the agents', () => {
-    expect(skill).toContain('discovery of what to build before technical planning');
+  it('should put discovery before design and design before technical planning, and keep requirement interviews with the agents', () => {
+    expect(skill).toContain('discovery of what to build before its design, design before technical planning');
     expect(skill).toContain('Different items, and phases that do not depend on each other, overlap across roles');
     expect(skill).toContain('Do not interview the user about requirements yourself');
   });

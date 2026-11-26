@@ -9,7 +9,7 @@ import { cn } from '../../lib/utils.js';
 import { IconButton } from '../icon-button.js';
 
 import { ArtifactAssignee } from './artifact-assignee.js';
-import { PullRequestChip, WaitingChip } from './artifact-indicators.js';
+import { ProjectChip, PullRequestChip, WaitingChip } from './artifact-indicators.js';
 import { ArtifactStatusBadge } from './artifact-status-badge.js';
 import { ArtifactTypeIcon } from './artifact-type-icon.js';
 import { ArtifactUnfreezeDialog } from './artifact-unfreeze-dialog.js';
@@ -26,13 +26,18 @@ type RowContext = {
   readonly toggle: (id: string) => void;
 };
 
-function Progress({ artifact, artifacts }: { readonly artifact: ArtifactSummary; readonly artifacts: readonly ArtifactSummary[] }) {
-  const { done, total } = taskProgress(artifact.id, artifacts);
+/** The tasks of a feature that work in the project of the group it stands in, so a feature in several groups counts each task once. */
+function Progress({ artifact, artifacts, projectName }: {
+  readonly artifact: ArtifactSummary;
+  readonly artifacts: readonly ArtifactSummary[];
+  readonly projectName: string;
+}) {
+  const { done, total } = taskProgress(artifact.id, artifacts, projectName);
   if (total === 0) {
     return null;
   }
   return (
-    <span className="hidden items-center gap-1.5 sm:inline-flex" title={`${done} of ${total} tasks done`}>
+    <span className="hidden items-center gap-1.5 sm:inline-flex" title={`${done} of ${total} tasks done${artifact.projectNames.length > 1 ? ` in ${projectName}` : ''}`}>
       <span aria-hidden className="h-1 w-12 overflow-hidden rounded-full bg-muted">
         <span className="block h-full rounded-full bg-good transition-[width] duration-500" style={{ width: `${(done / total) * 100}%` }} />
       </span>
@@ -41,10 +46,17 @@ function Progress({ artifact, artifacts }: { readonly artifact: ArtifactSummary;
   );
 }
 
-function TreeRow({ node, depth, context }: { readonly node: ArtifactNode; readonly depth: number; readonly context: RowContext }) {
+function TreeRow({ node, depth, projectName, context }: {
+  readonly node: ArtifactNode;
+  readonly depth: number;
+  readonly projectName: string;
+  readonly context: RowContext;
+}) {
   const { artifact, children } = node;
-  const open = !context.collapsed.has(artifact.id);
+  const placement = `${projectName}/${artifact.id}`;
+  const open = !context.collapsed.has(placement);
   const grouping = artifact.type === 'feature';
+  const shared = artifact.projectNames.length > 1;
 
   return (
     <li>
@@ -60,8 +72,8 @@ function TreeRow({ node, depth, context }: { readonly node: ArtifactNode; readon
             <button
               type="button"
               aria-expanded={open}
-              aria-label={`${open ? 'Collapse' : 'Expand'} ${artifact.id}`}
-              onClick={() => context.toggle(artifact.id)}
+              aria-label={`${open ? 'Collapse' : 'Expand'} ${artifact.id}${shared ? ` in ${projectName}` : ''}`}
+              onClick={() => context.toggle(placement)}
               className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               <ChevronRight aria-hidden className={cn('size-3.5 transition-transform duration-200', open && 'rotate-90')} />
@@ -80,7 +92,12 @@ function TreeRow({ node, depth, context }: { readonly node: ArtifactNode; readon
           {artifact.title}
         </Link>
         <span className="flex shrink-0 items-center gap-1.5">
-          {grouping && <Progress artifact={artifact} artifacts={context.artifacts} />}
+          {shared && (
+            <span className="hidden sm:inline-flex">
+              <ProjectChip projectNames={artifact.projectNames.filter(name => name !== projectName)} titlePrefix="Also in" />
+            </span>
+          )}
+          {grouping && <Progress artifact={artifact} artifacts={context.artifacts} projectName={projectName} />}
           <WaitingChip artifact={artifact} byId={context.byId} />
           <PullRequestChip artifact={artifact} />
           {artifact.status === 'frozen' && (
@@ -94,7 +111,7 @@ function TreeRow({ node, depth, context }: { readonly node: ArtifactNode; readon
       </div>
       {children.length > 0 && open && (
         <ul>
-          {children.map(child => <TreeRow key={child.artifact.id} node={child} depth={depth + 1} context={context} />)}
+          {children.map(child => <TreeRow key={child.artifact.id} node={child} depth={depth + 1} projectName={projectName} context={context} />)}
         </ul>
       )}
     </li>
@@ -111,14 +128,14 @@ function ProjectSection({ tree, context }: { readonly tree: ProjectTree; readonl
       </h2>
       {tree.features.length > 0 && (
         <ul aria-label={`Features of ${tree.projectName}`} className="flex flex-col">
-          {tree.features.map(node => <TreeRow key={node.artifact.id} node={node} depth={0} context={context} />)}
+          {tree.features.map(node => <TreeRow key={node.artifact.id} node={node} depth={0} projectName={tree.projectName} context={context} />)}
         </ul>
       )}
       {tree.standalone.length > 0 && (
         <>
           <h3 className="px-1 pt-2 text-[11.5px] font-medium tracking-[.05em] text-muted-foreground uppercase">Standalone tasks</h3>
           <ul aria-label={`Standalone tasks of ${tree.projectName}`} className="flex flex-col">
-            {tree.standalone.map(node => <TreeRow key={node.artifact.id} node={node} depth={0} context={context} />)}
+            {tree.standalone.map(node => <TreeRow key={node.artifact.id} node={node} depth={0} projectName={tree.projectName} context={context} />)}
           </ul>
         </>
       )}
@@ -126,7 +143,10 @@ function ProjectSection({ tree, context }: { readonly tree: ProjectTree; readonl
   );
 }
 
-/** One group per project: its features with their tasks, then the tasks outside any feature. */
+/**
+ * One group per project: its features with their tasks, then the tasks outside any feature. A feature linking several
+ * projects stands in each group with that project's tasks.
+ */
 export function ArtifactTreeView({ conversationId, artifacts, byId, filter }: {
   readonly conversationId: string;
   readonly artifacts: readonly ArtifactSummary[];

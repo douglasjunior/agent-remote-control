@@ -11,11 +11,12 @@ const artifact = {
   status: 'in_progress',
   parentId: 'F-1',
   projectName: 'app',
+  projectNames: ['app'],
   dependsOn: ['T-2'],
-  refinement: { business: 'done', technical: 'skipped' },
+  refinement: { business: 'done', design: 'pending', technical: 'skipped' },
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd', since: at },
   branch: 'feat/login',
-  pullRequests: [{ url: 'https://example.com/pr/1', state: 'open', addedAt: at }],
+  pullRequests: [{ url: 'https://example.com/pr/1', repository: 'repositories/api', state: 'open', addedAt: at }],
   createdAt: at,
   updatedAt: at,
 };
@@ -44,9 +45,26 @@ describe('parseServerEvent', () => {
     { type: 'skills.list', skills: [{ name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true }] },
     { type: 'skill.detail', name: 'api-testing', skill: { name: 'api-testing', description: 'API.', roles: ['QA'], builtIn: true, content: '# API' } },
     { type: 'skill.detail', name: 'missing', skill: null },
+    {
+      type: 'settings',
+      settings: [
+        { key: 'USER_LANGUAGE', group: 'general', apply: 'live', envOnly: false, source: 'default', kind: 'text', value: 'English', defaultValue: 'English' },
+        { key: 'DISCORD_ENABLED', group: 'discord', apply: 'live', envOnly: false, source: 'env', kind: 'boolean', value: false, defaultValue: true },
+        { key: 'DISCORD_BOT_TOKEN', group: 'discord', apply: 'live', envOnly: false, source: 'saved', kind: 'secret', value: { set: true } },
+        { key: 'QUESTION_TIMEOUT_MS', group: 'general', apply: 'live', envOnly: false, source: 'saved', kind: 'integer', value: 0, defaultValue: 300_000 },
+        { key: 'SHELL_COMMAND_ENABLED', env: 'SHELL_COMMAND_ENABLED', group: 'shell', apply: 'live', envOnly: true, source: 'env', kind: 'boolean', value: true, defaultValue: false },
+        { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', envOnly: false, source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
+      ],
+    },
+    { type: 'settings.result', requestId: 'r', ok: true },
+    { type: 'settings.result', requestId: 'r', ok: false, error: 'Unknown setting: PORT' },
+    { type: 'settings.discord.test.result', ok: true, botName: 'arc-bot', guildName: 'Home' },
+    { type: 'settings.discord.test.result', ok: true, botName: 'arc-bot' },
+    { type: 'settings.discord.test.result', ok: false, error: 'Discord refused the token.' },
     { type: 'artifacts.list', conversationId: 'c', artifacts: [artifact] },
     { type: 'artifact.detail', conversationId: 'c', artifact: { ...artifact, sections: { overview: 'Why' }, history } },
     { type: 'artifact.updated', conversationId: 'c', artifact },
+    { type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, id: 'F-1', type: 'feature', parentId: null, projectName: null, projectNames: ['app', 'site'] } },
     { type: 'artifact.deleted', conversationId: 'c', id: 'T-1' },
     { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: true, id: 'T-1' },
     { type: 'artifact.result', conversationId: 'c', requestId: 'r', ok: false, error: 'Unknown artifact' },
@@ -93,11 +111,13 @@ describe('parseServerEvent', () => {
     { type: 'auth.login', agentId: 'claude', event: { kind: 'cancelled' } },
     { type: 'models.list', agentId: 'claude', models: [{ id: 'opus', name: 'Opus' }] },
     { type: 'efforts.list', agentId: 'claude', modelId: 'opus', efforts: [{ id: 'high', name: 'High' }] },
-    { type: 'profiles', conversationId: 'c', configured: false, profiles: [{ role: 'CEO', roleName: 'CEO' }] },
+    { type: 'profiles', conversationId: 'c', configured: false, profiles: [{ role: 'CEO', roleName: 'CEO' }], customized: false },
     {
       type: 'profiles',
       conversationId: 'c',
       configured: true,
+      appliedSquad: { id: 's', name: 'Backend team' },
+      customized: true,
       profiles: [
         {
           role: 'CEO',
@@ -108,10 +128,32 @@ describe('parseServerEvent', () => {
         },
       ],
     },
+    { type: 'squads', squads: [] },
+    {
+      type: 'squads',
+      squads: [
+        {
+          id: 's',
+          name: 'Backend team',
+          description: 'APIs',
+          isDefault: true,
+          profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'claude', name: 'Claude Code', available: false } }],
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+        },
+      ],
+    },
     { type: 'error', message: 'boom', conversationId: 'c' },
     { type: 'error', message: 'boom' },
   ])('should accept $type', (event) => {
     expect(parseServerEvent(event)).toEqual({ ok: true, value: event });
+  });
+
+  it('should read a pull request without a repository as the project folder itself', () => {
+    const { repository: _repository, ...link } = artifact.pullRequests[0]!;
+
+    expect(parseServerEvent({ type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, pullRequests: [link] } }))
+      .toMatchObject({ ok: true, value: { artifact: { pullRequests: [{ repository: '.' }] } } });
   });
 
   it.each([
@@ -128,11 +170,14 @@ describe('parseServerEvent', () => {
     ['files.results with an unknown kind', { type: 'files.results', requestId: 'r', items: [{ path: 'a', kind: 'link', matches: [] }], walking: false }],
     ['upload.done without a path', { type: 'upload.done', uploadId: 'u', attachment: { name: 'a' } }],
     ['upload.ack with a negative index', { type: 'upload.ack', uploadId: 'u', index: -1 }],
-    ['profile without availability', { type: 'profiles', conversationId: 'c', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'a', name: 'A' } }] }],
+    ['profile without availability', { type: 'profiles', conversationId: 'c', configured: true, profiles: [{ role: 'CEO', roleName: 'CEO', agent: { id: 'a', name: 'A' } }], customized: false }],
+    ['profiles without the customized flag', { type: 'profiles', conversationId: 'c', configured: true, profiles: [] }],
+    ['a squad without the default flag', { type: 'squads', squads: [{ id: 's', name: 'A', profiles: [], createdAt: 'x', updatedAt: 'x' }] }],
     ['an auth status with an unknown state', { type: 'auth.status', fetchedAt: '2026-11-07T00:00:00.000Z', agents: [{ agentId: 'a', displayName: 'A', status: 'maybe' }] }],
     ['a login event of an unknown kind', { type: 'auth.login', agentId: 'claude', event: { kind: 'x' } }],
     ['invalid entry', { type: 'conversation.entry', conversationId: 'c', entry: { type: 'x' }, position: 0 }],
     ['entry without a position', { type: 'conversation.entry', conversationId: 'c', entry: { id: 'e', at: '2026-01-01T00:00:00.000Z', type: 'user_message', text: 'hi' } }],
+    ['an artifact without projects', { type: 'artifact.updated', conversationId: 'c', artifact: { ...artifact, projectNames: [] } }],
     ['null', null],
     ['array', []],
   ])('should reject %s', (_label, data) => {

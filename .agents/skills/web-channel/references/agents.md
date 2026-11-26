@@ -5,8 +5,15 @@
 The web channel has no dialog state. Agent configuration is a stateless API over the orchestrator's lists:
 
 - `agents.list`, `models.list { agentId }` and `efforts.list { agentId, modelId }` answer the requester with `agents.list`, `models.list` and `efforts.list` events; an unavailable agent answers `error`, so no CLI is probed for an unknown id.
-- `profiles.get { conversationId }` answers a `profiles` event with `configured` and one entry per role. `GetConversationProfilesUseCase` reads `hasSettings`, a pure query, so reading never changes a conversation.
+- `profiles.get { conversationId }` answers a `profiles` event with `configured`, one entry per role, the `appliedSquad` (absent when none was applied) and `customized` (`IAgentConfigurationPort.getSquadState`). `GetConversationProfilesUseCase` reads `hasSettings`, a pure query, so reading never changes a conversation.
 - `profiles.set { conversationId, roles?, agentId, modelId?, effortId? }` goes to `IAgentConfigurationPort.configureProfiles`, which validates the ids against those lists and takes the names from them (the web layer holds no rule), then broadcasts `profiles`; a rejected set answers the requester with an `error`.
+
+## Squads
+
+- `squads.list` answers the requester with `squads { squads }`, each squad with its role profiles as `RoleProfile`s (only the roles it sets, with whether each agent is installed), by name.
+- `squads.save { id?, name, description?, isDefault, profiles }` (profiles by role, ids only) and `squads.delete { id }` go to `IAgentConfigurationPort.saveSquad`/`deleteSquad` through `WebSquadsService`, which broadcasts `squads` to every connection after a change; a refusal (`A squad needs a name`, `Another squad is named "X"`, `<Role>: Unknown model`, `Unknown squad`...) answers the requester alone with an `error` without `conversationId`.
+- `squads.apply { conversationId, squadId }` (`ApplyConversationSquadUseCase`) copies the squad into the conversation and broadcasts its `profiles`; an unknown squad answers an `error` with the `conversationId`. A squad changed or deleted later turns `customized` on for the conversations that applied it; clients ask `profiles.get` again on `squads`.
+- `squads.save`, `squads.delete` and `squads.apply` are logged by type.
 
 ## Usage
 

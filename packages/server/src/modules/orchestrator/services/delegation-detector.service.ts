@@ -8,6 +8,9 @@ import { QuestionParserService } from './question-parser.service.js';
 
 export type DelegationSessionMode = 'resume' | 'new';
 
+/** What happens to the work of an agent already running when it is delegated again: it finishes first, or stops now. */
+export type DelegationOnBusy = 'wait' | 'interrupt';
+
 export type DelegationResult = {
   readonly delegateToRole: string;
   readonly projectName: string | undefined;
@@ -16,6 +19,7 @@ export type DelegationResult = {
   readonly sessionMode?: DelegationSessionMode;
   /** The artifact the agent works on and holds while it runs. */
   readonly artifactId?: string;
+  readonly onBusy?: DelegationOnBusy;
 };
 
 /** `message` is the text outside the protocol tags, addressed to the user. */
@@ -32,7 +36,7 @@ type ParsedTag =
 const OPENING_TAG = /<(\/?)(delegate|attachment)\b([^>]*)>/gi;
 const ROLE = /^[A-Za-z][\w-]*$/;
 
-const DELEGATE_ATTRIBUTES = ['role', 'project', 'session', 'summary', 'artifact'];
+const DELEGATE_ATTRIBUTES = ['role', 'project', 'session', 'summary', 'artifact', 'on_busy'];
 const ARTIFACT_ID = /^[a-z]-\d+$/i;
 const MAX_SUMMARY_LENGTH = 120;
 const ATTACHMENT_ATTRIBUTES = ['path'];
@@ -134,6 +138,11 @@ export class DelegationDetectorService {
       return `The session attribute of <delegate role="${role}"> must be "new" or "resume".`;
     }
 
+    const onBusy = attributes.get('on_busy')?.toLowerCase();
+    if (onBusy !== undefined && onBusy !== 'wait' && onBusy !== 'interrupt') {
+      return `The on_busy attribute of <delegate role="${role}"> must be "wait" or "interrupt".`;
+    }
+
     const summary = attributes.get('summary')?.replace(/\s+/g, ' ').slice(0, MAX_SUMMARY_LENGTH).trim();
     if (!summary) {
       return `<delegate role="${role}"> needs a summary attribute: one short sentence, in the user's language, telling the user what the agent is doing, as in <delegate role="${role}" summary="Adding the login screen">.`;
@@ -156,6 +165,7 @@ export class DelegationDetectorService {
       summary,
       ...(session ? { sessionMode: session } : {}),
       ...(artifactId ? { artifactId: artifactId.toUpperCase() } : {}),
+      ...(onBusy ? { onBusy } : {}),
     };
   }
 

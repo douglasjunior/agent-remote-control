@@ -21,8 +21,10 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('The agent never sees it.');
     });
 
-    it('should hold the artifact while the agent runs and work in its project', () => {
-      expect(skill).toContain('the agent holds that artifact while it runs, receives its content, and works in its project folder');
+    it('should hold the artifact while the agent runs, in the project of a task and from the root for a feature', () => {
+      expect(skill).toContain('the agent holds that artifact while it runs and receives its content.');
+      expect(skill).toContain('A task\'s agent works in the task\'s project folder, so `project` may be left out.');
+      expect(skill).toContain('A feature\'s agent works from the workspaces root and changes files only in the projects of the feature, so `project` is refused there.');
     });
   });
 
@@ -55,9 +57,16 @@ describe('delegation-protocol skill', () => {
   });
 
   describe('sessions', () => {
-    it('should keep one session per task with an artifact and ignore the session attribute', () => {
+    it('should keep one session per task with an artifact, resumed unless session="new" starts a fresh one', () => {
       expect(skill).toContain('With `artifact`, an agent keeps one session per task');
-      expect(skill).toContain('`session` is ignored');
+      expect(skill).toContain('`session="resume"`, or no attribute, continues the task\'s session');
+      expect(skill).not.toContain('`session` is ignored');
+    });
+
+    it('should say when to start a fresh session for a task, and what it receives', () => {
+      expect(skill).toContain('`session="new"`, for an agent whose entry in Your Team shows it, starts a fresh session for that task, which the next delegations of the task continue');
+      expect(skill).toContain('use it when the agent\'s work on the task keeps going wrong in its current session');
+      expect(skill).toContain('A fresh session receives the whole task again.');
     });
 
     it('should resume or start over without an artifact', () => {
@@ -81,6 +90,7 @@ describe('delegation-protocol skill', () => {
 
     it('should allow one agent that modifies files per project folder, read-only agents alongside it', () => {
       expect(skill).toContain('Only one agent that modifies files works in a project folder at a time, counting agents still running');
+      expect(skill).toContain('the agent of a feature takes every project of the feature');
       expect(skill).toContain('Read-only agents may work alongside it');
     });
 
@@ -93,7 +103,7 @@ describe('delegation-protocol skill', () => {
   describe('agent results', () => {
     it('should describe the result block and its optional attributes', () => {
       expect(skill).toContain('`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review"');
-      expect(skill).toContain('`project`, `artifact`, `verdict` and `artifact_status` are absent when the delegation had none');
+      expect(skill).toContain('`project`, `artifact`, `verdict` and `artifact_status` are absent when the delegation had none, and `project` also for a feature, whose agent runs at the workspaces root');
       expect(skill).toContain('`artifact_status_by="user"`');
     });
 
@@ -139,9 +149,20 @@ describe('delegation-protocol skill', () => {
       expect(skill).toContain('Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.');
     });
 
-    it('should explain that delegating to a running role replaces its task', () => {
-      expect(skill).toContain('Delegating to a role that is already working replaces its task with the new specification');
-      expect(skill).toContain('Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.');
+    it('should say that the confirmations of a delegation to an agent at work come with the next prompt', () => {
+      expect(skill).toContain('`<agent_result status="steered|queued|interrupted">` blocks with your next prompt');
+    });
+  });
+
+  describe('agents at work', () => {
+    it('should explain the on_busy attribute and what steering, waiting and interrupting cost', () => {
+      expect(skill).toContain('`on_busy="wait|interrupt"`: what happens to the work of an agent that is already working');
+      expect(skill).toContain('**Same work, `Steering: supported`, no `on_busy`**');
+      expect(skill).toContain('Nothing is lost, and you get both results, but it waits as long as the current work takes.');
+      expect(skill).toContain('the step it was in the middle of is cut short');
+      expect(skill).toContain('Without steering, on other work, or with `session="new"`, `on_busy` is required');
+      expect(skill).toContain('A `session="new"` for the task the agent is on leaves the session it is working in, so it counts as other work');
+      expect(skill).toContain('An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.');
     });
   });
 

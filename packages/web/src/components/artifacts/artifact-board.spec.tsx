@@ -1,14 +1,14 @@
-import { act, fireEvent, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { toast } from 'sonner';
 
-import { CONVERSATION_ID, dataTransfer, lastSent, openBoard, summary } from '../../test/artifact-fixtures.js';
+import { CONVERSATION_ID, dataTransfer, lastSent, openBoard, pick, summary } from '../../test/artifact-fixtures.js';
 import { AT, renderApp } from '../../test/render-app.js';
 
 
 const at = AT;
 const feature = summary({ id: 'F-1', type: 'feature', title: 'Login', status: 'in_progress' });
-const form = summary({ id: 'T-1', title: 'Login form', parentId: 'F-1', status: 'done', pullRequests: [{ url: 'https://example.com/1', state: 'merged', addedAt: at }] });
+const form = summary({ id: 'T-1', title: 'Login form', parentId: 'F-1', status: 'done', pullRequests: [{ url: 'https://example.com/1', repository: '.', state: 'merged', addedAt: at }] });
 const api = summary({
   id: 'T-2',
   title: 'Login API',
@@ -24,6 +24,7 @@ const artifacts = [feature, form, api, typo, old];
 
 afterEach(() => {
   act(() => toast.dismiss());
+  rs.restoreAllMocks();
 });
 
 describe('ArtifactBoard', () => {
@@ -54,6 +55,37 @@ describe('ArtifactBoard', () => {
     expect(within(site).getByRole('link', { name: 'Fix typo' })).toBeInTheDocument();
     expect(screen.getByText('Standalone tasks')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
+  });
+
+  it('should list a feature linking several projects under each of them, with the tasks working there', async () => {
+    const user = userEvent.setup();
+    const shared = summary({ id: 'F-7', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+    const appTask = summary({ id: 'T-7', title: 'App part', parentId: 'F-7', projectName: 'app', status: 'done' });
+    const siteTask = summary({ id: 'T-8', title: 'Site part', parentId: 'F-7', projectName: 'site' });
+    const otherSiteTask = summary({ id: 'T-9', title: 'Site extra', parentId: 'F-7', projectName: 'site' });
+    openBoard([shared, appTask, siteTask, otherSiteTask]);
+
+    const inApp = screen.getByRole('list', { name: 'Features of app' });
+    expect(within(inApp).getByRole('link', { name: 'Shared' })).toHaveAttribute('href', '/c/c1/tasks/F-7');
+    expect(within(inApp).getByRole('link', { name: 'App part' })).toBeInTheDocument();
+    expect(within(inApp).queryByRole('link', { name: 'Site part' })).not.toBeInTheDocument();
+    expect(within(inApp).getByTitle('1 of 1 tasks done in app')).toBeInTheDocument();
+    expect(within(inApp).getByLabelText('Also in site')).toHaveTextContent('site');
+    const inSite = screen.getByRole('list', { name: 'Features of site' });
+    expect(within(inSite).getByRole('link', { name: 'Site part' })).toBeInTheDocument();
+    expect(within(inSite).getByRole('link', { name: 'Site extra' })).toBeInTheDocument();
+    expect(within(inSite).queryByRole('link', { name: 'App part' })).not.toBeInTheDocument();
+    expect(within(inSite).getByTitle('0 of 2 tasks done in site')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Collapse F-7 in site' }));
+    expect(within(inSite).queryByRole('link', { name: 'Site part' })).not.toBeInTheDocument();
+    expect(within(inApp).getByRole('link', { name: 'App part' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Project' }));
+    await user.click(await screen.findByRole('option', { name: 'app' }));
+    expect(screen.queryByRole('list', { name: 'Features of site' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Shared' })).toBeInTheDocument();
   });
 
   it('should collapse and expand a feature', async () => {
@@ -97,10 +129,12 @@ describe('ArtifactBoard', () => {
   it('should show the tasks on a board by status and remember the view', async () => {
     const user = userEvent.setup();
     openBoard(artifacts);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
-    expect(screen.getByRole('button', { name: 'Board' })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+    expect(screen.getByRole('button', { name: 'Kanban' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'List' })).toHaveAttribute('aria-pressed', 'false');
     expect(localStorage.getItem('arc.artifactsBoard')).toBe('true');
     expect(screen.queryByRole('combobox', { name: 'Type' })).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Cards' })).toHaveTextContent('Task cards');
 
     const columns = ['Backlog', 'Ready', 'In progress', 'In review', 'Changes requested', 'Approved', 'In testing', 'Tested', 'Done', 'Blocked', 'Cancelled'];
     expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label')).filter(label => columns.includes(label!))).toEqual(columns);
@@ -118,11 +152,113 @@ describe('ArtifactBoard', () => {
 
     await user.click(screen.getByRole('button', { name: 'List' }));
     expect(screen.getByRole('list', { name: 'Features of app' })).toBeInTheDocument();
+    expect(localStorage.getItem('arc.artifactsBoard')).toBe('false');
+  });
+
+  it('should open in the view chosen before and keep it when the chosen view is picked again', async () => {
+    const user = userEvent.setup();
+    openBoard(artifacts);
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+    cleanup();
+    const read = Storage.prototype.getItem;
+    rs.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      return key === 'arc.artifactsBoard' ? 'true' : read.call(this, key);
+    });
+
+    openBoard(artifacts);
+    expect(screen.getByRole('region', { name: 'In progress' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+    expect(screen.getByRole('button', { name: 'Kanban' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('should keep showing tasks on the board when the list was filtered to features', async () => {
+    const user = userEvent.setup();
+    openBoard(artifacts);
+    await pick(user, 'Type', 'Features');
+
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+
+    expect(screen.getByRole('listitem', { name: 'T-2 Login API' })).toBeInTheDocument();
+  });
+
+  it('should jump to a column from its chip', async () => {
+    const scrolled: Element[] = [];
+    Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
+      expect(options).toEqual({ block: 'nearest', inline: 'start' });
+      scrolled.push(this);
+    };
+    const user = userEvent.setup();
+    openBoard(artifacts);
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+    const chips = screen.getByRole('group', { name: 'Columns' });
+    const review = screen.getByRole('region', { name: 'In review' });
+
+    expect(within(chips).getByRole('button', { name: 'In progress, 1' })).toBeInTheDocument();
+    const chip = within(chips).getByRole('button', { name: 'In review, 0' });
+    expect(chip).toHaveAttribute('aria-controls', review.id);
+    await user.click(chip);
+
+    expect(scrolled).toEqual([review]);
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  });
+
+  describe('filters sheet', () => {
+    // The open sheet is modal, which hides the rest of the page from assistive technology.
+    const filtersButton = () => screen.getByRole('button', { name: /^Filters/, hidden: true });
+    const openSheet = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(filtersButton());
+      return within(await screen.findByRole('dialog', { name: 'Filters' }));
+    };
+    const pickIn = async (user: ReturnType<typeof userEvent.setup>, sheet: ReturnType<typeof within>, combobox: string, option: string) => {
+      await user.click(sheet.getByRole('combobox', { name: combobox }));
+      await user.click(await screen.findByRole('option', { name: option }));
+    };
+
+    it('should filter from the sheet and count the active filters on its button', async () => {
+      const user = userEvent.setup();
+      openBoard(artifacts);
+      expect(filtersButton()).toHaveAccessibleName('Filters');
+      const sheet = await openSheet(user);
+      expect(sheet.getByRole('button', { name: 'Clear filters' })).toBeDisabled();
+
+      await pickIn(user, sheet, 'Project', 'site');
+      expect(filtersButton()).toHaveAccessibleName('Filters, 1 active');
+      await pickIn(user, sheet, 'Type', 'Tasks');
+      await user.click(sheet.getByRole('switch', { name: 'Hide done and cancelled' }));
+      expect(filtersButton()).toHaveAccessibleName('Filters, 3 active');
+      expect(screen.getByRole('link', { name: 'Fix typo', hidden: true })).toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Old idea', hidden: true })).not.toBeInTheDocument();
+      expect(screen.queryByRole('link', { name: 'Login form', hidden: true })).not.toBeInTheDocument();
+
+      await user.click(sheet.getByRole('button', { name: 'Clear filters' }));
+      expect(filtersButton()).toHaveAccessibleName('Filters');
+      expect(screen.getByRole('link', { name: 'Old idea', hidden: true })).toBeInTheDocument();
+
+      await user.click(sheet.getByRole('button', { name: 'Done' }));
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Filters' })).not.toBeInTheDocument());
+    });
+
+    it('should choose the cards of the kanban in the sheet, where the type does not count', async () => {
+      const user = userEvent.setup();
+      openBoard(artifacts);
+      await pick(user, 'Type', 'Features');
+      await user.click(screen.getByRole('button', { name: 'Kanban' }));
+      expect(filtersButton()).toHaveAccessibleName('Filters');
+      const sheet = await openSheet(user);
+
+      expect(sheet.queryByRole('combobox', { name: 'Type' })).not.toBeInTheDocument();
+      await pickIn(user, sheet, 'Cards', 'Feature cards');
+
+      expect(localStorage.getItem('arc.artifactsBoardFeatures')).toBe('true');
+      expect(screen.getByRole('listitem', { name: 'F-1 Login', hidden: true })).toBeInTheDocument();
+      expect(filtersButton()).toHaveAccessibleName('Filters');
+    });
   });
 
   it('should move a task by dropping it on a column', async () => {
     const app = openBoard(artifacts);
-    await userEvent.setup().click(screen.getByRole('button', { name: 'Board' }));
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Kanban' }));
     const card = screen.getByRole('listitem', { name: 'T-3 Fix typo' });
     const review = screen.getByRole('region', { name: 'In review' });
     const transfer = dataTransfer();
@@ -147,7 +283,7 @@ describe('ArtifactBoard', () => {
   it('should move a task from its menu', async () => {
     const user = userEvent.setup();
     const app = openBoard(artifacts);
-    await user.click(screen.getByRole('button', { name: 'Board' }));
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
     await user.click(screen.getByRole('button', { name: 'Move T-3' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Blocked' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-3', changes: { status: 'blocked' } });
@@ -155,23 +291,23 @@ describe('ArtifactBoard', () => {
 
   it('should show the features on the board, with their tasks and dependencies, and move them like tasks', async () => {
     const user = userEvent.setup();
-    const reports = summary({ id: 'F-2', type: 'feature', title: 'Reports', status: 'backlog', dependsOn: ['F-1'], projectName: 'site', assignee: { role: 'PRODUCT_OWNER', roleName: 'Product Owner', delegationId: 'd2', since: at } });
+    const reports = summary({ id: 'F-2', type: 'feature', title: 'Reports', status: 'backlog', dependsOn: ['F-1'], projectNames: ['site', 'app'], assignee: { role: 'PRODUCT_OWNER', roleName: 'Product Owner', delegationId: 'd2', since: at } });
     const app = openBoard([...artifacts, reports]);
-    expect(screen.queryByRole('group', { name: 'Board of' })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Board' }));
-    expect(screen.getByRole('button', { name: 'Tasks' })).toHaveAttribute('aria-pressed', 'true');
-    await user.click(screen.getByRole('button', { name: 'Features' }));
+    expect(screen.queryByRole('combobox', { name: 'Cards' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Kanban' }));
+    await pick(user, 'Cards', 'Feature cards');
     expect(localStorage.getItem('arc.artifactsBoardFeatures')).toBe('true');
 
     expect(screen.queryByRole('listitem', { name: 'T-2 Login API' })).not.toBeInTheDocument();
-    const login = within(screen.getByRole('region', { name: 'In progress' })).getByRole('listitem', { name: 'F-1 Login' });
+    const login = within(screen.getByRole('region', { name: 'In progress' })).getByRole('listitem', { name: 'F-1 Login', hidden: true });
     expect(within(login).getByRole('link', { name: 'Login' })).toHaveAttribute('href', '/c/c1/tasks/F-1');
     expect(within(login).getByRole('img', { name: '1 of 2 tasks done: 1 in progress, 1 done' })).toBeInTheDocument();
     const reportsCard = within(screen.getByRole('region', { name: 'Backlog' })).getByRole('listitem', { name: 'F-2 Reports' });
     expect(within(reportsCard).getByText('No tasks yet')).toBeInTheDocument();
     expect(within(reportsCard).getByLabelText('Waiting on F-1')).toBeInTheDocument();
     expect(within(reportsCard).getByRole('img', { name: 'Product Owner, working' })).toBeInTheDocument();
-    expect(within(reportsCard).getByText('site')).toBeInTheDocument();
+    expect(within(reportsCard).getByLabelText('Projects site, app')).toHaveTextContent('site+1');
+    expect(within(login).getByLabelText('Project app')).not.toHaveTextContent('+');
 
     await user.click(screen.getByRole('button', { name: 'Move F-2' }));
     await user.click(await screen.findByRole('menuitemradio', { name: 'Ready' }));
@@ -180,7 +316,7 @@ describe('ArtifactBoard', () => {
     await user.type(screen.getByRole('textbox', { name: 'Search tasks' }), 'reports');
     expect(screen.queryByRole('listitem', { name: 'F-1 Login' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Tasks' }));
+    await pick(user, 'Cards', 'Task cards');
     expect(screen.queryByRole('listitem', { name: 'F-2 Reports' })).not.toBeInTheDocument();
   });
 });

@@ -27,6 +27,9 @@ const DAY_MS = 86_400_000;
  */
 const SKILL_LISTING_CHAR_BUDGET = '100000';
 
+/** Value of `CLAUDE_CODE_ARTIFACT` that enables Claude Code artifacts in the sessions the server starts. */
+const ARTIFACT_ENABLED = '1';
+
 /**
  * Sessions of the remote-controlled agent have no one to answer permission prompts, so they
  * run with `bypassPermissions`, the same full-access behavior of the agy bridge.
@@ -187,7 +190,8 @@ export class ClaudeCodeAdapter extends AbstractAcpAdapter {
    */
   private buildClaudeEnv(cwd: string): NodeJS.ProcessEnv {
     const env = this.buildAgentEnv(cwd);
-    env.SLASH_COMMAND_TOOL_CHAR_BUDGET ??= SKILL_LISTING_CHAR_BUDGET;
+    env.SLASH_COMMAND_TOOL_CHAR_BUDGET = SKILL_LISTING_CHAR_BUDGET;
+    env.CLAUDE_CODE_ARTIFACT = ARTIFACT_ENABLED;
     delete env.CLAUDE_CODE_EXECUTABLE;
     const claudePath = this.fileSystem.resolveInPath('claude');
     if (claudePath) {

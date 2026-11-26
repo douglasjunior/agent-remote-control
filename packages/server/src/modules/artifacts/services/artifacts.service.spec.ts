@@ -1,5 +1,6 @@
 import { describe, expect, it, rs } from '@rstest/core';
 
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import { createArtifactHarness } from '../testing/artifact-harness.js';
 import { buildArtifact } from '../testing/artifact.fixture.js';
 import { AssignArtifactUseCase } from '../use-cases/assign-artifact.use-case.js';
@@ -17,7 +18,7 @@ const user = { kind: 'user', channel: 'web' } as const;
 
 function setup() {
   const harness = createArtifactHarness([
-    buildArtifact({ id: 'F-1', type: 'feature', status: 'backlog', projectName: 'shop', createdAt: '2026-01-01T00:00:03.000Z' }),
+    buildArtifact({ id: 'F-1', type: 'feature', status: 'backlog', projectNames: ['shop', 'blog'], createdAt: '2026-01-01T00:00:03.000Z' }),
     buildArtifact({ id: 'T-1', parentId: 'F-1', projectName: 'shop', createdAt: '2026-01-01T00:00:01.000Z' }),
     buildArtifact({ id: 'T-2', status: 'done', projectName: 'web', createdAt: '2026-01-01T00:00:02.000Z' }),
     buildArtifact({ id: 'T-3', status: 'cancelled', parentId: 'F-1', createdAt: '2026-01-01T00:00:04.000Z' }),
@@ -29,7 +30,7 @@ function setup() {
     new UpdateArtifactUseCase(store, workspace, rules, history, events, derivation),
     new CommentOnArtifactUseCase(store, history, events),
     new DeleteArtifactUseCase(store, history, events, derivation),
-    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService()),
+    new AssignArtifactUseCase(store, history, events, new ArtifactLimitsConfigService(new StubRuntimeSettings())),
     new ReleaseArtifactUseCase(store, history, events),
     events,
   );
@@ -47,6 +48,8 @@ describe('ArtifactsService', () => {
     [{ parentId: 'F-1', statuses: 'all' as const }, ['T-1', 'T-3']],
     [{ parentId: null }, ['F-1']],
     [{ projectName: 'web', statuses: 'all' as const }, ['T-2']],
+    [{ projectName: 'blog', statuses: 'all' as const }, ['F-1']],
+    [{ projectName: 'shop', statuses: 'all' as const }, ['T-1', 'F-1', 'T-3']],
   ])('should list the artifacts matching %j in creation order', async (filter, expected) => {
     expect(ids(await setup().service.list('c1', filter))).toEqual(expected);
   });

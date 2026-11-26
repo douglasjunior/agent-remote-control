@@ -12,7 +12,7 @@ export const AGENT_TEAM_SKILL: AgentSkillDefinition = {
 
 ## Choosing an Agent
 - Delegate each technical task to the agent whose description below best fits it.
-- Order the phases of one item by dependency: discovery of what to build before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${SKILL_NAMES.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${SKILL_NAMES.delegationProtocol}\` skill).
+- Order the phases of one item by dependency: discovery of what to build before its design, design before technical planning, planning or investigation before execution, and review before completion. Each phase is a status of the item's task on the board (see the \`${SKILL_NAMES.artifactBoard}\` skill). Different items, and phases that do not depend on each other, overlap across roles (see the \`${SKILL_NAMES.delegationProtocol}\` skill).
 - Do not interview the user about requirements yourself: discovery belongs to the agent that runs it, which asks the user directly.
 - A repository that is not in the workspace yet has to be added before any agent that requires a project folder can work on it.
 
@@ -43,10 +43,11 @@ function formatArtifactUse(agent: AgentDefinition): string {
     return 'Takes no artifact.';
   }
   const kind = agent.artifacts.scope === 'task' ? 'a task' : 'a task or a feature';
+  const where = agent.artifacts.scope === 'task' ? 'its project' : 'the project of a task, or from the workspaces root for a feature, where it changes files only in the feature\'s projects';
   const pullRequest = needsReviewableWork ? ' The task must already have work to inspect: a linked pull request or a recorded branch.' : '';
   return artifact === 'required'
-    ? `Always works on ${kind} of the board and runs in its project.${pullRequest}`
-    : `May work on ${kind} of the board, then running in its project.${pullRequest}`;
+    ? `Always works on ${kind} of the board and runs in ${where}.${pullRequest}`
+    : `May work on ${kind} of the board, then running in ${where}.${pullRequest}`;
 }
 
 function formatProjectAccess(agent: AgentDefinition): string {
@@ -63,9 +64,12 @@ function formatSessionMode(agent: AgentDefinition): string {
   if (!agent.delegation.artifact) {
     return `${withoutArtifact.charAt(0).toUpperCase()}${withoutArtifact.slice(1)}.`;
   }
+  const perTask = agent.delegation.sessionMode
+    ? ' Setting session="new" with the artifact replaces that session with a fresh one, which the next delegations of the task continue.'
+    : '';
   return agent.delegation.artifact === 'required'
-    ? 'Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.'
-    : `Keeps one session per artifact it is delegated; without an artifact it ${withoutArtifact}.`;
+    ? `Keeps one session per task: a new task starts with a clean context and the same task continues where it left off.${perTask}`
+    : `Keeps one session per artifact it is delegated; without an artifact it ${withoutArtifact}.${perTask}`;
 }
 
 function formatUserDecision(agent: AgentDefinition): string {

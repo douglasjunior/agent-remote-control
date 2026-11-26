@@ -5,6 +5,7 @@ import {
   ARTIFACT_STATUSES,
   ARTIFACT_TYPES,
   PULL_REQUEST_STATES,
+  REFINEMENT_KINDS,
   REFINEMENT_STATES,
 } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type {
@@ -12,6 +13,7 @@ import type {
   ArtifactSection,
   PullRequestInput,
   PullRequestState,
+  RefinementKind,
   RefinementState,
   SectionChange,
 } from '../../artifacts/models/artifact.model.js';
@@ -32,11 +34,13 @@ const REQUEST_TAG = /<(\/?)(artifact_list|artifact_read|artifact_create|artifact
 const CHILD_TAG = /<(\/?)(section|pull_request)\b([^>]*)>/gi;
 const DELEGATE_BLOCK = /<delegate\b[^>]*>[\s\S]*?<\/delegate>/gi;
 
+const REFINEMENT_ATTRIBUTES = REFINEMENT_KINDS.map(kind => `${kind}_refinement`);
+
 const ATTRIBUTES: Readonly<Record<string, readonly string[]>> = {
   artifact_list: ['type', 'status', 'parent', 'project'],
   artifact_read: ['id', 'tree'],
-  artifact_create: ['ref', 'type', 'title', 'parent', 'project', 'depends_on', 'business_refinement', 'technical_refinement'],
-  artifact_update: ['id', 'title', 'status', 'parent', 'project', 'depends_on', 'business_refinement', 'technical_refinement', 'branch', 'note'],
+  artifact_create: ['ref', 'type', 'title', 'parent', 'project', 'projects', 'depends_on', ...REFINEMENT_ATTRIBUTES],
+  artifact_update: ['id', 'title', 'status', 'parent', 'project', 'projects', 'depends_on', ...REFINEMENT_ATTRIBUTES, 'branch', 'note'],
   artifact_comment: ['id'],
   skill_read: ['name'],
   skill_list: [],
@@ -236,26 +240,29 @@ export class AgentRequestParserService {
   private readCommonFields(attributes: TagAttributes): Fail | {
     readonly parent?: string | null;
     readonly project?: string;
+    readonly projects?: readonly string[];
     readonly dependsOn?: readonly string[];
     readonly refinement?: Partial<ArtifactRefinement>;
   } {
-    const refinement: { business?: RefinementState; technical?: RefinementState } = {};
-    for (const side of ['business', 'technical'] as const) {
-      const raw = attributes.get(`${side}_refinement`)?.toLowerCase();
+    const refinement: Partial<Record<RefinementKind, RefinementState>> = {};
+    for (const kind of REFINEMENT_KINDS) {
+      const raw = attributes.get(`${kind}_refinement`)?.toLowerCase();
       const state = this.oneOf(raw, REFINEMENT_STATES);
       if (raw !== undefined && !state) {
-        return { fail: `The ${side}_refinement attribute is one of: ${REFINEMENT_STATES.join(', ')}.` };
+        return { fail: `The ${kind}_refinement attribute is one of: ${REFINEMENT_STATES.join(', ')}.` };
       }
       if (state) {
-        refinement[side] = state;
+        refinement[kind] = state;
       }
     }
     const parent = attributes.get('parent');
     const project = attributes.get('project');
+    const projects = attributes.get('projects');
     const dependsOn = attributes.get('depends_on');
     return {
       ...(parent !== undefined ? { parent: readArtifactReference(parent) } : {}),
       ...(project ? { project } : {}),
+      ...(projects !== undefined ? { projects: projects.split(',').map(name => name.trim()).filter(Boolean) } : {}),
       ...(dependsOn !== undefined ? { dependsOn: isNoneValue(dependsOn) ? [] : this.ids(dependsOn) } : {}),
       ...(Object.keys(refinement).length > 0 ? { refinement } : {}),
     };
@@ -318,7 +325,7 @@ export class AgentRequestParserService {
     if (!selfClosing) {
       return { fail: 'Write a pull request as a self-closing tag: <pull_request url="..." state="open"/>.' };
     }
-    const attributes = parseTagAttributes(rawTag, rawAttributes.trimEnd().slice(0, -1), ['url', 'title', 'state']);
+    const attributes = parseTagAttributes(rawTag, rawAttributes.trimEnd().slice(0, -1), ['url', 'title', 'repository', 'state']);
     if (typeof attributes === 'string') {
       return { fail: attributes };
     }
@@ -332,7 +339,8 @@ export class AgentRequestParserService {
       return { fail: `The state of a <pull_request> is one of: ${PULL_REQUEST_STATES.join(', ')}.` };
     }
     const title = attributes.get('title');
-    return { url, ...(title ? { title } : {}), ...(state ? { state: state as PullRequestState } : {}) };
+    const repository = attributes.get('repository');
+    return { url, ...(title ? { title } : {}), ...(repository ? { repository } : {}), ...(state ? { state: state as PullRequestState } : {}) };
   }
 
   private listOf<T extends string>(raw: string | undefined, allowed: readonly T[], label: string): Fail | { readonly values: T[] } | undefined {

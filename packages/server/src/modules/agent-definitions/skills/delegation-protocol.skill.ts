@@ -10,14 +10,15 @@ const FACT_THE_TASK_LACKS: Readonly<Record<AgentInterface, string>> = {
 
 export const DELEGATION_PROTOCOL_SKILL: AgentSkillDefinition = {
   name: SKILL_NAMES.delegationProtocol,
-  description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, redirecting a running agent, failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
+  description: `The parts of delegating the CEO needs only now and then - every attribute of the <delegate> tag, project folders, sessions, pipelines of parallel work, delegating to an agent already at work (on_busy, steering, waiting, interrupting), failed and stopped results, a change of coding agent, access requests outside a project folder, and agents delegated to only on the user's decision. Use when a [DELEGATION_ERROR] arrives, a result failed or was stopped, or an agent asks for access.`,
   roles: ['CEO'],
   buildContent: ({ workspaceDir, agentInterface }) => `# Delegation Protocol
 
 ## The Delegate Tag
 - \`<delegate role="ROLE" summary="what the user reads" artifact="T-3" project="my-app" session="new">specification</delegate>\`, in the final response block, as plain text without code fences around the tag. \`role\` and \`summary\` are required; use only the other attributes the agent accepts, as listed in Your Team.
 - \`summary\`: one short sentence (up to 120 characters) in the user's language that tells a non-technical user what the agent is doing and why, such as "Planning how to build the login screen". The agent never sees it.
-- \`artifact\`: the agent holds that artifact while it runs, receives its content, and works in its project folder, so \`project\` may be left out.
+- \`artifact\`: the agent holds that artifact while it runs and receives its content. A task's agent works in the task's project folder, so \`project\` may be left out. A feature's agent works from the workspaces root and changes files only in the projects of the feature, so \`project\` is refused there.
+- \`on_busy="wait|interrupt"\`: what happens to the work of an agent that is already working when you delegate to it again (see Agents at Work). An idle agent ignores it.
 
 ## The Specification
 - With \`artifact\`, name the step in a sentence or two. The task holds everything else, and what it lacks ${FACT_THE_TASK_LACKS[agentInterface]}: a decision the user gave you, an exact path you authorize, a file the user attached (its absolute path, with permission to read it).
@@ -39,18 +40,18 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 - Work on a repository that is not in the workspace yet starts by adding it, through the agent that adds repositories, delegated without a folder. Use the folder name that agent reports for every follow-up.
 
 ## Sessions
-- With \`artifact\`, an agent keeps one session per task: a new task starts with a clean context, and the same task continues where the agent left it. There is nothing to choose, and \`session\` is ignored.
+- With \`artifact\`, an agent keeps one session per task: a new task starts with a clean context, and the same task continues where the agent left it. \`session="new"\`, for an agent whose entry in Your Team shows it, starts a fresh session for that task, which the next delegations of the task continue; use it when the agent's work on the task keeps going wrong in its current session. \`session="resume"\`, or no attribute, continues the task's session. A fresh session receives the whole task again.
 - Without \`artifact\`, an agent keeps one session per project folder. \`session="resume"\` (or the agent's default when it resumes) continues the same subject; \`session="new"\` starts over when the subject changes or you need a judgment free of what came before.
 - When the coding agent of a role differs from the one in the last \`[TEAM_PROFILES]\` you received, that role starts a new session. With \`artifact\` it receives the whole task again, so nothing needs restating; without one, restate the goal, the state of the work and the decisions already made. A change of model or effort alone keeps the session.
 
 ## Pipelines
 - Several items that each go through planning, development and review form a pipeline: each response moves every item one stage forward, with a different role per item.
 - A role appears once per response, and several pieces of work for the same role without an artifact go into a single delegation.
-- Only one agent that modifies files works in a project folder at a time, counting agents still running from earlier messages. Read-only agents may work alongside it; Your Team says which agents are read-only in the \`${SKILL_NAMES.agentTeam}\` skill.
+- Only one agent that modifies files works in a project folder at a time, counting agents still running from earlier messages; the agent of a feature takes every project of the feature. Read-only agents may work alongside it; Your Team says which agents are read-only in the \`${SKILL_NAMES.agentTeam}\` skill.
 - Results of agents that finish while you are working arrive together. Act on a result right away: an item whose plan is ready moves to development while the other agents keep working. The turn ends with your answer once no agent is left running.
 
 ## Agent Results
-- \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
+- \`<agent_result role="ROLE" project="project-folder" artifact="T-3" verdict="DONE" artifact_status="in_review" agent="coding-agent" model="model" effort="effort">...</agent_result>\`, one block per delegation. \`project\`, \`artifact\`, \`verdict\` and \`artifact_status\` are absent when the delegation had none, and \`project\` also for a feature, whose agent runs at the workspaces root; \`artifact_status_by="user"\` follows a status the user set on the board while the agent worked.
 - A result whose verdict moved its task on is a short receipt, cut when it runs long: the report is on the task, in the section that agent writes. Read the task when you need it. A verdict that keeps the task where it was (more work to do, a block) comes whole, with the decision or what the agent needs.
 - \`status="failed"\` means the agent stopped with an error, which is the content of the block. Delegate the work again when the error looks transient, or report it to the user.
 - \`status="stopped"\` means the user ended the work on its artifact (moved it to done, blocked or cancelled) and the server stopped the agent. Do not delegate that artifact again unless the user asks. Tell the user what was left unfinished, and that what the agent changed in the project stays as it left it.
@@ -61,7 +62,16 @@ The project folder sets the agent's working directory (CWD) to \`${workspaceDir}
 - \`[TEAM_PROFILES]\` lists every agent of your team with its coding agent, model and effort, and whether it is idle or working: its project and artifact, how long it has been running, whether it is waiting for the user's answer and the summary of its task. It comes with the user's messages and again whenever it changes; a prompt without it means nothing changed.
 - \`[PREVIOUS_TURN]\` reports how your last turn ended when it failed or was cancelled: which agents were stopped before finishing and which delegations never started. Trust it over what your session remembers as sent.
 - \`[BOARD_CHECK]\` arrives when you were about to end a turn leaving tasks it delegated in the middle of the flow with nobody working on them. Your answer was not delivered: delegate their next step, or answer the user saying what each one waits for, and write that answer complete, with every attachment.
-- Delegating to a role that is already working replaces its task with the new specification: it receives the new instructions mid-task when it supports that, or restarts with them otherwise. Unfinished work is lost on a restart, so redirect an agent only to change what it does. Redirecting an agent on the artifact it already holds sends it only your new text, so that specification may run past the usual limit.
+- Confirmations that a delegation reached an agent already at work arrive as \`<agent_result status="steered|queued|interrupted">\` blocks with your next prompt (the next result or the next user message), never as a prompt of their own; the agent's real result comes later.
+
+## Agents at Work
+A conversation runs one agent per role, so a delegation to a role \`[TEAM_PROFILES]\` shows working goes to that agent. The same work means the same artifact, or the same project folder for work without one; its \`Steering\` says whether its coding agent takes a new instruction in the middle of a prompt.
+- **Same work, \`Steering: supported\`, no \`on_busy\`**: the agent receives your text in its running prompt, or with its next prompt when it is between prompts, and goes on with it. Nothing is lost. Use it to correct or add to what the agent is doing.
+- **\`on_busy="wait"\`**: your delegation waits until the agent's current work delivers its result; on the same work it then runs as the next prompt of the same session, keeping its context, and on other work it starts once that work ended. Nothing is lost, and you get both results, but it waits as long as the current work takes. Use it for a next step that does not change what the agent is doing now.
+- **\`on_busy="interrupt"\`**: on the same work, the running prompt is cancelled and your text is the next prompt of the same session: the agent keeps what it learned, but the step it was in the middle of is cut short. On other work, the agent's current work ends where it stands (its task keeps its status, its changes stay in the project, and you get a receipt saying so) and your delegation starts now. Use it only when the current work is wrong or no longer wanted.
+- A \`session="new"\` for the task the agent is on leaves the session it is working in, so it counts as other work: \`wait\` starts the fresh session once the current work delivers its result, and \`interrupt\` ends the current work and starts it now.
+- Without steering, on other work, or with \`session="new"\`, \`on_busy\` is required, and a delegation without it comes back as \`[DELEGATION_ERROR]\`.
+- An instruction to an agent on the artifact it already holds is only your new text, so that specification may run past the usual limit.
 
 ## Access Requests
 Agents never read or write outside their project folder unless the exact path was authorized. When one needs an outside path (an SDK installation, a global configuration, another project), it stops and returns an access request with the path, the reason, and the access mode.

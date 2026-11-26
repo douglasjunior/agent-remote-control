@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, rs } from '@rstest/core';
 
-import { PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { type IAgentPort, PromptCancelledError } from '../../agent/ports/agent.port.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
+import type { ActiveTurn } from '../models/active-turn.model.js';
+import { PendingMessage, type JoinOutcome } from '../models/conversation-turn.model.js';
+import { DelegationControl } from '../models/delegation-control.model.js';
 import { createServedToolSessions, credentialOf } from '../testing/agent-tool-sessions.fixture.js';
 import { StubAgentPortFactory } from '../testing/stub-agent-port-factory.js';
 import { StubAgentPort } from '../testing/stub-agent.port.js';
@@ -30,13 +34,25 @@ describe('ConversationRuntimeService', () => {
     ports = [];
     factory = buildTrackedFactory();
     toolSessions = createServedToolSessions();
-    runtime = new ConversationRuntimeService(factory, toolSessions, IDLE_MS);
+    runtime = new ConversationRuntimeService(factory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
   });
 
   afterEach(() => {
     rs.useRealTimers();
-    delete process.env.SESSION_IDLE_TIMEOUT_MS;
   });
+
+  /** Runs `work` on the CEO as the conversation's turn, which ends with it. */
+  const run = <T>(key: string, agentId: string, work: (port: IAgentPort, ceo: ActiveTurn) => Promise<T>): Promise<T> => {
+    const { turn } = runtime.admit(key);
+    return runtime.runOnCeo(key, turn, agentId, work).finally(() => runtime.endTurn(key, turn));
+  };
+
+  const message = (text: string) => {
+    const outcomes: JoinOutcome[] = [];
+    const onDelivery = rs.fn();
+    const pending = new PendingMessage(text, { conversationId: 'a', userId: 'u', prompt: text, workspacePath: '/w', agentRole: 'CEO', onDelivery }, outcome => outcomes.push(outcome));
+    return { pending, outcomes, onDelivery };
+  };
 
   const deferred = () => {
     let resolve: () => void = () => undefined;
@@ -49,13 +65,13 @@ describe('ConversationRuntimeService', () => {
   it('should reuse one agent port per session and isolate different sessions', async () => {
     const seen: unknown[] = [];
 
-    await runtime.run('a', 'stub', async (port) => {
+    await run('a', 'stub', async (port) => {
       seen.push(port);
     });
-    await runtime.run('a', 'stub', async (port) => {
+    await run('a', 'stub', async (port) => {
       seen.push(port);
     });
-    await runtime.run('b', 'stub', async (port) => {
+    await run('b', 'stub', async (port) => {
       seen.push(port);
     });
 
@@ -64,53 +80,120 @@ describe('ConversationRuntimeService', () => {
     expect(ports).toHaveLength(2);
   });
 
-  it('should run turns of the same session one at a time in arrival order', async () => {
-    const order: string[] = [];
-    const first = deferred();
-    const onQueued = rs.fn();
+  describe('one turn at a time', () => {
+    it('should start a turn when none runs and let a message join the one running', () => {
+      const first = runtime.admit('a');
+      const second = runtime.admit('a');
 
-    const one = runtime.run('a', 'stub', async () => {
-      order.push('one:start');
-      await first.promise;
-      order.push('one:end');
+      expect(first.kind).toBe('drive');
+      expect(second).toEqual({ kind: 'join', turn: first.turn });
+      expect(runtime.admit('b').kind).toBe('drive');
     });
-    const two = runtime.run('a', 'stub', async () => {
-      order.push('two');
-    }, onQueued);
 
-    await rs.advanceTimersByTimeAsync(0);
-    expect(order).toEqual(['one:start']);
-    expect(onQueued).toHaveBeenCalledTimes(1);
+    it('should hand the next turn to the first message left in the inbox, with the others read in it', () => {
+      const { turn } = runtime.admit('a');
+      const one = message('one');
+      const two = message('two');
+      turn.enqueue(one.pending);
+      turn.enqueue(two.pending);
 
-    first.resolve();
-    await Promise.all([one, two]);
+      runtime.endTurn('a', turn);
 
-    expect(order).toEqual(['one:start', 'one:end', 'two']);
-  });
-
-  it('should not notify onQueued when the session is idle', async () => {
-    const onQueued = rs.fn();
-
-    await runtime.run('a', 'stub', async () => undefined, onQueued);
-
-    expect(onQueued).not.toHaveBeenCalled();
-  });
-
-  it('should keep the queue running after a failed turn', async () => {
-    const failing = runtime.run('a', 'stub', async () => {
-      throw new Error('boom');
+      const next = one.outcomes[0];
+      expect(next?.kind).toBe('drive');
+      const nextTurn = (next as Extract<JoinOutcome, { kind: 'drive' }>).turn;
+      expect(nextTurn).not.toBe(turn);
+      expect(nextTurn.joined).toEqual(['two']);
+      expect(nextTurn.take()).toEqual([two.pending]);
+      expect(two.outcomes).toEqual([]);
+      expect(runtime.admit('a')).toEqual({ kind: 'join', turn: nextTurn });
     });
-    const next = runtime.run('a', 'stub', async () => 'ok');
 
-    await expect(failing).rejects.toThrow('boom');
-    await expect(next).resolves.toBe('ok');
+    it('should start the next turn after a turn that failed', async () => {
+      await expect(run('a', 'stub', async () => {
+        throw new Error('boom');
+      })).rejects.toThrow('boom');
+
+      expect(runtime.admit('a').kind).toBe('drive');
+    });
+
+    it('should ignore the end of a turn that is not the running one', () => {
+      const { turn } = runtime.admit('a');
+      runtime.endTurn('a', turn);
+      const { turn: next } = runtime.admit('a');
+
+      runtime.endTurn('a', turn);
+
+      expect(runtime.admit('a')).toEqual({ kind: 'join', turn: next });
+      runtime.endTurn('unknown', turn);
+    });
+
+    it('should give a turn that resumes work the conversation once the running turn ends', async () => {
+      await expect(runtime.acquire('b')).resolves.toBeDefined();
+      const { turn } = runtime.admit('a');
+      let resumed: unknown;
+      void runtime.acquire('a').then((acquired) => {
+        resumed = acquired;
+      });
+      await rs.advanceTimersByTimeAsync(0);
+      expect(resumed).toBeUndefined();
+
+      runtime.endTurn('a', turn);
+      await rs.advanceTimersByTimeAsync(0);
+
+      expect(resumed).toBeDefined();
+      expect(resumed).not.toBe(turn);
+      expect(runtime.admit('a')).toEqual({ kind: 'join', turn: resumed });
+    });
+
+    it('should cancel the running turn with the messages of its inbox and the turns waiting to resume work', async () => {
+      const { turn } = runtime.admit('a');
+      const waiting = message('waiting');
+      turn.enqueue(waiting.pending);
+      const resumption = runtime.acquire('a');
+
+      await expect(runtime.cancel('a')).resolves.toBe(true);
+
+      expect(turn.isCancelled).toBe(true);
+      expect(waiting.outcomes).toEqual([{ kind: 'cancelled' }]);
+      expect(waiting.onDelivery).toHaveBeenCalledWith('cancelled');
+      await expect(resumption).resolves.toBeUndefined();
+      await expect(runtime.cancel('a')).resolves.toBe(false);
+
+      const after = message('after');
+      turn.enqueue(after.pending);
+      runtime.endTurn('a', turn);
+      expect(after.outcomes[0]?.kind).toBe('drive');
+    });
+
+    it('should refuse a CEO prompt in a cancelled turn', async () => {
+      const { turn } = runtime.admit('a');
+      await runtime.cancel('a');
+      const work = rs.fn();
+
+      await expect(runtime.runOnCeo('a', turn, 'stub', work)).rejects.toBeInstanceOf(PromptCancelledError);
+      expect(work).not.toHaveBeenCalled();
+    });
+
+    it('should refuse a CEO prompt of a turn cancelled while its port was being prepared', async () => {
+      const { turn } = runtime.admit('a');
+      const work = rs.fn();
+      factory = new StubAgentPortFactory(() => {
+        void turn.cancel();
+        return new StubAgentPort();
+      });
+      runtime = new ConversationRuntimeService(factory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
+
+      await expect(runtime.runOnCeo('a', turn, 'stub', work)).rejects.toBeInstanceOf(PromptCancelledError);
+      expect(work).not.toHaveBeenCalled();
+    });
   });
 
-  it('should cancel only the turn in progress', async () => {
+  it('should cancel the CEO prompt of the turn in progress', async () => {
     const gate = deferred();
-    const turnDone = runtime.run('a', 'stub', async (_port, turn) => {
+    const turnDone = run('a', 'stub', async (_port, ceo) => {
       await gate.promise;
-      turn.throwIfCancelled();
+      ceo.throwIfCancelled();
     });
     await rs.advanceTimersByTimeAsync(0);
 
@@ -124,22 +207,22 @@ describe('ConversationRuntimeService', () => {
   });
 
   it('should expire an idle session by closing its agent', async () => {
-    await runtime.run('a', 'stub', async () => undefined);
+    await run('a', 'stub', async () => undefined);
 
     await rs.advanceTimersByTimeAsync(IDLE_MS);
 
     expect(ports[0]!.closeSessionCalls).toBe(1);
     expect(ports[0]!.connected).toBe(false);
 
-    await runtime.run('a', 'stub', async () => undefined);
+    await run('a', 'stub', async () => undefined);
     expect(ports).toHaveLength(2);
   });
 
   it('should restart the idle countdown when a new turn arrives', async () => {
-    await runtime.run('a', 'stub', async () => undefined);
+    await run('a', 'stub', async () => undefined);
     await rs.advanceTimersByTimeAsync(IDLE_MS - 1);
 
-    await runtime.run('a', 'stub', async () => undefined);
+    await run('a', 'stub', async () => undefined);
     await rs.advanceTimersByTimeAsync(IDLE_MS - 1);
 
     expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -149,7 +232,7 @@ describe('ConversationRuntimeService', () => {
 
   it('should not expire a session while a turn is running', async () => {
     const gate = deferred();
-    const running = runtime.run('a', 'stub', async () => gate.promise);
+    const running = run('a', 'stub', async () => gate.promise);
 
     await rs.advanceTimersByTimeAsync(IDLE_MS * 2);
     expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -159,8 +242,8 @@ describe('ConversationRuntimeService', () => {
   });
 
   it('should disconnect every agent on application shutdown', async () => {
-    await runtime.run('a', 'stub', async () => undefined);
-    await runtime.run('b', 'stub', async () => undefined);
+    await run('a', 'stub', async () => undefined);
+    await run('b', 'stub', async () => undefined);
 
     await runtime.onApplicationShutdown();
 
@@ -188,12 +271,12 @@ describe('ConversationRuntimeService', () => {
       startedAt: Date.now(),
       agentPort,
       turn: { cancel: rs.fn() } as never,
-      steer: rs.fn(),
+      control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
       stop: rs.fn(),
     });
 
     it('should close the tool session of the CEO when the conversation expires', async () => {
-      await runtime.run('a', 'stub', async () => undefined);
+      await run('a', 'stub', async () => undefined);
       const credential = openTools(ports[0]!);
 
       await rs.advanceTimersByTimeAsync(IDLE_MS);
@@ -202,16 +285,16 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should close the tool session of the previous CEO port when the agent changes', async () => {
-      await runtime.run('a', 'first', async () => undefined);
+      await run('a', 'first', async () => undefined);
       const credential = openTools(ports[0]!);
 
-      await runtime.run('a', 'second', async () => undefined);
+      await run('a', 'second', async () => undefined);
 
       expect(toolSessions.find(credential)).toBeUndefined();
     });
 
     it('should close every tool session on application shutdown', async () => {
-      await runtime.run('a', 'stub', async () => undefined);
+      await run('a', 'stub', async () => undefined);
       const ceo = openTools(ports[0]!);
       const delegatePort = new StubAgentPort();
       const delegate = openTools(delegatePort);
@@ -224,21 +307,19 @@ describe('ConversationRuntimeService', () => {
     });
   });
 
-  it('should read the idle timeout from SESSION_IDLE_TIMEOUT_MS or default to 30 minutes', async () => {
-    process.env.SESSION_IDLE_TIMEOUT_MS = '50';
+  it('should read the idle timeout as each idle period starts', async () => {
+    const settings = new StubRuntimeSettings();
     const created = ports;
-    const trackingFactory = factory;
-    const envRuntime = new ConversationRuntimeService(trackingFactory, toolSessions);
-    await envRuntime.run('a', 'stub', async () => undefined);
-    await rs.advanceTimersByTimeAsync(50);
+    runtime = new ConversationRuntimeService(factory, toolSessions, settings);
+    await run('a', 'stub', async () => undefined);
+    await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
+    expect(created[0]!.closeSessionCalls).toBe(0);
+    await rs.advanceTimersByTimeAsync(1);
     expect(created[0]!.closeSessionCalls).toBe(1);
 
-    delete process.env.SESSION_IDLE_TIMEOUT_MS;
-    const defaultRuntime = new ConversationRuntimeService(trackingFactory, toolSessions);
-    await defaultRuntime.run('b', 'stub', async () => undefined);
-    await rs.advanceTimersByTimeAsync(30 * 60 * 1000 - 1);
-    expect(created[1]!.closeSessionCalls).toBe(0);
-    await rs.advanceTimersByTimeAsync(1);
+    settings.set('SESSION_IDLE_TIMEOUT_MS', 50);
+    await run('b', 'stub', async () => undefined);
+    await rs.advanceTimersByTimeAsync(50);
     expect(created[1]!.closeSessionCalls).toBe(1);
   });
 
@@ -247,7 +328,7 @@ describe('ConversationRuntimeService', () => {
       expect(runtime.getCeoPort('a')).toBeUndefined();
       expect(factory.createdAgentIds).toEqual([]);
 
-      await runtime.run('a', 'other', async (port) => {
+      await run('a', 'other', async (port) => {
         expect(port.agentName).toBe('other');
       });
 
@@ -256,20 +337,20 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should reuse the CEO port while the agent stays the same', async () => {
-      await runtime.run('a', 'other', async () => undefined);
-      await runtime.runOnCeo('a', 'other', async () => undefined);
+      await run('a', 'other', async () => undefined);
+      await run('a', 'other', async () => undefined);
 
       expect(ports).toHaveLength(1);
       expect(factory.createdAgentIds).toEqual(['other']);
     });
 
     it('should close and disconnect the previous CEO port when the agent changes', async () => {
-      await runtime.run('a', 'first', async (port) => {
+      await run('a', 'first', async (port) => {
         (port as StubAgentPort).connected = true;
       });
 
       let current: unknown;
-      await runtime.run('a', 'second', async (port) => {
+      await run('a', 'second', async (port) => {
         current = port;
       });
 
@@ -282,7 +363,7 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should ignore failures while disposing the previous CEO port', async () => {
-      await runtime.run('a', 'first', async () => undefined);
+      await run('a', 'first', async () => undefined);
       ports[0]!.closeSession = async () => {
         throw new Error('close failed');
       };
@@ -290,43 +371,21 @@ describe('ConversationRuntimeService', () => {
         throw new Error('disconnect failed');
       };
 
-      await expect(runtime.run('a', 'second', async port => port.agentName)).resolves.toBe('second');
+      await expect(run('a', 'second', async port => port.agentName)).resolves.toBe('second');
       expect(runtime.getCeoPort('a')).toBe(ports[1]);
     });
 
-    it('should switch the agent only after the queued turn of the previous agent finishes', async () => {
-      const gate = deferred();
-      const order: string[] = [];
-
-      const first = runtime.run('a', 'first', async () => {
-        order.push('first:start');
-        await gate.promise;
-        order.push(`first:closed=${ports[0]!.closeSessionCalls}`);
-      });
-      const second = runtime.run('a', 'second', async () => {
-        order.push(`second:firstClosed=${ports[0]!.closeSessionCalls}`);
-      });
-
-      await rs.advanceTimersByTimeAsync(0);
-      expect(order).toEqual(['first:start']);
-
-      gate.resolve();
-      await Promise.all([first, second]);
-
-      expect(order).toEqual(['first:start', 'first:closed=0', 'second:firstClosed=1']);
-    });
-
-    it('should keep the queue running when creating the CEO port fails', async () => {
+    it('should start the next turn when creating the CEO port fails', async () => {
       const failingFactory = new StubAgentPortFactory((agentId) => {
         if (agentId === 'broken') {
           throw new Error('cannot create');
         }
         return buildTrackedFactory().create(agentId);
       });
-      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
 
-      await expect(runtime.run('a', 'broken', async () => 'never')).rejects.toThrow('cannot create');
-      await expect(runtime.run('a', 'fine', async port => port.agentName)).resolves.toBe('fine');
+      await expect(run('a', 'broken', async () => 'never')).rejects.toThrow('cannot create');
+      await expect(run('a', 'fine', async port => port.agentName)).resolves.toBe('fine');
     });
   });
 
@@ -339,87 +398,83 @@ describe('ConversationRuntimeService', () => {
         ports.push(port);
         return port;
       });
-      runtime = new ConversationRuntimeService(factory, toolSessions, IDLE_MS);
+      runtime = new ConversationRuntimeService(factory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
     };
 
+    /** A turn whose CEO prompt is on its way until `gate` resolves. */
     const startRunningCeo = async (agentId = 'stub') => {
       const gate = deferred();
-      const running = runtime.run('a', agentId, async () => gate.promise);
+      const { turn } = runtime.admit('a');
+      const running = runtime.runOnCeo('a', turn, agentId, async () => {
+        turn.prompting = true;
+        await gate.promise;
+        turn.prompting = false;
+      });
       await rs.advanceTimersByTimeAsync(0);
-      return { gate, running };
+      return { gate, running, turn };
     };
 
-    it('should inject the text into the CEO round in progress and return the port answer', async () => {
+    it('should inject the text into the CEO prompt in progress and return the port answer', async () => {
       supportSteeringOnCreate();
-      const { gate, running } = await startRunningCeo();
+      const { gate, running, turn } = await startRunningCeo();
 
-      await expect(runtime.steerCeo('a', 'stub', 'new message')).resolves.toBe(true);
+      expect(runtime.acceptsSteering('a', turn, 'stub')).toBe(true);
+      await expect(runtime.steerCeo('a', turn, 'stub', 'new message')).resolves.toBe(true);
 
       expect(ports[0]!.steeringPrompts).toEqual(['new message']);
       gate.resolve();
       await running;
     });
 
-    it('should return false when the port does not accept the steering', async () => {
+    it('should return false when the port does not take the steering into a running prompt', async () => {
       supportSteeringOnCreate();
-      const { gate, running } = await startRunningCeo();
-      ports[0]!.steeringResult = false;
+      const { gate, running, turn } = await startRunningCeo();
+      ports[0]!.steeringResult = 'not_running';
 
-      await expect(runtime.steerCeo('a', 'stub', 'new message')).resolves.toBe(false);
+      await expect(runtime.steerCeo('a', turn, 'stub', 'new message')).resolves.toBe(false);
 
       expect(ports[0]!.steeringPrompts).toEqual(['new message']);
       gate.resolve();
       await running;
     });
 
-    it('should return false when the conversation has no runtime', async () => {
-      await expect(runtime.steerCeo('unknown', 'stub', 'text')).resolves.toBe(false);
+    it('should return false when the conversation has no CEO port yet', async () => {
+      const { turn } = runtime.admit('a');
+      turn.prompting = true;
+
+      await expect(runtime.steerCeo('a', turn, 'stub', 'text')).resolves.toBe(false);
+      await expect(runtime.steerCeo('unknown', turn, 'stub', 'text')).resolves.toBe(false);
     });
 
-    it('should return false when the runtime has no CEO port yet', async () => {
-      runtime.beginTurn('a');
-
-      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
-    });
-
-    it('should return false when no CEO round is running', async () => {
+    it('should return false when no CEO prompt is on its way', async () => {
       supportSteeringOnCreate();
-      await runtime.run('a', 'stub', async () => undefined);
+      const { gate, running, turn } = await startRunningCeo();
+      turn.prompting = false;
 
-      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+      await expect(runtime.steerCeo('a', turn, 'stub', 'text')).resolves.toBe(false);
 
       expect(ports[0]!.steeringPrompts).toEqual([]);
+      gate.resolve();
+      await running;
     });
 
-    it('should return false when the running CEO turn was cancelled', async () => {
+    it('should return false when the running turn was cancelled', async () => {
       supportSteeringOnCreate();
-      const { gate, running } = await startRunningCeo();
+      const { gate, running, turn } = await startRunningCeo();
       await runtime.cancel('a');
 
-      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+      await expect(runtime.steerCeo('a', turn, 'stub', 'text')).resolves.toBe(false);
 
       expect(ports[0]!.steeringPrompts).toEqual([]);
       gate.resolve();
       await running;
-    });
-
-    it('should return false when another turn is already queued behind the running one', async () => {
-      supportSteeringOnCreate();
-      const { gate, running } = await startRunningCeo();
-      const queued = runtime.run('a', 'stub', async () => undefined);
-
-      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
-
-      expect(ports[0]!.steeringPrompts).toEqual([]);
-      gate.resolve();
-      await Promise.all([running, queued]);
     });
 
     it('should return false when the CEO runs on a different agent', async () => {
       supportSteeringOnCreate();
-      const { gate, running } = await startRunningCeo('first');
+      const { gate, running, turn } = await startRunningCeo('first');
 
-      await expect(runtime.steerCeo('a', 'second', 'text')).resolves.toBe(false);
+      await expect(runtime.steerCeo('a', turn, 'second', 'text')).resolves.toBe(false);
 
       expect(ports[0]!.steeringPrompts).toEqual([]);
       gate.resolve();
@@ -427,9 +482,9 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should return false when the CEO agent does not support steering', async () => {
-      const { gate, running } = await startRunningCeo();
+      const { gate, running, turn } = await startRunningCeo();
 
-      await expect(runtime.steerCeo('a', 'stub', 'text')).resolves.toBe(false);
+      await expect(runtime.steerCeo('a', turn, 'stub', 'text')).resolves.toBe(false);
 
       expect(ports[0]!.steeringPrompts).toEqual([]);
       gate.resolve();
@@ -453,7 +508,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -485,7 +540,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
       const frontend = { ...backend, projectName: 'frontend', cwd: '/mock/frontend', agentPort: new StubAgentPort() };
@@ -516,7 +571,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort1,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
       const delegation2 = {
@@ -553,14 +608,14 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: cancelTurnMock } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
       runtime.registerDelegation('a', delegation);
 
       const gate = deferred();
-      const turnDone = runtime.run('a', 'stub', async (_port, turn) => {
+      const turnDone = run('a', 'stub', async (_port, turn) => {
         await gate.promise;
         turn.throwIfCancelled();
       });
@@ -589,7 +644,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
@@ -605,7 +660,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
 
@@ -630,7 +685,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock1 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
       runtime.registerDelegation('a', {
@@ -646,7 +701,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: new StubAgentPort(),
         turn: { cancel: cancelMock2 } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       });
 
@@ -671,7 +726,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -698,11 +753,11 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
-      await runtime.run('a', 'stub', async () => undefined);
+      await run('a', 'stub', async () => undefined);
       runtime.registerDelegation('a', delegation);
       await rs.advanceTimersByTimeAsync(IDLE_MS * 2);
       expect(ports[0]!.closeSessionCalls).toBe(0);
@@ -712,8 +767,8 @@ describe('ConversationRuntimeService', () => {
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
 
-    it('should schedule expiration when runOnCeo completes and no other turns or delegations are active', async () => {
-      await runtime.runOnCeo('a', 'stub', async () => undefined);
+    it('should schedule expiration when the turn ends and no delegation is active', async () => {
+      await run('a', 'stub', async () => undefined);
       await rs.advanceTimersByTimeAsync(IDLE_MS);
       expect(ports[0]!.closeSessionCalls).toBe(1);
     });
@@ -734,7 +789,7 @@ describe('ConversationRuntimeService', () => {
         startedAt: Date.now(),
         agentPort: delegatePort,
         turn: { cancel: rs.fn() } as any,
-        steer: rs.fn(),
+        control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
         stop: rs.fn(),
       };
 
@@ -744,6 +799,34 @@ describe('ConversationRuntimeService', () => {
       expect(delegatePort.closeSessionCalls).toBe(1);
       expect(delegatePort.connected).toBe(false);
       expect(runtime.getActiveDelegations('a')).toEqual([]);
+    });
+  });
+
+  describe('agent receipts', () => {
+    it('should hand the pending receipts of a conversation, in order, to the prompt that takes them', () => {
+      runtime.addAgentReceipt('a', 'first');
+      runtime.addAgentReceipt('a', 'second');
+      runtime.addAgentReceipt('b', 'other');
+
+      expect(runtime.takeAgentReceipts('a').map(receipt => receipt.text)).toEqual(['first', 'second']);
+
+      expect(runtime.pendingAgentReceipts('a')).toEqual([]);
+      expect(runtime.pendingAgentReceipts('b')).toEqual(['other']);
+      expect(runtime.takeAgentReceipts('unknown')).toEqual([]);
+    });
+
+    it('should put restored receipts back in the order they arrived', () => {
+      runtime.addAgentReceipt('a', 'first');
+      const roundReceipts = runtime.takeAgentReceipts('a');
+      runtime.addAgentReceipt('a', 'second');
+      const steeredReceipts = runtime.takeAgentReceipts('a');
+      runtime.addAgentReceipt('a', 'third');
+
+      runtime.restoreAgentReceipts('a', steeredReceipts);
+      runtime.restoreAgentReceipts('a', roundReceipts);
+      runtime.restoreAgentReceipts('a', []);
+
+      expect(runtime.pendingAgentReceipts('a')).toEqual(['first', 'second', 'third']);
     });
   });
 
@@ -791,7 +874,7 @@ describe('ConversationRuntimeService', () => {
     });
 
     it('should keep the notices after the idle timeout expires the runtime', async () => {
-      await runtime.run('a', 'stub', async () => undefined);
+      await run('a', 'stub', async () => undefined);
       runtime.addCeoNotice('a', 'first');
 
       await rs.advanceTimersByTimeAsync(IDLE_MS + 1);
@@ -826,14 +909,14 @@ describe('ConversationRuntimeService', () => {
       startedAt: Date.now(),
       agentPort: port,
       turn: { cancel: rs.fn() } as any,
-      steer: rs.fn(),
+      control: new DelegationControl({ runId: 'd', summary: 'Summary', contextSince: '' }),
       stop: rs.fn(),
     });
 
     it('should tear down every agent on shutdown even when disconnecting fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
-      await runtime.run('a', 'stub', async () => undefined);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
+      await run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
 
       await expect(runtime.onApplicationShutdown()).resolves.toBeUndefined();
@@ -842,8 +925,8 @@ describe('ConversationRuntimeService', () => {
 
     it('should expire an idle session even when closing its agents fails', async () => {
       const failingFactory = new StubAgentPortFactory(failingPort);
-      runtime = new ConversationRuntimeService(failingFactory, toolSessions, IDLE_MS);
-      await runtime.run('a', 'stub', async () => undefined);
+      runtime = new ConversationRuntimeService(failingFactory, toolSessions, new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: IDLE_MS }));
+      await run('a', 'stub', async () => undefined);
       registerDelegationOn(failingPort());
       runtime.unregisterDelegation('unknown', runtime.getActiveDelegations('a')[0]!);
 

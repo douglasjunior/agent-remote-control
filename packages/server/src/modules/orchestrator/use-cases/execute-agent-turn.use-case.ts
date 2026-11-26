@@ -9,7 +9,9 @@ import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentReceipt } from '../models/agent-receipt.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
+import { type ConversationTurn, type JoinOutcome, PendingMessage } from '../models/conversation-turn.model.js';
 import type { OpenWork } from '../models/open-work.model.js';
 import { PendingRequestResults } from '../models/pending-request-results.model.js';
 import { RetryBudget } from '../models/retry-budget.model.js';
@@ -24,13 +26,13 @@ import { IAgentRegistryPort } from '../ports/agent-registry.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { buildAttachmentsPrompt } from '../prompts/attachments.prompt.js';
 import { buildBoardCheckPrompt } from '../prompts/board.prompt.js';
-import { buildCeoSteeringPrompt } from '../prompts/ceo-steering.prompt.js';
 import { buildDelegationRepairPrompt } from '../prompts/delegation-repair.prompt.js';
-import { buildPreviousTurnPrompt, describeDelegation } from '../prompts/previous-turn.prompt.js';
+import { buildPreviousTurnPrompt, describeDelegation, describeReadMessages } from '../prompts/previous-turn.prompt.js';
 import { buildResumedWorkPrompt } from '../prompts/resumed-work.prompt.js';
 import { buildTurnRetryPrompt } from '../prompts/turn-retry.prompt.js';
 import { buildUserAnswersPrompt } from '../prompts/user-answers.prompt.js';
 import { DEFAULT_USER_LANGUAGE } from '../prompts/user-language.prompt.js';
+import { buildUserMessagePrompt } from '../prompts/user-message.prompt.js';
 import { AgentProtocolService } from '../services/agent-protocol.service.js';
 import { AgentRoundService } from '../services/agent-round.service.js';
 import { CeoBoardService } from '../services/ceo-board.service.js';
@@ -62,8 +64,9 @@ type CeoRoundDecision = Exclude<ValidatedDecision, { kind: 'ask' }>;
 
 /**
  * Runs a turn of the conversation on the CEO: its rounds, the repair of an invalid response, the retries of a prompt
- * that fails, its questions to the user, and the delegations it starts, until it answers the user. A message that
- * arrives while the CEO works steers it, and work a restart interrupted is resumed from where it stopped.
+ * that fails, its questions to the user, and the delegations it starts, until it answers the user. A conversation runs
+ * one turn at a time: a message that arrives while one runs joins it (steered into the CEO's prompt running, or read
+ * with its next prompt), and work a restart interrupted is resumed from where it stopped once no turn runs.
  */
 @Injectable()
 export class ExecuteAgentTurnUseCase {
@@ -93,7 +96,7 @@ export class ExecuteAgentTurnUseCase {
   ) {}
 
   execute(request: TurnRequest): Promise<TurnResult> {
-    return this.logContext.run(request.conversationId, () => this.executeTurn(request));
+    return this.logContext.run(request.conversationId, () => this.receive(request));
   }
 
   /** Claims the work before anything else runs, so a second request for it finds it taken. */
@@ -108,21 +111,125 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private executeResumption(request: TurnRequest, resumption: Resumption): Promise<TurnResult> {
-    return this.logContext.run(request.conversationId, () => this.executeTurn({ ...request, prompt: '', resumable: true }, resumption));
+    return this.logContext.run(request.conversationId, async () => {
+      const turn = await this.conversationRuntime.acquire(request.conversationId);
+      return turn ? this.drive(turn, { ...request, prompt: '', resumable: true }, resumption) : this.cancelledResult();
+    });
   }
 
   private noWork(workId: string): Promise<TurnResult> {
     return Promise.resolve({ response: '', status: 'failed', errorMessage: `No interrupted work: ${workId}` });
   }
 
-  private async executeTurn(request: TurnRequest, resumed?: Resumption): Promise<TurnResult> {
-    const conversationKey = request.conversationId;
-    const endTurn = this.conversationRuntime.beginTurn(conversationKey);
-    try {
-      return await this.runTurn(conversationKey, await this.transcribeAudio(request), resumed);
-    } finally {
-      endTurn();
+  /** A message starts the conversation's turn, or joins the one running and, when it ends unread, starts the next. */
+  private async receive(received: TurnRequest): Promise<TurnResult> {
+    const request = await this.transcribeAudio(received);
+    const admission = this.conversationRuntime.admit(request.conversationId);
+    if (admission.kind === 'drive') {
+      return this.drive(admission.turn, request);
     }
+    const outcome = await this.join(admission.turn, request);
+    if (outcome.kind === 'drive') {
+      request.onDelivery?.('delivered');
+      return this.drive(outcome.turn, request);
+    }
+    return outcome.kind === 'joined' ? this.buildJoinedResult(request) : this.cancelledResult();
+  }
+
+  private async drive(turn: ConversationTurn, request: TurnRequest, resumed?: Resumption): Promise<TurnResult> {
+    try {
+      return await this.runTurn(turn, request, resumed);
+    } finally {
+      await turn.steeringSettled();
+      this.conversationRuntime.endTurn(request.conversationId, turn);
+    }
+  }
+
+  private cancelledResult(): TurnResult {
+    return { response: '', status: 'cancelled' };
+  }
+
+  /**
+   * Puts the message in the turn's inbox, where the CEO's next prompt reads it, and steers it into the prompt running
+   * when the CEO's agent takes steering. Resolves once the message joined the turn, was cancelled or drives the next one.
+   */
+  private async join(turn: ConversationTurn, request: TurnRequest): Promise<JoinOutcome> {
+    let settle!: (outcome: JoinOutcome) => void;
+    const outcome = new Promise<JoinOutcome>((resolve) => {
+      settle = resolve;
+    });
+    turn.enqueue(new PendingMessage(buildAttachmentsPrompt(request.prompt, request.attachments), request, settle));
+    this.logger.log(`[Message Joined] Conversation=${request.conversationId}, User=${request.userId}, Prompt="${previewForLog(request.prompt)}"`);
+    await this.keepOpenWork(turn, request.conversationId);
+    await this.steerInbox(turn, request);
+    return outcome;
+  }
+
+  private async keepOpenWork(turn: ConversationTurn, conversationId: string): Promise<void> {
+    const work = turn.openWork;
+    if (work) {
+      await this.openWork.update(conversationId, work.id, { updates: work.updates });
+    }
+  }
+
+  /**
+   * Steers the messages of the inbox into the CEO's prompt running, one steering at a time, while its agent takes them.
+   * What is left waits for the next prompt, unless the CEO is idle waiting for its delegates, which the message wakes.
+   */
+  private async steerInbox(turn: ConversationTurn, request: TurnRequest): Promise<void> {
+    const agentId = await this.agentRound.resolveAgentId(request.conversationId, request.agentRole);
+    while (turn.hasInbox && !turn.steering && this.conversationRuntime.acceptsSteering(request.conversationId, turn, agentId)) {
+      turn.steering = true;
+      try {
+        const steering = this.steer(turn, request, agentId);
+        turn.trackSteering(steering);
+        if (!await steering) {
+          break;
+        }
+      } finally {
+        turn.steering = false;
+      }
+    }
+    if (!turn.waiting) {
+      turn.markQueued();
+    }
+  }
+
+  private async steer(turn: ConversationTurn, request: TurnRequest, agentId: string): Promise<boolean> {
+    const conversationKey = request.conversationId;
+    const languagePrompt = await this.agentRound.buildLanguagePrompt(request.agentRole, request.agentRole);
+    const block = (await this.teamProfiles.build(conversationKey, request)).text;
+    const board = await this.ceoBoard.buildPrompt(request.conversationId);
+    const messages = turn.prompting ? turn.take() : [];
+    if (messages.length === 0) {
+      return false;
+    }
+    const receipts = this.conversationRuntime.takeAgentReceipts(conversationKey);
+    const steered = await this.conversationRuntime.steerCeo(
+      conversationKey,
+      turn,
+      agentId,
+      [`${block}\n${board}`, ...receipts.map(receipt => receipt.text), ...messages.map(message => buildUserMessagePrompt(message.text)), languagePrompt]
+        .filter(Boolean)
+        .join('\n\n'),
+    ).catch((error: unknown) => {
+      this.logger.warn(`[CEO Steering Failed] Conversation=${conversationKey}: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    });
+    if (!steered) {
+      this.conversationRuntime.restoreAgentReceipts(conversationKey, receipts);
+      if (turn.isCancelled) {
+        messages.forEach(message => message.cancel());
+      } else {
+        turn.putBack(messages);
+      }
+      return false;
+    }
+    turn.markSteeredReceipts(receipts);
+    turn.markRead(messages.map(message => message.text), true);
+    messages.forEach(message => message.reached('steered'));
+    this.logger.log(`[CEO Steered] Conversation=${conversationKey}, Messages=${messages.length}`);
+    return true;
   }
 
   /**
@@ -152,19 +259,21 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async runTurn(
-    conversationKey: string,
+    turn: ConversationTurn,
     request: TurnRequest,
     resumed?: Resumption,
   ): Promise<TurnResult> {
+    const conversationKey = request.conversationId;
     let session: SessionContext | undefined;
     let ceoPort: IAgentPort | undefined;
     let agentId: string | undefined;
     const currentCeoPort = () => ceoPort ?? this.conversationRuntime.getCeoPort(conversationKey);
     const finish = (status: TurnStatus, response: string, errorMessage?: string, attachments: readonly string[] = []) => {
+      const read = turn.read.length > 0 ? ` ${describeReadMessages(turn.read)}` : '';
       if (status === 'cancelled') {
-        this.conversationRuntime.addCeoNotice(conversationKey, 'Your previous turn was cancelled.');
+        this.conversationRuntime.addCeoNotice(conversationKey, `Your previous turn was cancelled.${read}`);
       } else if (status === 'failed') {
-        this.conversationRuntime.addCeoNotice(conversationKey, `Your previous turn failed: ${errorMessage}`);
+        this.conversationRuntime.addCeoNotice(conversationKey, `Your previous turn failed: ${errorMessage}${read}`);
       }
       return this.buildResult({
         ceoPort: currentCeoPort(),
@@ -181,11 +290,8 @@ export class ExecuteAgentTurnUseCase {
 
     try {
       agentId = await this.agentRound.resolveAgentId(request.conversationId, request.agentRole);
-      if (!resumed && await this.steerRunningCeo(conversationKey, agentId, request)) {
-        return await this.buildSteeredResult(conversationKey, request);
-      }
       return await this.runDelegationLoop(
-        conversationKey,
+        turn,
         agentId,
         request,
         finish,
@@ -214,7 +320,7 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private async runDelegationLoop(
-    conversationKey: string,
+    turn: ConversationTurn,
     agentId: string,
     request: TurnRequest,
     finish: (status: TurnStatus, response: string, errorMessage?: string, attachments?: readonly string[]) => Promise<TurnResult>,
@@ -224,6 +330,7 @@ export class ExecuteAgentTurnUseCase {
     },
     resumed?: Resumption,
   ): Promise<TurnResult> {
+    const conversationKey = request.conversationId;
     let session: SessionContext | undefined;
     let prompt = buildAttachmentsPrompt(request.prompt, request.attachments);
     const running = new RunningDelegations();
@@ -241,18 +348,16 @@ export class ExecuteAgentTurnUseCase {
         session = await this.agentRound.resolveSession(request);
         observers.onSessionResolved(session);
         const restored = await this.toResumedDelegation(resumed, request);
-        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey, running));
+        running.add(this.runDelegation.start(session, [restored], request, resumed.work.round, conversationKey));
         this.trackArtifacts(delegatedArtifacts, [restored]);
         await this.openWork.discardInterruptedRoots(request.conversationId);
-        const results = await running.nextResults();
-        if (results === undefined) {
-          return await finish('steered', '');
-        }
-        prompt = results;
+        prompt = await this.awaitResults(running, turn);
       } else if (resumedRoot) {
         prompt = await this.firstPromptOf(resumedRoot, request);
       }
       if (ceoWorkId) {
+        turn.keepWork(ceoWorkId, resumedRoot?.work.updates);
+        const updates = turn.openWork!.updates;
         await this.openWork.discardInterruptedRoots(request.conversationId);
         await this.openWork.open(request.conversationId, {
           id: ceoWorkId,
@@ -261,6 +366,7 @@ export class ExecuteAgentTurnUseCase {
           projectName: null,
           summary: '',
           taskSpec: resumedRoot?.work.taskSpec ?? prompt,
+          ...(updates.length > 0 ? { updates } : {}),
           ...(ceoAnswerDelivery ? { questions: ceoAnswerDelivery.questions } : {}),
           cwd: request.workspacePath,
           round: 1,
@@ -271,8 +377,9 @@ export class ExecuteAgentTurnUseCase {
         let deliveredNotices = 0;
         const { response, decision, requestResults } = await this.conversationRuntime.runOnCeo(
           conversationKey,
+          turn,
           agentId,
-          async (ceoPort, turn) => {
+          async (ceoPort, ceo) => {
             observers.onCeoPort(ceoPort);
             if (!session) {
               session = await this.agentRound.resolveSession(request);
@@ -282,10 +389,12 @@ export class ExecuteAgentTurnUseCase {
               );
             }
             const block = await this.teamProfiles.build(conversationKey, request);
-            // Each <agent_result> carries the status it left, so the board goes only with the round that opens the turn.
-            const board = round === 1 ? `${await this.ceoBoard.buildPrompt(request.conversationId)}\n` : '';
+            // Each <agent_result> carries the status it left, so the board goes only with the round that opens the turn, and
+            // with a message of the user, which may be about it.
+            const board = round === 1 || turn.hasInbox ? `${await this.ceoBoard.buildPrompt(request.conversationId)}\n` : '';
             const team = block.signature !== lastBlockSignature ? `${block.text}\n` : '';
-            prompt = `${team}${board}${prompt}`;
+            const receipts = this.conversationRuntime.takeAgentReceipts(conversationKey);
+            prompt = `${team}${board}${this.receiptsBlock(receipts)}${prompt}`;
             lastBlockSignature = block.signature;
             const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
             if (notices.length > 0) {
@@ -294,9 +403,13 @@ export class ExecuteAgentTurnUseCase {
             }
             const answerDelivery = ceoAnswerDelivery;
             ceoAnswerDelivery = undefined;
-            return this.runCeoTurn(ceoPort, prompt, request, turn, session, round === 1, ceoWorkId, answerDelivery);
+            try {
+              return await this.runCeoTurn(ceoPort, prompt, request, turn, ceo, session, round === 1, ceoWorkId, answerDelivery);
+            } catch (error) {
+              this.conversationRuntime.restoreAgentReceipts(conversationKey, receipts);
+              throw error;
+            }
           },
-          round === 1 ? request.onQueued : undefined,
         );
         this.conversationRuntime.acknowledgeCeoNotices(conversationKey, deliveredNotices);
 
@@ -324,25 +437,25 @@ export class ExecuteAgentTurnUseCase {
             }
             return await finish('failed', 'Delegation limit reached.', 'Max delegation rounds exceeded.');
           }
-          running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey, running));
+          running.add(this.runDelegation.start(session!, decision.delegations, request, round, conversationKey));
           this.trackArtifacts(delegatedArtifacts, decision.delegations);
         }
         if (decision.message) {
           request.onInterimMessage?.(decision.message);
         }
-        const results = await running.nextResults();
-        // Another turn replaced every agent this one was waiting for, and that turn answers the user.
-        if (results === undefined) {
-          return await finish('steered', '');
-        }
-        prompt = requestResults ? `${requestResults}\n\n${results}` : results;
+        const results = await this.awaitResults(running, turn);
+        prompt = [requestResults, results].filter(Boolean).join('\n\n');
       }
     } finally {
-      await this.runDelegation.stopRunning(running, conversationKey);
+      await this.runDelegation.stopRunning(running);
       if (ceoWorkId) {
         await this.openWork.close(request.conversationId, ceoWorkId);
       }
     }
+  }
+
+  private receiptsBlock(receipts: readonly AgentReceipt[]): string {
+    return receipts.map(receipt => `${receipt.text}\n\n`).join('');
   }
 
   private trackArtifacts(tracked: Set<string>, delegations: readonly ValidatedDelegation[]): void {
@@ -362,6 +475,7 @@ export class ExecuteAgentTurnUseCase {
       taskSpec: work.taskSpec,
       summary: work.summary,
       ...(work.artifactId ? { artifactId: work.artifactId } : {}),
+      ...(work.updates ? { updates: work.updates } : {}),
       sessionMode: 'resume',
       cwd: work.cwd,
       workId: work.id,
@@ -371,44 +485,37 @@ export class ExecuteAgentTurnUseCase {
   }
 
   private answerDeliveryOf({ work, answers }: Resumption): AnswerDelivery | undefined {
-    return answers && work.questions ? { workId: work.id, questions: work.questions, taskSpec: work.taskSpec } : undefined;
+    return answers && work.questions
+      ? { workId: work.id, questions: work.questions, taskSpec: work.taskSpec, ...(work.updates ? { updates: work.updates } : {}) }
+      : undefined;
   }
 
   /** An agent that asked gets its answers like any other; only one that stopped mid-round is told it was interrupted. */
   private async firstPromptOf({ work, answers }: Resumption, request: TurnRequest): Promise<string> {
     return answers
       ? buildUserAnswersPrompt(await this.agentQuestions.transcribe(request, answers))
-      : buildResumedWorkPrompt(work.taskSpec);
+      : buildResumedWorkPrompt(work.taskSpec, work.updates);
   }
 
-  private async steerRunningCeo(
-    conversationKey: string,
-    agentId: string,
-    request: TurnRequest,
-  ): Promise<boolean> {
-    const prompt = buildCeoSteeringPrompt(buildAttachmentsPrompt(request.prompt, request.attachments));
-    const languagePrompt = await this.agentRound.buildLanguagePrompt(request.agentRole, request.agentRole);
-    const block = (await this.teamProfiles.build(conversationKey, request)).text;
-    const board = await this.ceoBoard.buildPrompt(request.conversationId);
-    const steered = await this.conversationRuntime.steerCeo(
-      conversationKey,
-      agentId,
-      [`${block}\n${board}`, prompt, languagePrompt].filter(Boolean).join('\n\n'),
-    );
-    if (steered) {
-      this.logger.log(
-        `[CEO Steered] Conversation=${conversationKey}, User=${request.userId}, Prompt="${previewForLog(request.prompt)}"`,
-      );
-    }
-    return steered;
+  /**
+   * The CEO waits for its delegates' next results, or for a message of the user, which it reads at once: the turn stays
+   * `waiting` until the next prompt takes the inbox.
+   */
+  private async awaitResults(running: RunningDelegations, turn: ConversationTurn): Promise<string> {
+    turn.waiting = true;
+    const results = await running.nextResults(turn.arrival());
+    turn.throwIfCancelled();
+    return results;
   }
 
-  private async buildSteeredResult(conversationKey: string, request: TurnRequest): Promise<TurnResult> {
-    const ceoPort = this.conversationRuntime.getCeoPort(conversationKey)!;
+  private async buildJoinedResult(request: TurnRequest): Promise<TurnResult> {
+    const ceoPort = this.conversationRuntime.getCeoPort(request.conversationId);
     return {
       response: '',
       status: 'steered',
-      agentInfo: await this.agentRound.buildAgentInfo(ceoPort, request.agentRole, request.conversationId),
+      agentInfo: ceoPort
+        ? await this.agentRound.buildAgentInfo(ceoPort, request.agentRole, request.conversationId)
+        : { roleName: this.agentRegistry.getDisplayName(request.agentRole), agentName: this.agentPortFactory.defaultAgentId },
     };
   }
 
@@ -416,7 +523,8 @@ export class ExecuteAgentTurnUseCase {
     ceoPort: IAgentPort,
     prompt: string,
     request: TurnRequest,
-    turn: ActiveTurn,
+    turn: ConversationTurn,
+    ceo: ActiveTurn,
     session: SessionContext,
     isUserMessage: boolean,
     workId: string | undefined,
@@ -428,22 +536,52 @@ export class ExecuteAgentTurnUseCase {
       roleName: this.agentRegistry.getDisplayName(request.agentRole),
       conversationId: request.conversationId,
     };
-    const runRound = (text: string, isUserText = false, delivery?: AnswerDelivery) => this.retryCeoRound.execute(
-      request,
-      async retry => this.takeUserLanguage(await this.agentRound.run({
-        agentPort: ceoPort,
-        cwd: request.workspacePath,
-        role: request.agentRole,
-        requester,
-        prompt: retry ? buildTurnRetryPrompt(retry, text) : text,
+    /** Whether the CEO answers the user, which a delegation that only the user may start requires. */
+    let userInitiated = isUserMessage;
+    /**
+     * Each prompt carries the messages waiting in the inbox, and a prompt that failed is sent again with the messages
+     * steered into it, so a retry presents every message the attempt was given.
+     */
+    const runRound = (prompt: string, isUserText = false, delivery?: AnswerDelivery) => {
+      let text = prompt;
+      return this.retryCeoRound.execute(
         request,
-        turn,
-        session,
-        isUserMessage: isUserText,
-        answerDelivery: delivery,
-      })),
-      prepareRetryMessage,
-    );
+        async (retry) => {
+          turn.waiting = false;
+          const arrived = turn.isCancelled ? [] : turn.take();
+          if (arrived.length > 0) {
+            text = this.withUserMessages(text, arrived.map(message => message.text));
+            turn.markRead(arrived.map(message => message.text), false);
+            arrived.forEach(message => message.reached('delivered'));
+            userInitiated = true;
+          }
+          turn.prompting = true;
+          try {
+            return await this.takeUserLanguage(await this.agentRound.run({
+              agentPort: ceoPort,
+              cwd: request.workspacePath,
+              role: request.agentRole,
+              requester,
+              prompt: retry ? buildTurnRetryPrompt(retry, text) : text,
+              request,
+              turn: ceo,
+              session,
+              isUserMessage: isUserText || arrived.length > 0,
+              answerDelivery: delivery,
+            }));
+          } finally {
+            turn.prompting = false;
+            text = `${this.receiptsBlock(turn.takeSteeredReceipts())}${text}`;
+            const steered = turn.takeSteered();
+            if (steered.length > 0) {
+              text = this.withUserMessages(text, steered);
+              userInitiated = true;
+            }
+          }
+        },
+        prepareRetryMessage,
+      );
+    };
     const pending = new PendingRequestResults();
     const runCeo = async (text: string, isUserText = false, delivery?: AnswerDelivery) => pending.keep(await this.runAgentRequests.resolve(
       await runRound(pending.before(text), isUserText, delivery),
@@ -458,11 +596,8 @@ export class ExecuteAgentTurnUseCase {
 
     const repairPauses = new RetryBudget();
 
-    /**
-     * `userInitiated` is whether the CEO is answering the user, which a delegation that only the user may start requires.
-     * A response that stays invalid after its repairs waits for a retry, which asks for the repair again with a new budget.
-     */
-    const decide = async (response: string, userInitiated: boolean, attempt = 1): Promise<{ response: string; decision: ValidatedDecision }> => {
+    /** A response that stays invalid after its repairs waits for a retry, which asks for the repair again with a new budget. */
+    const decide = async (response: string, attempt = 1): Promise<{ response: string; decision: ValidatedDecision }> => {
       const decision = await this.delegationValidator.decide(response, request, userInitiated);
       if (decision.kind !== 'invalid') {
         return { response, decision };
@@ -481,21 +616,26 @@ export class ExecuteAgentTurnUseCase {
         `[Delegation Repair] Conversation=${session.conversationId}, Attempt=${attempt}: ${decision.reason}`,
       );
       request.onDraft?.('');
-      return decide(await runCeo(repair), userInitiated, nextAttempt);
+      return decide(await runCeo(repair), nextAttempt);
     };
 
-    const settle = async (response: string, userInitiated: boolean): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> => {
-      const settled = await decide(response, userInitiated);
+    const settle = async (response: string): Promise<{ response: string; decision: CeoRoundDecision; requestResults?: string }> => {
+      const settled = await decide(response);
       if (settled.decision.kind !== 'ask') {
         const requestResults = pending.take();
         return { response: settled.response, decision: settled.decision, ...(requestResults ? { requestResults } : {}) };
       }
 
       const answers = await this.agentQuestions.ask(request, this.agentQuestions.askerFor(request.agentRole, undefined), settled.decision.message, settled.decision.questions, workId);
-      return settle(await runCeo(buildUserAnswersPrompt(answers), true), true);
+      userInitiated = true;
+      return settle(await runCeo(buildUserAnswersPrompt(answers), true));
     };
 
-    return settle(await runCeo(prompt, isUserMessage, answerDelivery), isUserMessage);
+    return settle(await runCeo(prompt, isUserMessage, answerDelivery));
+  }
+
+  private withUserMessages(prompt: string, messages: readonly string[]): string {
+    return [prompt.trimEnd(), ...messages.map(buildUserMessagePrompt)].filter(Boolean).join('\n\n');
   }
 
   /**

@@ -1,11 +1,11 @@
 import { BookOpenText, Check, ChevronRight, LoaderCircle, PencilLine, X } from 'lucide-react';
 import { Fragment } from 'react';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import type { ActivityEntry } from '../../conversations/group-entries.js';
 import { agentIdentity } from '../../lib/agent-identity.js';
 import { stepLabel, toolLabel } from '../../lib/tool-label.js';
-import { skillsPath } from '../skills/skill-paths.js';
+import { settingsState, skillsPath } from '../settings-hub/settings-paths.js';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/collapsible.js';
 
 import { Markdown } from './markdown.js';
@@ -24,6 +24,7 @@ function ToolStatusIcon({ status }: { readonly status: Extract<ActivityEntry, { 
 
 /** A skill the agent read or wrote, each name linking to the skill. */
 function SkillStep({ step }: { readonly step: Extract<ActivityEntry, { type: 'skill' }> }) {
+  const state = settingsState(useLocation());
   const failed = step.status === 'failed';
   const Icon = step.action === 'read' ? BookOpenText : PencilLine;
   let verb = 'Read';
@@ -38,7 +39,7 @@ function SkillStep({ step }: { readonly step: Extract<ActivityEntry, { type: 'sk
         {step.names.map((name, index) => (
           <Fragment key={name}>
             {index > 0 && ', '}
-            <Link to={skillsPath(name)} className="font-mono text-[12.5px] text-foreground underline-offset-2 hover:underline">{name}</Link>
+            <Link to={skillsPath(name)} state={state} className="font-mono text-[12.5px] text-foreground underline-offset-2 hover:underline">{name}</Link>
           </Fragment>
         ))}
       </span>

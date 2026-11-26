@@ -1,4 +1,4 @@
-import type { ArtifactSection, ArtifactStatus } from '../../artifacts/models/artifact.model.js';
+import type { ArtifactSection, ArtifactStatus, RefinementKind } from '../../artifacts/models/artifact.model.js';
 import type { AgentInterface } from '../models/agent-interface.model.js';
 
 
@@ -26,7 +26,7 @@ export interface DelegationContract {
   /** The CEO may delegate to the agent only in a turn that answers the user's message or answers, never on its own after an agent result. */
   readonly userInitiatedOnly?: true;
   /** The refinement the role settles on the artifacts it is delegated. */
-  readonly refines?: 'business' | 'technical';
+  readonly refines?: RefinementKind;
   /** Absent, a delegation of the role leaves the status of its task alone. */
   readonly statusFlow?: DelegationStatusFlow;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@rstest/core';
 
-import { buildPreviousTurnPrompt, describeDelegation } from './previous-turn.prompt.js';
+import { buildPreviousTurnPrompt, describeDelegation, describeReadMessages } from './previous-turn.prompt.js';
 
 
 describe('buildPreviousTurnPrompt', () => {
@@ -14,5 +14,11 @@ describe('buildPreviousTurnPrompt', () => {
   it('should name a delegation by its role, project and task', () => {
     expect(describeDelegation('DEVELOPER', 'shop', 'Build it')).toBe('DEVELOPER (Project: shop, Task: "Build it")');
     expect(describeDelegation('GIT_OPS', null, 'Clone')).toBe('GIT_OPS (Project: none, Task: "Clone")');
+  });
+});
+
+describe('describeReadMessages', () => {
+  it('should quote each message the turn read, in order', () => {
+    expect(describeReadMessages(['Use JWT.', 'Also "fast"'])).toBe('It had read these messages the user sent while it ran: "Use JWT.", "Also \\"fast\\"".');
   });
 });

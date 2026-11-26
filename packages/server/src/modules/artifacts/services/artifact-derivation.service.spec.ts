@@ -12,8 +12,8 @@ describe('ArtifactDerivationService', () => {
       buildArtifact({ id: 'T-2', parentId: 'F-1', status: 'ready' }),
       buildArtifact({ id: 'F-2', type: 'feature', status: 'in_progress' }),
       buildArtifact({ id: 'T-3', parentId: 'F-2', status: 'done' }),
-      buildArtifact({ id: 'T-4', status: 'backlog', refinement: { business: 'skipped', technical: 'done' } }),
-      buildArtifact({ id: 'T-5', status: 'backlog', refinement: { business: 'pending', technical: 'done' } }),
+      buildArtifact({ id: 'T-4', status: 'backlog', refinement: { business: 'skipped', design: 'skipped', technical: 'done' } }),
+      buildArtifact({ id: 'T-5', status: 'backlog', refinement: { business: 'pending', design: 'skipped', technical: 'done' } }),
     ]);
   }
 

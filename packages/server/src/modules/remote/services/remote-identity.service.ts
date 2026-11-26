@@ -1,5 +1,5 @@
 import { encodeFingerprint } from '@agent-remote-control/protocol/fingerprint';
-import { deriveInstanceId } from '@agent-remote-control/protocol/remote-link';
+import { deriveInstanceId, trustedSignalingBaseUrl } from '@agent-remote-control/protocol/remote-link';
 import { registrationPayload, SIGNALING_HOST_PATH } from '@agent-remote-control/protocol/signaling';
 import { Inject, Injectable } from '@nestjs/common';
 import * as x509 from '@peculiar/x509';
@@ -8,12 +8,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { DataDirectoryService } from '../../paths/services/data-directory.service.js';
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import { ILockedFilesPort, type LockedFileOptions } from '../../storage/ports/locked-files.port.js';
 import type { RemoteIdentity } from '../models/remote-identity.model.js';
 
 
-/** Hosts that `REMOTE_URL` may reach over plain HTTP: this machine only, for development. */
-const LOOPBACK_HOSTNAMES: ReadonlySet<string> = new Set(['localhost', '127.0.0.1', '[::1]']);
 const CERTIFICATE_YEARS = 20;
 const SIGNING_ALGORITHM = { name: 'ECDSA', namedCurve: 'P-256', hash: 'SHA-256' };
 const IDENTITY_FILES: LockedFileOptions = { mode: 0o600, directoryMode: 0o700 };
@@ -30,6 +29,7 @@ export class RemoteIdentityService {
   constructor(
     private readonly dataDirectory: DataDirectoryService,
     @Inject(ILockedFilesPort) private readonly files: ILockedFilesPort,
+    @Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort,
   ) {}
 
   /**
@@ -37,7 +37,7 @@ export class RemoteIdentityService {
    * access token, so reaching this host through one is a choice of trust.
    */
   isEnabled(): boolean {
-    return process.env.REMOTE_ENABLED === 'true';
+    return this.settings.get('REMOTE_ENABLED');
   }
 
   /**
@@ -46,14 +46,7 @@ export class RemoteIdentityService {
    * URL, or an HTTP one of this machine.
    */
   baseUrl(): string | null {
-    let url: URL;
-    try {
-      url = new URL(process.env.REMOTE_URL?.trim() ?? '');
-    } catch {
-      return null;
-    }
-    const trusted = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTNAMES.has(url.hostname));
-    return trusted ? url.href.replace(/\/+$/, '') : null;
+    return trustedSignalingBaseUrl(this.settings.get('REMOTE_URL'));
   }
 
   signalingUrl(baseUrl: string): string {

@@ -13,6 +13,12 @@ describe('artifact-board skill', () => {
     expect(ARTIFACT_BOARD_SKILL).toMatchObject({ name: 'artifact-board', roles: ['CEO'] });
   });
 
+  it('should make an initiative across several projects one feature linking them', () => {
+    expect(skill).toContain('Features group the tasks of an initiative and link the projects it spans');
+    expect(skill).toContain('A project folder may hold several nested git repositories, and a task in it may change any of them.');
+    expect(skill).toContain('is one feature linking them, never one feature per project.');
+  });
+
   describe('adding a request', () => {
     it('should add a request to an open artifact whose status still allows it', () => {
       expect(skill).toContain('(`backlog`, `ready`, or `changes_requested` for a correction)');
@@ -39,7 +45,7 @@ describe('artifact-board skill', () => {
     });
 
     it('should keep a task ready only while no refinement is pending, and park a refined task with blocked', () => {
-      expect(skill).toContain('keeps a task `ready` exactly while neither refinement is pending (a `ready` task whose refinement is set back to `pending` returns to the `backlog`)');
+      expect(skill).toContain('keeps a task `ready` exactly while no refinement is pending (a `ready` task whose refinement is set back to `pending` returns to the `backlog`)');
       expect(skill).toContain('It is also how a refined task is parked, since `backlog` and `ready` follow its refinements.');
     });
 

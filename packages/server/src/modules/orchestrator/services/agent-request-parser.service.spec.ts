@@ -69,7 +69,7 @@ describe('AgentRequestParserService', () => {
         '<section name="overview">Why we sell online.</section>',
         '<section name="glossary">Cart</section>',
         '</artifact_create>',
-        '<artifact_create type="task" title="Cart" parent="checkout" depends_on="t-1,api" technical_refinement="skipped"/>',
+        '<artifact_create type="task" title="Cart" parent="checkout" depends_on="t-1,api" design_refinement="Pending" technical_refinement="skipped"/>',
       ].join('\n');
 
       expect(requestsOf(response)).toEqual([
@@ -85,8 +85,12 @@ describe('AgentRequestParserService', () => {
             { section: 'glossary', content: 'Cart', mode: 'replace' },
           ],
         },
-        { kind: 'create', type: 'task', title: 'Cart', parent: 'checkout', dependsOn: ['T-1', 'api'], refinement: { technical: 'skipped' }, sections: [] },
+        { kind: 'create', type: 'task', title: 'Cart', parent: 'checkout', dependsOn: ['T-1', 'api'], refinement: { design: 'pending', technical: 'skipped' }, sections: [] },
       ]);
+    });
+
+    it('should read the projects of a feature as a list, trimmed and without empty names', () => {
+      expect(requestsOf('<artifact_create type="feature" title="Checkout" projects=" shop, web ,,"/>')).toEqual([{ kind: 'create', type: 'feature', title: 'Checkout', projects: ['shop', 'web'], sections: [] }]);
     });
 
     it('should clear the parent and dependencies written as none', () => {
@@ -98,7 +102,7 @@ describe('AgentRequestParserService', () => {
       ['<artifact_create type="task"/>', '<artifact_create> needs a title attribute.'],
       ['<artifact_create type="task" title="x" business_refinement="maybe"/>', 'The business_refinement attribute is one of: pending, done, skipped.'],
       ['<artifact_create type="task" title="x">loose text</artifact_create>', 'Text outside a <section> is not kept. Put each piece of content inside the <section name="..."> it belongs to, and set fields such as branch, status or title as attributes of the tag itself.'],
-      ['<artifact_create type="task" title="x"><section name="notes">x</section></artifact_create>', 'Every <section> needs a name among: overview, user_stories, scope, business_rules, flows, acceptance_criteria, test_cases, glossary, pending_decisions, open_questions, technical_solution, implementation_notes, review_findings, test_report.'],
+      ['<artifact_create type="task" title="x"><section name="notes">x</section></artifact_create>', 'Every <section> needs a name among: overview, user_stories, scope, business_rules, flows, acceptance_criteria, test_cases, glossary, pending_decisions, open_questions, ux_design, technical_solution, implementation_notes, review_findings, test_report.'],
       ['<artifact_create type="task" title="x"><section name="scope" mode="append">x</section></artifact_create>', 'Unknown attribute "mode" in <section name="scope" mode="append">. Use only "name".'],
       ['<artifact_create type="task" title="x"><section name="scope">x</artifact_create>', 'Every <section> must be closed with </section> before the next <section> starts.'],
       ['<artifact_create type="task" title="x"></section></artifact_create>', 'Found </section> without its opening <section> tag.'],
@@ -110,6 +114,18 @@ describe('AgentRequestParserService', () => {
   });
 
   describe('update', () => {
+    it('should read the projects of a feature, an empty list included, apart from the project of a task', () => {
+      expect(requestsOf('<artifact_update id="F-1" projects="shop,web"/><artifact_update id="F-2" projects=""/><artifact_update id="T-1" project="web"/>')).toEqual([
+        { kind: 'update', id: 'F-1', projects: ['shop', 'web'], sections: [], pullRequests: [] },
+        { kind: 'update', id: 'F-2', projects: [], sections: [], pullRequests: [] },
+        { kind: 'update', id: 'T-1', project: 'web', sections: [], pullRequests: [] },
+      ]);
+    });
+
+    it('should read the repository of a pull request', () => {
+      expect(requestsOf('<artifact_update id="T-1"><pull_request url="https://x/pull/1" repository="repositories/api"/><pull_request url="https://x/pull/2"/></artifact_update>')).toEqual([{ kind: 'update', id: 'T-1', sections: [], pullRequests: [{ url: 'https://x/pull/1', repository: 'repositories/api' }, { url: 'https://x/pull/2' }] }]);
+    });
+
     it('should read fields, sections and pull requests', () => {
       const response = [
         '<artifact_update id="t-3" title="New" status="IN_REVIEW" parent="F-2" project="web" depends_on="T-1" branch="feat/t-3" note="PR opened">',
@@ -154,7 +170,7 @@ describe('AgentRequestParserService', () => {
       ['<artifact_update id="T-1"><pull_request url="https://x"></artifact_update>', 'Write a pull request as a self-closing tag: <pull_request url="..." state="open"/>.'],
       ['<artifact_update id="T-1"><pull_request title="x"/></artifact_update>', 'Every <pull_request> needs its url.'],
       ['<artifact_update id="T-1"><pull_request url="https://x" state="draft"/></artifact_update>', 'The state of a <pull_request> is one of: open, merged, closed.'],
-      ['<artifact_update id="T-1"><pull_request url="https://x" by="me"/></artifact_update>', 'Unknown attribute "by" in <pull_request url="https://x" by="me"/>. Use only "url", "title", "state".'],
+      ['<artifact_update id="T-1"><pull_request url="https://x" by="me"/></artifact_update>', 'Unknown attribute "by" in <pull_request url="https://x" by="me"/>. Use only "url", "title", "repository", "state".'],
     ])('should reject %s', (response, reason) => {
       expect(reasonOf(response)).toBe(reason);
     });

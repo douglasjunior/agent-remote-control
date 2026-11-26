@@ -33,14 +33,26 @@ describe('AgentProtocolService', () => {
     });
   });
 
+  describe('finalResponseBlocks', () => {
+    it.each([
+      ['no envelope', 'Reading.\n\nDone.', 0],
+      ['one envelope with narration around it', 'Wrapping up. <final_response>Report</final_response> Bye.', 1],
+      ['one envelope missing its closing tag', '<final_response>Report', 1],
+      ['two envelopes', '<final_response>One.</final_response>\nNarration\n<final_response>Two.</final_response>', 2],
+      ['an empty text', '', 0],
+    ])('should count %s', (_name, written, expected) => {
+      expect(service.finalResponseBlocks(written)).toBe(expected);
+    });
+  });
+
   describe('stream', () => {
     it('should pass what is not a thought through', () => {
       const { read, activities, answers } = reading();
       const tool: AgentActivity = { kind: 'tool', toolCallId: 'c1', title: 'Read', status: 'pending' };
 
-      read(tool, { kind: 'steering', id: 's', text: 'more' }, { kind: 'cancelled', id: 'x' });
+      read(tool, { kind: 'cancelled', id: 'x' });
 
-      expect(activities).toHaveLength(3);
+      expect(activities).toHaveLength(2);
       expect(activities[0]).toBe(tool);
       expect(answers).toEqual([]);
     });

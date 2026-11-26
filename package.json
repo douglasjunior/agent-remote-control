@@ -39,6 +39,7 @@
     "start": "pnpm --filter @agent-remote-control/server start",
     "start:debug": "pnpm --filter @agent-remote-control/server start:debug",
     "start:prod": "pnpm --filter @agent-remote-control/server start:prod",
+    "migrate:legacy": "pnpm --filter @agent-remote-control/server migrate:legacy",
     "ts": "pnpm -r run ts",
     "format": "eslint packages/ --fix",
     "lint": "eslint packages/ --cache --cache-location .eslintcache/",

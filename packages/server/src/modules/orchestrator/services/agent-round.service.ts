@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+
 
 import { IAgentPortFactory } from '../../agent/ports/agent-port-factory.port.js';
 import type { AgentMcpServer, AgentUsage, IAgentPort } from '../../agent/ports/agent.port.js';
@@ -18,7 +20,7 @@ import { IAgentSettingsStorePort } from '../ports/agent-settings-store.port.js';
 import { IAgentSkillsPort } from '../ports/agent-skills.port.js';
 import { IPreferencesStorePort } from '../ports/preferences-store.port.js';
 import { ISessionStorePort } from '../ports/session-store.port.js';
-import { buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
+import { buildFinalResponseCountRepairPrompt, buildProtocolRepairPrompt } from '../prompts/protocol-repair.prompt.js';
 import { buildLostSessionTaskPrompt } from '../prompts/resumed-work.prompt.js';
 import { buildSkillCatalogPrompt } from '../prompts/skill-catalog.prompt.js';
 import {
@@ -34,6 +36,7 @@ import { AgentProtocolService } from './agent-protocol.service.js';
 import { AgentRequestParserService } from './agent-request-parser.service.js';
 import { AgentToolSessionsService } from './agent-tool-sessions.service.js';
 import { OpenWorkService } from './open-work.service.js';
+import { SteeringSupportService } from './steering-support.service.js';
 
 
 /** A prompt that depends on the session the agent reached, built once the round knows it. */
@@ -90,6 +93,7 @@ export class AgentRoundService {
     @Inject(IAgentSkillsPort) private readonly agentSkills: IAgentSkillsPort,
     private readonly requestParser: AgentRequestParserService,
     private readonly toolSessions: AgentToolSessionsService,
+    private readonly steeringSupport: SteeringSupportService,
   ) {}
 
   /**
@@ -99,7 +103,7 @@ export class AgentRoundService {
    * session it creates or loads gets the agent tools of the requester when the agent takes them, and the system prompt,
    * re-entry note and skill catalog are written for the interface of the session. Requests
    * written outside the final response go in front of it, as written, for the caller to carry out with the rest; any
-   * other protocol tag written there gets one repair prompt.
+   * other protocol tag written there, or more than one final response block, gets one repair prompt.
    */
   async run({
     agentPort,
@@ -124,6 +128,7 @@ export class AgentRoundService {
     try {
       turn.throwIfCancelled();
       await agentPort.connect();
+      this.steeringSupport.record(agentPort.agentName, agentPort.supportsSteering);
       turn.throwIfCancelled();
 
       const toolSession: AgentToolSession = { requester, onSkill: activity => request.onActivity?.(activity, requester.role) };
@@ -137,12 +142,16 @@ export class AgentRoundService {
       }
       const sessionState = opened.state;
       const agentInterface = this.interfaceOf(agentPort);
-      const systemPromptPending = sessionState === 'new' || (isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role));
+      const everyTurn = isUserMessage && this.agentRegistry.isSystemPromptEveryTurn(role);
+      const systemPrompt = sessionState === 'live' && !everyTurn ? '' : await this.buildSystemPrompt(role, agentInterface);
+      const promptHash = systemPrompt ? this.fingerprint(systemPrompt) : undefined;
+      const changed = sessionState === 'resumed' && !everyTurn && opened.promptHash !== promptHash;
+      const systemPromptPending = sessionState === 'new' || everyTurn || changed;
       const fullPrompt = [
-        systemPromptPending ? await this.buildSystemPrompt(role, agentInterface) : '',
+        systemPromptPending ? systemPrompt : '',
         sessionState === 'resumed' ? this.agentRegistry.getReentryNote(role, agentInterface) : '',
         sessionState === 'resumed' && !systemPromptPending ? await this.buildSkillCatalog(role, agentInterface) : '',
-        sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec) : '',
+        sessionState === 'new' && answerDelivery ? buildLostSessionTaskPrompt(answerDelivery.taskSpec, answerDelivery.updates) : '',
         typeof prompt === 'string' ? prompt : await prompt(opened),
         await this.buildLanguagePrompt(role, request.agentRole),
       ].filter(Boolean).join('\n\n');
@@ -155,11 +164,14 @@ export class AgentRoundService {
         ...(role === request.agentRole && { onAnswer: answer => request.onDraft?.(this.agentProtocol.visibleReply(answer)) }),
       });
       let answerRecorded: Promise<void> | undefined;
+      let sentHash = systemPromptPending ? promptHash : undefined;
       const hearAnswer = (): void => {
-        if (this.unanswered.delete(agentPort)) {
-          answerRecorded = this.recordAnswered(session, agentPort, key).catch((error: unknown) => {
+        const answered = this.unanswered.delete(agentPort);
+        if (answered || sentHash) {
+          answerRecorded = this.recordAnswered(session, agentPort, key, sentHash).catch((error: unknown) => {
             this.logger.error(`[Session Record Failed] Role=${role}: ${error instanceof Error ? error.message : String(error)}`);
           });
+          sentHash = undefined;
         }
       };
       unsubscribeActivity = agentPort.onActivity((activity) => {
@@ -174,27 +186,38 @@ export class AgentRoundService {
       if (answerDelivery) {
         await this.openWork.update(request.conversationId, answerDelivery.workId, { questions: undefined });
       }
-      this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, Interface=${agentInterface}, SystemPrompt=${systemPromptPending ? 'yes' : 'no'}, Chars=${fullPrompt.length}`);
+      this.logger.log(`[Agent Prompt] Role=${role}, Session=${sessionState}, Interface=${agentInterface}, SystemPrompt=${this.describeSystemPrompt(systemPromptPending, changed)}, Chars=${fullPrompt.length}`);
       let written = await this.promptAgent(agentPort, fullPrompt, role, onPrompt);
       hearAnswer();
       await answerRecorded;
-      const stray = this.agentProtocol.strayTags(written.all);
       let strayRequests = '';
-      if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
-        this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
-        strayRequests = this.strayRequests(written.all, this.agentProtocol.finalResponse(written.last));
-      } else if (stray.length > 0) {
-        this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
+      let repairPrompt: string | undefined;
+      const blocks = this.agentProtocol.finalResponseBlocks(written.last);
+      if (blocks > 1) {
+        this.logger.warn(`[Protocol Repair] Role=${role}: ${blocks} final response blocks`);
+        repairPrompt = buildFinalResponseCountRepairPrompt(blocks);
+      } else {
+        const stray = this.agentProtocol.strayTags(written.all);
+        if (stray.length > 0 && stray.every(tag => this.isRequestTag(tag))) {
+          this.logger.log(`[Stray Requests] Role=${role}: ${stray.join(', ')} outside the final response, carried out`);
+          strayRequests = this.strayRequests(written.all, this.agentProtocol.finalResponse(written.last));
+        } else if (stray.length > 0) {
+          this.logger.warn(`[Protocol Repair] Role=${role}: ${stray.join(', ')} outside the final response`);
+          repairPrompt = buildProtocolRepairPrompt(stray);
+        }
+      }
+      if (repairPrompt !== undefined) {
         if (role === request.agentRole) {
           request.onDraft?.('');
         }
         turn.throwIfCancelled();
-        written = await this.promptAgent(agentPort, buildProtocolRepairPrompt(stray), role, onPrompt);
+        written = await this.promptAgent(agentPort, repairPrompt, role, onPrompt);
       }
 
       const finalResponse = this.agentProtocol.finalResponse(written.last);
       const response = strayRequests ? `${strayRequests}\n\n${finalResponse}` : finalResponse;
       this.logger.log(`[Agent Response] Role=${role}, Length=${response.length}: "${previewForLog(response)}"`);
+      this.logger.log(`[Agent Response Text] Role=${role}, Length=${response.length}:\n${response}`);
       return response;
     } finally {
       unsubscribeActivity?.();
@@ -250,11 +273,18 @@ export class AgentRoundService {
       this.unanswered.add(agentPort);
       return { state: 'new' };
     }
-    return stored?.workEndedAt ? { state: 'resumed', workEndedAt: stored.workEndedAt } : { state: 'resumed' };
+    return {
+      state: 'resumed',
+      ...(stored?.workEndedAt && { workEndedAt: stored.workEndedAt }),
+      ...(stored?.promptHash && { promptHash: stored.promptHash }),
+    };
   }
 
-  /** Takes the `unanswered` mark off the binding of the session the port holds, unless another session replaced it in the store. */
-  private async recordAnswered(session: SessionContext, agentPort: IAgentPort, key: AgentSessionKey): Promise<void> {
+  /**
+   * Takes the `unanswered` mark off the binding of the session the port holds and records on it the fingerprint of the
+   * system prompt the agent just received, unless another session replaced it in the store.
+   */
+  private async recordAnswered(session: SessionContext, agentPort: IAgentPort, key: AgentSessionKey, promptHash: string | undefined): Promise<void> {
     const sessionId = agentPort.currentSessionId;
     await this.updateBinding(session, (latest) => {
       const binding = latest.agentSessions.find(agentSession => this.isSameAgentSession(agentSession, key) && agentSession.sessionId === sessionId);
@@ -262,7 +292,8 @@ export class AgentRoundService {
         return undefined;
       }
       const { unanswered, ...answered } = binding;
-      return unanswered ? answered : undefined;
+      const hashChanged = promptHash !== undefined && promptHash !== binding.promptHash;
+      return unanswered || hashChanged ? { ...answered, ...(promptHash && { promptHash }) } : undefined;
     });
   }
 
@@ -395,6 +426,18 @@ export class AgentRoundService {
   /** The interface of the session the port holds, which the prompts it receives and the skills it reads are written for. */
   interfaceOf(agentPort: IAgentPort): AgentInterface {
     return this.toolSessions.interfaceOf(agentPort);
+  }
+
+  /** A short hash of the exact text a session was sent as its system prompt, so a later change to it is told apart. */
+  private fingerprint(systemPrompt: string): string {
+    return createHash('sha256').update(systemPrompt).digest('hex').slice(0, 16);
+  }
+
+  private describeSystemPrompt(sent: boolean, changed: boolean): string {
+    if (!sent) {
+      return 'no';
+    }
+    return changed ? 'yes (changed)' : 'yes';
   }
 
   /** The system prompt of the role, followed by the catalog of its skills when it has any or writes them. */

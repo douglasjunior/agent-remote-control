@@ -121,14 +121,24 @@ describe('ClaudeCodeAdapter', () => {
       expect(spawnCall(spawn).options.env?.SLASH_COMMAND_TOOL_CHAR_BUDGET).toBe('100000');
     });
 
-    it('should keep a budget the user already set', async () => {
+    it('should set the budget over one the environment already has', async () => {
       process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET = '20000';
       const { adapter, spawn } = buildAdapter();
 
       await adapter.connect();
 
-      expect(spawnCall(spawn).options.env?.SLASH_COMMAND_TOOL_CHAR_BUDGET).toBe('20000');
+      expect(spawnCall(spawn).options.env?.SLASH_COMMAND_TOOL_CHAR_BUDGET).toBe('100000');
       delete process.env.SLASH_COMMAND_TOOL_CHAR_BUDGET;
+    });
+  });
+
+  describe('artifacts', () => {
+    it('should enable Claude Code artifacts in the session', async () => {
+      const { adapter, spawn } = buildAdapter();
+
+      await adapter.connect();
+
+      expect(spawnCall(spawn).options.env?.CLAUDE_CODE_ARTIFACT).toBe('1');
     });
   });
 

@@ -12,6 +12,7 @@ export type AnswerDelivery = {
   readonly questions: OpenWorkQuestions;
   /** The first prompt does not carry the task, which a session created in place of the lost one would not know. */
   readonly taskSpec: string;
+  readonly updates?: readonly string[];
 };
 
 /** A delegation that passed every check, with the folder its agent runs in. */
@@ -22,6 +23,8 @@ export type ValidatedDelegation = DelegationResult & {
   /** What the agent receives first, in place of the task. */
   readonly firstPrompt?: string;
   readonly answerDelivery?: AnswerDelivery;
+  /** The instructions the work received after its task before a restart stopped it. */
+  readonly updates?: readonly string[];
 };
 
 export type ValidatedDecision =

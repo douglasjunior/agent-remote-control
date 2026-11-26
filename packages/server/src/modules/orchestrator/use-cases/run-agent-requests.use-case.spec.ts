@@ -130,9 +130,9 @@ describe('RunAgentRequestsUseCase', () => {
       '<request_results>',
       '<request_result request="invalid" status="error">\nName the artifact. (in <artifact_read>)\n</request_result>',
       '<request_result request="list" status="ok">',
-      '- F-1 [feature] "Checkout" · status: ready · project: shop · refinement: business done, technical done',
-      '- T-1 [task] "API" · status: ready · project: shop · parent: F-1 · refinement: business done, technical done · with: DEVELOPER',
-      '- T-3 [task] "Docs" · status: ready · project: shop · refinement: business done, technical done',
+      '- F-1 [feature] "Checkout" · status: ready · projects: shop · refinement: business done, design done, technical done',
+      '- T-1 [task] "API" · status: ready · project: shop · parent: F-1 · refinement: business done, design done, technical done · with: DEVELOPER',
+      '- T-3 [task] "Docs" · status: ready · project: shop · refinement: business done, design done, technical done',
       '</request_result>',
       '</request_results>',
       'Some requests failed, for the reasons above. Before writing them again, check their grammar in your skills (the [SKILLS] list of your instructions).',
@@ -200,10 +200,19 @@ describe('RunAgentRequestsUseCase', () => {
         { kind: 'create', type: 'task', title: 'Loose', parent: null, project: 'web', dependsOn: ['T-3'], sections: [] },
       ], as('PRODUCT_OWNER'));
 
-      expect(await artifacts.service.get(CONVERSATION, 'F-2')).toMatchObject({ sections: { overview: 'Find products.' }, refinement: { business: 'done', technical: 'pending' } });
+      expect(await artifacts.service.get(CONVERSATION, 'F-2')).toMatchObject({ sections: { overview: 'Find products.' }, refinement: { business: 'done', design: 'skipped', technical: 'pending' } });
       expect(await artifacts.service.get(CONVERSATION, 'T-4')).toMatchObject({ parentId: 'F-2', projectName: 'shop', history: [{ actor: { kind: 'agent', role: 'PRODUCT_OWNER' } }] });
       expect(await artifacts.service.get(CONVERSATION, 'T-5')).toMatchObject({ parentId: 'F-2', dependsOn: ['T-4'] });
       expect(await artifacts.service.get(CONVERSATION, 'T-6')).toMatchObject({ parentId: null, projectName: 'web', dependsOn: ['T-3'] });
+    });
+
+    it('should create a feature with several projects and tell them in the result', async () => {
+      const { useCase, artifacts } = setup();
+
+      const results = (await useCase.execute([{ kind: 'create', type: 'feature', title: 'Search', projects: ['shop', 'web'], sections: [] }], as('PRODUCT_OWNER'))).text;
+
+      expect(results).toContain('Created feature F-2 "Search" in projects shop, web, status backlog.');
+      expect(await artifacts.service.get(CONVERSATION, 'F-2')).toMatchObject({ projectName: null, projectNames: ['shop', 'web'] });
     });
 
     it.each([
@@ -253,6 +262,30 @@ describe('RunAgentRequestsUseCase', () => {
 
       expect(results).toContain('<request_result request="update" id="T-1" status="ok">\nUpdated T-1; its status is ready.');
       expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ branch: 'feat/t-1', sections: { implementation_notes: 'Done.' } });
+    });
+
+    it('should let an agent that writes projects replace the projects of a feature, and refuse a project its tasks work in to be dropped', async () => {
+      const { useCase, artifacts } = setup();
+
+      const results = (await useCase.execute([update('F-1', { projects: ['shop', 'web'] }), update('F-1', { projects: ['web'] })], as('PRODUCT_OWNER'))).text;
+
+      expect(results).toContain('<request_result request="update" id="F-1" status="ok">\nUpdated F-1;');
+      expect(results).toContain('F-1 still has tasks in "shop" (T-1, T-2), so it keeps that project');
+      expect(await artifacts.service.get(CONVERSATION, 'F-1')).toMatchObject({ projectNames: ['shop', 'web'] });
+    });
+
+    it('should refuse the projects of a feature to an agent that does not write projects', async () => {
+      const { useCase } = setup();
+
+      expect((await useCase.execute([update('F-1', { projects: ['web'] })], as('UX_DESIGNER'))).text).toContain('status="error">\nYou cannot change project.');
+    });
+
+    it('should link a pull request with the repository of the project it changes', async () => {
+      const { useCase, artifacts } = setup();
+
+      await useCase.execute([update('T-1', { pullRequests: [{ url: 'https://x/pull/1', repository: 'repositories/api' }] })], as('DEVELOPER', { delegationId: 'dev-1', artifactId: 'T-1' }));
+
+      expect(await artifacts.service.get(CONVERSATION, 'T-1')).toMatchObject({ pullRequests: [{ url: 'https://x/pull/1', repository: 'repositories/api' }] });
     });
 
     it('should let the CEO move the status and refinements of an artifact another agent holds', async () => {

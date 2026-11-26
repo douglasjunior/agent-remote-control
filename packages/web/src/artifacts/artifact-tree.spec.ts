@@ -31,6 +31,7 @@ describe('artifact-tree', () => {
     [{ text: 'nope' }, false],
     [{ project: 'site' }, false],
     [{ project: 'app' }, true],
+    [{ project: 'site', type: 'feature' as const }, false],
     [{ type: 'task' as const }, false],
     [{ hideClosed: true }, true],
   ])('should filter by %o', (filter, expected) => {
@@ -70,7 +71,50 @@ describe('artifact-tree', () => {
   it('should offer features as the parents of a task, in its project when given', () => {
     expect(parentCandidates('feature', all)).toEqual([]);
     expect(parentCandidates('task', all).map(artifact => artifact.id)).toEqual(['F-1', 'F-2']);
-    expect(parentCandidates('task', all, { projectName: 'site' }).map(artifact => artifact.id)).toEqual(['F-2']);
+    expect(parentCandidates('task', all, { projectNames: ['site'] }).map(artifact => artifact.id)).toEqual(['F-2']);
+  });
+
+  describe('a feature linking several projects', () => {
+    const shared = summary({ id: 'F-3', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+    const appTask = summary({ id: 'T-20', title: 'App side', parentId: 'F-3', projectName: 'app', status: 'done' });
+    const siteTask = summary({ id: 'T-21', title: 'Site side', parentId: 'F-3', projectName: 'site' });
+    const siteOther = summary({ id: 'T-22', title: 'Site extra', parentId: 'F-3', projectName: 'site', status: 'cancelled' });
+    const artifacts = [shared, appTask, siteTask, siteOther];
+
+    const placed = (trees: ReturnType<typeof buildTree>) => trees.map(tree => [tree.projectName, tree.features.map(node => [node.artifact.id, node.children.map(child => child.artifact.id)])]);
+
+    it('should match a project filter by any of its projects', () => {
+      expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'app' })).toBe(true);
+      expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'site' })).toBe(true);
+      expect(matchesFilter(shared, { ...EMPTY_FILTER, project: 'docs' })).toBe(false);
+      expect(parentCandidates('task', [...all, shared], { projectNames: ['app'] }).map(artifact => artifact.id)).toEqual(['F-1', 'F-3']);
+    });
+
+    it('should stand under each of its projects with only the tasks working there', () => {
+      expect(placed(buildTree(artifacts, EMPTY_FILTER))).toEqual([
+        ['app', [['F-3', ['T-20']]]],
+        ['site', [['F-3', ['T-21', 'T-22']]]],
+      ]);
+    });
+
+    it('should stand under every project it links while it has no tasks', () => {
+      expect(placed(buildTree([shared], EMPTY_FILTER))).toEqual([['app', [['F-3', []]]], ['site', [['F-3', []]]]]);
+    });
+
+    it('should keep only the project of a project filter', () => {
+      expect(placed(buildTree(artifacts, { ...EMPTY_FILTER, project: 'app' }))).toEqual([['app', [['F-3', ['T-20']]]]]);
+    });
+
+    it('should stand only where a task matches the filter, unless it matches itself', () => {
+      expect(placed(buildTree(artifacts, { ...EMPTY_FILTER, text: 'site side' }))).toEqual([['site', [['F-3', ['T-21']]]]]);
+      expect(placed(buildTree(artifacts, { ...EMPTY_FILTER, text: 'shared' }))).toEqual([['app', [['F-3', []]]], ['site', [['F-3', []]]]]);
+    });
+
+    it('should count each task once, in the project it works in', () => {
+      const counts = ['app', 'site'].map(project => taskProgress('F-3', artifacts, project));
+      expect(counts).toEqual([{ done: 1, total: 1 }, { done: 0, total: 1 }]);
+      expect(taskProgress('F-3', artifacts)).toEqual({ done: 1, total: 2 });
+    });
   });
 
   it('should offer the open siblings of the same type as dependencies', () => {

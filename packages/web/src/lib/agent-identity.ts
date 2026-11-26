@@ -1,4 +1,4 @@
-export type MarkId = 'ceo' | 'po' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'it' | 'generic';
+export type MarkId = 'ceo' | 'po' | 'ux' | 'lead' | 'dev' | 'review' | 'qa' | 'git' | 'it' | 'generic';
 
 export interface AgentIdentity {
   /** Which glyph `AgentMark` draws. */
@@ -32,6 +32,15 @@ const KNOWN_IDENTITIES: Readonly<Record<string, AgentIdentity>> = {
     responsibility: 'Turns your idea into clear requirements and asks you what only you can decide.',
     example: 'Help me define a new feature',
     color: 'var(--agent-product-owner)',
+  },
+  UX_DESIGNER: {
+    mark: 'ux',
+    label: 'UX Designer',
+    tagline: 'Designs how it looks and feels',
+    stage: 'Design',
+    responsibility: 'Designs the screens and every state they go through, and builds a working prototype for you to try before any code is written.',
+    example: 'Design the onboarding screens',
+    color: 'var(--agent-ux-designer)',
   },
   TECH_LEAD: {
     mark: 'lead',

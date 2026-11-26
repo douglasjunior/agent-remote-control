@@ -6,6 +6,7 @@ import { StubAgentAuthPort } from '../../agent/testing/stub-agent-auth.port.js';
 import { AGENT_ROLES } from '../../agent-definitions/models/agent-role.type.js';
 import { AgentRegistryService } from '../../agent-definitions/services/agent-registry.service.js';
 import type { AgentProfileSettings, AgentSettings } from '../../orchestrator/models/agent-settings.model.js';
+import type { SquadView } from '../../orchestrator/models/squad.model.js';
 import type { QuestionPrompt } from '../../orchestrator/models/user-question.model.js';
 import { StubAgentConfigurationPort } from '../../orchestrator/testing/stub-agent-configuration.port.js';
 import { buildStubProfile, StubAgentSettingsStore } from '../../orchestrator/testing/stub-agent-settings-store.js';
@@ -293,7 +294,7 @@ describe('agent configuration selection', () => {
         expect(selection.targetRoles).toBeUndefined();
         expect(selection.options.map(option => option.id)).toEqual(ROLE_IDS);
         expect(selection.options.map(option => option.label)).toEqual(ROLE_LABELS);
-        expect(selection.options.map(option => option.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(selection.options.map(option => option.index)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
         expect(selection.options.find(option => option.id === 'DEVELOPER')?.description)
           .toBe('Other Agent - Opus - High');
         expect(selection.options.find(option => option.id === 'CEO')?.description)
@@ -537,7 +538,7 @@ describe('agent configuration selection', () => {
         expect(settingsStore.saved).toHaveLength(0);
       });
 
-      it.each(['abc', '9', '1,9', '1 x', '0,1', '', ' , ', '1.5'])(
+      it.each(['abc', '10', '1,10', '1 x', '0,1', '', ' , ', '1.5'])(
         'should reject %j keeping the same list',
         async (input) => {
           await openProfiles();
@@ -551,7 +552,7 @@ describe('agent configuration selection', () => {
         },
       );
 
-      it.each(['1, 4', '1,4', '1 4', '4 1,4, 1', ' 1 ,  4 '])(
+      it.each(['1, 5', '1,5', '1 5', '5 1,5, 1', ' 1 ,  5 '])(
         'should store the unique chosen roles and ask for the agent with %j',
         async (input) => {
           await openProfiles();
@@ -595,7 +596,7 @@ describe('agent configuration selection', () => {
         settingsStore.byConversation.set('conv-1', settingsOf());
         await start.execute({ conversationId: 'conv-1', step: 'profile' });
 
-        const outcome = await submit.execute({ conversationId: 'conv-1', input: '5' });
+        const outcome = await submit.execute({ conversationId: 'conv-1', input: '6' });
 
         expect(outcome).toMatchObject({
           kind: 'profiles_updated',
@@ -606,7 +607,7 @@ describe('agent configuration selection', () => {
 
       it('should change only the selected roles and return to the refreshed list', async () => {
         await openProfiles();
-        await submit.execute({ conversationId: 'conv-1', input: '1,5' });
+        await submit.execute({ conversationId: 'conv-1', input: '1,6' });
         await submit.execute({ conversationId: 'conv-1', input: '2' });
 
         const outcome = await submit.execute({ conversationId: 'conv-1', input: '1' });
@@ -1062,6 +1063,100 @@ describe('agent configuration selection', () => {
         kind: 'execute',
         prompt: 'Hi',
       });
+    });
+  });
+
+  describe('squad selection', () => {
+    const squad = (id: string, name: string, overrides: Partial<SquadView> = {}): SquadView => ({
+      id,
+      name,
+      isDefault: false,
+      profiles: [],
+      createdAt: '2026-01-01T00:00:00Z',
+      updatedAt: '2026-01-01T00:00:00Z',
+      ...overrides,
+    });
+    const roleProfile = (role: string, agentId: string, agentName: string) => ({
+      role,
+      roleName: role,
+      profile: buildStubProfile(agentId, { agentName }),
+      agentAvailable: true,
+    });
+
+    beforeEach(() => {
+      config.squads = [
+        squad('s-1', 'Backend team', { description: 'APIs and data', isDefault: true }),
+        squad('s-2', 'Frontend team', {
+          profiles: [roleProfile('CEO', 'stub', 'Stub Agent'), roleProfile('DEVELOPER', 'other', 'Other Agent'), roleProfile('QA', 'stub', 'Stub Agent')],
+        }),
+        squad('s-3', 'Solo', { profiles: [roleProfile('CEO', 'stub', 'Stub Agent'), { role: 'QA', roleName: 'QA' }] }),
+        squad('s-4', 'Empty'),
+      ];
+    });
+
+    it('should number the squads with their description, or the roles and agents they set, marking the default', async () => {
+      const result = await start.execute({ conversationId: 'conv-1', step: 'squad' });
+
+      expect(result.kind).toBe('selection');
+      expect(menuOf(result)).toEqual({
+        conversationId: 'conv-1',
+        step: 'squad',
+        options: [
+          { index: 1, id: 's-1', label: 'Backend team', description: 'APIs and data (default)' },
+          { index: 2, id: 's-2', label: 'Frontend team', description: '3 roles · Stub Agent, Other Agent' },
+          { index: 3, id: 's-3', label: 'Solo', description: '2 roles · Stub Agent' },
+          { index: 4, id: 's-4', label: 'Empty', description: '0 roles' },
+        ],
+      });
+      await expect(selectionStore.find('conv-1')).resolves.toEqual(menuOf(result));
+    });
+
+    it('should describe a squad of one role in the singular', async () => {
+      config.squads = [squad('s-1', 'Solo', { profiles: [roleProfile('CEO', 'stub', 'Stub Agent')] })];
+
+      expect(menuOf(await start.execute({ conversationId: 'conv-1', step: 'squad' })).options[0]?.description).toBe('1 role · Stub Agent');
+    });
+
+    it('should be unavailable when there is no squad', async () => {
+      config.squads = [];
+
+      await expect(start.execute({ conversationId: 'conv-1', step: 'squad' })).resolves.toEqual({ kind: 'unavailable' });
+      await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+    });
+
+    it('should apply the picked squad to the conversation and close the selection', async () => {
+      config.squads = [squad('s-1', 'Backend team', { profiles: [roleProfile('CEO', 'other', 'Other Agent')] })];
+      await start.execute({ conversationId: 'conv-1', step: 'squad' });
+
+      await expect(resolve.execute({ conversationId: 'conv-1', prompt: ' 1 ' })).resolves.toEqual({ kind: 'squad_applied', squadName: 'Backend team' });
+
+      expect(config.appliedSquads).toEqual([{ conversationId: 'conv-1', squadId: 's-1' }]);
+      expect(settingsStore.byConversation.get('conv-1')?.profiles.CEO?.agentId).toBe('other');
+      await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+    });
+
+    it('should report a squad deleted since the list was shown', async () => {
+      await start.execute({ conversationId: 'conv-1', step: 'squad' });
+      config.squads = [];
+
+      await expect(submit.execute({ conversationId: 'conv-1', input: '2' })).resolves.toEqual({ kind: 'squad_failed', error: 'Unknown squad' });
+      await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+    });
+
+    it.each(['abc', '9', '1,2', ''])('should reject %j keeping the same list', async (input) => {
+      const { selection } = await start.execute({ conversationId: 'conv-1', step: 'squad' }) as { selection: AgentConfigSelection };
+
+      await expect(submit.execute({ conversationId: 'conv-1', input })).resolves.toEqual({ kind: 'invalid', selection });
+      await expect(selectionStore.find('conv-1')).resolves.toEqual(selection);
+      expect(config.appliedSquads).toEqual([]);
+    });
+
+    it('should close the selection on 0 without applying anything', async () => {
+      await start.execute({ conversationId: 'conv-1', step: 'squad' });
+
+      await expect(submit.execute({ conversationId: 'conv-1', input: ' 0 ' })).resolves.toEqual({ kind: 'squad_closed' });
+      await expect(selectionStore.find('conv-1')).resolves.toBeNull();
+      expect(config.appliedSquads).toEqual([]);
     });
   });
 

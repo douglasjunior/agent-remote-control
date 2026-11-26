@@ -212,18 +212,6 @@ describe('DiscordActivityFormatter', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null for steering activity', () => {
-      const activity: AgentActivity = {
-        kind: 'steering',
-        id: 'steer-1',
-        text: 'Adjust course',
-      };
-
-      const result = formatter.formatActivity(activity);
-
-      expect(result).toBeNull();
-    });
-
     it('should return null for cancelled activity', () => {
       const activity: AgentActivity = {
         kind: 'cancelled',
@@ -462,6 +450,9 @@ describe('DiscordActivityFormatter', () => {
       expect(formatter.formatDelegation({ ...delegation, phase: 'failed', errorMessage: 'boom', durationMs: 5, projectName: 'my-app' })).toBe(
         '⚠️ **Developer failed** in project `my-app` — the CEO is deciding what to do next.',
       );
+      expect(formatter.formatDelegation({ ...delegation, phase: 'steered', summary: 'Adding the tests too', projectName: 'my-app' })).toBe(
+        '↪️ **Developer got new instructions** in project `my-app` — Adding the tests too',
+      );
     });
 
     it('should present the delegate response with its name and role', () => {
@@ -625,6 +616,23 @@ describe('DiscordActivityFormatter', () => {
 
     it('should confirm that the profile configuration was closed', () => {
       expect(formatter.formatProfilesClosed()).toBe('✅ **Profile configuration closed.**');
+    });
+
+    it('should list the squads with the cancel instructions', () => {
+      expect(formatter.formatSelection({
+        conversationId: 'ch-1',
+        step: 'squad',
+        options: [{ index: 1, id: 's-1', label: 'Backend team', description: 'APIs (default)' }],
+      })).toBe([
+        '👥 **Choose the squad to apply** by replying with the option number, or 0 to cancel:',
+        '**1.** Backend team — APIs (default)',
+      ].join('\n'));
+    });
+
+    it('should confirm, refuse and close the squad selection', () => {
+      expect(formatter.formatSquadApplied('Backend team')).toBe('✅ **Squad applied**: Backend team\nUse /profiles to change a role.');
+      expect(formatter.formatSquadFailed('Unknown squad')).toBe('⚠️ **The squad could not be applied**: Unknown squad');
+      expect(formatter.formatSquadClosed()).toBe('✅ **Squad selection closed.**');
     });
 
     it('should explain the valid range on an invalid answer', () => {

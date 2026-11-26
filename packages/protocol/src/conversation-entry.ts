@@ -18,6 +18,12 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     type: z.literal('user_message'),
     text: z.string(),
     attachments: z.array(attachmentSchema).optional(),
+    /**
+     * How a message sent while a turn ran reached the CEO: `queued` while it waits for the CEO's next prompt, then
+     * `steered` into the prompt running, `delivered` with a later prompt, or `cancelled` by a stop before the CEO read
+     * it. Absent for a message that started a turn of its own.
+     */
+    delivery: z.enum(['queued', 'steered', 'delivered', 'cancelled']).optional(),
   }),
   z.object({
     ...entryBase,
@@ -51,9 +57,10 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
   z.object({
     ...entryBase,
     type: z.literal('delegation'),
-    /** Pairs the `started` entry with the entry that closes the same delegation. */
+    /** Pairs the `started` entry with the entry that closes the same delegation and the `steered` ones in between. */
     delegationId: z.string(),
-    phase: z.enum(['started', 'finished', 'failed', 'cancelled']),
+    /** `steered`: the CEO sent the running agent a new instruction (`prompt`), whose `summary` replaces the one before. */
+    phase: z.enum(['started', 'steered', 'finished', 'failed', 'cancelled']),
     round: z.number().int(),
     role: z.string(),
     roleName: z.string(),
@@ -62,7 +69,7 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
     artifactId: z.string().optional(),
     /** One plain-language sentence from the CEO telling the user what the agent was asked to do. */
     summary: z.string(),
-    /** What the CEO wrote for the agent. A stored history is validated whole, so an entry written without it reads as empty rather than losing the conversation. */
+    /** What the CEO wrote for the agent. An entry stored without it reads as empty rather than being left out of the history. */
     prompt: z.string().default(''),
     response: z.string().optional(),
     /** Why the agent stopped; present when `phase` is `failed`. */
@@ -112,7 +119,7 @@ export const conversationEntrySchema = z.discriminatedUnion('type', [
   z.object({
     ...entryBase,
     type: z.literal('agent_response'),
-    status: z.enum(['completed', 'cancelled', 'failed', 'steered']),
+    status: z.enum(['completed', 'cancelled', 'failed']),
     response: z.string(),
     errorMessage: z.string().optional(),
     agentInfo: agentInfoSchema.optional(),

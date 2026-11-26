@@ -28,6 +28,13 @@ export const PRODUCT_OWNER_ARTIFACT_ACCESS: ArtifactAccess = {
   fields: ['title', 'parent', 'project', 'depends_on', 'refinement'],
 };
 
+/** Owns the design of the work and complements the sections that describe and verify what the user sees. */
+export const UX_DESIGNER_ARTIFACT_ACCESS: ArtifactAccess = {
+  scope: 'tree',
+  sections: ['ux_design', 'flows', 'acceptance_criteria', 'open_questions', 'pending_decisions'],
+  fields: ['refinement'],
+};
+
 /** Owns the technical solution and the technical breakdown into tasks, and complements the sections that verify the work. */
 export const TECH_LEAD_ARTIFACT_ACCESS: ArtifactAccess = {
   scope: 'tree',

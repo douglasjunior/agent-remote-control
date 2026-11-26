@@ -78,6 +78,35 @@ describe('FeedList', () => {
     return screen.getByTestId('message-viewport');
   }
 
+  it.each([
+    ['queued', 'The CEO reads this message with its next prompt.', 'Queued'],
+    ['steered', 'Sent into the CEO\'s prompt while it was working.', 'Steered'],
+    ['delivered', 'The CEO read this message with the running turn.', 'Delivered'],
+    ['cancelled', 'Stopped before the CEO read it.', 'Cancelled'],
+  ] as const)('should show on a message, as an icon, that it was %s', (delivery, name, word) => {
+    renderFeed([{ id: 'a', at: AT, type: 'user_message', text: 'hello', delivery }]);
+
+    const status = screen.getByRole('img', { name });
+    expect(status).toHaveAttribute('data-delivery', delivery);
+    expect(status).toHaveTextContent('');
+    expect(screen.queryByText(word)).toBeNull();
+  });
+
+  it('should explain the delivery in a tooltip when the icon is hovered', async () => {
+    const user = userEvent.setup();
+    renderFeed([{ id: 'a', at: AT, type: 'user_message', text: 'hello', delivery: 'queued' }]);
+
+    await user.hover(screen.getByRole('img', { name: 'The CEO reads this message with its next prompt.' }));
+
+    expect(await screen.findByText('The CEO reads this message with its next prompt.', { selector: '[data-slot="tooltip-content"]' })).toBeInTheDocument();
+  });
+
+  it('should show no delivery on a message that started its turn', () => {
+    renderFeed([userEntry('a', 'hello')]);
+
+    expect(document.querySelector('[data-delivery]')).toBeNull();
+  });
+
   it('should render the entries and the streaming draft', () => {
     renderFeed([userEntry('a', 'hello')], 'streaming answer');
 
@@ -171,7 +200,7 @@ describe('FeedList', () => {
     expect(screen.getByRole('button', { name: /Show details/ })).toHaveTextContent('(4 steps)');
     await user.click(screen.getByRole('button', { name: /Show details/ }));
 
-    expect(screen.getByRole('link', { name: 'web-ui-testing' })).toHaveAttribute('href', '/skills/web-ui-testing');
+    expect(screen.getByRole('link', { name: 'web-ui-testing' })).toHaveAttribute('href', '/settings/skills/web-ui-testing');
     expect(screen.getByText(/^Read the skill/)).toHaveTextContent('Read the skill api-testing, web-ui-testing');
     expect(screen.getByText(/^Created the skill/)).toBeInTheDocument();
     expect(screen.getByText(/^Updated the skill/)).toBeInTheDocument();

@@ -1,14 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 
-import { readNonNegativeInteger } from '../utils/env-number.util.js';
+import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 
-
-const DEFAULT_TIMEOUT_MS = 300_000;
 
 @Injectable()
 export class QuestionTimeoutConfigService {
+  constructor(@Inject(IRuntimeSettingsPort) private readonly settings: IRuntimeSettingsPort) {}
+
   /** How long a question waits for the user before its recommended answer is assumed; `0` disables the timeout. */
   getTimeoutMs(): number {
-    return readNonNegativeInteger('QUESTION_TIMEOUT_MS', DEFAULT_TIMEOUT_MS);
+    return this.settings.get('QUESTION_TIMEOUT_MS');
   }
 }

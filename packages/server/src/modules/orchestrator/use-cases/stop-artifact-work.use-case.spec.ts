@@ -4,6 +4,7 @@ import type { ArtifactActor } from '../../artifacts/models/artifact.model.js';
 import type { ArtifactsService } from '../../artifacts/services/artifacts.service.js';
 import { buildArtifact } from '../../artifacts/testing/artifact.fixture.js';
 import { createArtifactsService } from '../../artifacts/testing/artifacts-service.fixture.js';
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { buildStoppedWorkPrompt } from '../prompts/stopped-work.prompt.js';
 import { AgentToolSessionsService } from '../services/agent-tool-sessions.service.js';
@@ -45,7 +46,7 @@ describe('StopArtifactWorkUseCase', () => {
       conversationId: CONVERSATION,
       initial: [buildArtifact({ id: 'T-1', status: 'in_progress' })],
     }));
-    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), new AgentToolSessionsService(new AgentToolsConfigService()), 60_000);
+    runtime = new ConversationRuntimeService(new StubAgentPortFactory(() => new StubAgentPort()), new AgentToolSessionsService(new AgentToolsConfigService()), new StubRuntimeSettings({ SESSION_IDLE_TIMEOUT_MS: 60_000 }));
     stops = [];
     useCase = new StopArtifactWorkUseCase(artifacts, runtime);
     useCase.onModuleInit();
@@ -62,7 +63,21 @@ describe('StopArtifactWorkUseCase', () => {
     await artifacts.update(CONVERSATION, 'T-1', { status }, USER);
     await settle();
 
-    expect(stops).toEqual([buildStoppedWorkPrompt('T-1', status, 'shop')]);
+    expect(stops).toEqual([buildStoppedWorkPrompt('T-1', status, ['shop'])]);
+  });
+
+  it('should name every project of a feature whose agent it stops', async () => {
+    const feature = buildArtifact({
+      id: 'F-1',
+      type: 'feature',
+      projectNames: ['shop', 'api'],
+      assignee: { role: 'DEVELOPER', roleName: 'Developer Agent', delegationId: 'd-1', since: '2026-01-01T00:00:00.000Z' },
+      history: [{ id: 'e', at: '2026-01-01T01:00:00.000Z', actor: USER, kind: 'updated', summary: 'Status', changes: [{ field: 'status', from: 'in_progress', to: 'done' }] }],
+    });
+
+    await expect(useCase.execute(CONVERSATION, feature)).resolves.toBe(true);
+
+    expect(stops).toEqual([buildStoppedWorkPrompt('F-1', 'done', ['shop', 'api'])]);
   });
 
   it('should leave the agent working when the user moves the artifact to a status that keeps the work going', async () => {

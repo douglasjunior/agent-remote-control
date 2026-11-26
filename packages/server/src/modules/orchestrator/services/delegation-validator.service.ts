@@ -1,16 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { CLOSED_ARTIFACT_STATUSES, FROZEN_STATUS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import type { Artifact } from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import type { TurnRequest } from '../models/turn-request.model.js';
 import type { ValidatedDecision, ValidatedDelegation } from '../models/validated-delegation.model.js';
 import { type DelegationContract, IAgentRegistryPort } from '../ports/agent-registry.port.js';
+import { buildBusyRoleRepair, type BusyRoleReason } from '../prompts/busy-role.prompt.js';
+import { startsNewTaskSession } from '../utils/delegation-session.util.js';
 
 import { ConversationRuntimeService } from './conversation-runtime.service.js';
 import { type DelegationResult, DelegationDetectorService } from './delegation-detector.service.js';
 import { DelegationLimitsConfigService } from './delegation-limits-config.service.js';
 import { DelegationStatusService } from './delegation-status.service.js';
+import { SteeringSupportService } from './steering-support.service.js';
 
 
 /** Checks the delegations of a CEO response against the team, the board, the workspace and the agents already running. */
@@ -24,6 +28,7 @@ export class DelegationValidatorService {
     private readonly conversationRuntime: ConversationRuntimeService,
     private readonly delegationStatus: DelegationStatusService,
     private readonly limits: DelegationLimitsConfigService,
+    private readonly steeringSupport: SteeringSupportService,
   ) {}
 
   /** Reads the CEO response and checks every delegation in it, so an invalid one goes back to the CEO before any agent starts. */
@@ -42,7 +47,7 @@ export class DelegationValidatorService {
       delegations.push(validated);
     }
 
-    const conflict = this.findParallelConflict(delegations, request.conversationId);
+    const conflict = await this.findParallelConflict(delegations, request.conversationId);
     return conflict ? { kind: 'invalid', reason: conflict } : { kind: 'delegate', message: decision.message, delegations };
   }
 
@@ -64,7 +69,7 @@ export class DelegationValidatorService {
     if ('reason' in withArtifact) {
       return withArtifact;
     }
-    const violation = this.checkDelegationContract(delegateToRole, contract, withArtifact);
+    const violation = this.checkDelegationContract(delegateToRole, contract, withArtifact) ?? this.checkBusyRole(withArtifact, request.conversationId);
     if (violation) {
       return { reason: violation };
     }
@@ -72,10 +77,12 @@ export class DelegationValidatorService {
   }
 
   /**
-   * A delegation names the artifact its agent works on and then runs in that artifact's project: the folder may be
-   * left out, and a different one is a mistake. The artifact must be open, of a type the agent works on, in a status
-   * the agent takes, ready for it and with no agent of another role holding it, because an artifact is with one agent
-   * at a time. The agent receives the artifact in full, so the specification only names the step.
+   * A delegation names the artifact its agent works on. A task's agent runs in the task's project: the folder may be
+   * left out, and a different one is a mistake. A feature's agent runs at the workspaces root and changes files in the
+   * feature's projects, which are its scope, so a folder is a mistake too. The artifact must be open, of a type the
+   * agent works on, in a status the agent takes, ready for it and with no agent of another role holding it, because an
+   * artifact is with one agent at a time. The agent receives the artifact in full, so the specification only names the
+   * step.
    */
   private async applyArtifact(
     delegation: DelegationResult,
@@ -114,22 +121,72 @@ export class DelegationValidatorService {
     if (artifact.assignee && artifact.assignee.role !== role) {
       return { reason: `${artifactId} is with ${artifact.assignee.role} right now, and an artifact is with one agent at a time. Wait for its result, or redirect that agent.` };
     }
-    if (projectName && projectName !== artifact.projectName) {
+    if (artifact.type === 'feature') {
+      if (projectName) {
+        return { reason: `${artifactId} is a feature, so its projects (${artifact.projectNames.join(', ')}) define where the work runs: leave the project attribute out.` };
+      }
+      const missing = await this.missingProjectFolders(artifact);
+      if (missing) {
+        return { reason: missing };
+      }
+    } else if (projectName && projectName !== artifact.projectName) {
       return { reason: `${artifactId} belongs to project "${artifact.projectName}", so the work on it runs there: use project="${artifact.projectName}" or leave the project out.` };
     }
     const maxSpecChars = this.limits.getMaxSpecChars();
-    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, role, artifactId)) {
+    if (maxSpecChars > 0 && delegation.taskSpec.length > maxSpecChars && !this.redirects(conversationId, delegation)) {
       return { reason: `The specification of ${artifactId} has ${delegation.taskSpec.length} characters, and the limit with an artifact is ${maxSpecChars}. The agent receives ${artifactId} in full (its sections, branch, pull requests and comments), so say only what to do with it now. A fact the task lacks goes on it as a comment, where the agent reads it with the rest. Do not restate its sections.` };
     }
-    return contract.project ? { ...delegation, projectName: artifact.projectName } : delegation;
+    return contract.project && artifact.projectName ? { ...delegation, projectName: artifact.projectName } : delegation;
+  }
+
+  /** A project folder of the feature that left the workspaces root since it was linked is a place its agent cannot work in. */
+  private async missingProjectFolders({ id, projectNames }: Artifact): Promise<string | undefined> {
+    const folders = await this.workspacePort.listProjectFolders();
+    const missing = projectNames.filter(name => !folders.includes(name));
+    return missing.length > 0
+      ? `${id} links ${missing.length === 1 ? 'a project folder' : 'project folders'} missing from the workspaces root: ${missing.join(', ')}. Correct its projects on the board before delegating it.`
+      : undefined;
   }
 
   /**
    * A delegation to a role already working on the same artifact steers that agent, which receives only the new text and
-   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply.
+   * not the artifact again, so a fact cannot move to a comment and the specification limit does not apply. One that
+   * starts a new session for the task gives that session the artifact in full.
    */
-  private redirects(conversationId: string, role: string, artifactId: string): boolean {
-    return this.conversationRuntime.findActiveDelegation(conversationId, role)?.artifactId === artifactId;
+  private redirects(conversationId: string, delegation: DelegationResult): boolean {
+    return !startsNewTaskSession(delegation)
+      && this.conversationRuntime.findActiveDelegation(conversationId, delegation.delegateToRole)?.artifactId === delegation.artifactId;
+  }
+
+  /**
+   * A role already at work keeps its work unless the CEO says otherwise: only an instruction on the same work for an
+   * agent known to take it mid-prompt goes in without `on_busy`, since anything else either waits or costs work. A new
+   * session for the task cannot join the running prompt, so it needs `on_busy` as other work does.
+   */
+  private checkBusyRole(delegation: DelegationResult, conversationId: string): string | undefined {
+    const active = this.conversationRuntime.findActiveDelegation(conversationId, delegation.delegateToRole);
+    if (!active || delegation.onBusy) {
+      return undefined;
+    }
+    const sameWork = active.projectName === (delegation.projectName ?? null) && active.artifactId === (delegation.artifactId ?? null);
+    const steering = this.steeringSupport.supports(active.agentPort.agentName);
+    const newSession = startsNewTaskSession(delegation);
+    if (sameWork && !newSession && steering === true) {
+      return undefined;
+    }
+    let reason: BusyRoleReason = 'other_work';
+    if (sameWork && newSession) {
+      reason = 'new_session';
+    } else if (sameWork) {
+      reason = steering === false ? 'no_steering' : 'unknown_steering';
+    }
+    let work = 'at the workspaces root';
+    if (active.artifactId) {
+      work = `on ${active.artifactId}`;
+    } else if (active.projectName) {
+      work = `in project folder "${active.projectName}"`;
+    }
+    return buildBusyRoleRepair(active.role, work, reason);
   }
 
   private async resolveDelegationFolder(
@@ -161,11 +218,14 @@ export class DelegationValidatorService {
   }
 
   /**
-   * A conversation runs one agent per role, so a role appears once per response and a delegation to a role
-   * already working replaces that agent. Agents of different roles that modify files would overwrite each
-   * other's work in the same folder.
+   * A conversation runs one agent per role, so a role appears once per response, and a delegation to a role already
+   * working goes to that agent or runs after or in place of its work, never beside it. Agents of different roles that
+   * modify files would overwrite each other's work in the same project folder, so each folder has one such agent: a
+   * task's agent occupies its project, a feature's agent every project of the feature, and an agent without either the
+   * workspaces root. An agent at work keeps its folders until it ends, even when a delegation interrupts it, since the
+   * other delegations of the response start while it stops.
    */
-  private findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): string | undefined {
+  private async findParallelConflict(delegations: readonly ValidatedDelegation[], conversationKey: string): Promise<string | undefined> {
     const roles = new Set<string>();
     const artifacts = new Set<string>();
     for (const { delegateToRole, artifactId } of delegations) {
@@ -181,33 +241,45 @@ export class DelegationValidatorService {
       }
     }
 
-    const writers = new Map<string, string>();
+    const writers = new Map<string | null, { readonly role: string; readonly description: string }>();
     for (const active of this.conversationRuntime.getActiveDelegations(conversationKey)) {
-      const redirected = delegations.some(delegation => delegation.delegateToRole === active.role.toUpperCase());
-      if (!redirected && !this.isReadOnly(active.role)) {
-        writers.set(active.cwd, `${active.role}, which is already working there`);
+      if (!this.isReadOnly(active.role)) {
+        for (const folder of await this.occupiedFolders(conversationKey, active)) {
+          writers.set(folder, { role: active.role.toUpperCase(), description: `${active.role}, which is already working there` });
+        }
       }
     }
 
-    for (const { delegateToRole, projectName, cwd } of delegations) {
-      if (this.isReadOnly(delegateToRole)) {
+    for (const delegation of delegations) {
+      if (this.isReadOnly(delegation.delegateToRole)) {
         continue;
       }
-      const other = writers.get(cwd);
-      if (other) {
-        return `${delegateToRole} cannot work in ${this.describeTarget(projectName)} at the same time as ${other}: only one agent that modifies files may work in a folder at a time. Run them in sequence, or delegate to that same agent to redirect it.`;
+      for (const folder of await this.occupiedFolders(conversationKey, delegation)) {
+        const other = writers.get(folder);
+        if (other && other.role !== delegation.delegateToRole) {
+          return `${delegation.delegateToRole} cannot work in ${this.describeTarget(folder)} at the same time as ${other.description}: only one agent that modifies files may work in a folder at a time. Run them in sequence: delegate ${delegation.delegateToRole} after the result of ${other.role}.`;
+        }
+        writers.set(folder, { role: delegation.delegateToRole, description: delegation.delegateToRole });
       }
-      writers.set(cwd, delegateToRole);
     }
     return undefined;
+  }
+
+  /** The project folders an agent works in, `null` for the workspaces root. A feature's are read from the board as it stands, which may differ from when its agent started. */
+  private async occupiedFolders(
+    conversationKey: string,
+    { artifactId, projectName }: { readonly artifactId?: string | null; readonly projectName?: string | null },
+  ): Promise<readonly (string | null)[]> {
+    const artifact = artifactId ? await this.artifacts.get(conversationKey, artifactId) : undefined;
+    return artifact?.type === 'feature' ? artifact.projectNames : [projectName ?? null];
   }
 
   private isReadOnly(role: string): boolean {
     return this.agentRegistry.getDelegationContract(role).readOnly === true;
   }
 
-  private describeTarget(projectName: string | undefined): string {
-    return projectName ? `project folder "${projectName}"` : 'the workspaces root';
+  private describeTarget(folder: string | null): string {
+    return folder ? `project folder "${folder}"` : 'the workspaces root';
   }
 
   private describeProjectFolders(folders: readonly string[]): string {
@@ -219,7 +291,7 @@ export class DelegationValidatorService {
   private checkDelegationContract(
     role: string,
     contract: DelegationContract,
-    { projectName, sessionMode, artifactId }: DelegationResult,
+    { projectName, sessionMode }: DelegationResult,
   ): string | undefined {
     if (projectName && !contract.project) {
       return `Role "${role}" does not take a project folder. Use <delegate role="${role}" summary="<summary>"> without the project attribute.`;
@@ -227,8 +299,7 @@ export class DelegationValidatorService {
     if (!projectName && contract.project === 'required') {
       return `Role "${role}" requires a project folder. Use <delegate role="${role}" summary="<summary>" project="<project-folder>">.`;
     }
-    // A delegation with an artifact runs in the session of its task, so its session attribute is ignored rather than refused.
-    if (sessionMode && !artifactId && !contract.sessionMode) {
+    if (sessionMode && !contract.sessionMode) {
       return `Role "${role}" does not take a session mode. Use <delegate role="${role}" summary="<summary>"> without the session attribute.`;
     }
     return undefined;

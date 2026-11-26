@@ -7,7 +7,14 @@ import type {
 import type { ServerEvent } from '@agent-remote-control/protocol/server-event';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 
-import type { Artifact, ArtifactActor, ArtifactChangeEvent, ArtifactSection } from '../../artifacts/models/artifact.model.js';
+import { REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
+import type {
+  Artifact,
+  ArtifactActor,
+  ArtifactChangeEvent,
+  ArtifactRefinement,
+  ArtifactSection,
+} from '../../artifacts/models/artifact.model.js';
 import { IArtifactsPort } from '../../artifacts/ports/artifacts.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 
@@ -57,12 +64,10 @@ export class WebArtifactsService implements OnModuleInit, OnModuleDestroy {
       title: input.title,
       ...(input.parentId !== undefined ? { parentId: input.parentId } : {}),
       ...(input.projectName !== undefined ? { projectName: input.projectName } : {}),
+      ...(input.projectNames ? { projectNames: input.projectNames } : {}),
       ...(input.dependsOn ? { dependsOn: input.dependsOn } : {}),
       ...(input.sections ? { sections: input.sections } : {}),
-      refinement: {
-        business: input.businessRefinement ? 'pending' : 'skipped',
-        technical: input.technicalRefinement ? 'pending' : 'skipped',
-      },
+      refinement: Object.fromEntries(REFINEMENT_KINDS.map(kind => [kind, input.refinements[kind] ? 'pending' : 'skipped'])) as ArtifactRefinement,
     }, WEB_ACTOR);
     return this.result(conversationId, requestId, outcome.ok ? { id: outcome.artifact.id } : outcome);
   }
@@ -111,6 +116,7 @@ export class WebArtifactsService implements OnModuleInit, OnModuleDestroy {
   private toSummary({ sections: _sections, history: _history, ...summary }: Artifact): ArtifactSummary {
     return {
       ...summary,
+      projectNames: [...summary.projectNames],
       dependsOn: [...summary.dependsOn],
       pullRequests: summary.pullRequests.map(link => ({ ...link })),
     };

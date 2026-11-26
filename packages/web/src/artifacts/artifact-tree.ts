@@ -39,7 +39,7 @@ function sequenceOf(id: string): number {
 export function matchesFilter(artifact: ArtifactSummary, filter: ArtifactFilter): boolean {
   const text = filter.text.trim().toLowerCase();
   return (!text || artifact.id.toLowerCase().includes(text) || artifact.title.toLowerCase().includes(text))
-    && (filter.project === null || artifact.projectName === filter.project)
+    && (filter.project === null || artifact.projectNames.includes(filter.project))
     && (filter.type === null || artifact.type === filter.type)
     && !(filter.hideClosed && isClosed(artifact.status));
 }
@@ -53,7 +53,9 @@ export type ProjectTree = {
 
 /**
  * The hierarchy of the artifacts that match, with the ancestors that lead to them, one tree per project in
- * alphabetical order. An artifact whose parent is unknown is a root.
+ * alphabetical order. A feature linking several projects stands under each of them, with only the tasks that work in
+ * that project; under a project that holds none of its matching tasks it stands only when it matches the filter
+ * itself. A project filter keeps only that project's trees. An artifact whose parent is unknown is a root.
  */
 export function buildTree(artifacts: readonly ArtifactSummary[], filter: ArtifactFilter): readonly ProjectTree[] {
   const byId = new Map(artifacts.map(artifact => [artifact.id, artifact]));
@@ -70,16 +72,27 @@ export function buildTree(artifacts: readonly ArtifactSummary[], filter: Artifac
     const kept = (children.get(artifact.id) ?? []).map(build).filter(node => node !== null);
     return kept.length > 0 || matchesFilter(artifact, filter) ? { artifact, children: kept } : null;
   };
-  const nodes = topLevel.map(build).filter(node => node !== null);
-  const projects = [...new Set(nodes.map(node => node.artifact.projectName))].sort((a, b) => a.localeCompare(b));
+  const placements = topLevel.map(build).filter(node => node !== null).flatMap(node => placementsOf(node, filter));
+  const projects = [...new Set(placements.map(placement => placement.projectName))].sort((a, b) => a.localeCompare(b));
   return projects.map((projectName) => {
-    const inProject = nodes.filter(node => node.artifact.projectName === projectName);
+    const inProject = placements.filter(placement => placement.projectName === projectName).map(placement => placement.node);
     return {
       projectName,
       features: inProject.filter(node => node.artifact.type === 'feature'),
       standalone: inProject.filter(node => node.artifact.type === 'task'),
     };
   });
+}
+
+/** The project trees a node stands in: a task in its project, a feature in each project it links, with that project's tasks. */
+function placementsOf(node: ArtifactNode, filter: ArtifactFilter): { readonly projectName: string; readonly node: ArtifactNode }[] {
+  if (node.artifact.type === 'task') {
+    return [{ projectName: node.artifact.projectNames[0]!, node }];
+  }
+  return node.artifact.projectNames
+    .filter(projectName => filter.project === null || projectName === filter.project)
+    .map(projectName => ({ projectName, node: { artifact: node.artifact, children: node.children.filter(task => task.artifact.projectNames.includes(projectName)) } }))
+    .filter(({ node: scoped }) => scoped.children.length > 0 || matchesFilter(node.artifact, filter));
 }
 
 /** The dependencies still in the way: not done yet, or unknown here. */
@@ -98,18 +111,18 @@ export function childrenOf(id: string, artifacts: readonly ArtifactSummary[]): A
 
 /**
  * Where an artifact of `type` may hang: a feature stands at the top, a task goes under a feature. `self` keeps the
- * candidates in its project.
+ * candidates that link its project.
  */
 export function parentCandidates(
   type: ArtifactType,
   artifacts: readonly ArtifactSummary[],
-  self?: Pick<ArtifactSummary, 'projectName'>,
+  self?: Pick<ArtifactSummary, 'projectNames'>,
 ): ArtifactSummary[] {
   if (type === 'feature') {
     return [];
   }
   return artifacts
-    .filter(artifact => artifact.type === 'feature' && (!self || artifact.projectName === self.projectName))
+    .filter(artifact => artifact.type === 'feature' && (!self || self.projectNames.some(name => artifact.projectNames.includes(name))))
     .sort(compareArtifacts);
 }
 
@@ -131,8 +144,8 @@ export function dependencyCandidates(
     .sort(compareArtifacts);
 }
 
-/** How far the tasks of a feature are; cancelled tasks do not count. */
-export function taskProgress(id: string, artifacts: readonly ArtifactSummary[]): { readonly done: number; readonly total: number } {
-  const tasks = childrenOf(id, artifacts).filter(task => task.status !== 'cancelled');
+/** How far the tasks of a feature are, or only those working in `project`; cancelled tasks do not count. */
+export function taskProgress(id: string, artifacts: readonly ArtifactSummary[], project?: string): { readonly done: number; readonly total: number } {
+  const tasks = childrenOf(id, artifacts).filter(task => task.status !== 'cancelled' && (project === undefined || task.projectNames.includes(project)));
   return { done: tasks.filter(task => task.status === 'done').length, total: tasks.length };
 }

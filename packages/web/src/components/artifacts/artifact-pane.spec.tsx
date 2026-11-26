@@ -17,12 +17,12 @@ const api = detail({
   parentId: 'F-1',
   status: 'in_progress',
   dependsOn: ['T-1', 'T-9'],
-  refinement: { business: 'done', technical: 'pending' },
+  refinement: { business: 'done', design: 'skipped', technical: 'pending' },
   assignee: { role: 'DEVELOPER', roleName: 'Developer', delegationId: 'd1', since: AT },
   branch: 'feat/login-api',
   pullRequests: [
-    { url: 'https://example.com/pr/1', title: 'Add login API', state: 'merged', addedAt: AT },
-    { url: 'https://example.com/pr/2', state: 'open', addedAt: AT },
+    { url: 'https://example.com/pr/1', title: 'Add login API', repository: '.', state: 'merged', addedAt: AT },
+    { url: 'https://example.com/pr/2', repository: 'repositories/api', state: 'open', addedAt: AT },
   ],
   sections: { overview: 'Users sign in.', technical_solution: '' },
   history: [
@@ -90,7 +90,9 @@ describe('ArtifactPane', () => {
     expect(within(properties).getByRole('link', { name: /Login e2e/ })).toBeInTheDocument();
     expect(within(properties).getByText('feat/login-api')).toBeInTheDocument();
     expect(within(properties).getByRole('link', { name: 'Add login API, merged' })).toHaveAttribute('href', 'https://example.com/pr/1');
-    expect(within(properties).getByRole('link', { name: 'https://example.com/pr/2, open' })).toHaveAttribute('target', '_blank');
+    expect(within(properties).getByRole('link', { name: 'https://example.com/pr/2, open, repositories/api' })).toHaveAttribute('target', '_blank');
+    expect(within(properties).getByText('repositories/api')).toBeInTheDocument();
+    expect(within(properties).queryByText('.')).not.toBeInTheDocument();
   });
 
   it('should wait for the artifact, and say when it does not exist', () => {
@@ -122,6 +124,7 @@ describe('ArtifactPane', () => {
   it.each([
     ['Status', 'Approved', { status: 'approved' }],
     ['Business refinement', 'Not needed', { refinement: { business: 'skipped' } }],
+    ['Design refinement', 'Pending', { refinement: { design: 'pending' } }],
     ['Technical refinement', 'Done', { refinement: { technical: 'done' } }],
     ['Feature', 'Standalone task', { parentId: null }],
   ])('should change the %s', async (combobox, option, changes) => {
@@ -142,6 +145,60 @@ describe('ArtifactPane', () => {
     expect(screen.queryByRole('option', { name: 'F-1 · Login' })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('option', { name: 'F-2 · Landing' }));
     expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-3', changes: { parentId: 'F-2' } });
+  });
+
+  it('should only read the project of a task whose feature links a single one', () => {
+    openArtifact();
+    expect(screen.queryByRole('combobox', { name: 'Project' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: 'Properties' })).getByTitle('The project of its feature')).toHaveTextContent('app');
+  });
+
+  describe('a feature linking several projects', () => {
+    const shared = summary({ id: 'F-3', type: 'feature', title: 'Shared', projectNames: ['site', 'app'] });
+    const siteTask = summary({ id: 'T-7', title: 'Site part', parentId: 'F-3', projectName: 'site' });
+    const sharedBoard = [...board, shared, siteTask];
+
+    it('should edit the list of its projects', async () => {
+      const { user, app } = openArtifact(detail({ ...shared, sections: {} }), sharedBoard);
+      const properties = screen.getByRole('complementary', { name: 'Properties' });
+      expect(within(properties).getByText('Projects')).toBeInTheDocument();
+      expect(within(properties).queryByRole('combobox', { name: 'Project' })).not.toBeInTheDocument();
+
+      await user.click(within(properties).getByRole('button', { name: 'Remove app' }));
+      expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'F-3', changes: { projectNames: ['site'] } });
+
+      await user.click(within(properties).getByRole('combobox', { name: 'Projects' }));
+      expect((await screen.findAllByRole('option')).map(option => option.textContent)).toEqual(['app', 'site']);
+    });
+
+    it('should offer the workspace projects and add one to the list', async () => {
+      const { user, app } = openArtifact(detail({ ...shared, projectNames: ['site'], sections: {} }), sharedBoard);
+      const properties = screen.getByRole('complementary', { name: 'Properties' });
+      expect(within(properties).queryByRole('button', { name: 'Remove site' })).not.toBeInTheDocument();
+
+      await user.click(within(properties).getByRole('combobox', { name: 'Projects' }));
+      await user.click(await screen.findByRole('option', { name: 'app' }));
+      expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'F-3', changes: { projectNames: ['site', 'app'] } });
+    });
+
+    it('should keep the list and show the error when the server refuses to drop a project its tasks use', async () => {
+      const { user, app } = openArtifact(detail({ ...shared, sections: {} }), sharedBoard);
+      await user.click(within(screen.getByRole('complementary', { name: 'Properties' })).getByRole('button', { name: 'Remove site' }));
+      expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'F-3', changes: { projectNames: ['app'] } });
+
+      await answer(app, 'artifact.update', { ok: false, error: 'Tasks of F-3 still work in site: T-7' });
+
+      expect(await screen.findByText('Tasks of F-3 still work in site: T-7')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Remove site' })).toBeInTheDocument();
+    });
+
+    it('should limit a task of the feature to its projects', async () => {
+      const { user, app } = openArtifact(detail({ ...siteTask, sections: {} }), sharedBoard);
+      await user.click(screen.getByRole('combobox', { name: 'Project' }));
+      expect((await screen.findAllByRole('option')).map(option => option.textContent)).toEqual(['site', 'app']);
+      await user.click(screen.getByRole('option', { name: 'app' }));
+      expect(lastSent(app, 'artifact.update')).toMatchObject({ id: 'T-7', changes: { projectName: 'app' } });
+    });
   });
 
   it('should add and remove dependencies', async () => {

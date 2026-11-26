@@ -8,7 +8,7 @@ import { ITurnRetryPort } from '../../orchestrator/ports/turn-retry.port.js';
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
 import { IConversationStorePort } from '../ports/conversation-store.port.js';
 import { IPromptHistoryPort } from '../ports/prompt-history.port.js';
-import { ConversationEntryService } from '../services/conversation-entry.service.js';
+import { ConversationEntryService, type UserMessageEntry } from '../services/conversation-entry.service.js';
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
@@ -53,12 +53,12 @@ export class SendConversationMessageUseCase {
         await this.events.publishEntry(conversationId, this.entries.notice('error', INVALID_ATTACHMENT_NOTICE));
         return;
       }
-      await this.recordUserMessage(conversationId, text, attachments);
+      const message = await this.recordUserMessage(conversationId, text, attachments);
       if (this.turnRetry.retryNow(conversationId, { text, attachments: files })) {
         return;
       }
       turnId = this.turns.begin(conversationId);
-      await this.runTurn(conversationId, turnId, text, files);
+      await this.runTurn(conversationId, turnId, message, files);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error processing web message for ${conversationId}: ${message}`);
@@ -74,9 +74,10 @@ export class SendConversationMessageUseCase {
     return await this.configuration.ensureSettings(conversationId) !== 'missing' || this.configuration.listAgents().length === 0;
   }
 
-  private async recordUserMessage(conversationId: string, text: string, attachments: readonly Attachment[]): Promise<void> {
+  private async recordUserMessage(conversationId: string, text: string, attachments: readonly Attachment[]): Promise<UserMessageEntry> {
     const isFirstMessage = !(await this.store.history(conversationId)).some(entry => entry.type === 'user_message');
-    await this.events.publishEntry(conversationId, this.entries.userMessage(text, attachments));
+    const message = this.entries.userMessage(text, attachments);
+    await this.events.publishEntry(conversationId, message);
     if (text !== '') {
       await this.promptHistory.append(text);
     }
@@ -84,6 +85,7 @@ export class SendConversationMessageUseCase {
       await this.store.rename(conversationId, this.titleFrom(text || attachments[0].name));
     }
     this.events.publishConversation(await this.store.touch(conversationId));
+    return message;
   }
 
   private titleFrom(text: string): string {
@@ -91,16 +93,16 @@ export class SendConversationMessageUseCase {
     return firstLine.slice(0, TITLE_MAX_LENGTH);
   }
 
-  private runTurn(conversationId: string, turnId: string, prompt: string, attachments: readonly TurnAttachment[]): Promise<void> {
+  private runTurn(conversationId: string, turnId: string, message: UserMessageEntry, attachments: readonly TurnAttachment[]): Promise<void> {
     return this.turns.run(conversationId, turnId, callbacks => this.agentTurn.executeTurn({
       conversationId,
       userId: WEB_USER_ID,
-      prompt,
+      prompt: message.text,
       workspacePath: this.workspace.getBaseDirectory(),
       agentRole: 'CEO',
       attachments,
       resumable: true,
       ...callbacks,
-    }));
+    }), message);
   }
 }

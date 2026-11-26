@@ -2,6 +2,7 @@ import { ConsoleLogger, type LogLevel } from '@nestjs/common';
 import { appendFileSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import type { ConversationLogContextService } from '../services/conversation-log-context.service.js';
 
 
@@ -23,7 +24,7 @@ export class FileConsoleLoggerAdapter extends ConsoleLogger {
 
   constructor(
     private readonly directory: string,
-    private readonly retentionDays: number,
+    private readonly settings: IRuntimeSettingsPort,
     private readonly logContext: ConversationLogContextService,
   ) {
     super();
@@ -72,7 +73,7 @@ export class FileConsoleLoggerAdapter extends ConsoleLogger {
   }
 
   private removeExpiredFiles(now: Date): void {
-    const oldest = now.getTime() - this.retentionDays * DAY_MS;
+    const oldest = now.getTime() - this.settings.get('LOG_RETENTION_DAYS') * DAY_MS;
     for (const name of readdirSync(this.directory)) {
       const day = FILE_PATTERN.exec(name)?.[1];
       if (day && Date.parse(day) < oldest) {

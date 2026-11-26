@@ -1,6 +1,7 @@
 import { type TestingModule } from '@nestjs/testing';
 import { describe, expect, it } from '@rstest/core';
 
+import { useTemporaryDataDir } from '../../../test/temporary-data-dir.js';
 import { createTestingModule } from '../../../test/testing-module.js';
 
 import { AcpAgentPortFactoryAdapter } from './adapters/acp-agent-port-factory.adapter.js';
@@ -13,6 +14,8 @@ import { IProcessRunnerPort } from './ports/process-runner.port.js';
 
 
 describe('AgentModule', () => {
+  useTemporaryDataDir();
+
   it('should compile the module and resolve all port providers', async () => {
     const module: TestingModule = await createTestingModule({
       imports: [AgentModule],
@@ -25,5 +28,6 @@ describe('AgentModule', () => {
     expect(agentFactory).toBeInstanceOf(AcpAgentPortFactoryAdapter);
     expect(processRunner).toBeInstanceOf(NodeProcessRunnerAdapter);
     expect(fileSystem).toBeInstanceOf(NodeFileSystemAdapter);
+    await module.close();
   });
 });

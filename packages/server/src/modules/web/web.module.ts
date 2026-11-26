@@ -4,17 +4,18 @@ import { AccessTokenModule } from '../access-token/access-token.module.js';
 import { AgentModule } from '../agent/agent.module.js';
 import { AgentDefinitionsModule } from '../agent-definitions/agent-definitions.module.js';
 import { ArtifactsModule } from '../artifacts/artifacts.module.js';
+import { DatabaseModule } from '../database/database.module.js';
+import { DiscordModule } from '../discord/discord.module.js';
 import { LoggingModule } from '../logging/logging.module.js';
 import { OrchestratorModule } from '../orchestrator/orchestrator.module.js';
-import { PathsModule } from '../paths/paths.module.js';
 import { RemoteClientTransportAdapter } from '../remote/adapters/remote-client-transport.adapter.js';
 import { RemoteModule } from '../remote/remote.module.js';
-import { StorageModule } from '../storage/storage.module.js';
+import { SettingsModule } from '../settings/settings.module.js';
 import { WorkspaceModule } from '../workspace/workspace.module.js';
 
 import { CombinedClientTransportAdapter } from './adapters/combined-client-transport.adapter.js';
-import { JsonConversationStoreAdapter } from './adapters/json-conversation-store.adapter.js';
-import { JsonPromptHistoryAdapter } from './adapters/json-prompt-history.adapter.js';
+import { SqliteConversationStoreAdapter } from './adapters/sqlite-conversation-store.adapter.js';
+import { SqlitePromptHistoryAdapter } from './adapters/sqlite-prompt-history.adapter.js';
 import { WsClientTransportAdapter } from './adapters/ws-client-transport.adapter.js';
 import { WebConnectionHandler } from './handlers/web-connection.handler.js';
 import { IClientTransportPort } from './ports/client-transport.port.js';
@@ -29,9 +30,12 @@ import { WebConversationEventsService } from './services/web-conversation-events
 import { WebConversationTurnsService } from './services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from './services/web-conversation-uploads.service.js';
 import { WebFileSearchSessionsService } from './services/web-file-search-sessions.service.js';
+import { WebSettingsService } from './services/web-settings.service.js';
 import { WebSkillsService } from './services/web-skills.service.js';
+import { WebSquadsService } from './services/web-squads.service.js';
 import { WebUploadSessionsService } from './services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from './use-cases/answer-conversation-question.use-case.js';
+import { ApplyConversationSquadUseCase } from './use-cases/apply-conversation-squad.use-case.js';
 import { ArchiveConversationUseCase } from './use-cases/archive-conversation.use-case.js';
 import { CancelConversationTurnUseCase } from './use-cases/cancel-conversation-turn.use-case.js';
 import { CreateConversationUseCase } from './use-cases/create-conversation.use-case.js';
@@ -50,7 +54,20 @@ import { WebStaticModule } from './web-static.module.js';
 
 
 @Module({
-  imports: [AccessTokenModule, AgentDefinitionsModule, AgentModule, ArtifactsModule, LoggingModule, OrchestratorModule, PathsModule, RemoteModule, StorageModule, WebStaticModule, WorkspaceModule],
+  imports: [
+    AccessTokenModule,
+    AgentDefinitionsModule,
+    AgentModule,
+    ArtifactsModule,
+    DatabaseModule,
+    DiscordModule,
+    LoggingModule,
+    OrchestratorModule,
+    RemoteModule,
+    SettingsModule,
+    WebStaticModule,
+    WorkspaceModule,
+  ],
   providers: [
     WsClientTransportAdapter,
     {
@@ -59,12 +76,14 @@ import { WebStaticModule } from './web-static.module.js';
         new CombinedClientTransportAdapter([local, remote]),
       inject: [WsClientTransportAdapter, RemoteClientTransportAdapter],
     },
-    { provide: IConversationStorePort, useClass: JsonConversationStoreAdapter },
-    { provide: IPromptHistoryPort, useClass: JsonPromptHistoryAdapter },
+    { provide: IConversationStorePort, useClass: SqliteConversationStoreAdapter },
+    { provide: IPromptHistoryPort, useClass: SqlitePromptHistoryAdapter },
     WebAgentQuotaService,
     WebAgentAuthService,
     WebArtifactsService,
     WebSkillsService,
+    WebSquadsService,
+    WebSettingsService,
     WebConnectionRegistryService,
     ConversationEntryService,
     WebConversationEventsService,
@@ -82,6 +101,7 @@ import { WebStaticModule } from './web-static.module.js';
     ListAgentOptionsUseCase,
     GetConversationProfilesUseCase,
     SetConversationProfilesUseCase,
+    ApplyConversationSquadUseCase,
     AnswerConversationQuestionUseCase,
     RetryConversationTurnUseCase,
     ListPromptHistoryUseCase,

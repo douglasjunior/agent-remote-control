@@ -12,7 +12,8 @@ describe('buildDelegationRepairPrompt', () => {
     expect(prompt).toContain('<delegate role="ROLE" summary="what the user reads" project="project-folder">...</delegate>');
     expect(prompt).toContain('write without any <delegate> tag, adding <attachment path="/absolute/path">description</attachment>');
     expect(prompt).toContain('To ask the user, write each question as <question rationale="why the answer matters">');
-    expect(prompt).toContain('Text outside the tags is shown to the user');
-    expect(prompt).toContain('inside the final response block');
+    expect(prompt).toContain('with your whole response inside one <final_response>...</final_response> block');
+    expect(prompt).toContain('Inside the block, text outside the tags is shown to the user');
+    expect(prompt).toContain('Text outside the block is only progress narration.');
   });
 });

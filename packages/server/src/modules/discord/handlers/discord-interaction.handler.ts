@@ -15,7 +15,7 @@ import { DiscordTypingIndicator, type TypingChannel } from '../services/discord-
 import { buildConversationId, type ConversationKey, resolveConversationKey } from '../utils/conversation-key.util.js';
 
 
-const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, language or login.';
+const PENDING_QUESTIONS_NOTICE = '❓ There are questions waiting for your answer in this conversation. Answer them or use /cancel before switching agent, model, squad, language or login.';
 
 type SelectionTarget = ConversationKey & {
   readonly publish: (content: string) => Promise<void>;
@@ -46,13 +46,11 @@ export class DiscordInteractionHandler implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    this.discordClientService
-      .getClient()
-      .on(Events.InteractionCreate, (interaction) => {
-        this.handleInteraction(interaction).catch((error: unknown) => {
-          this.logger.error(`interaction_handler_failed: ${this.describeError(error)}`);
-        });
+    this.discordClientService.on(Events.InteractionCreate, (interaction) => {
+      this.handleInteraction(interaction).catch((error: unknown) => {
+        this.logger.error(`interaction_handler_failed: ${this.describeError(error)}`);
       });
+    });
   }
 
   async handleInteraction(interaction: Interaction): Promise<void> {
@@ -94,6 +92,16 @@ export class DiscordInteractionHandler implements OnModuleInit {
         start: async conversationId => this.describeSelection(
           await this.discordConversation.startProfilesSelection(conversationId),
           'ℹ️ No profiles available to configure.',
+        ),
+      });
+    } else if (interaction.commandName === 'squad') {
+      await this.handleSelectionCommand(interaction, {
+        subject: 'squad',
+        notice: '🧵 Choose the squad in the thread below.',
+        threadName: 'Squad selection',
+        start: async conversationId => this.describeSelection(
+          await this.discordConversation.startSquadSelection(conversationId),
+          'ℹ️ No squads to apply. Create one in the web interface.',
         ),
       });
     } else if (interaction.commandName === 'agent-auth') {

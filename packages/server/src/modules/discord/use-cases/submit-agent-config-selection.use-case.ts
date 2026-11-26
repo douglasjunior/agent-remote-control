@@ -41,6 +41,10 @@ export class SubmitAgentConfigSelectionUseCase {
       return this.submitProfiles(selection, input.input);
     }
 
+    if (selection.step === 'squad') {
+      return this.submitSquad(selection, input.input);
+    }
+
     if (selection.targetRoles && input.input.trim() === EXIT_INPUT) {
       return { kind: 'profiles_menu', selection: await this.profileList.open(selection.conversationId) };
     }
@@ -87,6 +91,20 @@ export class SubmitAgentConfigSelectionUseCase {
     }
 
     return this.advance({ ...targeted, step: 'agent', options: agents });
+  }
+
+  private async submitSquad(selection: AgentConfigSelection, input: string): Promise<AgentConfigSelectionOutcome> {
+    if (input.trim() === EXIT_INPUT) {
+      await this.selectionStore.remove(selection.conversationId);
+      return { kind: 'squad_closed' };
+    }
+    const option = this.pickOption(selection, input);
+    if (!option) {
+      return { kind: 'invalid', selection };
+    }
+    await this.selectionStore.remove(selection.conversationId);
+    const result = await this.configuration.applySquad(selection.conversationId, option.id);
+    return result.ok ? { kind: 'squad_applied', squadName: option.label } : { kind: 'squad_failed', error: result.error };
   }
 
   private async submitAgent(

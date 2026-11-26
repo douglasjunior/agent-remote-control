@@ -71,4 +71,15 @@ describe('GetConversationProfilesUseCase', () => {
     expect(result.configured).toBe(true);
     expect(await configuration.store.load('web-1')).toBeNull();
   });
+
+  it('should carry the squad the conversation applied and whether a role left it', async () => {
+    const { configuration } = createWebHarness();
+
+    await expect(new GetConversationProfilesUseCase(configuration).execute('web-1')).resolves.toMatchObject({ customized: false });
+    configuration.squadStates.set('web-1', { appliedSquad: { id: 's1', name: 'Backend' }, customized: true });
+
+    const result = await new GetConversationProfilesUseCase(configuration).execute('web-1');
+
+    expect(result).toMatchObject({ appliedSquad: { id: 's1', name: 'Backend' }, customized: true });
+  });
 });

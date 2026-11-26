@@ -2,25 +2,28 @@ import type { ConversationEntry } from '@agent-remote-control/protocol/conversat
 import { useState } from 'react';
 
 
-function delegatedInCurrentTurn(entries: readonly ConversationEntry[]): boolean {
-  const lastUserMessage = entries.findLastIndex(entry => entry.type === 'user_message');
-  return entries.slice(lastUserMessage + 1).some(entry => entry.type === 'delegation');
+/** Whether the turn a response closes delegated: a turn spans the entries after the response before it. */
+function delegatedInTurnOf(entries: readonly ConversationEntry[], response: number): boolean {
+  const previous = entries.findLastIndex((entry, index) => index < response && entry.type === 'agent_response');
+  return entries.slice(previous + 1, response).some(entry => entry.type === 'delegation');
 }
 
 /**
- * Counts the deliveries seen live: a turn that was running here, delegated, and ended with a completed answer. A
- * conversation opened with its turn already over never counts.
+ * Counts the deliveries seen live: a response that arrived after a turn was seen running here, closing a turn that
+ * delegated with a completed answer. A conversation opened with its turn already over never counts, and neither does
+ * a response that was already there.
  */
 export function useDelivery(entries: readonly ConversationEntry[], running: boolean): number {
-  const [seen, setSeen] = useState({ sawRunning: false, deliveries: 0 });
-  const last = entries.at(-1);
+  const [seen, setSeen] = useState<{ responseId?: string; sawRunning: boolean; deliveries: number }>({ sawRunning: false, deliveries: 0 });
+  const index = entries.findLastIndex(entry => entry.type === 'agent_response');
+  const response = entries[index];
 
   let next = seen;
-  if (running && !seen.sawRunning) {
+  if (response && response.id !== seen.responseId) {
+    const delivered = seen.sawRunning && response.type === 'agent_response' && response.status === 'completed' && delegatedInTurnOf(entries, index);
+    next = { responseId: response.id, sawRunning: running, deliveries: seen.deliveries + (delivered ? 1 : 0) };
+  } else if (running && !seen.sawRunning) {
     next = { ...seen, sawRunning: true };
-  } else if (!running && seen.sawRunning && last?.type === 'agent_response') {
-    const delivered = last.status === 'completed' && delegatedInCurrentTurn(entries);
-    next = { sawRunning: false, deliveries: seen.deliveries + (delivered ? 1 : 0) };
   }
   if (next !== seen) {
     setSeen(next);

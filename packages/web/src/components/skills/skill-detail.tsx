@@ -6,13 +6,14 @@ import { Link, useLocation } from 'react-router';
 import { useConversations } from '../../conversations/conversations-context.js';
 import { Markdown } from '../entries/markdown.js';
 import { IconButton } from '../icon-button.js';
+import { settingsState, skillsPath } from '../settings-hub/settings-paths.js';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '../ui/alert-dialog.js';
 import { Badge } from '../ui/badge.js';
 import { Button } from '../ui/button.js';
 
-import { changeSkillPrompt, skillsPath } from './skill-paths.js';
+import { changeSkillPrompt } from './skill-prompts.js';
 import { SkillRoles } from './skill-roles.js';
 
 
@@ -52,18 +53,18 @@ function DeleteSkillButton({ name, onDelete }: { readonly name: string; readonly
 /** A skill in full; a custom one can be changed by asking the CEO in a new conversation, or deleted. */
 export function SkillDetail({ skill, onDelete }: { readonly skill: Skill; readonly onDelete: () => void }) {
   const { startConversation } = useConversations();
-  const { state } = useLocation();
+  const state = settingsState(useLocation());
 
   return (
     <article className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4 sm:p-6">
-      <Link to={skillsPath()} state={state} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground md:hidden">
+      <Link to={skillsPath()} state={state} className="inline-flex w-fit items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground @3xl/hub:hidden">
         <ArrowLeft aria-hidden className="size-4" />
-        All skills
+        Back
       </Link>
       <header className="flex flex-col gap-3">
         <div className="flex items-start gap-2">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-            <h2 className="font-mono text-lg font-semibold break-all">{skill.name}</h2>
+            <h4 className="font-mono text-lg font-semibold break-all">{skill.name}</h4>
             {skill.builtIn
               ? (
                 <Badge variant="secondary">

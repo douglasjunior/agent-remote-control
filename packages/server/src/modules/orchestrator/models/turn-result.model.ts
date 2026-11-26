@@ -3,7 +3,7 @@ import type { AgentUsage } from '../../agent/ports/agent.port.js';
 import type { TurnAgentInfo } from './turn-agent-info.model.js';
 
 
-/** `steered`: the prompt joined the CEO round already running, whose result answers it. */
+/** `steered`: the message joined the turn already running, steered into its CEO prompt or read with a later one; that turn's result answers it. */
 export type TurnStatus = 'completed' | 'cancelled' | 'failed' | 'steered';
 
 export type TurnResult = {

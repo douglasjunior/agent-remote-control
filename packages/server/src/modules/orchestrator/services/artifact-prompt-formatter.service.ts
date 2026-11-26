@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 
-import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES } from '../../artifacts/constants/artifact-catalog.constant.js';
+import { ARTIFACT_SECTION_TITLES, ARTIFACT_SECTIONS, CLOSED_ARTIFACT_STATUSES, DEFAULT_PULL_REQUEST_REPOSITORY, REFINEMENT_KINDS } from '../../artifacts/constants/artifact-catalog.constant.js';
 import type { Artifact, ArtifactActor, ArtifactHistoryEvent, ArtifactSection } from '../../artifacts/models/artifact.model.js';
 import { lastStatusChange } from '../../artifacts/utils/artifact-status.util.js';
+import { formatWordList } from '../utils/word-list.util.js';
 
 
 /** Renders artifacts as the Markdown agents read: the lines of a listing, the full content of one artifact and what changed on it. */
@@ -14,11 +15,11 @@ export class ArtifactPromptFormatterService {
     const parts = [
       `- ${artifact.id} [${artifact.type}] "${artifact.title}"`,
       `status: ${artifact.status}`,
-      `project: ${artifact.projectName}`,
+      this.projectLabel(artifact, 'project'),
       ...(artifact.parentId ? [`parent: ${artifact.parentId}`] : []),
       ...(artifact.dependsOn.length > 0 ? [`depends on: ${artifact.dependsOn.map(id => `${id} (${this.find(all, id)?.status ?? 'deleted'})`).join(', ')}`] : []),
       ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
-      `refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`,
+      `refinement: ${this.refinementStates(artifact)}`,
       ...(artifact.assignee ? [`with: ${artifact.assignee.role}`] : []),
       ...(artifact.pullRequests.length > 0 ? [`pull requests: ${artifact.pullRequests.length}`] : []),
     ];
@@ -61,9 +62,10 @@ export class ArtifactPromptFormatterService {
 
   /**
    * The facts of the artifact and only the sections changed and the comments added from `since` on, for a session that
-   * worked on it until then. Events at that very moment count, so a change is never left out.
+   * worked on it until then, or, `received`, for an agent still at work that was last sent it then. Events at that very
+   * moment count, so a change is never left out.
    */
-  changesSince(artifact: Artifact, all: readonly Artifact[], since: string): string {
+  changesSince(artifact: Artifact, all: readonly Artifact[], since: string, lastSeen: 'worked' | 'received' = 'worked'): string {
     const recent = artifact.history.filter(event => event.at >= since);
     const changedSections = new Set(recent.flatMap(event => (event.changes ?? []).map(change => change.field)));
     const sections = ARTIFACT_SECTIONS
@@ -82,8 +84,8 @@ export class ArtifactPromptFormatterService {
         this.pullRequestsFact(artifact),
       ].join('\n'),
       changed
-        ? `Below are only the sections changed and the comments added since you last worked on ${artifact.id}; everything else on it is unchanged.`
-        : `Nothing on ${artifact.id} besides the facts above changed since you last worked on it.`,
+        ? `Below are only the sections changed and the comments added since ${lastSeen === 'worked' ? `you last worked on ${artifact.id}` : `${artifact.id} was last sent to you`}; everything else on it is unchanged.`
+        : `Nothing on ${artifact.id} besides the facts above changed since ${lastSeen === 'worked' ? 'you last worked on it' : 'it was last sent to you'}.`,
       ...sections,
       ...(comments ? [comments] : []),
     ].join('\n\n');
@@ -95,7 +97,7 @@ export class ArtifactPromptFormatterService {
     const facts = [
       `- Type: ${artifact.type}`,
       this.statusFact(artifact),
-      `- Project: ${artifact.projectName}`,
+      `- ${this.projectLabel(artifact, 'Project')}`,
       `- Parent: ${this.ancestry(artifact, all)}`,
       this.dependenciesFact(artifact, all),
       `- Blocks: ${this.references(blocks)}`,
@@ -137,7 +139,11 @@ export class ArtifactPromptFormatterService {
   }
 
   private refinementFact(artifact: Artifact): string {
-    return `- Refinement: business ${artifact.refinement.business}, technical ${artifact.refinement.technical}`;
+    return `- Refinement: ${this.refinementStates(artifact)}`;
+  }
+
+  private refinementStates(artifact: Artifact): string {
+    return REFINEMENT_KINDS.map(kind => `${kind} ${artifact.refinement[kind]}`).join(', ');
   }
 
   private holderFact(artifact: Artifact): string {
@@ -149,20 +155,26 @@ export class ArtifactPromptFormatterService {
   }
 
   private pullRequestsFact(artifact: Artifact): string {
-    return `- Pull requests: ${artifact.pullRequests.length > 0 ? artifact.pullRequests.map(link => `${link.url} (${link.state})${link.title ? ` "${link.title}"` : ''}`).join('; ') : 'none'}`;
+    return `- Pull requests: ${artifact.pullRequests.length > 0 ? artifact.pullRequests.map(link => `${link.url} (${link.state}${link.repository === DEFAULT_PULL_REQUEST_REPOSITORY ? '' : `, repository ${link.repository}`})${link.title ? ` "${link.title}"` : ''}`).join('; ') : 'none'}`;
+  }
+
+  /** `project: a` for a task, `projects: a, b` for a feature, with the label in the case the line uses. */
+  private projectLabel(artifact: Artifact, label: 'project' | 'Project'): string {
+    return `${artifact.type === 'feature' ? `${label}s` : label}: ${artifact.projectNames.join(', ')}`;
   }
 
   private featureDigestLine(feature: Artifact): string {
-    return `- ${feature.id} [feature] "${feature.title}" · status: ${feature.status} · project: ${feature.projectName}`;
+    return `- ${feature.id} [feature] "${feature.title}" · status: ${feature.status} · ${this.projectLabel(feature, 'project')}`;
   }
 
-  /** A task under a feature runs in the feature's project, so the line names the feature, and the project only for a standalone task. */
+  /** A task names its feature, when it has one, and its own project. */
   private taskDigestLine(task: Artifact, all: readonly Artifact[]): string {
     const waitingOn = this.waitingOn(task, all);
     return [
       `- ${task.id} [task] "${task.title}"`,
       `status: ${task.status}`,
-      task.parentId ? `feature: ${task.parentId}` : `project: ${task.projectName}`,
+      ...(task.parentId ? [`feature: ${task.parentId}`] : []),
+      this.projectLabel(task, 'project'),
       ...(task.assignee ? [`with: ${task.assignee.role}`] : []),
       ...(waitingOn.length > 0 ? [`waiting on: ${waitingOn.join(', ')}`] : []),
       ...(task.pullRequests.length > 0 ? [`pull requests: ${task.pullRequests.length}`] : []),
@@ -178,8 +190,8 @@ export class ArtifactPromptFormatterService {
   }
 
   private backlogEntry(task: Artifact): string {
-    const owed = (['business', 'technical'] as const).filter(kind => task.refinement[kind] === 'pending');
-    const notes = [...(task.parentId ? [task.parentId] : []), ...(owed.length > 0 ? [`owes ${owed.join(' and ')}`] : [])];
+    const owed = REFINEMENT_KINDS.filter(kind => task.refinement[kind] === 'pending');
+    const notes = [...(task.parentId ? [task.parentId] : []), ...(owed.length > 0 ? [`owes ${formatWordList(owed)} refinement`] : [])];
     return notes.length > 0 ? `${task.id} (${notes.join(', ')})` : task.id;
   }
 

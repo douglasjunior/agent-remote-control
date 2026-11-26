@@ -6,7 +6,7 @@ dialog and the reading of typed numbers live in `modules/discord`, and the orche
 ## `DiscordConversationService`
 
 The handlers' entry point: `resolveInput`, `startAgentSelection`, `startConfigSelection`, `startProfilesSelection`,
-`cancelConfigSelection`, `hasActiveConfigSelection`, `requestLanguageChange`, `hasPendingLanguageChange`,
+`startSquadSelection`, `cancelConfigSelection`, `hasActiveConfigSelection`, `requestLanguageChange`, `hasPendingLanguageChange`,
 `cancelLanguageChange`, `startAgentAuthSelection`, `startAgentLogin`, `hasPendingAgentAuth` and `cancelAgentAuth`.
 
 It composes `ResolveConversationInputUseCase`, `StartAgentConfigSelectionUseCase`, `SubmitAgentConfigSelectionUseCase`,
@@ -32,12 +32,13 @@ The use case takes the text as typed and the attachments as downloaded, and deci
 2. the language, when a request is pending;
 3. the code a running agent login waits for (`AgentAuthRequestService.loginAwaitingCode`);
 4. the pick of an agent to log in (digits `1..N`, `0` to cancel) while one is pending;
-5. the answer to an open selection (digits `1..N`, comma-separated at the profile step, `0` to exit or go back);
+5. the answer to an open selection (digits `1..N`, comma-separated at the profile step, `0` to exit or go back), the
+   squad step included;
 6. the request to retry a failed turn now, while one waits (`ITurnRetryPort.retryNow` with the text and the attachments);
 7. a prompt to run.
 
-Without settings for the conversation it inherits the most recent ones (`IAgentConfigurationPort.ensureSettings`); with
-none ever saved it opens the `agent` selection with the message (`PendingMessage`: the text as typed and its
+Without settings for the conversation it takes the default squad, else inherits the most recent settings
+(`IAgentConfigurationPort.ensureSettings`); with neither it opens the `agent` selection with the message (`PendingMessage`: the text as typed and its
 attachments) kept in the selection, and runs it with those attachments once the selection is configured
 (`unavailable` becomes `execute`).
 
@@ -50,6 +51,10 @@ attachments) kept in the selection, and runs it with those attachments once the 
 - `selection` and `profiles_menu`: sends `formatSelection` (numbered list of agents, models, efforts or profiles) and stops;
 - `profiles_updated`: sends `formatProfilesUpdated(updatedRoles, profile)` followed by the refreshed `formatSelection` and stops;
 - `profiles_closed`: sends `formatProfilesClosed` and stops;
+- `squad_applied`: sends `✅ **Squad applied**: <name>` and `Use /profiles to change a role.` and stops;
+  `squad_failed` (the squad was deleted after the list was shown): sends
+  `⚠️ **The squad could not be applied**: <error>` and stops; `squad_closed`: sends `✅ **Squad selection closed.**`
+  and stops;
 - `language_set`: sends `✅ **Language saved**: <language>`; `invalid_language`: sends `⚠️ Invalid language. ...` while the request stays open;
 - `agent_auth_selected`: `DiscordConversationService.startAgentLogin` starts the login of the picked agent and stops;
 - `invalid_agent_auth_choice`: sends `formatInvalidAgentAuthChoice(count)` and stops; `agent_auth_closed`: sends `formatAgentAuthClosed` and stops;
@@ -63,7 +68,8 @@ attachments) kept in the selection, and runs it with those attachments once the 
 ## Selection steps
 
 The selection starts on its own with the first message while there is no saved configuration, and is reopened with
-`/agent` (starting from the agent), `/model` (model and effort of the current agent) or `/profiles` (profile list).
+`/agent` (starting from the agent), `/model` (model and effort of the current agent) or `/profiles` (profile list);
+`/squad` opens the separate `squad` step.
 `/agent` and `/model` overwrite every profile. The state is per conversation (channel + thread).
 
 The `formatSelection` header depends on the step (`AgentConfigSelection.step`):
@@ -72,7 +78,8 @@ The `formatSelection` header depends on the step (`AgentConfigSelection.step`):
 - `agent`: `🤖 **Choose the agent** by replying with the option number:`;
 - `model`: `🧠 **Choose the <selectedAgent.name> model** by replying with the option number:`,
   or `🧠 **Choose the agent model** ...` without `selectedAgent`;
-- `effort`: `⚡ **Choose the effort for <selectedModel.name>** by replying with the option number:`.
+- `effort`: `⚡ **Choose the effort for <selectedModel.name>** by replying with the option number:`;
+- `squad`: `👥 **Choose the squad to apply** by replying with the option number, or 0 to cancel:`.
 
 The agent, model and effort steps of a selection with `targetRoles` add `Type 0 to go back to the profile list.` to the header.
 

@@ -1,36 +1,21 @@
-import { afterEach, describe, expect, it } from '@rstest/core';
+import { describe, expect, it } from '@rstest/core';
+
+import { StubRuntimeSettings } from '../../settings/testing/stub-runtime-settings.js';
 
 import { QuestionTimeoutConfigService } from './question-timeout-config.service.js';
 
 
 describe('QuestionTimeoutConfigService', () => {
-  const originalEnv = { ...process.env };
-
-  afterEach(() => {
-    process.env = { ...originalEnv };
-  });
-
   it('should default to five minutes', () => {
-    delete process.env.QUESTION_TIMEOUT_MS;
-
-    expect(new QuestionTimeoutConfigService().getTimeoutMs()).toBe(300_000);
+    expect(new QuestionTimeoutConfigService(new StubRuntimeSettings()).getTimeoutMs()).toBe(300_000);
   });
 
-  it('should read the timeout from the environment', () => {
-    process.env.QUESTION_TIMEOUT_MS = ' 1500 ';
+  it('should read the timeout from the settings, where zero disables it', () => {
+    const settings = new StubRuntimeSettings({ QUESTION_TIMEOUT_MS: 1500 });
+    const config = new QuestionTimeoutConfigService(settings);
 
-    expect(new QuestionTimeoutConfigService().getTimeoutMs()).toBe(1500);
-  });
-
-  it('should allow zero to disable the timeout', () => {
-    process.env.QUESTION_TIMEOUT_MS = '0';
-
-    expect(new QuestionTimeoutConfigService().getTimeoutMs()).toBe(0);
-  });
-
-  it.each(['abc', '-5', 'Infinity'])('should fall back to the default for %s', (value) => {
-    process.env.QUESTION_TIMEOUT_MS = value;
-
-    expect(new QuestionTimeoutConfigService().getTimeoutMs()).toBe(300_000);
+    expect(config.getTimeoutMs()).toBe(1500);
+    settings.set('QUESTION_TIMEOUT_MS', 0);
+    expect(config.getTimeoutMs()).toBe(0);
   });
 });

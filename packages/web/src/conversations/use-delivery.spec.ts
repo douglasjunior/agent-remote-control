@@ -62,6 +62,16 @@ describe('useDelivery', () => {
     expect(result.current).toBe(0);
   });
 
+  it('should count the answer of a turn followed at once by the turn of a message that waited', () => {
+    const { result, rerender } = watch({ entries: [user, delegation], running: true });
+    const waited = { ...user, id: 'u2', delivery: 'queued' } as const;
+    rerender({ entries: [user, delegation, waited, answer('completed')], running: true });
+    expect(result.current).toBe(1);
+
+    rerender({ entries: [user, delegation, waited, answer('completed'), { ...delegation, id: 'd2' }, { ...answer('completed'), id: 'a2' }], running: false });
+    expect(result.current).toBe(2);
+  });
+
   it('should count each delivery once', () => {
     const { result, rerender } = watch({ entries: [user, delegation], running: true });
     rerender({ entries: [user, delegation, answer('completed')], running: false });

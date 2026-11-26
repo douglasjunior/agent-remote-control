@@ -23,6 +23,7 @@ const CONTRACTS: Record<string, DelegationContract> = {
     statusFlow: { from: ['in_review'], verdicts: { APPROVED: 'approved', CHANGES_REQUESTED: 'changes_requested' } },
   },
   PRODUCT_OWNER: { refines: 'business' },
+  UX_DESIGNER: { refines: 'design' },
   TECH_LEAD: { refines: 'technical' },
   GIT_OPS: {},
 };
@@ -69,7 +70,7 @@ describe('DelegationStatusService', () => {
     });
 
     it('should name the business refinement and the roles that settle it for a backlog task', async () => {
-      const { status, task } = setup('backlog', { refinement: { business: 'pending', technical: 'done' } });
+      const { status, task } = setup('backlog', { refinement: { business: 'pending', design: 'skipped', technical: 'done' } });
 
       expect(status.refusal('DEVELOPER', await task())).toBe(
         'DEVELOPER works on T-1 only while it is ready, in_progress, changes_requested, and it is backlog right now. '
@@ -78,19 +79,31 @@ describe('DelegationStatusService', () => {
     });
 
     it('should name the technical refinement for a backlog task', async () => {
-      const { status, task } = setup('backlog', { refinement: { business: 'skipped', technical: 'pending' } });
+      const { status, task } = setup('backlog', { refinement: { business: 'skipped', design: 'skipped', technical: 'pending' } });
 
       expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the technical refinement (TECH_LEAD):');
     });
 
+    it('should name the design refinement and the designer for a backlog task', async () => {
+      const { status, task } = setup('backlog', { refinement: { business: 'done', design: 'pending', technical: 'done' } });
+
+      expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the design refinement (UX_DESIGNER):');
+    });
+
     it('should name both refinements for a backlog task that owes both', async () => {
-      const { status, task } = setup('backlog', { refinement: { business: 'pending', technical: 'pending' } });
+      const { status, task } = setup('backlog', { refinement: { business: 'pending', design: 'skipped', technical: 'pending' } });
 
       expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the business refinement (PRODUCT_OWNER) and the technical refinement (TECH_LEAD):');
     });
 
+    it('should list every refinement a backlog task owes', async () => {
+      const { status, task } = setup('backlog', { refinement: { business: 'pending', design: 'pending', technical: 'pending' } });
+
+      expect(status.refusal('DEVELOPER', await task())).toContain('It still owes the business refinement (PRODUCT_OWNER), the design refinement (UX_DESIGNER) and the technical refinement (TECH_LEAD):');
+    });
+
     it('should leave the roles out when no role settles the refinement', async () => {
-      const { service, task } = setup('backlog', { refinement: { business: 'pending', technical: 'done' } });
+      const { service, task } = setup('backlog', { refinement: { business: 'pending', design: 'skipped', technical: 'done' } });
       const lonely = new DelegationStatusService(
         service,
         { ...registry, listRoles: () => ['DEVELOPER'] } as IAgentRegistryPort,

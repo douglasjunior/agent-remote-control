@@ -43,6 +43,7 @@ export type AgentRole =
   | 'CODE_REVIEWER'
   | 'TECH_LEAD'
   | 'PRODUCT_OWNER'
+  | 'UX_DESIGNER'
   | 'QA'
   | 'IT_SUPPORT';
 ```
@@ -51,6 +52,7 @@ export type AgentRole =
 |---|---|---|
 | `CEO` | Leads the team: talks to the user, triages, routes the board's tasks through their statuses, delegates all hands-on work and reports the results. | [ceo-prompt.md](references/ceo-prompt.md) |
 | `PRODUCT_OWNER` | Product discovery with the user before technical planning; writes the business sections of a feature and its tasks. | [product-owner-prompt.md](references/product-owner-prompt.md) |
+| `UX_DESIGNER` | Expert UX/UI design after the business refinement and before technical planning: visual direction, tokens, screens, flows and every state, proven in a working prototype on a never-merged `design/<artifact id>-<slug>` branch; writes the `ux_design` section and settles the design refinement. | [ux-designer-prompt.md](references/ux-designer-prompt.md) |
 | `TECH_LEAD` | Technical planning and investigation; writes each task's technical solution and splits large work. | [tech-lead-prompt.md](references/tech-lead-prompt.md) |
 | `DEVELOPER` | Works one task end to end on a branch of its own: code, tests, commits, push and its pull request; DONE or INCOMPLETE. | [developer-prompt.md](references/developer-prompt.md) |
 | `CODE_REVIEWER` | Independent review of a task's pull request or branch without running it; APPROVED or CHANGES_REQUESTED. | [code-reviewer-prompt.md](references/code-reviewer-prompt.md) |
@@ -66,18 +68,18 @@ export type AgentRole =
 - `description`: the full entry of the agent in the `agent-team` skill's catalog: what it does, what it expects and what it answers, so that it says when to delegate to the agent;
 - `buildSystemPrompt(team, agentInterface)`: builds the agent's prompt for the interface of its session (below). Receives `team`, the other registered definitions, so that the CEO can list them. Executor agents ignore `team`;
 - `defaultModel`: optional default language model associated with the persona;
-- `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`); the registry falls back to `'resume'`, so a definition declares it only for `'new'`, and none of the initial ones does. A delegation with an artifact always runs in the role's session for that task, so a role with `artifact: 'required'` declares neither this nor `sessionMode`;
+- `defaultSessionMode`: default session mode of a delegation without an artifact (`'resume' | 'new'`); the registry falls back to `'resume'`, so a definition declares it only for `'new'`, and none of the initial ones does. A delegation with an artifact runs in the role's session for that task unless it sets `session="new"`, so this default never applies to it and a role with `artifact: 'required'` declares no `defaultSessionMode`;
 - `delegation`: the `DelegationContract` of `orchestrator/ports/agent-registry.port.ts`, declaring which `<delegate>` attributes the agent accepts and how a delegation moves the task. A new parameter is added there:
-  - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder;
-  - `sessionMode`: `'overridable'`; when absent, the mode of a delegation without an artifact is fixed to `defaultSessionMode` and passing the `session` attribute there is rejected (with an artifact, `session` is accepted and ignored);
-  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test;
-  - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
+  - `project`: `'required'` or `'optional'`; when absent, the agent receives no project folder. A delegation with a feature (roles whose `ArtifactAccess.scope` is `tree`) never takes one: its agent runs at the workspaces root;
+  - `sessionMode`: `'overridable'` (every role but the CEO); the `session` attribute of the `<delegate>` is accepted: without an artifact it chooses between the project's session and a new one, with one `new` starts a fresh session for the task, replacing the binding of the task, and `resume` or no attribute keeps its session. When absent, the mode of a delegation without an artifact is fixed to `defaultSessionMode` and passing the `session` attribute is rejected, with or without an artifact;
+  - `readOnly: true`: the agent never modifies the project, so it can run in parallel with an agent that modifies the same folder; when absent, the agent counts as a writer. a writer occupies its task's project, or every project of its feature, and no other writer works in a folder meanwhile (`DelegationValidatorService`). PRODUCT_OWNER, TECH_LEAD and CODE_REVIEWER are `readOnly`; QA is a writer, since it switches branches, runs the project and changes it locally to test, and so is UX_DESIGNER, which commits its prototype on a branch of its own;
+  - `artifact`: `'required'` (DEVELOPER, CODE_REVIEWER, QA) or `'optional'` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, GIT_OPS); when absent, the agent takes no artifact;
   - `needsReviewableWork: true` (CODE_REVIEWER, QA): the delegated artifact must link a pull request or record a branch;
-  - `asksUser: true` (PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
+  - `asksUser: true` (PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, IT_SUPPORT): the agent asks the user directly; without it, a decision the agent needs comes back in its result;
   - `userInitiatedOnly: true` (IT_SUPPORT): the CEO delegates to the agent only in a turn that answers the user's message or answers, after suggesting it to the user with a `<question>`;
-  - `refines`: `'business'` (PRODUCT_OWNER) or `'technical'` (TECH_LEAD), the refinement the role settles on the artifacts it is delegated;
+  - `refines`: a `RefinementKind` of the artifacts module's `REFINEMENT_KINDS`, the refinement the role settles on the artifacts it is delegated: `'business'` (PRODUCT_OWNER), `'design'` (UX_DESIGNER) or `'technical'` (TECH_LEAD), one role per kind;
   - `statusFlow`: how a delegation moves the status of its task (below); absent, a delegation leaves the status alone;
-- `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
+- `artifacts`: the agent's `ArtifactAccess` to the board of its conversation (`constants/artifact-access.constant.ts`): `scope` (`board` for the CEO, `tree` for PRODUCT_OWNER, UX_DESIGNER and TECH_LEAD, `task` for the others), `create`, the writable `sections` and the writable `fields` (`title`, `parent`, `project`, `depends_on`, `status`, `refinement`, `branch`, `pull_requests`). DEVELOPER and GIT_OPS write `branch` and `pull_requests`; the board prompts and the `board-requests` skill turn the access into the agent's grammar;
 - `writesSkills`: when `true` (the CEO), the role lists every skill, reads any of them and writes the user's skills;
 - `buildReentryNote(agentInterface)`: optional note put before the prompt that resumes a session the agent already has, never in a new or live session (written with the `buildReentryNote` of `prompts/reentry-note.prompt.ts`, below);
 - `systemPromptEveryTurn`: when `true` (the CEO), the system prompt accompanies every user message, so the agent does without a re-entry note.
@@ -92,7 +94,7 @@ export type AgentRole =
 | `CODE_REVIEWER` | `in_review` | none | `APPROVED` → `approved`, `CHANGES_REQUESTED` → `changes_requested` |
 | `QA` | `approved`, `in_testing` | `in_testing` | `PASSED` → `tested`, `FAILED` → `changes_requested`, `BLOCKED` → `in_testing` |
 
-A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`): on the tags interface an artifact request in the same final response as the answer writes it, on the tools interface an `artifact_update` call before the answer. PRODUCT_OWNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
+A `tested` task, like an `approved` one with nothing to run, waits for the merge, which the CEO's core prompt states. An executor with a verdict opens its final answer with the word on a line of its own, written exactly as shown (its system prompt and re-entry note say so, and so does the `[USER_LANGUAGE]` block of every delegated prompt), followed by a short receipt. Its report lives on the task (`implementation_notes`, `review_findings`, `test_report`): on the tags interface an artifact request in the same final response as the answer writes it, on the tools interface an `artifact_update` call before the answer. PRODUCT_OWNER, UX_DESIGNER and TECH_LEAD declare `refines`; the roles without a status flow (GIT_OPS, IT_SUPPORT) leave the status of their task to the CEO.
 
 ## Two interfaces
 
@@ -120,8 +122,9 @@ every text of this module: `buildSystemPrompt`, `buildReentryNote`, `SkillContex
 Every instruction sits in one of four layers, chosen so that context stays small and the information is there when
 the agent needs it:
 
-1. **Core** (the system prompt): what the role uses in nearly every task. The executors get it once per session; the
-   CEO with every user message, so its core is written to be sufficient for a request without reading a skill.
+1. **Core** (the system prompt): what the role uses in nearly every task. The executors get it once per session, and
+   again in a resumed session whose recorded copy differs from the current one (the session binding keeps a hash of the
+   text it was sent); the CEO with every user message, so its core is written to be sufficient for a request without reading a skill.
 2. **Re-entry note** (`buildReentryNote`): the rules nothing else enforces, for a prompt that reaches a session the agent
    already has, ending with the pointer to the `role-guide` skill. It is built by `buildReentryNote(roleName, rules, agentInterface)`
    (`prompts/reentry-note.prompt.ts`): a `[RE-ENTRY]` header, on the tools interface the tools of the `arc` server, the role's rules and the rule to finish only after every
@@ -137,15 +140,17 @@ the agent needs it:
 Every agent writes its deliverable to the board of the conversation, never to a document. From the role's `ArtifactAccess`:
 
 - `buildArtifactProtocolBrief(access, agentInterface)` (`prompts/artifact-protocol.prompt.ts`) writes the board in brief for the system prompt of every executor: what it holds, the requests the role uses in most tasks (read, update with its own fields and first section, create when allowed, comment), when the requests are carried out, what it writes, its scope, and the `board-requests` skill for everything else. On the tags interface updates and comments go in the same final response as the final answer, and a response that reads or creates gets its results first (a creation's id is something the agent must read), with the final answer whole after them; on the tools interface the agent writes to the board before its final answer and corrects a refused call before going on. A role that creates writes the `overview` of what it creates, even when `overview` is not among its sections.
-- `buildBoardRequestsBody(access, agentInterface)` (`skills/board-requests.skill.ts`) writes the full protocol, which only skills deliver: the model of the board (features over tasks, one project per feature and its tasks, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment), or on the tools interface what each of its tools is for, and its rules. A `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. The `board-requests` skill gives it to every executor role, and the CEO's `artifact-board` skill adds it after the routing.
+- `buildBoardRequestsBody(access, agentInterface)` (`skills/board-requests.skill.ts`) writes the full protocol, which only skills deliver: the model of the board (features over tasks, a feature linking one or more projects and a task working in one of them, a project folder that may hold several nested git repositories, statuses, refinements, sibling dependencies, sections), the request grammar the role may use (list, read, `tree="true"` for `tree`, create when `create`, update with only its sections and fields, comment), or on the tools interface what each of its tools is for, and its rules. A `task` agent reads tasks and changes only the task it holds (`[DELEGATED_ARTIFACT]`); an artifact another agent holds is not changed. The `board-requests` skill gives it to every executor role, and the CEO's `artifact-board` skill adds it after the routing.
 - The `status` attribute of an update reminds the writer that the server sets the status a delegation or a verdict leaves, so a status is set only for a decision.
 
 ## Shared prompt blocks
 
 - **Final response**: every agent prompt ends with `FINAL_RESPONSE_INSTRUCTIONS` (`prompts/final-response.prompt.ts`):
-  the turn's final response comes exactly once inside `<final_response>…</final_response>`
-  (`orchestrator/constants/final-response.constant.ts`), and text outside it is only progress narration. A new agent
-  must include this block, because the orchestrator uses the envelope to separate the response from the narration.
+  the turn has exactly one `<final_response>…</final_response>` block
+  (`orchestrator/constants/final-response.constant.ts`), the last thing of the turn: text before it is progress
+  narration and text after it is discarded. A response with more than one block is answered again
+  (`buildFinalResponseCountRepairPrompt`). A new agent must include this block, because the orchestrator uses the
+  envelope to separate the response from the narration.
   The block also requires every subagent and background task the agent started to have finished, and its result read,
   before the answer, because ending the turn delivers the answer and discards what is still running.
 - **CWD boundary**: every executor agent but IT_SUPPORT includes `CWD_BOUNDARY_INSTRUCTIONS`
@@ -155,7 +160,10 @@ Every agent writes its deliverable to the board of the conversation, never to a 
   stops and returns in its final response an access request with path, reason and mode. The request is the response to
   the caller, never a direct question to the user, so that the CEO can assess the risk first. GIT_OPS has `$HOME/.ssh`
   authorized in its own prompt for SSH key setup.
-- **Project orientation**: DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA and PRODUCT_OWNER include
+  The agent of a feature has the workspaces root as its CWD, so the whole root is readable; the projects it may change come
+  in its `[DELEGATED_ARTIFACT]` block (`buildFeatureScopePrompt`), never in the system prompt, whose text and fingerprint stay
+  the same for every feature.
+- **Project orientation**: DEVELOPER, TECH_LEAD, CODE_REVIEWER, QA, PRODUCT_OWNER and UX_DESIGNER include
   `PROJECT_ORIENTATION_INSTRUCTIONS` (`prompts/project-orientation.prompt.ts`). Before its first action on a project
   in a session, the agent reads the guidance the project keeps at its root that is not in its context yet (`AGENTS.md`,
   `CLAUDE.md`, `.github/copilot-instructions.md`, `README.md`, `CONTRIBUTING.md`) and the `AGENTS.md` files inside the
@@ -168,7 +176,7 @@ Every agent writes its deliverable to the board of the conversation, never to a 
 
 Know-how an agent needs only for some tasks lives in skills, outside its system prompt. The orchestrator sends the
 catalog (`[SKILLS]`, the name and description of each skill the role may read) with the system prompt and again after the
-re-entry note of a resumed session, so a skill created since its start is listed, and the agent
+re-entry note of a resumed session whose system prompt is unchanged. A skill created since a session's system prompt changes the text it would be sent (the catalog is part of it), so that session gets the system prompt again, with the current catalog. The agent
 reads a skill's full content when the task calls for it: with `<skill_read name="a,b"/>` in its final response, or the
 `skill_read` tool on the tools interface. The
 description is all the agent sees before reading, so it says what the skill covers and when to read it.
@@ -181,19 +189,23 @@ writes. Which role reads which skill, and the details: [references/agent-skills.
 
 Every executor but IT_SUPPORT reads `board-requests`; every executor reads `role-guide`. The procedures a role needs only
 sometimes are skills of that role: `git-remote` (DEVELOPER, GIT_OPS), `repository-setup` (GIT_OPS),
-`review-publishing` (CODE_REVIEWER), the testing skills (QA).
+`review-publishing` (CODE_REVIEWER), `running-checks` (DEVELOPER, CODE_REVIEWER, QA), the testing skills (QA),
+`running-the-app` (QA, UX_DESIGNER), the design skills (UX_DESIGNER, four of them also DEVELOPER).
 
 ## Questions to the user
 
-The CEO, PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT ask the user directly when they need a decision from them to proceed, with
+The CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD and IT_SUPPORT ask the user directly when they need a decision from them to proceed, with
 `<question rationale="…">text<option>…</option></question>` tags in their final response. The instructions:
 
 - `USER_QUESTIONS_BRIEF` (`prompts/user-questions.prompt.ts`): the essentials under `### Asking the User`, in the
-  system prompt of PRODUCT_OWNER, TECH_LEAD and IT_SUPPORT: the tag with its `rationale`, context in the text outside
+  system prompt of PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD and IT_SUPPORT: the tag with its `rationale`, context in the text outside
   the tags, one option per plausible answer and no "Other", the recommended option first and assumed on a timeout,
-  independent questions per response;
-- the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER, TECH_LEAD and
-  IT_SUPPORT) covers the rest: several questions, attachments in the answers and timed-out answers. The brief names it.
+  facts looked up, never asked, and the decisions mapped before the first round so that each response asks the
+  whole frontier (every decision whose prerequisites are settled) while dependent ones wait;
+- the `asking-the-user` skill (`skills/asking-the-user.skill.ts`, for the CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD
+  and IT_SUPPORT) covers the rest: keeping the decision map across rounds, ending an interview with an empty frontier and
+  a confirmed summary, attachments in the answers and timed-out answers. The brief names it. The role prompts say,
+  in their own terms, what a fact is and what the reason of a recommendation is, and when the summary is confirmed.
   The CEO's core carries its own short version of the tag.
 
 DEVELOPER and GIT_OPS never ask: a decision only the user can make ends their turn with the decision and its options
@@ -250,4 +262,4 @@ It also binds `IUserSkillStorePort` to `FileUserSkillStoreAdapter` (importing `P
 - `constants/skill-names.constant.ts`: `SKILL_NAMES`, the one place a prompt or a skill takes a skill's name from.
 - `constants/workspace-manifest.constant.ts`: `WORKSPACE_MANIFEST_FILE`, the name of the file at the workspaces root that maps repository URLs to project folders.
 - `constants/artifact-access.constant.ts`: the `ArtifactAccess` of each role.
-- `utils/team-format.util.ts`: `formatDelegationTargets` (what a delegation to the agent names, for the team list) and `formatDelegationForms` (the full `<delegate>` tag forms, for the `agent-team` skill).
+- `utils/team-format.util.ts`: `formatDelegationTargets` (what a delegation to the agent names, for the team list) and `formatDelegationForms` (the full `<delegate>` tag forms, for the `agent-team` skill, with a `session="new"` form for each agent that takes an artifact and a `sessionMode`).

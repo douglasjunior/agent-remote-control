@@ -1,11 +1,11 @@
 import {
-  ARTIFACT_STATUSES, type ArtifactDetail, type ArtifactSummary, type ArtifactUpdateInput, type PullRequestState, type RefinementState,
+  ARTIFACT_STATUSES, REFINEMENT_KINDS, type ArtifactDetail, type ArtifactSummary, type ArtifactUpdateInput, type PullRequestState, type RefinementState,
 } from '@agent-remote-control/protocol/artifact';
 import { FolderGit2, GitBranch, GitMerge, GitPullRequest, GitPullRequestClosed, X, type LucideIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
-import { REFINEMENT_LABELS, STATUS_LABELS } from '../../artifacts/artifact-labels.js';
+import { REFINEMENT_KIND_LABELS, REFINEMENT_LABELS, STATUS_LABELS } from '../../artifacts/artifact-labels.js';
 import { artifactPath } from '../../artifacts/artifact-paths.js';
 import { dependencyCandidates, dependentsOf, parentCandidates } from '../../artifacts/artifact-tree.js';
 import { formatRelativeTime } from '../../lib/format.js';
@@ -16,6 +16,7 @@ import { IconButton } from '../icon-button.js';
 import { ArtifactStatusBadge } from './artifact-status-badge.js';
 import { ArtifactTypeIcon } from './artifact-type-icon.js';
 import { ChoiceSelect } from './choice-select.js';
+import { ProjectsSelect } from './projects-select.js';
 
 
 const NONE = '';
@@ -53,6 +54,48 @@ function ArtifactLink({ conversationId, artifact, onRemove }: {
   );
 }
 
+/**
+ * A feature edits the list of its projects (the server refuses to drop one its tasks still use); a task picks one
+ * project among those of its feature, or among all of them while standalone, and only reads the one of a feature
+ * that links a single project.
+ */
+function ProjectField({ artifact, feature, projects, onChange }: {
+  readonly artifact: ArtifactDetail;
+  readonly feature: ArtifactSummary | undefined;
+  readonly projects: readonly string[];
+  readonly onChange: (changes: ArtifactUpdateInput) => void;
+}) {
+  if (artifact.type === 'feature') {
+    return (
+      <ProjectsSelect
+        label="Projects"
+        value={artifact.projectNames}
+        choices={[...new Set([...projects, ...artifact.projectNames])]}
+        onChange={projectNames => onChange({ projectNames })}
+        minSelected={1}
+      />
+    );
+  }
+  const choices = feature?.projectNames ?? [...new Set([...projects, artifact.projectNames[0]!])];
+  if (feature && choices.length === 1) {
+    return (
+      <span className="flex items-center gap-1.5" title="The project of its feature">
+        <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
+        {artifact.projectNames[0]}
+      </span>
+    );
+  }
+  return (
+    <ChoiceSelect
+      label="Project"
+      value={artifact.projectNames[0]!}
+      choices={choices.map(project => ({ value: project, label: project }))}
+      onChange={projectName => onChange({ projectName })}
+      className="w-full"
+    />
+  );
+}
+
 /** Everything about an artifact besides its text, each property editable where people may change it. */
 export function ArtifactProperties({ conversationId, artifact, byId, projects, onChange }: {
   readonly conversationId: string;
@@ -64,11 +107,9 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
   const now = useNow(true);
   const artifacts = Object.values(byId);
   const parents = parentCandidates(artifact.type, artifacts, artifact);
-  const projectLocked = artifact.parentId !== null || artifacts.some(other => other.parentId === artifact.id);
   const blocks = dependentsOf(artifact.id, artifacts);
   const dependencyChoices = dependencyCandidates(artifact.type, artifact.parentId, artifacts, artifact.id)
     .filter(sibling => !artifact.dependsOn.includes(sibling.id));
-  const projectChoices = [...new Set([...projects, artifact.projectName])];
 
   return (
     <dl className="flex flex-col gap-5">
@@ -83,43 +124,23 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
       </Property>
       <Property label="Refinement">
         <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
-          <span className="text-[13px] text-muted-foreground">Business</span>
-          <ChoiceSelect
-            label="Business refinement"
-            size="sm"
-            value={artifact.refinement.business}
-            choices={REFINEMENT_CHOICES}
-            onChange={business => onChange({ refinement: { business: business as RefinementState } })}
-            className="w-full"
-          />
-          <span className="text-[13px] text-muted-foreground">Technical</span>
-          <ChoiceSelect
-            label="Technical refinement"
-            size="sm"
-            value={artifact.refinement.technical}
-            choices={REFINEMENT_CHOICES}
-            onChange={technical => onChange({ refinement: { technical: technical as RefinementState } })}
-            className="w-full"
-          />
+          {REFINEMENT_KINDS.map(kind => (
+            <Fragment key={kind}>
+              <span className="text-[13px] text-muted-foreground">{REFINEMENT_KIND_LABELS[kind]}</span>
+              <ChoiceSelect
+                label={`${REFINEMENT_KIND_LABELS[kind]} refinement`}
+                size="sm"
+                value={artifact.refinement[kind]}
+                choices={REFINEMENT_CHOICES}
+                onChange={state => onChange({ refinement: { [kind]: state as RefinementState } })}
+                className="w-full"
+              />
+            </Fragment>
+          ))}
         </div>
       </Property>
-      <Property label="Project">
-        {projectLocked
-          ? (
-            <span className="flex items-center gap-1.5" title={artifact.parentId ? 'The project of its feature' : 'Shared with the tasks of the feature'}>
-              <FolderGit2 aria-hidden className="size-3.5 text-muted-foreground" />
-              {artifact.projectName}
-            </span>
-          )
-          : (
-            <ChoiceSelect
-              label="Project"
-              value={artifact.projectName}
-              choices={projectChoices.map(project => ({ value: project, label: project }))}
-              onChange={projectName => onChange({ projectName })}
-              className="w-full"
-            />
-          )}
+      <Property label={artifact.type === 'feature' ? 'Projects' : 'Project'}>
+        <ProjectField artifact={artifact} feature={artifact.parentId ? byId[artifact.parentId] : undefined} projects={projects} onChange={onChange} />
       </Property>
       {artifact.type === 'task' && (
         <Property label="Feature">
@@ -169,11 +190,14 @@ export function ArtifactProperties({ conversationId, artifact, byId, projects, o
                 href={pullRequest.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label={`${pullRequest.title ?? pullRequest.url}, ${pullRequest.state}`}
-                className="flex min-w-0 items-center gap-1.5 rounded-sm hover:underline"
+                aria-label={[pullRequest.title ?? pullRequest.url, pullRequest.state, ...(pullRequest.repository === '.' ? [] : [pullRequest.repository])].join(', ')}
+                className="flex min-w-0 items-start gap-1.5 rounded-sm hover:underline"
               >
-                <Icon aria-hidden className={cn('size-3.5 shrink-0 text-muted-foreground', pullRequest.state === 'merged' && 'text-(--agent-product-owner)')} />
-                <span className="truncate">{pullRequest.title ?? pullRequest.url}</span>
+                <Icon aria-hidden className={cn('mt-0.5 size-3.5 shrink-0 text-muted-foreground', pullRequest.state === 'merged' && 'text-(--agent-product-owner)')} />
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate">{pullRequest.title ?? pullRequest.url}</span>
+                  {pullRequest.repository !== '.' && <span className="truncate font-mono text-[11.5px] text-muted-foreground">{pullRequest.repository}</span>}
+                </span>
               </a>
             );
           })}

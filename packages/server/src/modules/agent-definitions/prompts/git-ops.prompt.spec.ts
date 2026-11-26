@@ -63,7 +63,7 @@ describe('git-ops.prompt', () => {
 
   describe('working on a task', () => {
     it('should merge the pull request of a task into its target branch, the default one only with the approval of the user', () => {
-      expect(GIT_OPS_SYSTEM_PROMPT).toContain('merge it into the branch it targets');
+      expect(GIT_OPS_SYSTEM_PROMPT).toContain('Merging a task\'s pull requests: merge each into the branch it targets');
       expect(GIT_OPS_SYSTEM_PROMPT).toContain('so do it only when the instruction says the user approved it');
     });
 
@@ -72,8 +72,12 @@ describe('git-ops.prompt', () => {
     });
   });
 
-  it('should report the project folder, the branch and the exact Git error', () => {
-    expect(GIT_OPS_SYSTEM_PROMPT).toContain('State the project folder (the caller routes later work by that name), the current branch and what changed on the remote.');
+  it('should create the branch a repository lacks, for a task based on it', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('create a branch a repository lacks (a feature branch a task is based on)');
+  });
+
+  it('should report the project folder, the repository, its branch and the exact Git error', () => {
+    expect(GIT_OPS_SYSTEM_PROMPT).toContain('State the project folder (the caller routes later work by that name), the repository, its current branch and what changed on the remote.');
     expect(GIT_OPS_SYSTEM_PROMPT).toContain('give the exact Git error rather than a summary');
   });
 

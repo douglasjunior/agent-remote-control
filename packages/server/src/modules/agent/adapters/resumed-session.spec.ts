@@ -36,8 +36,9 @@ describe('ResumedSession', () => {
     const { connection } = buildConnection();
     const session = new ResumedSession('stored', connection);
 
+    const prompt = session.prompt('continue');
     session.route(chunk('I remember the conversation.'));
-    await session.prompt('continue');
+    await prompt;
 
     expect(await session.nextUpdate()).toEqual({
       kind: 'session_update',
@@ -56,9 +57,49 @@ describe('ResumedSession', () => {
     const session = new ResumedSession('stored', connection);
 
     const next = session.nextUpdate();
+    void session.prompt('continue');
     session.route(chunk('live'));
 
     expect(await next).toEqual(expect.objectContaining({ kind: 'session_update' }));
+  });
+
+  it('should drop the history an agent still replays before the prompt', async () => {
+    const { connection } = buildConnection();
+    const session = new ResumedSession('stored', connection);
+
+    session.route(chunk('PASSED, an answer of an earlier turn'));
+    await session.prompt('continue');
+
+    expect(await session.nextUpdate()).toEqual(expect.objectContaining({ kind: 'stop' }));
+  });
+
+  it('should drop what arrives between one prompt response and the next prompt', async () => {
+    const { connection } = buildConnection();
+    const session = new ResumedSession('stored', connection);
+
+    await session.prompt('first');
+    session.route(chunk('after the turn'));
+    const second = session.prompt('second');
+    session.route(chunk('second turn'));
+    await second;
+
+    expect(await session.nextUpdate()).toEqual(expect.objectContaining({ kind: 'stop' }));
+    expect(await session.nextUpdate()).toEqual(expect.objectContaining({ update: chunk('second turn').update }));
+    expect(await session.nextUpdate()).toEqual(expect.objectContaining({ kind: 'stop' }));
+  });
+
+  it('should drop what arrives after a failed prompt', async () => {
+    const { connection, request } = buildConnection();
+    request.mockRejectedValueOnce(new Error('agent crashed'));
+    const session = new ResumedSession('stored', connection);
+
+    await expect(session.prompt('oi')).rejects.toThrow('agent crashed');
+    session.route(chunk('late'));
+
+    await expect(session.nextUpdate()).rejects.toThrow('agent crashed');
+    const next = session.nextUpdate();
+    await session.prompt('again');
+    expect(await next).toEqual(expect.objectContaining({ kind: 'stop' }));
   });
 
   it('should ignore updates of other sessions', async () => {

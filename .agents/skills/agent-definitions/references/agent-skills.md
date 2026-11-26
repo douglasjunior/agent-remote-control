@@ -15,13 +15,16 @@ prompts and other skills take the names too), listed in `BUILT_IN_SKILLS` (`cons
 | Roles | Skills |
 |---|---|
 | CEO | `agent-team`, `artifact-board`, `delegation-protocol`, `response-protocol`, `workspace-navigation`, `skill-authoring` |
-| Every executor (GIT_OPS, PRODUCT_OWNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
+| Every executor (GIT_OPS, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, DEVELOPER, CODE_REVIEWER, QA) | `board-requests` |
 | Every executor and IT_SUPPORT | `role-guide` |
-| CEO, PRODUCT_OWNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
+| CEO, PRODUCT_OWNER, UX_DESIGNER, TECH_LEAD, IT_SUPPORT | `asking-the-user` |
 | DEVELOPER, GIT_OPS | `git-remote` |
 | GIT_OPS | `repository-setup` |
 | CODE_REVIEWER | `review-publishing` |
+| DEVELOPER, CODE_REVIEWER, QA | `running-checks` |
 | QA | `running-the-app`, `web-ui-testing`, `api-testing`, `mobile-testing` |
+| UX_DESIGNER | `running-the-app`, `layout-composition`, `motion`, `data-visualization`, `design-systems`, `prototyping`, `ux-writing`, `visual-polish` |
+| UX_DESIGNER, DEVELOPER | `visual-foundations`, `responsive-mobile`, `interaction-states`, `accessibility` |
 
 ### `role-guide`
 
@@ -33,18 +36,21 @@ has lost it. A reader that browses skills for the user (`readAny`) gets the tags
 
 The guide to asking the user in full (`skills/asking-the-user.skill.ts`); the essentials are inline in
 `USER_QUESTIONS_BRIEF`. It covers when to ask, the grammar, options without "Other", the recommended option first and
-marked `recommended` (assumed when the user does not reply in time), the text outside the tags as the context so each
-question stands on its own among several agents, a `rationale` always filled, independent questions in one response,
-and the `<user_answers>` format, with `<attachment path="…"/>` for files the user attaches and `status="timed_out"` for
-an answer assumed because the user was absent.
+marked `recommended` (assumed when the user does not reply in time) and worded so accepting it is an informed
+decision, the text outside the tags as the context so each question stands on its own among several agents, a
+`rationale` always filled, facts looked up before each round, never asked, the decisions mapped as a tree whose
+frontier (every decision whose prerequisites are settled) each round asks at once and which is updated after the
+answers, the end of an interview (an empty frontier, nothing assumed, and a last round confirming the summary when the
+role's instructions call for it), and the `<user_answers>` format, with `<attachment path="…"/>` for files the user
+attaches and `status="timed_out"` for an answer assumed because the user was absent.
 
 ### `git-remote`, `repository-setup` and `review-publishing`
 
 Procedures that touch a Git hosting provider, each for the roles that need it:
 
 - `git-remote` (DEVELOPER, GIT_OPS): finding the provider with `git remote -v` and using its MCP tools, then its
-  official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per task, titled
-  with the task id and title, described from the task and recorded on it (`<pull_request …/>` on the tags interface, the `pull_requests` of `artifact_update` on the tools); merging only on an
+  official CLI, with no `curl` or raw REST fallback; pushing only the given branch; one pull request per repository the task changes, all from the task's branch name, titled
+  with the task id and title, described from the task and recorded on it with their `repository` (`<pull_request …/>` on the tags interface, the `pull_requests` of `artifact_update` on the tools); merging only on an
   instruction, with checks green, and recording `state="merged"`; authentication failures reported with the exact error.
 - `repository-setup` (GIT_OPS): the workspace manifest (`WORKSPACE_MANIFEST_FILE`, a JSON array of
   `{ url, folder, defaultBranch }`, GIT_OPS its only writer), folder naming from the URL, choosing the transport, cloning,
@@ -53,13 +59,50 @@ Procedures that touch a Git hosting provider, each for the roles that need it:
   finding inline on the new line or in the main discussion, submitting the verdict, and resolving the threads of fixed
   findings on a later review.
 
+### `running-checks`
+
+How to run each check for one file and for one package, read when the agent does not know it for the ecosystem at
+hand: non-interactive runs through the project's scripts, the required checks read from the CI workflows (jobs on
+`pull_request`, their `run:` steps, working directory, matrix and `paths` filters), the package of a file from its
+nearest manifest and the workspace declarations, and the commands of Node (pnpm, npm, yarn; vitest, jest, rstest,
+mocha; eslint, biome, prettier; tsc, vue-tsc), turbo, nx, lerna, Python (uv, poetry; pytest, ruff, mypy), Go, Rust
+(cargo workspaces), JVM (Gradle and Maven per module) and .NET. The DEVELOPER's `### Checks` section names it.
+
 ### `running-the-app` and `mobile-testing`
 
-The QA prepares its own environment with them: `running-the-app` brings up local services with migrations and seeds,
+The QA prepares its own environment with them, and UX_DESIGNER reads `running-the-app` to run the app it designs for and its prototype: `running-the-app` brings up local services with migrations and seeds,
 points the application and its clients at them, rebuilding what reads a setting at build time, shapes the state a test
 needs in local data or, when data cannot reach it, in code, and undoes it all at shutdown (tracked files reverted,
 `git status` as found, kept local data listed); `mobile-testing` adds how a device reaches the host, with `adb reverse`
 for an Android emulator. Nothing either skill changes is ever committed.
+
+### The design skills
+
+The craft of interface design, dense with numbers, rules and checklists, each description opening with when to read it.
+The UX/UI designer's prompt names which one to read for which moment; DEVELOPER reads the four it needs to build an
+interface from a design.
+
+- `visual-foundations`: type scale and line length, the 4/8 spacing scale, color tokens by role in OKLCH ramps with
+  WCAG AA numbers, dark mode designed rather than inverted, radii, elevation, icons and tabular numbers.
+- `layout-composition`: one job per screen, summary before detail, grids and optical alignment, density, `gap` over
+  margins, the patterns of landing, dashboard, form, list-detail, settings, onboarding and empty slate, and when a card
+  earns its border.
+- `responsive-mobile`: mobile first, breakpoints versus container queries, touch targets and thumb zones, navigation
+  patterns, safe areas, no horizontal page scroll and collapsing toolbars and filters into sheets.
+- `interaction-states`: empty, loading, error, success, partial and permission states, forms and validation timing,
+  disabled versus read-only, destructive actions confirmed in the page, and undo.
+- `accessibility`: semantic HTML and landmarks, keyboard and focus, ARIA only when needed, labels, contrast, reduced
+  motion, meaning beyond color, live regions and testing with a keyboard and a screen reader.
+- `motion`: purpose, durations and easing, enter and exit asymmetry, no layout shift, reduced motion, and a page
+  complete at rest.
+- `data-visualization`: the chart from the question, one scale for marks and ticks, palettes, legends and direct
+  labels, stat tiles only when the number is the point, and theme-aware chart text.
+- `design-systems`: detecting and reusing Tailwind, shadcn, MUI, Chakra or CSS variables, a minimal token set and
+  component inventory when none exists, naming, and recording the decisions in `ux_design`.
+- `prototyping`: fidelity and stack, realistic data, every state reachable, serving, screenshots for the self-review,
+  and the branch and handoff format.
+- `ux-writing`: users' names for things, controls that say what happens, errors with cause and fix, plain copy.
+- `visual-polish`: the details of professional work, the anti-generic checklist and the final review pass.
 
 ### `skill-authoring`
 

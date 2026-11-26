@@ -3,7 +3,7 @@ name: web-app
 description: >
   React web app in packages/web: folder layout, the IServerConnection interface and its WebSocket and
   WebRTC implementations, the p2p build, the connection badge, access token handling, conversation state, the feed and composer, the mission
-  board, the squad panel, usage and agent login indicators, the skills page, the import convention,
+  board, the squad panel, usage and agent login indicators, the home screen, the settings hub (general, agents, squads, skills, Discord and advanced sections), the import convention,
   testing with Testing Library and fake connections, and vendored shadcn/ui components. Use when
   working with the web package, React components, the browser connection to the server or the
   access token form.
@@ -27,7 +27,7 @@ packages/web/src/
 ├── main.tsx                 # bootstrap: ConnectionProvider + RouterProvider
 ├── router.tsx               # route table (`routes`) and the browser router
 ├── connection/              # IServerConnection, ChannelServerConnection and its WebSocket and WebRTC transports, remote link, AccessTokenStore, context
-├── conversations/           # reducer, context, entry grouping, open question, team state, presence
+├── conversations/           # reducer, context, entry grouping, open question, team state, presence, conversation paths
 ├── artifacts/               # the mission board of each conversation: reducer, context, useBoard, tree helpers, labels, paths
 ├── theme/                   # ThemeProvider and useTheme (light, dark, system)
 ├── pages/                   # route-level screens
@@ -36,10 +36,14 @@ packages/web/src/
 │   ├── agent/               # AgentMark: the round lens with an animated glyph per role
 │   ├── squad/               # SquadPanel (right panel), Station, spine and motion hooks, squad status
 │   ├── usage/               # UsageIndicator (header), UsagePanel, useAgentQuota, quota levels
-│   ├── auth/                # AgentAuthController (toasts), AgentAuthPopover (header), AgentLoginCard, useAgentAuthStatus
-│   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, activity
-│   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill paths of the skills page
-│   ├── settings/            # agent, model and effort pickers of the settings sheet
+│   ├── auth/                # AgentAuthProvider (state and toasts), AgentLogins (Agents section), AgentLoginCard, useAgentAuthStatus
+│   ├── artifacts/           # ArtifactBoard (list and kanban), ArtifactPane and ArtifactDetail, create dialog, properties, ProjectsSelect (the multi-select of projects), activity
+│   ├── skills/              # SkillList, SkillDetail, SkillRoles and the skill prompts
+│   ├── home/                # the home screen parts: RecentConversations, SquadPicker, the squad choice, the focus request paths
+│   ├── squads/              # SquadList, SquadEditor, useSquads and the roles a squad can set
+│   ├── settings/            # RoleEditor (agent, model and effort), RoleForm and the option lists, shared by the settings sheet and the squad editor
+│   ├── settings-hub/        # the hub: layout, section nav, server settings provider and sections, squads and skills sections, the path helpers, the old-address redirect
+│   ├── server-settings/     # the fields of the server settings: SettingField, drafts and their checks, duration units, texts, the Discord connection test
 │   ├── prompt-input/        # PromptInput and its hooks: history, file mentions, attachments, voice
 │   └── entries/             # feed rows: handoff rows, activity groups, messages, questions, retries
 └── lib/                     # cn(), agent-identity (mark, color, stage, responsibility per role), tool-label, formatting, clocks, media query, useStoredFlag
@@ -47,9 +51,10 @@ packages/web/src/
 
 ## App shell
 
-- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then the Skills link (an icon link with a tooltip, to `/skills`), the agent logins popover, usage indicator, connection badge and theme toggle on the right) above the page. It also mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
+- `AppLayout` renders a header (a `PanelLeftOpen`/`PanelLeftClose` `IconButton` "Show conversations"/"Hide conversations" with `aria-expanded`, the primary "New conversation" button, the truncating `h1`, then on the right the settings gear (an icon link with a tooltip to `/settings`, with a red dot while an agent needs a login), the usage indicator, the connection badge and the theme toggle) above the page. The skills, squads and agent logins have no header control: they are sections of the settings hub. `AppLayout` also wraps the app in `AgentAuthProvider` and mounts the sonner `Toaster` once, so every toast of the app and of the specs renders.
 - From 768 px of viewport the conversation list is a docked `aside` (`id="conversation-list"`, 288 px) that pushes the page; it stays mounted and `hidden` while closed, defaults to closed and the choice is kept by `useStoredFlag` under `arc.conversationListOpen`. Below 768 px the same toggle opens `ConversationList` in a left shadcn `Sheet` (not persisted), which picking a conversation closes (`onNavigate`).
-- "New conversation" lives only in the header and the empty state of `ConversationPage`. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so every control fits from 320 px.
+- "New conversation" lives only in the header. On `/` it focuses the composer of the home screen (it navigates to `/` with `homeFocusState()` in the router state) instead of creating a conversation.
+- `AppLayout` gives its page an outlet context (`useAppOutlet`, `AppOutletContext`) with `conversationListVisible` (the list is docked and open) and `showConversations`, which opens the docked list or the drawer. Below `sm` the header drops the `h1`, shows "New conversation" and the connection badge as icons only and tightens its gaps, so the gear, usage, connection and theme controls fit from 320 px (`app-layout.spec.tsx` checks that none of them is hidden and that no Skills link, logins button or "More" menu is left).
 - `useStoredFlag` (`lib/`) keeps a UI boolean in `localStorage` under an `arc.*` key, in memory when storage throws.
 
 ## Connection
@@ -126,7 +131,7 @@ packages/web/src/
 
 - `conversationsReducer` is a pure reducer from `ServerEvent` to `ConversationsState` (`list` ordered by
   `updatedAt` desc, `agents`, and `byId` with `entryIds`, `entries`, `positions`, `start`, `state`, `loaded`,
-  `configured`, `profilesLoaded`, `profiles`). The view holds a window of the history, ordered by position, from
+  `configured`, `profilesLoaded`, `profiles`, `appliedSquad`, `customized`). The view holds a window of the history, ordered by position, from
   `start`. `conversation.history` replaces the window with the latest page, keeping only the entries already held
   past its end (published after the server read the page); `conversation.entries` puts an earlier page before the
   window when it ends where the window starts, and is ignored otherwise; `conversation.entry` replaces a held entry
@@ -137,10 +142,13 @@ packages/web/src/
 - State that only one feature reads (the board, usage, agent logins) lives in its own provider or hook, outside
   the conversations reducer.
 - `ConversationsProvider` lives inside the router (`AppLayout`). It sends `conversation.list` on every `open`
-  status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated.
+  status, and navigates to `/c/<id>` on the `conversation.created` whose `requestId` it generated. `startConversation(prompt)` seeds the composer of the new conversation; `sendInNewConversation({ text, squadId? })` sends the message for real (see [references/home.md](references/home.md)).
   `ConversationView` sends `conversation.history` and `profiles.get` whenever the status is `open` or the
-  conversation changes, and `agents.list` while no agents are known. `useEarlierEntries` sends
-  `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection.
+  conversation changes, `agents.list` while no agents are known, and `profiles.get` again on every `squads`, since a
+  squad saved or deleted changes whether the conversation still matches the squad it applied. `useEarlierEntries` sends
+  `conversation.entries` with `before: start` while `start > 0`, once per position, again after a lost connection;
+  its `load` decides from refs, since Virtuoso's `startReached` keeps the callback it holds and may call it in the same
+  tick as a click.
 
 ## Theme and motion
 
@@ -155,11 +163,12 @@ packages/web/src/
 
 Each area below has a reference with its components, states and exact texts. Read the reference before changing that area.
 
+- **Home**: `/` without a conversation: the greeting, the composer that creates a conversation and sends its first message, the squad picker and the recent conversations. Read [references/home.md](references/home.md) when touching `HomePage`, `components/home/` or `sendInNewConversation`.
 - **Conversation list**: rows ordered by recency, Rename and Archive through `conversation.rename`/`conversation.archive`, an "Archived (n)" group, in-place `TitleInput`. Read [references/conversation-list.md](references/conversation-list.md) when touching the list or renaming.
 - **Feed**: how each entry type renders, questions and the open question, the virtualized `FeedList` with stick-to-end and "Go to question", the streaming draft and the "Working…" indicator. Read [references/conversation-feed.md](references/conversation-feed.md) when touching `components/entries/`, question cards or feed scrolling.
 - **Composer**: disabled until `open` and `configured`, Stop sends `turn.cancel`, prompt history, `@` file mentions, chunked attachments, voice recording, and the answer input of the question card. Read [references/composer.md](references/composer.md) when touching `components/prompt-input/` or the composer.
-- **Mission board**: the `Chat | Tasks` routes, `ArtifactsProvider` and `useBoard`, the list and kanban views, the create dialog, the artifact detail and frozen tasks. Read [references/mission-board.md](references/mission-board.md) when touching `artifacts/` or `components/artifacts/`.
-- **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
+- **Mission board**: the conversation routes and `ConversationNav`, `ArtifactsProvider` and `useBoard`, the list and kanban views, the filters sheet, the create dialog, the artifact detail and frozen tasks. Read [references/mission-board.md](references/mission-board.md) when touching `artifacts/` or `components/artifacts/`.
+- **Team presentation**: the feed is the history and the squad panel is the present moment; agent identity and `AgentMark`, `deriveTeam`, stations, focus, the panel layout, the squad route and presence. Read [references/team-presentation.md](references/team-presentation.md) when touching `components/squad/`, `components/agent/`, team state or agent colors.
 - **Agent usage**: the header meters, the usage popover and the `quota.get` refresh cadence. Read [references/agent-usage.md](references/agent-usage.md) when touching `components/usage/`.
-- **Agent logins**: the logins popover, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
-- **Skills page**: `/skills` routes, the list and detail, "Ask the CEO", deleting a custom skill and `startConversation(prompt)`. Read [references/skills-page.md](references/skills-page.md) when touching `components/skills/` or `SkillsPage`.
+- **Agent logins**: `AgentAuthProvider`, the logins block of the Agents section, the login state machine and the persistent per-agent toasts. Read [references/agent-logins.md](references/agent-logins.md) when touching `components/auth/`.
+- **Settings hub**: `/settings` and its sections, the layout and navigation on a wide screen and on a phone, the old-address redirects, the server settings fields by kind, drafts, "Save changes", the restart notice, the Discord "Test connection", the Squads section (list, editor, "Save as squad", "Apply squad") and the Skills section (list, detail, "Ask the CEO", `startConversation(prompt)`). Read [references/settings-hub.md](references/settings-hub.md) when touching `components/settings-hub/`, `components/server-settings/`, `components/squads/`, `components/skills/`, `components/settings/` or the squad controls of `SettingsSheet`.

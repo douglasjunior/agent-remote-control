@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { IWorkspacePort } from '../../workspace/ports/workspace.port.js';
+import { DEFAULT_PULL_REQUEST_REPOSITORY, REFINEMENT_KINDS } from '../constants/artifact-catalog.constant.js';
 import type {
   Artifact,
   ArtifactActor,
@@ -41,7 +42,7 @@ export class UpdateArtifactUseCase {
   ) {}
 
   async execute(conversationId: string, id: string, changes: ArtifactChanges, actor: ArtifactActor): Promise<ArtifactOutcome & { readonly changed?: boolean }> {
-    const folders = changes.projectName === undefined ? [] : await this.workspace.listProjectFolders();
+    const folders = changes.projectName === undefined && changes.projectNames === undefined ? [] : await this.workspace.listProjectFolders();
     const outcome = await this.store.transaction(conversationId, (transaction): UpdateOutcome => {
       const current = transaction.find(id);
       if (!current) {
@@ -109,22 +110,9 @@ export class UpdateArtifactUseCase {
       recorded.push({ field: 'parent', from: draft.parentId ?? NONE, to: changes.parentId ?? NONE });
       draft.parentId = changes.parentId;
     }
-    if (changes.projectName !== undefined && changes.projectName.trim() !== draft.projectName) {
-      const projectName = changes.projectName.trim();
-      const children = transaction.list().filter(artifact => artifact.parentId === draft.id);
-      const error = this.rules.checkProject(projectName, folders)
-        ?? (children.length > 0 ? `${draft.id} has ${children.map(child => child.id).join(', ')} under it, which stay in its project; move them first.` : undefined);
-      if (error) {
-        return error;
-      }
-      recorded.push({ field: 'project', from: draft.projectName, to: projectName });
-      draft.projectName = projectName;
-    }
-    if (changes.parentId !== undefined || changes.projectName !== undefined) {
-      const error = this.rules.checkSameProject(transaction, draft.parentId, draft.projectName);
-      if (error) {
-        return error;
-      }
+    const projectsError = this.applyProjects(transaction, draft, changes, recorded, folders);
+    if (projectsError) {
+      return projectsError;
     }
     const moved = draft.parentId !== originalParentId;
     if (changes.dependsOn !== undefined || moved) {
@@ -139,11 +127,11 @@ export class UpdateArtifactUseCase {
         draft.dependsOn = dependsOn;
       }
     }
-    for (const side of ['business', 'technical'] as const) {
-      const state = changes.refinement?.[side];
-      if (state !== undefined && state !== draft.refinement[side]) {
-        recorded.push({ field: `${side}_refinement`, from: draft.refinement[side], to: state });
-        draft.refinement = { ...draft.refinement, [side]: state };
+    for (const kind of REFINEMENT_KINDS) {
+      const state = changes.refinement?.[kind];
+      if (state !== undefined && state !== draft.refinement[kind]) {
+        recorded.push({ field: `${kind}_refinement`, from: draft.refinement[kind], to: state });
+        draft.refinement = { ...draft.refinement, [kind]: state };
       }
     }
     if (changes.branch !== undefined) {
@@ -154,6 +142,50 @@ export class UpdateArtifactUseCase {
       }
     }
     return undefined;
+  }
+
+  /**
+   * A feature links a list of projects and a task works in one of its feature's: the projects of a feature cannot leave
+   * out one its tasks work in, and a task that changes project or feature stays within its feature's projects.
+   */
+  private applyProjects(
+    transaction: ArtifactTransaction,
+    draft: Draft,
+    changes: ArtifactChanges,
+    recorded: ArtifactFieldChange[],
+    folders: readonly string[],
+  ): string | undefined {
+    if (draft.type === 'feature') {
+      if (changes.projectName !== undefined) {
+        return `${draft.id} is a feature, which links a list of projects: set its projects, not a single project.`;
+      }
+      const requested = changes.projectNames && [...new Set(changes.projectNames.map(name => name.trim()))];
+      if (requested && requested.join(',') !== draft.projectNames.join(',')) {
+        const error = this.rules.checkFeatureProjects(transaction, draft, requested, folders);
+        if (error) {
+          return error;
+        }
+        recorded.push({ field: 'projects', from: draft.projectNames.join(', '), to: requested.join(', ') });
+        draft.projectNames = requested;
+      }
+      return undefined;
+    }
+    if (changes.projectNames !== undefined) {
+      return `${draft.id} is a task, which works in one project: set its project, not a list of projects.`;
+    }
+    const projectName = changes.projectName?.trim();
+    if (projectName !== undefined && projectName !== draft.projectName) {
+      const error = this.rules.checkProject(projectName, folders);
+      if (error) {
+        return error;
+      }
+      recorded.push({ field: 'project', from: draft.projectName ?? NONE, to: projectName });
+      draft.projectName = projectName;
+      draft.projectNames = [projectName];
+    }
+    return changes.parentId !== undefined || projectName !== undefined
+      ? this.rules.checkProjectOfFeature(draft.parentId ? transaction.find(draft.parentId) : undefined, draft.projectName!)
+      : undefined;
   }
 
   private applySections(draft: Draft, changes: readonly SectionChange[], recorded: ArtifactFieldChange[]): void {
@@ -185,14 +217,20 @@ export class UpdateArtifactUseCase {
       }
       const index = pullRequests.findIndex(existing => existing.url === url);
       const previous = index >= 0 ? pullRequests[index] : undefined;
+      const repository = link.repository === undefined ? previous?.repository ?? DEFAULT_PULL_REQUEST_REPOSITORY : this.repositoryPath(link.repository);
+      const repositoryError = this.rules.checkPullRequestRepository(repository);
+      if (repositoryError) {
+        return repositoryError;
+      }
       const title = link.title?.trim() || previous?.title;
       const updated: PullRequestLink = {
         url,
         ...(title ? { title } : {}),
+        repository,
         state: link.state ?? previous?.state ?? 'open',
         addedAt: previous?.addedAt ?? this.history.now(),
       };
-      if (previous && previous.state === updated.state && previous.title === updated.title) {
+      if (previous && previous.state === updated.state && previous.title === updated.title && previous.repository === updated.repository) {
         continue;
       }
       if (previous) {
@@ -200,10 +238,19 @@ export class UpdateArtifactUseCase {
       } else {
         pullRequests.push(updated);
       }
-      recorded.push({ field: 'pull_request', ...(previous ? { from: previous.state } : {}), to: `${url} (${updated.state})` });
+      recorded.push({
+        field: 'pull_request',
+        ...(previous ? { from: previous.state } : {}),
+        to: `${url} (${updated.state}${repository === DEFAULT_PULL_REQUEST_REPOSITORY ? '' : `, ${repository}`})`,
+      });
     }
     draft.pullRequests = pullRequests;
     return undefined;
+  }
+
+  /** `./api/` and `api` name the same repository; an empty path is the project folder itself. */
+  private repositoryPath(repository: string): string {
+    return repository.trim().replace(/\\/g, '/').replace(/^(\.\/)+/, '').replace(/\/+$/, '') || DEFAULT_PULL_REQUEST_REPOSITORY;
   }
 
   private summarize(changes: readonly ArtifactFieldChange[]): string {

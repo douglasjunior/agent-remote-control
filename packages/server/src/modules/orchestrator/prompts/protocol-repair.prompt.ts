@@ -10,3 +10,12 @@ export function buildProtocolRepairPrompt(tags: readonly string[]): string {
     `Answer again with every protocol tag, and the text that goes with it, inside a single ${FINAL_RESPONSE_OPEN}...${FINAL_RESPONSE_CLOSE} block.`,
   ].join('\n');
 }
+
+/** A turn has exactly one final response block, so a response with several is answered again; its blocks are never joined. */
+export function buildFinalResponseCountRepairPrompt(blocks: number): string {
+  return [
+    '[PROTOCOL_ERROR]',
+    `Your previous response had ${blocks} ${FINAL_RESPONSE_OPEN} blocks, but a turn has exactly one, so nothing was done with it.`,
+    `Answer again with the whole answer, every protocol tag included, in a single ${FINAL_RESPONSE_OPEN}...${FINAL_RESPONSE_CLOSE} block at the end of the turn.`,
+  ].join('\n');
+}

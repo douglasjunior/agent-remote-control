@@ -13,7 +13,6 @@ export type AgentActivity =
     /** The agent's reasoning, which is not part of its answer. */
     readonly reasoning?: boolean;
   }
-  | { readonly kind: 'steering'; readonly id: string; readonly text: string }
   | { readonly kind: 'cancelled'; readonly id: string }
   | {
     readonly kind: 'tool';
@@ -92,6 +91,12 @@ export type AgentSessionOptions = {
   readonly mcpServers?: readonly AgentMcpServer[];
 };
 
+/**
+ * The outcome of a text sent into the running prompt: `injected` reached it, `not_running` found no prompt running
+ * (the text was not delivered), `unsupported` comes from an agent without steering, and `failed` from an error.
+ */
+export type SteeringOutcome = 'injected' | 'not_running' | 'unsupported' | 'failed';
+
 export class PromptCancelledError extends Error {
   constructor() {
     super('Prompt cancelled by user');
@@ -126,11 +131,8 @@ export interface IAgentPort {
   loadSession(cwd: string, sessionId: string, options?: AgentSessionOptions): Promise<boolean>;
   prompt(text: string): AsyncGenerator<AgentUpdate>;
   cancel(): Promise<void>;
-  /**
-   * Resolves `true` when the agent took the text into the running prompt. With `supportsSteering`,
-   * `false` means no prompt was running or the injection failed, and the text was dropped.
-   */
-  sendSteeringPrompt(text: string): Promise<boolean>;
+  /** Only `injected` delivers the text; on any other outcome the caller still holds it. */
+  sendSteeringPrompt(text: string): Promise<SteeringOutcome>;
   onActivity(listener: (activity: AgentActivity) => void): () => void;
   closeSession(): Promise<void>;
   disconnect(): Promise<void>;

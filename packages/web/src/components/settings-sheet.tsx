@@ -1,6 +1,8 @@
+import type { Squad } from '@agent-remote-control/protocol/squad';
 import { Pencil, Users } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 
 import { useConnection } from '../connection/connection-context.js';
@@ -11,28 +13,42 @@ import { profileSummary } from '../lib/role-profile.js';
 import { cn } from '../lib/utils.js';
 
 import { AgentMark } from './agent/agent-mark.js';
-import { type ProfileChoice, RoleEditor } from './settings/role-editor.js';
+import { ChoiceSelect } from './artifacts/choice-select.js';
+import { draftOf, type ProfileChoice, type ProfileDraft } from './settings/profile-choice.js';
+import { RoleForm } from './settings/role-form.js';
 import { useAgentOptions } from './settings/use-agent-options.js';
+import { NEW_SQUAD_PATH, settingsState, squadsPath } from './settings-hub/settings-paths.js';
 import { Badge } from './ui/badge.js';
-import { Button } from './ui/button.js';
+import { Button, buttonVariants } from './ui/button.js';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from './ui/sheet.js';
 
 
 /** The editor open in the sheet: one role's, or the one that applies to every role. */
 const EVERY_ROLE = '*';
 
+function squadState(appliedSquad: { readonly name: string } | undefined, customized: boolean): string {
+  if (!appliedSquad) {
+    return 'Custom';
+  }
+  return customized ? `Squad ${appliedSquad.name} · customized` : `Squad ${appliedSquad.name}`;
+}
+
 export function SettingsSheet({ conversationId, open, onOpenChange }: {
   readonly conversationId: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const { connection } = useConnection();
+  const { connection, status } = useConnection();
   const { state } = useConversations();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [squads, setSquads] = useState<readonly Squad[]>([]);
   const view = state.byId[conversationId] ?? emptyConversationView;
   const options = useAgentOptions();
   const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The toast that confirms the change being saved, once the next `profiles` of this conversation arrives. */
   const savingLabel = useRef('');
   const firstSetup = !view.configured;
   const openEditor = editing ?? (firstSetup ? EVERY_ROLE : null);
@@ -42,13 +58,21 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
       setError(event.message);
       savingLabel.current = '';
       setSaving(false);
+    } else if (event.type === 'squads') {
+      setSquads(event.squads);
     } else if (event.type === 'profiles' && event.conversationId === conversationId && savingLabel.current) {
-      toast.success(`${savingLabel.current} saved`);
+      toast.success(savingLabel.current);
       savingLabel.current = '';
       setSaving(false);
       setEditing(null);
     }
   }), [connection, conversationId]);
+
+  useEffect(() => {
+    if (open && status === 'open') {
+      connection.send({ type: 'squads.list' });
+    }
+  }, [connection, status, open]);
 
   const edit = (target: string | null) => {
     setError(null);
@@ -58,12 +82,26 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
   const save = (roles: readonly string[] | undefined, label: string) => (choice: ProfileChoice) => {
     setError(null);
     setSaving(true);
-    savingLabel.current = label;
+    savingLabel.current = `${label} saved`;
     connection.send({ type: 'profiles.set', conversationId, ...(roles && { roles: [...roles] }), ...choice });
   };
 
-  const editorFor = (target: string, label: string, initial: Partial<ProfileChoice>, roles: readonly string[] | undefined, saveLabel: string) => (
-    <RoleEditor
+  const applySquad = (squadId: string) => {
+    const squad = squads.find(candidate => candidate.id === squadId)!;
+    setError(null);
+    setEditing(null);
+    setSaving(true);
+    savingLabel.current = `Squad ${squad.name} applied`;
+    connection.send({ type: 'squads.apply', conversationId, squadId });
+  };
+
+  const saveAsSquad = () => {
+    const profiles = Object.fromEntries(view.profiles.filter(profile => profile.agent).map(profile => [profile.role, draftOf(profile)]));
+    void navigate(NEW_SQUAD_PATH, { state: { returnTo: location.pathname, draft: { profiles } } });
+  };
+
+  const editorFor = (target: string, label: string, initial: ProfileDraft, roles: readonly string[] | undefined, saveLabel: string) => (
+    <RoleForm
       key={target}
       label={label}
       agents={state.agents}
@@ -85,6 +123,30 @@ export function SettingsSheet({ conversationId, open, onOpenChange }: {
           <SheetDescription>The coding agent, model and effort each role runs on in this conversation.</SheetDescription>
         </SheetHeader>
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 pb-6">
+          <section aria-label="Squad" className="flex flex-col gap-3 rounded-xl border bg-card/60 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="min-w-0 text-sm">
+                <span className="text-muted-foreground">Now: </span>
+                <span className="font-medium">{squadState(view.appliedSquad, view.customized)}</span>
+              </p>
+              <Link to={squadsPath()} state={settingsState(location)} className={buttonVariants({ variant: 'link', size: 'sm', className: 'h-auto px-0' })}>
+                Manage squads
+              </Link>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ChoiceSelect
+                label="Apply squad"
+                size="sm"
+                value=""
+                className="min-w-40 flex-1"
+                disabled={squads.length === 0 || saving}
+                choices={[{ value: '', label: squads.length === 0 ? 'No squad yet' : 'Apply a squad…' }, ...squads.map(squad => ({ value: squad.id, label: squad.name }))]}
+                onChange={value => value && applySquad(value)}
+              />
+              <Button variant="outline" size="sm" disabled={!view.configured} onClick={saveAsSquad}>Save as squad</Button>
+            </div>
+            {error && openEditor === null && <p role="alert" className="text-sm text-destructive">{error}</p>}
+          </section>
           <section
             aria-label="Every role"
             className={cn('rounded-xl border bg-card/60 p-3 transition-colors', openEditor === EVERY_ROLE && 'border-primary/50')}

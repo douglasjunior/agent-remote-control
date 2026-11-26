@@ -7,7 +7,14 @@ export type AgentProfileSettings = {
   readonly effortName: string | null;
 };
 
+/** The squad whose profiles were last copied into a conversation, as it was named then. */
+export type AppliedSquad = {
+  readonly id: string;
+  readonly name: string;
+};
+
 export type AgentSettings = {
   readonly profiles: Readonly<Record<string, AgentProfileSettings>>;
+  readonly appliedSquad?: AppliedSquad;
   readonly updatedAt: string;
 };
