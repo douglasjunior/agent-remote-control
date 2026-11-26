@@ -18,6 +18,8 @@ export type LegacyJsonImport = {
 export interface ILegacyJsonImporterPort {
   /** Recorded in `legacy_import`; never renamed once released. */
   readonly name: string;
+  /** The importers whose rows this one reads; it waits for a boot on which they are all recorded. */
+  readonly requires?: readonly string[];
   /** Reads the files without changing them. A missing file holds nothing; a file that does not parse is left out of `files`. */
   read(): Promise<LegacyJsonImport>;
 }

@@ -21,6 +21,7 @@ const openWorkFileSchema = z.record(z.string(), z.array(z.unknown()));
 @Injectable()
 export class JsonOpenWorkImporterAdapter implements ILegacyJsonImporterPort {
   readonly name = 'open-work';
+  readonly requires = ['artifacts'];
   private readonly logger = new Logger(JsonOpenWorkImporterAdapter.name);
 
   constructor(private readonly files: LegacyJsonFilesService) {}

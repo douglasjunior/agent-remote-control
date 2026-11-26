@@ -30,7 +30,8 @@ export class LegacyJsonImportService implements OnModuleInit {
 
   /**
    * Runs every importer not recorded yet, each in its own transaction, then moves the files it read to
-   * `DATA_DIR/legacy-json-backup/<timestamp>/`. An importer that fails is logged and runs again on the next boot.
+   * `DATA_DIR/legacy-json-backup/<timestamp>/`. An importer that fails is logged and runs again on the next boot, and so
+   * do the importers that require it.
    */
   async importAll(): Promise<void> {
     const backupDirectory = `${BACKUP_DIRECTORY}/${new Date().toISOString().replaceAll(':', '-')}`;
@@ -47,6 +48,12 @@ export class LegacyJsonImportService implements OnModuleInit {
     const records = this.dataSource.getRepository(LegacyImportEntity);
     if (await records.existsBy({ importer: importer.name })) {
       return;
+    }
+    for (const required of importer.requires ?? []) {
+      if (!await records.existsBy({ importer: required })) {
+        this.logger.warn(`legacy_import_deferred: ${importer.name} waits for ${required}`);
+        return;
+      }
     }
     const legacy = await importer.read();
     await this.dataSource.transaction(async (manager) => {

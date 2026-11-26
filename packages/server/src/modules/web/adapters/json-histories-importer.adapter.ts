@@ -40,6 +40,7 @@ interface ImportedHistory {
 @Injectable()
 export class JsonHistoriesImporterAdapter implements ILegacyJsonImporterPort {
   readonly name = 'web-histories';
+  readonly requires = ['web-conversations'];
   private readonly logger = new Logger(JsonHistoriesImporterAdapter.name);
 
   constructor(

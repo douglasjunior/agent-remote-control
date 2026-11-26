@@ -118,7 +118,8 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 
 - `LegacyJsonImportService` runs in `onModuleInit` of `DatabaseModule`. Nest runs module init hooks deepest import
   first, so it finishes before the hooks of every module that imports `DatabaseModule` and before the server listens.
-- An importer implements `ILegacyJsonImporterPort` (`name`, `read()`), lives in `adapters/json-<name>-importer.adapter.ts`
+- An importer implements `ILegacyJsonImporterPort` (`name`, `read()` and, when it reads the rows of other importers,
+  `requires` with their names), lives in `adapters/json-<name>-importer.adapter.ts`
   of the module that owns the data, and is listed in `LEGACY_JSON_IMPORTERS` in `database.module.ts`, which binds the
   list, in its order, to the `ILegacyJsonImporterPort` symbol. The importers are listed centrally here, not in their
   owner modules, because the import must finish before the `onModuleInit` of the feature modules (restoring open work,
@@ -137,7 +138,10 @@ transaction on the connection TypeORM holds, commits and returns its result, or 
 - `write` inserts at most 500 rows per statement, under SQLite's limit of bound parameters.
 - An importer may read the database in `read()` (it changes nothing) to decide which files to take, as
   `web-histories` does; the importers run one after the other and each commits before the next reads, so it sees the
-  rows of the importers listed before it. Data that earlier importers dropped and that a later release can recover goes
+  rows of the importers listed before it. One that reads them names those importers in `requires`, listed before it:
+  while one of them is not recorded (it failed on this boot or an earlier one), the importer is skipped, logged as
+  `legacy_import_deferred: <name> waits for <required>`, and not recorded, so it never imports against missing rows
+  (`web-histories` requires `web-conversations`; `sessions` and `open-work` require `artifacts`). Data that earlier importers dropped and that a later release can recover goes
   in a new importer with its own `name`, idempotent per record, since installs that recorded the old one never run it
   again.
 - An importer's `name` never changes once released: it is what keeps it from running twice.

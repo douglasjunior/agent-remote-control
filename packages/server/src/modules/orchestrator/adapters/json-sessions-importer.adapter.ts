@@ -37,12 +37,13 @@ type StoredSession = z.infer<typeof storedSessionSchema>;
 
 /**
  * `DATA_DIR/sessions.json`. An agent session without an agent is dropped; when items share a conversation, the later wins.
- * The session of a feature is keyed without a project, as the agent of a feature works from the workspaces root; the
- * artifacts importer runs first, so the features are in the database.
+ * The session of a feature is keyed without a project, as the agent of a feature works from the workspaces root; it
+ * requires the artifacts import, so the features are in the database.
  */
 @Injectable()
 export class JsonSessionsImporterAdapter implements ILegacyJsonImporterPort {
   readonly name = 'sessions';
+  readonly requires = ['artifacts'];
 
   constructor(private readonly files: LegacyJsonFilesService) {}
 

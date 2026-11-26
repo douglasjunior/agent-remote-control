@@ -21,6 +21,8 @@ class FakeImporter implements ILegacyJsonImporterPort {
   failRead?: unknown;
   failWrite?: Error;
 
+  requires?: readonly string[];
+
   constructor(readonly name: string, private readonly files: readonly string[], private readonly prompts: readonly string[] = []) {}
 
   async read(): Promise<LegacyJsonImport> {
@@ -123,6 +125,26 @@ describe('LegacyJsonImportService', () => {
     expect(warn).toHaveBeenCalledWith('legacy_import_failed: failing: locked');
     expect(warn).toHaveBeenCalledWith('legacy_import_failed: non-error: gone');
     expect((await records()).map(record => record.importer)).toEqual(['working']);
+  });
+
+  it('should leave an importer whose required importer failed for a boot on which that one is recorded', async () => {
+    const warn = rs.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const required = new FakeImporter('required', [], ['one']);
+    required.failRead = new Error('locked');
+    const dependent = new FakeImporter('dependent', [], ['two']);
+    dependent.requires = ['required'];
+
+    await createService(required, dependent).importAll();
+
+    expect(warn).toHaveBeenCalledWith('legacy_import_deferred: dependent waits for required');
+    expect(dependent.reads).toBe(0);
+    expect(await records()).toEqual([]);
+
+    required.failRead = undefined;
+    await createService(required, dependent).importAll();
+
+    expect(await prompts()).toEqual(['one', 'two']);
+    expect((await records()).map(record => record.importer)).toEqual(['dependent', 'required']);
   });
 
   it('should roll back an import whose write fails and keep its files', async () => {
