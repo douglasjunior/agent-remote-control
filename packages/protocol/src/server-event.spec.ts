@@ -56,6 +56,8 @@ describe('parseServerEvent', () => {
         { key: 'STT_PROVIDER', group: 'speech', apply: 'restart', envOnly: false, source: 'default', kind: 'choice', value: 'whisper-cpp', defaultValue: 'whisper-cpp', options: ['whisper-cpp', 'none'] },
       ],
     },
+    { type: 'settings.result', requestId: 'r', ok: true },
+    { type: 'settings.result', requestId: 'r', ok: false, error: 'Unknown setting: PORT' },
     { type: 'settings.discord.test.result', ok: true, botName: 'arc-bot', guildName: 'Home' },
     { type: 'settings.discord.test.result', ok: true, botName: 'arc-bot' },
     { type: 'settings.discord.test.result', ok: false, error: 'Discord refused the token.' },

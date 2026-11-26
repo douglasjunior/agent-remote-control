@@ -151,8 +151,10 @@ describe('AppController (e2e)', () => {
       client.on('message', (raw) => {
         const event = JSON.parse(raw.toString());
         if (event.type === 'auth.ok') {
-          send({ type: 'settings.set', changes: { QUESTION_TIMEOUT_MS: 0, USER_LANGUAGE: 'Spanish' } });
+          send({ type: 'settings.set', requestId: 'save', changes: { QUESTION_TIMEOUT_MS: 0, USER_LANGUAGE: 'Spanish' } });
         } else if (event.type === 'settings') {
+          received.push(event);
+        } else if (event.type === 'settings.result') {
           received.push(event);
           client.close();
         }
@@ -161,6 +163,8 @@ describe('AppController (e2e)', () => {
       client.on('error', fail);
     });
 
+    expect(events.map(event => event.type)).toEqual(['settings', 'settings.result']);
+    expect(events[1]).toEqual({ type: 'settings.result', requestId: 'save', ok: true });
     const byKey = new Map(events[0]?.settings.map((setting: Record<string, any>) => [setting.key, setting]));
     expect(byKey.get('QUESTION_TIMEOUT_MS')).toMatchObject({ source: 'saved', value: 0 });
     expect(byKey.get('USER_LANGUAGE')).toMatchObject({ source: 'saved', value: 'Spanish' });

@@ -126,6 +126,11 @@ export const serverEventSchema = z.discriminatedUnion('type', [
   ]),
   /** Every setting, answering `settings.get` and broadcast to every connection after a change. */
   z.object({ type: z.literal('settings'), settings: z.array(settingViewSchema) }),
+  /** Answers the requester of `settings.set` and `settings.reset`, after the change was broadcast. */
+  z.discriminatedUnion('ok', [
+    z.object({ type: z.literal('settings.result'), requestId: z.string(), ok: z.literal(true) }),
+    z.object({ type: z.literal('settings.result'), requestId: z.string(), ok: z.literal(false), error: z.string() }),
+  ]),
   /** Answers the requester of `settings.discord.test`. */
   z.discriminatedUnion('ok', [
     z.object({ type: z.literal('settings.discord.test.result'), ok: z.literal(true), botName: z.string(), guildName: z.string().optional() }),

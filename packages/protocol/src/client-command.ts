@@ -84,10 +84,11 @@ export const clientCommandSchema = z.discriminatedUnion('type', [
   /** Saves the values, by setting key (`USER_LANGUAGE` included), whole or not at all; the server checks each one. */
   z.object({
     type: z.literal('settings.set'),
+    requestId: z.string(),
     changes: z.record(z.string().max(64), z.union([z.string().max(4096), z.number(), z.boolean()])),
   }),
   /** Removes the saved values, so the environment variable or the default applies again. */
-  z.object({ type: z.literal('settings.reset'), keys: z.array(z.string().max(64)).min(1) }),
+  z.object({ type: z.literal('settings.reset'), requestId: z.string(), keys: z.array(z.string().max(64)).min(1) }),
   /** Tests a bot token typed in the form before it is saved (the saved one when absent), and the server id given. */
   z.object({ type: z.literal('settings.discord.test'), token: z.string().max(4096).optional(), guildId: z.string().max(64).optional() }),
   z.object({ type: z.literal('quota.get'), refresh: z.boolean().optional() }),

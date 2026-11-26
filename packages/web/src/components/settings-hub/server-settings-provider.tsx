@@ -60,27 +60,28 @@ export function ServerSettingsProvider({ children }: { readonly children: ReactN
   const [restartKeys, setRestartKeys] = useState<readonly string[]>([]);
   const [discordTest, setDiscordTest] = useState<DiscordTestState>({ status: 'idle' });
   const [saves, setSaves] = useState(0);
-  /** The keys a save or a reset is waiting for, until the next `settings` or `error`. */
-  const pending = useRef<readonly string[] | null>(null);
+  /** The save or reset waiting for its `settings.result`, with the keys it changes. */
+  const pending = useRef<{ readonly requestId: string; readonly keys: readonly string[] } | null>(null);
+  const latestViews = useRef<readonly SettingView[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => connection.onEvent((event) => {
     if (event.type === 'settings') {
+      latestViews.current = event.settings;
       setViews(event.settings);
-      const saved = pending.current;
-      if (saved) {
-        pending.current = null;
-        setSaving(false);
-        setDrafts(current => without(current, saved));
-        setSaves(count => count + 1);
-        const restart = event.settings.filter(view => view.apply === 'restart' && saved.includes(view.key)).map(view => view.key);
-        setRestartKeys(current => [...new Set([...current, ...restart])]);
-        toast.success('Settings saved');
-      }
-    } else if (event.type === 'error' && !event.conversationId && pending.current) {
+    } else if (event.type === 'settings.result' && event.requestId === pending.current?.requestId) {
+      const saved = pending.current.keys;
       pending.current = null;
       setSaving(false);
-      setFailure(event.message);
+      if (!event.ok) {
+        setFailure(event.error);
+        return;
+      }
+      setDrafts(current => without(current, saved));
+      setSaves(count => count + 1);
+      const restart = latestViews.current.filter(view => view.apply === 'restart' && saved.includes(view.key)).map(view => view.key);
+      setRestartKeys(current => [...new Set([...current, ...restart])]);
+      toast.success('Settings saved');
     } else if (event.type === 'settings.discord.test.result') {
       const { type: _type, ...result } = event;
       setDiscordTest({ status: 'done', result });
@@ -90,6 +91,10 @@ export function ServerSettingsProvider({ children }: { readonly children: ReactN
   useEffect(() => {
     if (status === 'open') {
       connection.send({ type: 'settings.get' });
+    } else if (pending.current) {
+      pending.current = null;
+      setSaving(false);
+      setFailure('The connection closed before the server confirmed the change. Check the values and try again.');
     }
   }, [connection, status]);
 
@@ -106,11 +111,12 @@ export function ServerSettingsProvider({ children }: { readonly children: ReactN
     return result;
   }, [changes, checks]);
 
-  const send = (keys: readonly string[], command: Parameters<typeof connection.send>[0]) => {
-    pending.current = keys;
+  const send = (keys: readonly string[], command: (requestId: string) => Parameters<typeof connection.send>[0]) => {
+    const requestId = crypto.randomUUID();
+    pending.current = { requestId, keys };
     setSaving(true);
     setFailure(null);
-    connection.send(command);
+    connection.send(command(requestId));
   };
 
   const value: ServerSettings = {
@@ -129,13 +135,13 @@ export function ServerSettingsProvider({ children }: { readonly children: ReactN
     discard: () => setDrafts({}),
     reset: (key) => {
       setDrafts(current => without(current, [key]));
-      send([key], { type: 'settings.reset', keys: [key] });
+      send([key], requestId => ({ type: 'settings.reset', requestId, keys: [key] }));
     },
     save: () => {
       const values = Object.fromEntries([...checks]
         .filter(([, check]) => check.ok)
         .map(([key, check]) => [key, (check as Extract<typeof check, { ok: true }>).value]));
-      send(Object.keys(values), { type: 'settings.set', changes: values });
+      send(Object.keys(values), requestId => ({ type: 'settings.set', requestId, changes: values }));
     },
     testDiscord: () => {
       const token = drafts.DISCORD_BOT_TOKEN;

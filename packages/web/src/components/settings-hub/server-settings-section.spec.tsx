@@ -31,6 +31,12 @@ const sectionLink = (name: string) => screen.getByRole('link', { name: new RegEx
 const openSection = (user: ReturnType<typeof userEvent.setup>, name: string) => user.click(sectionLink(name));
 const field = (label: string) => screen.getByRole('group', { name: label });
 const lastSent = (connection: ReturnType<typeof renderApp>['connection']) => connection.sent.at(-1);
+/** The server's answer to the last change: the settings, broadcast to every page, then the result for the requester. */
+const answerChange = (connection: ReturnType<typeof renderApp>['connection'], settings: SettingView[]) => act(() => {
+  const { requestId } = lastSent(connection) as { requestId: string };
+  connection.emitEvent({ type: 'settings', settings });
+  connection.emitEvent({ type: 'settings.result', requestId, ok: true });
+});
 
 stubWideHub();
 
@@ -87,8 +93,8 @@ describe('ServerSettingsSection', () => {
     expect(sectionLink('Advanced')).toHaveAccessibleName('Advanced (has unsaved changes)');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { DISCORD_ENABLED: false, LOG_RETENTION_DAYS: 142 } });
-    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('LOG_RETENTION_DAYS', { source: 'saved', value: 142 }) }));
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { DISCORD_ENABLED: false, LOG_RETENTION_DAYS: 142 } });
+    answerChange(connection, withSetting('LOG_RETENTION_DAYS', { source: 'saved', value: 142 }));
     expect(await screen.findByText('Settings saved')).toBeInTheDocument();
     expect(sectionLink('Discord')).toHaveAccessibleName('Discord');
   });
@@ -160,9 +166,9 @@ describe('ServerSettingsSection', () => {
     expect(within(field('Discord bot')).getByText('Unsaved')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { DISCORD_ENABLED: false, QUESTION_TIMEOUT_MS: 0 } });
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { DISCORD_ENABLED: false, QUESTION_TIMEOUT_MS: 0 } });
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
-    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('QUESTION_TIMEOUT_MS', { value: 0 }) }));
+    answerChange(connection, withSetting('QUESTION_TIMEOUT_MS', { value: 0 }));
 
     expect(await screen.findByText('Settings saved')).toBeInTheDocument();
     await openSection(user, 'Advanced');
@@ -186,8 +192,8 @@ describe('ServerSettingsSection', () => {
     await user.type(timeout(), '1.5');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { QUESTION_TIMEOUT_MS: 90_000 } });
-    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('QUESTION_TIMEOUT_MS', { value: 90_000 }) }));
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { QUESTION_TIMEOUT_MS: 90_000 } });
+    answerChange(connection, withSetting('QUESTION_TIMEOUT_MS', { value: 90_000 }));
     expect(await screen.findByText('Settings saved')).toBeInTheDocument();
     expect(timeout()).toHaveValue('1.5');
   });
@@ -206,7 +212,7 @@ describe('ServerSettingsSection', () => {
     await user.type(timeout(), '2.5');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { AGENT_AUTH_STATUS_TIMEOUT_MS: 2_500 } });
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { AGENT_AUTH_STATUS_TIMEOUT_MS: 2_500 } });
   });
 
   it('should not count a time written another way as a change, and keep 0 only where it means off', async () => {
@@ -252,12 +258,34 @@ describe('ServerSettingsSection', () => {
     await user.type(within(field('Language')).getByRole('textbox'), 'Spanish');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    act(() => connection.emitEvent({ type: 'error', message: 'USER_LANGUAGE: Leave out < > [ ] and backticks' }));
+    const { requestId } = lastSent(connection) as { requestId: string };
+    act(() => connection.emitEvent({ type: 'error', message: 'Another squad is named "Fast"' }));
+    act(() => connection.emitEvent({ type: 'settings', settings: SETTINGS }));
+    act(() => connection.emitEvent({ type: 'settings.result', requestId: 'another-page', ok: true }));
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    expect(screen.queryByText('Settings saved')).not.toBeInTheDocument();
+
+    act(() => connection.emitEvent({ type: 'settings.result', requestId, ok: false, error: 'USER_LANGUAGE: Leave out < > [ ] and backticks' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('USER_LANGUAGE: Leave out < > [ ] and backticks');
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
-    act(() => connection.emitEvent({ type: 'error', message: 'Unknown conversation', conversationId: 'c1' }));
+    expect(screen.queryByText('Settings saved')).not.toBeInTheDocument();
+  });
+
+  it('should keep the changes and say the save is unconfirmed when the connection closes before the answer', async () => {
+    const user = userEvent.setup();
+    const { connection } = openSettings();
+    await user.clear(within(field('Language')).getByRole('textbox'));
+    await user.type(within(field('Language')).getByRole('textbox'), 'Spanish');
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    act(() => connection.emitStatus('connecting'));
+    act(() => connection.emitStatus('open'));
     act(() => connection.emitEvent({ type: 'settings', settings: SETTINGS }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('The connection closed before the server confirmed the change.');
+    expect(within(field('Language')).getByRole('textbox')).toHaveValue('Spanish');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled();
     expect(screen.queryByText('Settings saved')).not.toBeInTheDocument();
   });
 
@@ -272,7 +300,7 @@ describe('ServerSettingsSection', () => {
 
     await user.click(within(field('Question timeout')).getByRole('button', { name: 'Reset to default' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.reset', keys: ['QUESTION_TIMEOUT_MS'] });
+    expect(lastSent(connection)).toEqual({ type: 'settings.reset', requestId: expect.any(String), keys: ['QUESTION_TIMEOUT_MS'] });
   });
 
   it('should take a new secret without ever showing the saved one, and clear it', async () => {
@@ -288,8 +316,8 @@ describe('ServerSettingsSection', () => {
     expect(screen.queryByRole('button', { name: 'Save changes' })).not.toBeInTheDocument();
     await user.type(within(token()).getByLabelText('Bot token'), 'new-token');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { DISCORD_BOT_TOKEN: 'new-token' } });
-    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('DISCORD_BOT_TOKEN', { source: 'saved', value: { set: true } }) }));
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { DISCORD_BOT_TOKEN: 'new-token' } });
+    answerChange(connection, withSetting('DISCORD_BOT_TOKEN', { source: 'saved', value: { set: true } }));
 
     expect(within(token()).getByText('Set')).toBeInTheDocument();
     expect(screen.queryByDisplayValue('new-token')).not.toBeInTheDocument();
@@ -302,7 +330,7 @@ describe('ServerSettingsSection', () => {
     await user.click(within(token()).getByRole('button', { name: 'Clear' }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
-    expect(lastSent(connection)).toEqual({ type: 'settings.set', changes: { DISCORD_BOT_TOKEN: '' } });
+    expect(lastSent(connection)).toEqual({ type: 'settings.set', requestId: expect.any(String), changes: { DISCORD_BOT_TOKEN: '' } });
   });
 
   it('should tell to restart the server once a setting that applies on restart is saved', async () => {
@@ -312,7 +340,7 @@ describe('ServerSettingsSection', () => {
     await user.click(within(field('Provider')).getByRole('combobox', { name: 'Provider' }));
     await user.click(await screen.findByRole('option', { name: 'none' }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
-    act(() => connection.emitEvent({ type: 'settings', settings: withSetting('STT_PROVIDER', { source: 'saved', value: 'none' }) }));
+    answerChange(connection, withSetting('STT_PROVIDER', { source: 'saved', value: 'none' }));
 
     expect(screen.getByText('Restart the server to apply Provider.')).toBeInTheDocument();
   });

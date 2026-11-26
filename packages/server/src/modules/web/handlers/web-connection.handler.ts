@@ -203,10 +203,10 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         connection.send(await this.settings.settings());
         return;
       case 'settings.set':
-        this.reportFailure(connection, await this.settings.set(command.changes));
+        connection.send({ type: 'settings.result', requestId: command.requestId, ...await this.settings.set(command.changes) });
         return;
       case 'settings.reset':
-        this.reportFailure(connection, await this.settings.reset(command.keys));
+        connection.send({ type: 'settings.result', requestId: command.requestId, ...await this.settings.reset(command.keys) });
         return;
       case 'settings.discord.test':
         connection.send(await this.settings.testDiscord({ token: command.token, guildId: command.guildId }));

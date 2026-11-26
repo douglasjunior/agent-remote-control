@@ -96,10 +96,13 @@ the drafts, the saving state and the Discord test above the sections, so a draft
   any draft differs ("N unsaved changes", "Discard"). `checkDraft` checks each one as it is typed with `SETTING_SCHEMAS`
   (`userLanguageSchema` for the language), the schemas the server checks with, and shows the message under the field; an
   invalid draft disables saving. An integer must be digits, a duration a plain number (no sign, comma or exponent).
-- Saving sends one `settings.set` with every changed value and waits ("Saving…", fields disabled): the next `settings`
-  drops the saved drafts, toasts "Settings saved" and, when a saved key applies on restart, shows the notice "Restart
-  the server to apply <labels>." above the section until the hub closes; an `error` without `conversationId` shows its
-  message in the bar and keeps the drafts. Every `settings` broadcast refreshes the values, keeping the drafts.
+- Saving sends one `settings.set` with every changed value and a new `requestId`, and waits ("Saving…", fields
+  disabled) for the `settings.result` of that `requestId`: `ok: true` drops the saved drafts, toasts "Settings saved"
+  and, when a saved key applies on restart, shows the notice "Restart the server to apply <labels>." above the section
+  until the hub closes; `ok: false` shows its `error` in the bar and keeps the drafts. A connection that leaves `open`
+  before the answer ends the wait with "The connection closed before the server confirmed the change. Check the values
+  and try again.", keeping the drafts. `settings.reset` waits the same way. Every `settings` broadcast refreshes the
+  values, keeping the drafts.
 - The Discord group ends with "Test connection": it sends `settings.discord.test` with the token typed in the form
   (none, to test the saved one) and the server ID of the form, and shows "Connected as <bot> in <server>." or the
   error inline ("Testing…" meanwhile). Nothing is saved.

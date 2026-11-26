@@ -366,24 +366,29 @@ describe('WebConnectionHandler', () => {
       ]);
     });
 
-    it('should answer the settings, save and reset them for every connection, and answer a refused change with an error', async () => {
+    it('should answer the settings, save and reset them for every connection, and answer each change to its requester', async () => {
       const log = rs.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       connection.receive({ type: 'settings.get' });
       await settle();
       const [initial] = sent() as [{ type: string; settings: { key: string }[] }];
-      connection.receive({ type: 'settings.set', changes: { DISCORD_BOT_TOKEN: 'secret-token' } });
+      connection.receive({ type: 'settings.set', requestId: 'r1', changes: { DISCORD_BOT_TOKEN: 'secret-token' } });
       await settle();
-      connection.receive({ type: 'settings.reset', keys: ['DISCORD_BOT_TOKEN'] });
+      connection.receive({ type: 'settings.reset', requestId: 'r2', keys: ['DISCORD_BOT_TOKEN'] });
       await settle();
-      connection.receive({ type: 'settings.set', changes: { PORT: 1 } });
+      connection.receive({ type: 'settings.set', requestId: 'r3', changes: { PORT: 1 } });
       await settle();
-      connection.receive({ type: 'settings.reset', keys: ['PORT'] });
+      connection.receive({ type: 'settings.reset', requestId: 'r4', keys: ['PORT'] });
       await settle();
 
       expect(initial).toMatchObject({ type: 'settings', settings: expect.arrayContaining([expect.objectContaining({ key: 'USER_LANGUAGE' })]) });
-      expect(sent().slice(1).map(event => event.type)).toEqual(['settings', 'settings', 'error', 'error']);
-      expect(sent()[3]).toEqual({ type: 'error', message: 'Unknown setting: PORT' });
+      expect(sent().slice(1).map(event => event.type)).toEqual(['settings', 'settings.result', 'settings', 'settings.result', 'settings.result', 'settings.result']);
+      expect(sent().filter(event => event.type === 'settings.result')).toEqual([
+        { type: 'settings.result', requestId: 'r1', ok: true },
+        { type: 'settings.result', requestId: 'r2', ok: true },
+        { type: 'settings.result', requestId: 'r3', ok: false, error: 'Unknown setting: PORT' },
+        { type: 'settings.result', requestId: 'r4', ok: false, error: 'Unknown setting: PORT' },
+      ]);
       expect(settings.store.saved).toEqual({});
       expect(log).toHaveBeenCalledWith('[Command] settings.set');
       expect(JSON.stringify([...log.mock.calls, ...sent()])).not.toContain('secret-token');

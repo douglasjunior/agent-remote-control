@@ -134,7 +134,7 @@ Each area has a reference with the exact commands, events, limits and edge cases
   (never `error`), and the CLI login (`auth.login`, `auth.input`, `auth.cancel`) broadcast to every connection.
   Read [references/agents.md](references/agents.md).
 - **Settings**: `settings.get`, `settings.set`, `settings.reset` over the runtime settings and the user language,
-  the `settings` broadcast after a change, refusals as `error`, and `settings.discord.test`. Secrets travel only as
+  the `settings` broadcast after a change, the `settings.result` of each change for its requester, and `settings.discord.test`. Secrets travel only as
   `{ set }`. Read [references/settings.md](references/settings.md).
 - **Composer**: `prompts.history`, the per-connection `files.search` session for `@` mentions and the framed
   `upload.*` protocol into `.arc-uploads/<conversationId>/`. Read [references/composer-commands.md](references/composer-commands.md).
