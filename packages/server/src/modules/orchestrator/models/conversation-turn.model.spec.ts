@@ -138,6 +138,15 @@ describe('ConversationTurn', () => {
     expect(turn.takeSteered()).toEqual([]);
   });
 
+  it('should hand the agent receipts steered into a prompt to that prompt once', () => {
+    const turn = new ConversationTurn();
+
+    turn.markSteeredReceipts([{ order: 0, text: 'receipt' }]);
+
+    expect(turn.takeSteeredReceipts()).toEqual([{ order: 0, text: 'receipt' }]);
+    expect(turn.takeSteeredReceipts()).toEqual([]);
+  });
+
   it('should keep its open work with the updates it resumed with and every message that joined', () => {
     const turn = new ConversationTurn();
     expect(turn.openWork).toBeUndefined();

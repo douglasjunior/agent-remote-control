@@ -10,6 +10,7 @@ import type { IAgentPort } from '../../agent/ports/agent.port.js';
 import { IRuntimeSettingsPort } from '../../settings/ports/runtime-settings.port.js';
 import type { ActiveDelegation } from '../models/active-delegation.model.js';
 import { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentReceipt } from '../models/agent-receipt.model.js';
 import { ConversationTurn } from '../models/conversation-turn.model.js';
 
 import { AgentToolSessionsService } from './agent-tool-sessions.service.js';
@@ -35,7 +36,8 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   /** Outlive the runtime, which expires while the conversation is idle and the notices wait for its next message. */
   private readonly ceoNotices = new Map<string, string[]>();
   /** `<agent_result>` receipts that wait for the CEO's next prompt, since they start no round of their own. */
-  private readonly agentReceipts = new Map<string, string[]>();
+  private readonly agentReceipts = new Map<string, AgentReceipt[]>();
+  private receiptsAdded = 0;
 
   constructor(
     @Inject(IAgentPortFactory)
@@ -148,20 +150,28 @@ export class ConversationRuntimeService implements OnApplicationShutdown {
   }
 
   addAgentReceipt(conversationKey: string, receipt: string): void {
-    this.agentReceipts.set(conversationKey, [...this.pendingAgentReceipts(conversationKey), receipt]);
+    this.agentReceipts.set(conversationKey, [...this.agentReceipts.get(conversationKey) ?? [], { order: this.receiptsAdded++, text: receipt }]);
   }
 
   pendingAgentReceipts(conversationKey: string): readonly string[] {
-    return this.agentReceipts.get(conversationKey) ?? [];
+    return (this.agentReceipts.get(conversationKey) ?? []).map(receipt => receipt.text);
   }
 
-  /** Drops only the first `count`, so a receipt added while the CEO was reading the others stays pending. */
-  acknowledgeAgentReceipts(conversationKey: string, count: number): void {
-    const remaining = this.pendingAgentReceipts(conversationKey).slice(count);
-    if (remaining.length > 0) {
-      this.agentReceipts.set(conversationKey, remaining);
-    } else {
-      this.agentReceipts.delete(conversationKey);
+  /**
+   * Hands the pending receipts to the prompt that carries them, so a steering that runs during that prompt does not
+   * send them again; a prompt that does not deliver them gives them back with `restoreAgentReceipts`.
+   */
+  takeAgentReceipts(conversationKey: string): readonly AgentReceipt[] {
+    const receipts = this.agentReceipts.get(conversationKey) ?? [];
+    this.agentReceipts.delete(conversationKey);
+    return receipts;
+  }
+
+  /** Puts receipts back among the pending ones in the order they arrived. */
+  restoreAgentReceipts(conversationKey: string, receipts: readonly AgentReceipt[]): void {
+    if (receipts.length > 0) {
+      const pending = [...receipts, ...this.agentReceipts.get(conversationKey) ?? []];
+      this.agentReceipts.set(conversationKey, pending.sort((first, second) => first.order - second.order));
     }
   }
 

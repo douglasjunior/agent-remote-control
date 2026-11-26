@@ -803,25 +803,30 @@ describe('ConversationRuntimeService', () => {
   });
 
   describe('agent receipts', () => {
-    it('should keep the receipts of each conversation in order until they are acknowledged', () => {
+    it('should hand the pending receipts of a conversation, in order, to the prompt that takes them', () => {
       runtime.addAgentReceipt('a', 'first');
       runtime.addAgentReceipt('a', 'second');
       runtime.addAgentReceipt('b', 'other');
 
-      runtime.acknowledgeAgentReceipts('a', 1);
-
-      expect(runtime.pendingAgentReceipts('a')).toEqual(['second']);
-      expect(runtime.pendingAgentReceipts('b')).toEqual(['other']);
-    });
-
-    it('should leave none pending once all of them are acknowledged', () => {
-      runtime.addAgentReceipt('a', 'first');
-
-      runtime.acknowledgeAgentReceipts('a', 1);
-      runtime.acknowledgeAgentReceipts('unknown', 1);
+      expect(runtime.takeAgentReceipts('a').map(receipt => receipt.text)).toEqual(['first', 'second']);
 
       expect(runtime.pendingAgentReceipts('a')).toEqual([]);
-      expect(runtime.pendingAgentReceipts('unknown')).toEqual([]);
+      expect(runtime.pendingAgentReceipts('b')).toEqual(['other']);
+      expect(runtime.takeAgentReceipts('unknown')).toEqual([]);
+    });
+
+    it('should put restored receipts back in the order they arrived', () => {
+      runtime.addAgentReceipt('a', 'first');
+      const roundReceipts = runtime.takeAgentReceipts('a');
+      runtime.addAgentReceipt('a', 'second');
+      const steeredReceipts = runtime.takeAgentReceipts('a');
+      runtime.addAgentReceipt('a', 'third');
+
+      runtime.restoreAgentReceipts('a', steeredReceipts);
+      runtime.restoreAgentReceipts('a', roundReceipts);
+      runtime.restoreAgentReceipts('a', []);
+
+      expect(runtime.pendingAgentReceipts('a')).toEqual(['first', 'second', 'third']);
     });
   });
 

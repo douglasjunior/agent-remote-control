@@ -680,6 +680,16 @@ describe('ExecuteAgentTurnUseCase', () => {
     expect(stubAgentPort.createSessionCalls).toHaveLength(0);
   });
 
+  it('should keep the agent receipts pending for the next prompt when the round that took them fails', async () => {
+    runtime.addAgentReceipt('conv-1', 'R1');
+    workspacePort.ensureDirectory.mockRejectedValue(new Error('Path is outside the workspace directory: /x'));
+
+    const result = await useCase.execute(turnRequest({ workspacePath: '/x' }));
+
+    expect(result.status).toBe('failed');
+    expect(runtime.pendingAgentReceipts('conv-1')).toEqual(['R1']);
+  });
+
   it('should return failed when max delegation rounds are exceeded', async () => {
     stubAgentPort.mockResponses = Array(105).fill('<delegate role="DEVELOPER" summary="Working on it" project="my-app">Delegating...</delegate>');
     delegateStubPort.mockResponses = Array(105).fill('I did it.');
@@ -2653,6 +2663,25 @@ describe('ExecuteAgentTurnUseCase', () => {
       expect(stubAgentPort.promptCalls).toHaveLength(1);
     });
 
+    it('should steer only the agent receipts that the running round prompt did not carry', async () => {
+      stubAgentPort.supportsSteering = true;
+      runtime.addAgentReceipt('conv-1', 'RECEIPT-1');
+      const gate = await holdFirstPrompt();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      runtime.addAgentReceipt('conv-1', 'RECEIPT-2');
+      await expect(useCase.execute(turnRequest({ prompt: 'two' }))).resolves.toMatchObject({ status: 'steered' });
+      runtime.addAgentReceipt('conv-1', 'RECEIPT-3');
+      gate.release();
+      await first;
+
+      expect(stubAgentPort.promptCalls[0]).toContain('RECEIPT-1');
+      expect(stubAgentPort.steeringPrompts[0]).toContain('RECEIPT-2');
+      expect(stubAgentPort.steeringPrompts[0]).not.toContain('RECEIPT-1');
+      expect(runtime.pendingAgentReceipts('conv-1')).toEqual(['RECEIPT-3']);
+    });
+
     it('should steer with the attachments inventory and without the re-entry note of a live session', async () => {
       stubAgentPort.supportsSteering = true;
       agentRegistry.getReentryNote.mockReturnValue('CEO re-entry note');
@@ -2760,6 +2789,35 @@ describe('ExecuteAgentTurnUseCase', () => {
       await expect(first).resolves.toMatchObject({ status: 'completed' });
       await expect(second).resolves.toMatchObject({ status: 'completed', response: `reply to ${toCeo(`${idleTeam}${emptyBoard}two`)}` });
       expect(onDelivery.mock.calls).toEqual([['queued'], ['delivered']]);
+    });
+
+    it('should cancel a message whose steering came back after the user stopped the turn, and start no turn with it', async () => {
+      stubAgentPort.supportsSteering = true;
+      const gate = await holdFirstPrompt();
+      let answerSteering: () => void = () => undefined;
+      stubAgentPort.sendSteeringPrompt = async function (this: StubAgentPort, text: string) {
+        this.steeringPrompts.push(text);
+        await new Promise<void>((resolve) => {
+          answerSteering = resolve;
+        });
+        return 'not_running';
+      };
+      const onDelivery = rs.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await gate.firstStarted;
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(stubAgentPort.steeringPrompts).toHaveLength(1));
+
+      const stopped = runtime.cancel('conv-1');
+      gate.release();
+      answerSteering();
+      await stopped;
+
+      await first;
+      await expect(second).resolves.toEqual({ response: '', status: 'cancelled' });
+      expect(onDelivery.mock.calls).toEqual([['cancelled']]);
+      expect(stubAgentPort.promptCalls).toHaveLength(1);
     });
 
     it('should queue the message when the agent does not support steering', async () => {
@@ -2953,6 +3011,45 @@ describe('ExecuteAgentTurnUseCase', () => {
       await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Recovered.' });
       expect(stubAgentPort.promptCalls[1]).toMatch(/^Mock system prompt\.\n\n\[RETRY\]/);
       expect(stubAgentPort.promptCalls[1]).toContain(`one\n\n${buildUserMessagePrompt('two')}`);
+    });
+
+    it('should send the agent receipts steered into a prompt again with its retry', async () => {
+      retryPolicy = { baseDelayMs: 60_000, maxDelayMs: 60_000, maxTotalMs: 600_000 };
+      const ceo = scriptedCeo(true);
+      const onRetry = (event: RetryEvent) => event.kind === 'scheduled' && queueMicrotask(() => turnRetry.retryNow('conv-1'));
+
+      const first = useCase.execute(turnRequest({ prompt: 'one', onRetry }));
+      await ceo.waitForPrompt(1);
+      runtime.addAgentReceipt('conv-1', 'STEERED-RECEIPT');
+      await expect(useCase.execute(turnRequest({ prompt: 'two' }))).resolves.toMatchObject({ status: 'steered' });
+      await ceo.fail(new Error('connection lost'), 1);
+      await ceo.respond('Recovered.', 2);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'Recovered.' });
+      expect(stubAgentPort.steeringPrompts[0]).toContain('STEERED-RECEIPT');
+      expect(stubAgentPort.promptCalls[1]).toContain('STEERED-RECEIPT');
+      expect(runtime.pendingAgentReceipts('conv-1')).toEqual([]);
+    });
+
+    it('should keep the receipts and the message of a steering that throws for the next prompt', async () => {
+      const ceo = scriptedCeo(true);
+      stubAgentPort.sendSteeringPrompt = async () => {
+        throw new Error('steering broke');
+      };
+      const onDelivery = rs.fn();
+
+      const first = useCase.execute(turnRequest({ prompt: 'one' }));
+      await ceo.waitForPrompt(1);
+      runtime.addAgentReceipt('conv-1', 'KEPT-RECEIPT');
+      const second = useCase.execute(turnRequest({ prompt: 'two', onDelivery }));
+      await rs.waitFor(() => expect(onDelivery).toHaveBeenCalledWith('queued'));
+      await ceo.respond('One done.', 1);
+      await ceo.respond('Two done.', 2);
+
+      await expect(first).resolves.toMatchObject({ status: 'completed', response: 'One done.' });
+      await expect(second).resolves.toMatchObject({ status: 'completed', response: 'Two done.' });
+      expect(stubAgentPort.promptCalls[1]).toContain('KEPT-RECEIPT');
+      expect(stubAgentPort.promptCalls[1]).toContain('two');
     });
 
     it.each([

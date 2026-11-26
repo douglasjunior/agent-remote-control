@@ -9,6 +9,7 @@ import { IFileSystemPort } from '../../agent/ports/file-system.port.js';
 import { ConversationLogContextService } from '../../logging/services/conversation-log-context.service.js';
 import { ATTACHMENTS_ONLY_PROMPT } from '../constants/attachments-only-prompt.constant.js';
 import type { ActiveTurn } from '../models/active-turn.model.js';
+import type { AgentReceipt } from '../models/agent-receipt.model.js';
 import type { AgentRequester } from '../models/agent-request.model.js';
 import { type ConversationTurn, type JoinOutcome, PendingMessage } from '../models/conversation-turn.model.js';
 import type { OpenWork } from '../models/open-work.model.js';
@@ -203,18 +204,28 @@ export class ExecuteAgentTurnUseCase {
     if (messages.length === 0) {
       return false;
     }
-    const receipts = this.conversationRuntime.pendingAgentReceipts(conversationKey);
+    const receipts = this.conversationRuntime.takeAgentReceipts(conversationKey);
     const steered = await this.conversationRuntime.steerCeo(
       conversationKey,
       turn,
       agentId,
-      [`${block}\n${board}`, ...receipts, ...messages.map(message => buildUserMessagePrompt(message.text)), languagePrompt].filter(Boolean).join('\n\n'),
-    );
+      [`${block}\n${board}`, ...receipts.map(receipt => receipt.text), ...messages.map(message => buildUserMessagePrompt(message.text)), languagePrompt]
+        .filter(Boolean)
+        .join('\n\n'),
+    ).catch((error: unknown) => {
+      this.logger.warn(`[CEO Steering Failed] Conversation=${conversationKey}: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    });
     if (!steered) {
-      turn.putBack(messages);
+      this.conversationRuntime.restoreAgentReceipts(conversationKey, receipts);
+      if (turn.isCancelled) {
+        messages.forEach(message => message.cancel());
+      } else {
+        turn.putBack(messages);
+      }
       return false;
     }
-    this.conversationRuntime.acknowledgeAgentReceipts(conversationKey, receipts.length);
+    turn.markSteeredReceipts(receipts);
     turn.markRead(messages.map(message => message.text), true);
     messages.forEach(message => message.reached('steered'));
     this.logger.log(`[CEO Steered] Conversation=${conversationKey}, Messages=${messages.length}`);
@@ -364,7 +375,6 @@ export class ExecuteAgentTurnUseCase {
       }
       for (let round = 1; ; round++) {
         let deliveredNotices = 0;
-        let deliveredReceipts = 0;
         const { response, decision, requestResults } = await this.conversationRuntime.runOnCeo(
           conversationKey,
           turn,
@@ -383,9 +393,8 @@ export class ExecuteAgentTurnUseCase {
             // with a message of the user, which may be about it.
             const board = round === 1 || turn.hasInbox ? `${await this.ceoBoard.buildPrompt(request.conversationId)}\n` : '';
             const team = block.signature !== lastBlockSignature ? `${block.text}\n` : '';
-            const receipts = this.conversationRuntime.pendingAgentReceipts(conversationKey);
-            deliveredReceipts = receipts.length;
-            prompt = `${team}${board}${receipts.map(receipt => `${receipt}\n\n`).join('')}${prompt}`;
+            const receipts = this.conversationRuntime.takeAgentReceipts(conversationKey);
+            prompt = `${team}${board}${this.receiptsBlock(receipts)}${prompt}`;
             lastBlockSignature = block.signature;
             const notices = this.conversationRuntime.pendingCeoNotices(conversationKey);
             if (notices.length > 0) {
@@ -394,11 +403,15 @@ export class ExecuteAgentTurnUseCase {
             }
             const answerDelivery = ceoAnswerDelivery;
             ceoAnswerDelivery = undefined;
-            return this.runCeoTurn(ceoPort, prompt, request, turn, ceo, session, round === 1, ceoWorkId, answerDelivery);
+            try {
+              return await this.runCeoTurn(ceoPort, prompt, request, turn, ceo, session, round === 1, ceoWorkId, answerDelivery);
+            } catch (error) {
+              this.conversationRuntime.restoreAgentReceipts(conversationKey, receipts);
+              throw error;
+            }
           },
         );
         this.conversationRuntime.acknowledgeCeoNotices(conversationKey, deliveredNotices);
-        this.conversationRuntime.acknowledgeAgentReceipts(conversationKey, deliveredReceipts);
 
         if (decision.kind === 'invalid') {
           return await finish('failed', response, `Invalid CEO response: ${decision.reason}`);
@@ -439,6 +452,10 @@ export class ExecuteAgentTurnUseCase {
         await this.openWork.close(request.conversationId, ceoWorkId);
       }
     }
+  }
+
+  private receiptsBlock(receipts: readonly AgentReceipt[]): string {
+    return receipts.map(receipt => `${receipt.text}\n\n`).join('');
   }
 
   private trackArtifacts(tracked: Set<string>, delegations: readonly ValidatedDelegation[]): void {
@@ -554,6 +571,7 @@ export class ExecuteAgentTurnUseCase {
             }));
           } finally {
             turn.prompting = false;
+            text = `${this.receiptsBlock(turn.takeSteeredReceipts())}${text}`;
             const steered = turn.takeSteered();
             if (steered.length > 0) {
               text = this.withUserMessages(text, steered);

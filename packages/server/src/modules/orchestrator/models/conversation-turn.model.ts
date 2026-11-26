@@ -1,6 +1,7 @@
 import { PromptCancelledError } from '../../agent/ports/agent.port.js';
 
 import type { ActiveTurn } from './active-turn.model.js';
+import type { AgentReceipt } from './agent-receipt.model.js';
 import type { TurnRequest } from './turn-request.model.js';
 
 
@@ -68,6 +69,7 @@ export class ConversationTurn {
   private cancelledTurn = false;
   private readonly inbox: PendingMessage[] = [];
   private readonly steeredNow: string[] = [];
+  private readonly steeredReceiptsNow: AgentReceipt[] = [];
   private readonly joinedTexts: string[];
   private readonly readTexts: string[] = [];
   private wake: (() => void) | undefined;
@@ -147,6 +149,16 @@ export class ConversationTurn {
   /** The messages steered into the prompt that just ended, which a retry of that prompt carries again. */
   takeSteered(): readonly string[] {
     return this.steeredNow.splice(0);
+  }
+
+  /** Records agent receipts steered into the prompt running, which the turn takes after that prompt. */
+  markSteeredReceipts(receipts: readonly AgentReceipt[]): void {
+    this.steeredReceiptsNow.push(...receipts);
+  }
+
+  /** The agent receipts steered into the prompt that just ended, which a retry of that prompt carries again. */
+  takeSteeredReceipts(): readonly AgentReceipt[] {
+    return this.steeredReceiptsNow.splice(0);
   }
 
   /** Resolves once a message waits in the inbox or the turn is cancelled. */
