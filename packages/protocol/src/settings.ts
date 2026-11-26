@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { MAX_ATTACHMENTS, MAX_UPLOAD_MB } from './limits.js';
 import { trustedSignalingBaseUrl } from './remote-link.js';
 
 
@@ -32,6 +33,8 @@ export const SETTING_SCHEMAS = {
   DISCORD_BOT_TOKEN: z.string().trim().max(200, 'A bot token is shorter'),
   DISCORD_GUILD_ID: z.string().trim().regex(/^(\d{17,20})?$/, 'A server ID is a number of 17 to 20 digits'),
   WEB_ALLOWED_ORIGINS: origins,
+  WEB_UPLOAD_MAX_MB: positiveInteger.max(MAX_UPLOAD_MB, `Use at most ${MAX_UPLOAD_MB}`),
+  WEB_MAX_ATTACHMENTS: positiveInteger.max(MAX_ATTACHMENTS, `Use at most ${MAX_ATTACHMENTS}`),
   REMOTE_ENABLED: z.boolean(),
   REMOTE_URL: z.string().trim().refine(
     text => text === '' || trustedSignalingBaseUrl(text) !== null,

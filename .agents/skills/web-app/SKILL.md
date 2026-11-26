@@ -93,7 +93,8 @@ packages/web/src/
   `import.meta.env.ARC_TARGET` from the env mode, because `--env-mode` leaves `import.meta.env.MODE` untouched.
 - `ConnectionProvider` owns the token state and the connection lifecycle: it asks the connection for the token
   (`hasAccessToken`, `setAccessToken`), connects when one exists and
-  exposes `status`, `transport`, `hasToken` and `submitToken` through `useConnection()`. Without a token (or after
+  exposes `status`, `transport`, `hasToken`, `uploadLimits` (the last `upload.limits`, `null` until the server sends it) and
+  `submitToken` through `useConnection()`. Without a token (or after
   `unauthorized`) `AppLayout` renders `MissingTokenPage`.
 - `ConnectionBadge` shows the status with an icon of the transport (`Cable`, `ArrowLeftRight`, `Waypoints`); its
   popover, opened on hover or click, explains the transport and why an `incompatible` or `untrusted` host was refused.

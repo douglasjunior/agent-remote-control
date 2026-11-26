@@ -29,6 +29,7 @@ const history = [
 describe('parseServerEvent', () => {
   it.each([
     { type: 'auth.ok' },
+    { type: 'upload.limits', maxBytes: 10_485_760, maxAttachments: 10 },
     { type: 'auth.failed' },
     { type: 'pong' },
     { type: 'conversation.list', conversations: [conversation] },

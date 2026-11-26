@@ -8,19 +8,26 @@ import { ChangeSettingsUseCase } from '../../settings/use-cases/change-settings.
 import { GetSettingsUseCase } from '../../settings/use-cases/get-settings.use-case.js';
 import type { WebConnectionRegistryService } from '../services/web-connection-registry.service.js';
 import { WebSettingsService } from '../services/web-settings.service.js';
+import { WebUploadLimitsService } from '../services/web-upload-limits.service.js';
 
 
-/** The settings page over the real settings use cases, a store in memory and a stubbed Discord tester. */
+/**
+ * The settings page over the real settings use cases, a store in memory and a stubbed Discord tester, with the upload
+ * limits read from the same settings and listening to their changes.
+ */
 export function createWebSettings(configuration: StubAgentConfigurationPort, registry: WebConnectionRegistryService) {
   const store = new FakeSettingsStore();
   const runtime = new RuntimeSettingsService();
+  const notifier = new SettingsChangeNotifierService();
   const tester = new StubDiscordConnectionTester();
   const service = new WebSettingsService(
     new GetSettingsUseCase(runtime),
-    new ChangeSettingsUseCase(store, runtime, new SettingsChangeNotifierService()),
+    new ChangeSettingsUseCase(store, runtime, notifier),
     new TestDiscordConnectionUseCase(runtime, tester),
     configuration,
     registry,
   );
-  return { service, store, runtime, tester };
+  const uploadLimits = new WebUploadLimitsService(runtime, notifier, registry);
+  uploadLimits.onModuleInit();
+  return { service, store, runtime, tester, uploadLimits };
 }

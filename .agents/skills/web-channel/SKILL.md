@@ -53,8 +53,9 @@ by the owner. The message contract is the `@agent-remote-control/protocol` packa
 - `WebConnectionHandler` waits at most 5 s for an `auth` command on each connection. A wrong token, any
   other first command or a timeout sends `auth.failed` and closes with code `4401`. Commands from a
   connection that has not authenticated are never routed.
-- A correct token sends `auth.ok` and registers the connection in `WebConnectionRegistryService`, which
-  removes it on close and offers `broadcast(event)`.
+- A correct token sends `auth.ok`, then `upload.limits { maxBytes, maxAttachments }` (`WebUploadLimitsService`, from
+  `WEB_UPLOAD_MAX_MB` and `WEB_MAX_ATTACHMENTS`, broadcast again whenever either changes), and registers the connection
+  in `WebConnectionRegistryService`, which removes it on close and offers `broadcast(event)`.
 - Invalid commands from an authenticated connection answer an `error` event.
 - `ping` from an authenticated connection answers `pong`; the web app drops a connection that stops answering.
 

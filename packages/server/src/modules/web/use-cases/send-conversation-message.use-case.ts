@@ -12,6 +12,7 @@ import { ConversationEntryService, type UserMessageEntry } from '../services/con
 import { WebConversationEventsService } from '../services/web-conversation-events.service.js';
 import { WebConversationTurnsService } from '../services/web-conversation-turns.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
+import { WebUploadLimitsService } from '../services/web-upload-limits.service.js';
 
 
 const TITLE_MAX_LENGTH = 60;
@@ -34,6 +35,7 @@ export class SendConversationMessageUseCase {
     private readonly uploads: WebConversationUploadsService,
     private readonly turns: WebConversationTurnsService,
     private readonly entries: ConversationEntryService,
+    private readonly uploadLimits: WebUploadLimitsService,
   ) {}
 
   /**
@@ -46,6 +48,11 @@ export class SendConversationMessageUseCase {
     try {
       if (!await this.isConfigured(conversationId)) {
         await this.events.publishEntry(conversationId, this.entries.notice('warning', NOT_CONFIGURED_NOTICE));
+        return;
+      }
+      const maxAttachments = this.uploadLimits.maxAttachments;
+      if (attachments.length > maxAttachments) {
+        await this.events.publishEntry(conversationId, this.entries.notice('error', `A message takes at most ${maxAttachments} attachments. Remove some and send it again.`));
         return;
       }
       const files = await this.uploads.resolve(conversationId, attachments);

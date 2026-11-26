@@ -59,7 +59,7 @@ Every module that reads a setting imports `SettingsModule`.
 - Read a setting where the value is used, never in a constructor or a field, so a saved change applies to the next
   use: the config services (`QuestionTimeoutConfigService`, `TurnRetryConfigService`, `DelegationLimitsConfigService`,
   `ShellCommandConfigService`, `AgentAuthConfigService`, `ArtifactLimitsConfigService`), `WhisperCppAdapter`,
-  `ConversationRuntimeService` (each idle period), `WsClientTransportAdapter` (each upgrade), `FileConsoleLoggerAdapter`
+  `ConversationRuntimeService` (each idle period), `WebUploadLimitsService` (each upload and message), `WsClientTransportAdapter` (each upgrade), `FileConsoleLoggerAdapter`
   (each new day's file), `RemoteIdentityService` and `DiscordClientService`. Never read `process.env` for a catalog key.
 
 ## Changes
@@ -75,7 +75,8 @@ Every module that reads a setting imports `SettingsModule`.
   listener with the keys whose resolved value changed, after the change is in memory. A listener that throws or rejects
   is logged (`settings_listener_failed`) and the others still run. `DiscordClientService` restarts the bot on its
   connection settings and registers the slash commands again on the agent login flag;
-  `RemoteClientTransportAdapter` restarts remote access on `REMOTE_ENABLED`. An `envOnly` setting never changes while
+  `RemoteClientTransportAdapter` restarts remote access on `REMOTE_ENABLED`; `WebUploadLimitsService` broadcasts
+  `upload.limits` on `WEB_UPLOAD_MAX_MB` and `WEB_MAX_ATTACHMENTS`. An `envOnly` setting never changes while
   the server runs, so no module listens to it.
 - `GetSettingsUseCase` lists every setting with its value, source, default, kind, group, `apply`, `env` and `envOnly`; a secret shows
   only `{ set: boolean }`, so no channel can leak it.

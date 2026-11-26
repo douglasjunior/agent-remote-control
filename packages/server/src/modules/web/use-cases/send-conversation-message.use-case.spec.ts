@@ -7,6 +7,7 @@ import type { QuestionPrompt } from '../../orchestrator/models/user-question.mod
 import { ConversationEntryService } from '../services/conversation-entry.service.js';
 import { WebConversationUploadsService } from '../services/web-conversation-uploads.service.js';
 import { configuredSettings } from '../testing/configured-settings.js';
+import { createUploadLimits } from '../testing/upload-limits.fixture.js';
 import { createWebHarness } from '../testing/web-harness.js';
 
 import { SendConversationMessageUseCase } from './send-conversation-message.use-case.js';
@@ -30,6 +31,7 @@ function setup() {
     new WebConversationUploadsService(harness.workspace, harness.uploads),
     harness.turns,
     new ConversationEntryService(),
+    createUploadLimits({ WEB_MAX_ATTACHMENTS: 2 }).limits,
   );
   const entries = (): ConversationEntry[] => harness.store.histories.get('web-1') ?? [];
   const types = () => entries().map(entry => entry.type);
@@ -150,6 +152,23 @@ describe('SendConversationMessageUseCase', () => {
 
       expect(agentTurn.turnRequests).toHaveLength(0);
       expect(entries()).toEqual([expect.objectContaining({ type: 'notice', level: 'error', text: expect.stringContaining('attached file is missing') })]);
+    });
+
+    it('should refuse more attachments than the settings allow, running no turn', async () => {
+      const { useCase, uploads, agentTurn, entries } = setup();
+      const files = ['a', 'b', 'c'].map(name => ({ path: `.arc-uploads/web-1/${name}.txt`, name: `${name}.txt` }));
+      files.forEach(file => uploads.files.set(file.path, 1));
+
+      await useCase.execute('web-1', 'hello', files);
+
+      expect(agentTurn.turnRequests).toHaveLength(0);
+      expect(entries()).toEqual([
+        expect.objectContaining({
+          type: 'notice',
+          level: 'error',
+          text: 'A message takes at most 2 attachments. Remove some and send it again.',
+        }),
+      ]);
     });
   });
 

@@ -44,6 +44,7 @@ import { AUTH_FAILED_CLOSE_CODE, AUTH_TIMEOUT_MS, WebConnectionHandler } from '.
 
 const OBSERVER_ONLY = 1;
 const OBSERVER_AND_CLIENT = 2;
+const UPLOAD_LIMITS = { type: 'upload.limits', maxBytes: 10 * 1024 * 1024, maxAttachments: 10 };
 
 describe('WebConnectionHandler', () => {
   let transport: FakeClientTransport;
@@ -64,10 +65,10 @@ describe('WebConnectionHandler', () => {
     const { store, events, agentTurn, configuration, questions, turnRetry, workspace, promptHistory, fileSearch, uploads } = harness;
     const getProfiles = new GetConversationProfilesUseCase(configuration);
     const conversationUploads = new WebConversationUploadsService(workspace, uploads);
-    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, turnRetry, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService());
-    const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
     agentAuth = new StubAgentAuthPort();
     settings = createWebSettings(configuration, harness.registry);
+    const sendMessage = new SendConversationMessageUseCase(agentTurn, configuration, turnRetry, events, store, workspace, promptHistory, conversationUploads, harness.turns, new ConversationEntryService(), settings.uploadLimits);
+    const resumeWork = new ResumeConversationWorkUseCase(agentTurn, workspace, events, harness.turns, new ConversationEntryService());
     handler = new WebConnectionHandler(
       transport,
       store,
@@ -88,7 +89,8 @@ describe('WebConnectionHandler', () => {
       new RetryConversationTurnUseCase(turnRetry, events),
       new ListPromptHistoryUseCase(promptHistory),
       new WebFileSearchSessionsService(fileSearch),
-      new WebUploadSessionsService(uploads),
+      new WebUploadSessionsService(uploads, settings.uploadLimits),
+      settings.uploadLimits,
       new WebAgentQuotaService(agentTurn),
       new WebAgentAuthService(agentAuth, harness.registry),
       logContext,
@@ -111,10 +113,10 @@ describe('WebConnectionHandler', () => {
     rs.unstubAllEnvs();
   });
 
-  it('should authenticate a correct token and register the connection', () => {
+  it('should authenticate a correct token, tell it the upload limits and register the connection', () => {
     connection.receive({ type: 'auth', token: 'secret' });
 
-    expect(connection.sent).toEqual([{ type: 'auth.ok' }]);
+    expect(connection.sent).toEqual([{ type: 'auth.ok' }, UPLOAD_LIMITS]);
     expect(harness.registry.size).toBe(OBSERVER_AND_CLIENT);
   });
 
@@ -123,7 +125,7 @@ describe('WebConnectionHandler', () => {
     connection.receive({ type: 'ping' });
     await rs.advanceTimersByTimeAsync(0);
 
-    expect(connection.sent).toEqual([{ type: 'auth.ok' }, { type: 'pong' }]);
+    expect(connection.sent).toEqual([{ type: 'auth.ok' }, UPLOAD_LIMITS, { type: 'pong' }]);
   });
 
   it('should not close an authenticated connection when the timeout elapses', () => {
@@ -174,7 +176,7 @@ describe('WebConnectionHandler', () => {
     connection.receive({ type: 'auth', token: 'secret' });
     connection.receive({ type: 'nope' });
 
-    expect(connection.sent[1]).toEqual({ type: 'error', message: 'Invalid command' });
+    expect(connection.sent[2]).toEqual({ type: 'error', message: 'Invalid command' });
     expect(connection.closedWith).toBeUndefined();
   });
 
@@ -184,7 +186,7 @@ describe('WebConnectionHandler', () => {
         await rs.advanceTimersByTimeAsync(0);
       }
     };
-    const sent = () => connection.sent.slice(1);
+    const sent = () => connection.sent.slice(2);
 
     beforeEach(() => {
       connection.receive({ type: 'auth', token: 'secret' });
@@ -392,6 +394,17 @@ describe('WebConnectionHandler', () => {
       expect(settings.store.saved).toEqual({});
       expect(log).toHaveBeenCalledWith('[Command] settings.set');
       expect(JSON.stringify([...log.mock.calls, ...sent()])).not.toContain('secret-token');
+    });
+
+    it('should tell every connection the upload limits when a setting behind them changes', async () => {
+      connection.receive({ type: 'settings.set', requestId: 'r1', changes: { WEB_UPLOAD_MAX_MB: 25, LOG_RETENTION_DAYS: 7 } });
+      await settle();
+      connection.receive({ type: 'settings.set', requestId: 'r2', changes: { LOG_RETENTION_DAYS: 9 } });
+      await settle();
+
+      const limits = sent().filter(event => event.type === 'upload.limits');
+      expect(limits).toEqual([{ type: 'upload.limits', maxBytes: 25 * 1024 * 1024, maxAttachments: 10 }]);
+      expect(harness.observer.sent).toContainEqual(limits[0]);
     });
 
     it('should test a Discord bot token and answer the requester', async () => {

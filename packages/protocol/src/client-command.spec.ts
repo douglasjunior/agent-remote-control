@@ -1,5 +1,5 @@
 import { parseClientCommand } from './client-command.js';
-import { MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_SQUAD_NAME_LENGTH, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from './limits.js';
+import { BYTES_PER_MB, MAX_ATTACHMENTS, MAX_MENTION_QUERY_LENGTH, MAX_MESSAGE_LENGTH, MAX_SQUAD_NAME_LENGTH, MAX_UPLOAD_MB, UPLOAD_CHUNK_BYTES } from './limits.js';
 
 
 describe('parseClientCommand', () => {
@@ -108,7 +108,7 @@ describe('parseClientCommand', () => {
     ['blank text with an empty attachment list', { type: 'message.send', conversationId: 'c', text: ' ', attachments: [] }],
     ['too many attachments', { type: 'message.send', conversationId: 'c', text: 'x', attachments: Array.from({ length: MAX_ATTACHMENTS + 1 }, () => ({ path: 'a', name: 'a' })) }],
     ['attachment without a name', { type: 'message.send', conversationId: 'c', text: 'x', attachments: [{ path: 'a' }] }],
-    ['oversized upload', { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a', size: MAX_UPLOAD_BYTES + 1 }],
+    ['oversized upload', { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a', size: MAX_UPLOAD_MB * BYTES_PER_MB + 1 }],
     ['negative upload size', { type: 'upload.start', uploadId: 'u', conversationId: 'c', name: 'a', size: -1 }],
     ['oversized upload chunk', { type: 'upload.chunk', uploadId: 'u', index: 0, dataBase64: 'A'.repeat(Math.ceil(UPLOAD_CHUNK_BYTES / 3) * 4 + 1) }],
     ['negative chunk index', { type: 'upload.chunk', uploadId: 'u', index: -1, dataBase64: '' }],

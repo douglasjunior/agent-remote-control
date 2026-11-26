@@ -1,8 +1,10 @@
 import type { ClientCommand } from '@agent-remote-control/protocol/client-command';
-import { MAX_ATTACHMENTS, MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
+import { BYTES_PER_MB, MAX_ATTACHMENTS, MAX_UPLOAD_MB, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
+import type { UploadLimits } from '../../connection/connection-context.js';
 import { FakeServerConnection } from '../../test/fake-server-connection.js';
+
 
 import { usePromptAttachments } from './use-prompt-attachments.js';
 
@@ -38,11 +40,13 @@ class UploadingConnection extends FakeServerConnection {
 
 type Api = ReturnType<typeof usePromptAttachments>;
 
-function setup(conversationId: string | null = 'c1') {
+const LIMITS: UploadLimits = { maxBytes: 2.5 * BYTES_PER_MB, maxAttachments: 4 };
+
+function setup(conversationId: string | null = 'c1', limits: UploadLimits | null = LIMITS) {
   const connection = new UploadingConnection();
   const api: { current: Api } = { current: undefined as unknown as Api };
   function Harness() {
-    api.current = usePromptAttachments(connection, conversationId);
+    api.current = usePromptAttachments(connection, conversationId, limits);
     return (
       <div data-testid="drop" {...api.current.dropHandlers} onPaste={api.current.onPaste}>
         {api.current.items.map(item => <span key={item.id}>{`${item.name}:${item.status}${item.error ? `:${item.error}` : ''}`}</span>)}
@@ -102,13 +106,27 @@ describe('usePromptAttachments', () => {
   it('should mark a file above the limit as failed without sending anything', async () => {
     const { connection, api, add } = setup();
     const big = file('big.bin');
-    Object.defineProperty(big, 'size', { value: MAX_UPLOAD_BYTES + 1 });
+    Object.defineProperty(big, 'size', { value: LIMITS.maxBytes + 1 });
 
     await add(big);
 
-    expect(screen.getByText('big.bin:error:File is too large')).toBeInTheDocument();
+    expect(screen.getByText('big.bin:error:File is larger than 2.5 MB')).toBeInTheDocument();
     expect(connection.sent).toEqual([]);
     expect(api.current.uploading).toBe(false);
+  });
+
+  it('should bound the files by the protocol until the server tells its limits', async () => {
+    const { connection, api, add, settle } = setup('c1', null);
+    const big = file('big.bin');
+    Object.defineProperty(big, 'size', { value: MAX_UPLOAD_MB * BYTES_PER_MB + 1 });
+
+    await add(big);
+    expect(screen.getByText(`big.bin:error:File is larger than ${MAX_UPLOAD_MB} MB`)).toBeInTheDocument();
+    expect(connection.sent).toEqual([]);
+    await add(...Array.from({ length: MAX_ATTACHMENTS + 1 }, (_, index) => file(`f${index}.txt`)));
+    await settle();
+
+    expect(api.current.items).toHaveLength(MAX_ATTACHMENTS);
   });
 
   it('should mark a file as failed with the reason the server gives', async () => {
@@ -135,10 +153,10 @@ describe('usePromptAttachments', () => {
   it('should take no more than the attachment limit', async () => {
     const { api, add, settle } = setup();
 
-    await add(...Array.from({ length: MAX_ATTACHMENTS + 3 }, (_, index) => file(`f${index}.txt`)));
+    await add(...Array.from({ length: LIMITS.maxAttachments + 3 }, (_, index) => file(`f${index}.txt`)));
     await settle();
 
-    expect(api.current.items).toHaveLength(MAX_ATTACHMENTS);
+    expect(api.current.items).toHaveLength(LIMITS.maxAttachments);
   });
 
   it('should cancel a running upload on remove and free its slot', async () => {
@@ -151,8 +169,8 @@ describe('usePromptAttachments', () => {
 
     expect(api.current.items).toEqual([]);
     expect(sent('upload.abort')).toHaveLength(1);
-    await add(...Array.from({ length: MAX_ATTACHMENTS }, (_, index) => file(`f${index}.txt`)));
-    expect(api.current.items).toHaveLength(MAX_ATTACHMENTS);
+    await add(...Array.from({ length: LIMITS.maxAttachments }, (_, index) => file(`f${index}.txt`)));
+    expect(api.current.items).toHaveLength(LIMITS.maxAttachments);
   });
 
   it('should remove a finished file without telling the server', async () => {
@@ -168,7 +186,7 @@ describe('usePromptAttachments', () => {
 
   it('should clear the list and free every slot', async () => {
     const { api, add, settle } = setup();
-    await add(...Array.from({ length: MAX_ATTACHMENTS }, (_, index) => file(`f${index}.txt`)));
+    await add(...Array.from({ length: LIMITS.maxAttachments }, (_, index) => file(`f${index}.txt`)));
     await settle();
 
     act(() => api.current.clear());

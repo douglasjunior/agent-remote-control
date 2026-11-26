@@ -8,7 +8,7 @@ export const SETTINGS_SECTIONS = [
   { id: 'squads', label: 'Squads', description: 'Who runs each role, set in one go.', icon: Users },
   { id: 'skills', label: 'Skills', description: 'What the agents read on demand.', icon: BookOpenText },
   { id: 'discord', label: 'Discord', description: 'The bot that brings the conversations to Discord.', icon: MessagesSquare },
-  { id: 'advanced', label: 'Advanced', description: 'Origins, remote access, sessions, shell commands, retries and speech-to-text.', icon: Wrench },
+  { id: 'advanced', label: 'Advanced', description: 'Origins, attachments, remote access, sessions, shell commands, retries and speech-to-text.', icon: Wrench },
 ] as const satisfies readonly { readonly id: string; readonly label: string; readonly description: string; readonly icon: LucideIcon }[];
 
 export type SettingsSectionId = (typeof SETTINGS_SECTIONS)[number]['id'];

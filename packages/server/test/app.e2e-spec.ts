@@ -55,7 +55,11 @@ describe('AppController (e2e)', () => {
   it('should authenticate over /ws and list conversations', async () => {
     const { messages } = await authenticate('test');
 
-    expect(messages).toEqual([{ type: 'auth.ok' }, { type: 'conversation.list', conversations: [] }]);
+    expect(messages).toEqual([
+      { type: 'auth.ok' },
+      { type: 'upload.limits', maxBytes: 10 * 1024 * 1024, maxAttachments: 10 },
+      { type: 'conversation.list', conversations: [] },
+    ]);
   });
 
   it('should close a wrong token with 4401', async () => {

@@ -16,6 +16,7 @@ import { WebFileSearchSessionsService } from '../services/web-file-search-sessio
 import { WebSettingsService } from '../services/web-settings.service.js';
 import { WebSkillsService } from '../services/web-skills.service.js';
 import { WebSquadsService } from '../services/web-squads.service.js';
+import { WebUploadLimitsService } from '../services/web-upload-limits.service.js';
 import { WebUploadSessionsService } from '../services/web-upload-sessions.service.js';
 import { AnswerConversationQuestionUseCase } from '../use-cases/answer-conversation-question.use-case.js';
 import { ApplyConversationSquadUseCase } from '../use-cases/apply-conversation-squad.use-case.js';
@@ -83,6 +84,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
     private readonly promptHistory: ListPromptHistoryUseCase,
     private readonly fileSearch: WebFileSearchSessionsService,
     private readonly uploads: WebUploadSessionsService,
+    private readonly uploadLimits: WebUploadLimitsService,
     private readonly quota: WebAgentQuotaService,
     private readonly agentAuth: WebAgentAuthService,
     private readonly logContext: ConversationLogContextService,
@@ -131,6 +133,7 @@ export class WebConnectionHandler implements OnModuleInit, OnModuleDestroy {
         if (parsed.ok && parsed.value.type === 'auth' && this.accessToken.verify(parsed.value.token)) {
           authenticated = true;
           connection.send({ type: 'auth.ok' });
+          connection.send(this.uploadLimits.event());
           this.registry.register(connection);
         } else {
           reject();

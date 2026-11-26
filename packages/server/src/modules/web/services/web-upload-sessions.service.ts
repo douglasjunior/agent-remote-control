@@ -1,10 +1,12 @@
-import { MAX_UPLOAD_BYTES, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
+import { BYTES_PER_MB, UPLOAD_CHUNK_BYTES } from '@agent-remote-control/protocol/limits';
 import { Inject, Injectable } from '@nestjs/common';
 import { basename } from 'node:path/posix';
 
 import { IWorkspaceUploadPort, type UploadWriter } from '../../workspace/ports/workspace-upload.port.js';
 import type { IClientConnection } from '../ports/client-transport.port.js';
 import { uploadDirectory } from '../utils/upload-path.util.js';
+
+import { WebUploadLimitsService } from './web-upload-limits.service.js';
 
 
 export const UPLOAD_IDLE_TIMEOUT_MS = 60_000;
@@ -30,7 +32,10 @@ type Upload = {
 export class WebUploadSessionsService {
   private readonly uploads = new Map<string, Upload>();
 
-  constructor(@Inject(IWorkspaceUploadPort) private readonly files: IWorkspaceUploadPort) {}
+  constructor(
+    @Inject(IWorkspaceUploadPort) private readonly files: IWorkspaceUploadPort,
+    private readonly limits: WebUploadLimitsService,
+  ) {}
 
   async start(
     connection: IClientConnection,
@@ -41,8 +46,9 @@ export class WebUploadSessionsService {
       this.fail(connection, command.uploadId, 'Upload id already in use');
       return;
     }
-    if (command.size > MAX_UPLOAD_BYTES) {
-      this.fail(connection, command.uploadId, 'File is too large');
+    const maxMegabytes = this.limits.maxMegabytes;
+    if (command.size > maxMegabytes * BYTES_PER_MB) {
+      this.fail(connection, command.uploadId, `File is larger than ${maxMegabytes} MB`);
       return;
     }
     if (this.countOf(connection.id) >= MAX_CONCURRENT_UPLOADS) {

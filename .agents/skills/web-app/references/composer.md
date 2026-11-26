@@ -25,7 +25,7 @@
 
 - `usePromptAttachments`: a file picked with the paperclip, dropped on the composer frame or pasted into the field uploads at once through the upload protocol inside `usePromptAttachments`, which depends only on `IServerConnection` (chunks of `UPLOAD_CHUNK_BYTES`, one `upload.ack` awaited per chunk, `upload.abort` on cancel, rejection when the status leaves `open`).
 - Each file is a chip (`AttachmentChip`) that is `uploading`, `ready` or `error`; Send stays disabled while any is uploading, and the message carries the `ready` ones (text may be empty).
-- A file above `MAX_UPLOAD_BYTES` fails without being sent, at most `MAX_ATTACHMENTS` are kept, and removing a chip cancels its upload.
+- The limits are the `uploadLimits` of `useConnection()` (the server's `upload.limits`), or the protocol's bounds (`MAX_UPLOAD_MB`, `MAX_ATTACHMENTS`) before it tells them: a larger file fails without being sent (`File is larger than N MB`), files beyond the count are dropped, and removing a chip cancels its upload.
 
 ## Voice recording
 

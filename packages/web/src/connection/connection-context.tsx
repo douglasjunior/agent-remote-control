@@ -3,11 +3,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import type { ConnectionStatus, ConnectionTransport, IServerConnection } from './server-connection.js';
 
 
+/** What a message may attach, as the server last said; `null` until it says, and then the server alone checks. */
+export type UploadLimits = { readonly maxBytes: number; readonly maxAttachments: number };
+
+
 type ConnectionContextValue = {
   readonly connection: IServerConnection;
   readonly status: ConnectionStatus;
   readonly transport: ConnectionTransport;
   readonly hasToken: boolean;
+  readonly uploadLimits: UploadLimits | null;
   readonly submitToken: (token: string) => void;
 };
 
@@ -20,8 +25,15 @@ export function ConnectionProvider({ connection, children }: {
   const [status, setStatus] = useState<ConnectionStatus>('closed');
   const [transport, setTransport] = useState(() => connection.transport);
   const [hasToken, setHasToken] = useState(() => connection.hasAccessToken());
+  const [uploadLimits, setUploadLimits] = useState<UploadLimits | null>(null);
 
   useEffect(() => connection.onTransport(setTransport), [connection]);
+
+  useEffect(() => connection.onEvent((event) => {
+    if (event.type === 'upload.limits') {
+      setUploadLimits({ maxBytes: event.maxBytes, maxAttachments: event.maxAttachments });
+    }
+  }), [connection]);
 
   useEffect(() => {
     const unsubscribe = connection.onStatus((next) => {
@@ -45,8 +57,8 @@ export function ConnectionProvider({ connection, children }: {
   }, [connection]);
 
   const value = useMemo(
-    () => ({ connection, status, transport, hasToken, submitToken }),
-    [connection, status, transport, hasToken, submitToken],
+    () => ({ connection, status, transport, hasToken, uploadLimits, submitToken }),
+    [connection, status, transport, hasToken, uploadLimits, submitToken],
   );
   return <ConnectionContext.Provider value={value}>{children}</ConnectionContext.Provider>;
 }

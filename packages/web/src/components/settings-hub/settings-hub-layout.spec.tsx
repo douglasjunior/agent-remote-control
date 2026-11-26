@@ -52,7 +52,7 @@ describe('SettingsHubLayout on a wide screen', () => {
     expect(path(app)).toBe(route);
     expect(section(name)).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('heading', { name, level: 3 })).toBeInTheDocument();
-    expect(screen.getByText(/^(How the agents talk|Log in to the agent|Who runs each|What the agents read|The bot that|Origins, remote)/)).toBeInTheDocument();
+    expect(screen.getByText(/^(How the agents talk|Log in to the agent|Who runs each|What the agents read|The bot that|Origins, attachments)/)).toBeInTheDocument();
   });
 
   it.each([
